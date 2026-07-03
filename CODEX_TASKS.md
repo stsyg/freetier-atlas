@@ -4,15 +4,15 @@ This task list is executed through the long-running agent harness in `docs/AGENT
 
 ## Rules for every task
 
-1. Read `AGENTS.md`, `.agent/feature_list.json`, `.agent/progress.md`, and recent git history.
-2. Start the repository through `scripts/init.sh` or `scripts/init.ps1` and verify the baseline before new work.
+1. Read `AGENTS.md`, `agent-state/feature_list.json`, `agent-state/progress.md`, and recent git history.
+2. Start the repository through `scripts/init.sh` or `scripts/init.ps1` when present and verify the baseline before new work.
 3. Select one highest-priority unblocked failing feature, not an entire epic.
-4. Write `.agent/current_contract.json` with scope, out-of-scope items, acceptance criteria, verification steps, risks, and evaluation level.
+4. Write `agent-state/current_contract.json` with scope, out-of-scope items, acceptance criteria, verification steps, risks, and evaluation level.
 5. Implement the smallest coherent increment that satisfies the contract.
 6. Run automated tests and real end-to-end workflows.
 7. Use a fresh independent evaluator for Level 1 and Level 2 work.
 8. Mark `passes: true` only after all acceptance steps and evaluator gates succeed.
-9. Append a handoff to `.agent/progress.md` and create a focused descriptive commit.
+9. Append a handoff to `agent-state/progress.md` and create a focused descriptive commit.
 10. Never delete or weaken tests, feature descriptions, or acceptance steps to manufacture a pass.
 
 Each task below is an epic. The builder implements its constituent feature records one at a time.
@@ -21,8 +21,8 @@ Each task below is an epic. The builder implements its constituent feature recor
 
 **Outcome:** Future agents can resume safely from a fresh context without relying on conversation memory.
 
-- Maintain `.agent/feature_list.json` as the canonical feature ledger.
-- Maintain `.agent/progress.md`, `.agent/current_contract.json`, and `.agent/evaluation.json`.
+- Maintain `agent-state/feature_list.json` as the canonical feature ledger.
+- Maintain `agent-state/progress.md`, `agent-state/current_contract.json`, and `agent-state/evaluation.json`.
 - Implement and maintain `scripts/init.sh` and `scripts/init.ps1`.
 - Add baseline smoke-test commands.
 - Document planner, builder, evaluator, contract, and handoff protocols.
