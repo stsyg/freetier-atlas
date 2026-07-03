@@ -1,23 +1,156 @@
 {
   "schema_version": 1,
-  "feature_id": null,
-  "implementation_commit": null,
-  "evaluator": null,
-  "evaluation_level": null,
+  "feature_id": "F000",
+  "implementation_commit": "c33949a384bcfb7629eb2f172e2f8f29768f7617",
+  "evaluator": "Codex independent evaluator",
+  "evaluated_at": "2026-07-03T19:03:23Z",
+  "evaluation_level": 1,
   "criteria": [
-    {"name": "functional_correctness", "required": true, "passed": null, "evidence": [], "failures": []},
-    {"name": "product_depth", "required": false, "passed": null, "evidence": [], "failures": []},
-    {"name": "data_integrity", "required": false, "passed": null, "evidence": [], "failures": []},
-    {"name": "zero_cost_safety", "required": false, "passed": null, "evidence": [], "failures": []},
-    {"name": "security_privacy", "required": false, "passed": null, "evidence": [], "failures": []},
-    {"name": "portability", "required": false, "passed": null, "evidence": [], "failures": []},
-    {"name": "code_quality", "required": true, "passed": null, "evidence": [], "failures": []},
-    {"name": "user_experience", "required": false, "passed": null, "evidence": [], "failures": []},
-    {"name": "regression_safety", "required": true, "passed": null, "evidence": [], "failures": []}
+    {
+      "name": "functional_correctness",
+      "required": true,
+      "passed": true,
+      "evidence": [
+        "Confirmed branch codex/f000-harness-foundation and clean pre-evaluation working tree.",
+        "Confirmed .gitattributes exists and git attributes set text/eol=lf for harness files and scripts.",
+        "Confirmed scripts/init.sh, scripts/init.ps1, scripts/smoke.sh, and scripts/smoke.ps1 exist.",
+        "Git Bash init and smoke scripts passed and validated required harness files plus agent-state JSON.",
+        "PowerShell init and smoke scripts passed under PowerShell 7.6.3.",
+        "Invoked scripts from C:\\tmp using absolute paths; scripts resolved C:\\repos\\freetier-atlas from their own locations.",
+        "Smoke scripts reported application scaffold checks as pending F002 and did not claim product health.",
+        "Temporary copied fixtures confirmed missing-file and invalid-JSON failures are actionable."
+      ],
+      "failures": []
+    },
+    {
+      "name": "product_depth",
+      "required": false,
+      "passed": true,
+      "evidence": [
+        "F000 is a harness feature; no display-only product workflow or fake application success path was introduced.",
+        "Smoke scripts explicitly report that application scaffold checks are pending F002."
+      ],
+      "failures": []
+    },
+    {
+      "name": "data_integrity",
+      "required": false,
+      "passed": true,
+      "evidence": [
+        "JSON validation passed for agent-state/feature_list.json, agent-state/current_contract.json, and agent-state/evaluation.json before evaluator updates.",
+        "Negative JSON validation used temporary copied fixtures and did not corrupt active repository state."
+      ],
+      "failures": []
+    },
+    {
+      "name": "zero_cost_safety",
+      "required": false,
+      "passed": true,
+      "evidence": [
+        "No service-free claim, hosting change, deployment, provider integration, or paid dependency was introduced."
+      ],
+      "failures": []
+    },
+    {
+      "name": "security_privacy",
+      "required": false,
+      "passed": true,
+      "evidence": [
+        "Static scans found no environment-dump commands and no network-call commands in scripts.",
+        "Scripts print only deterministic check status and repository root, not environment variables or secrets."
+      ],
+      "failures": []
+    },
+    {
+      "name": "portability",
+      "required": false,
+      "passed": true,
+      "evidence": [
+        "Shell scripts use BASH_SOURCE[0] to resolve the repository root.",
+        "PowerShell scripts use PSCommandPath to resolve the repository root and re-run under pwsh when available.",
+        "Native Windows bash is unavailable because WSL has no installed distribution; recorded as unavailable, while Git Bash passed."
+      ],
+      "failures": []
+    },
+    {
+      "name": "code_quality",
+      "required": true,
+      "passed": true,
+      "evidence": [
+        "git diff main...HEAD --check passed.",
+        "Scripts are focused on F000 harness checks and avoid application scaffolding.",
+        "Changed paths are limited to .gitattributes, agent-state contract/progress/evaluation/feature ledger, and scripts."
+      ],
+      "failures": []
+    },
+    {
+      "name": "user_experience",
+      "required": false,
+      "passed": true,
+      "evidence": [
+        "Script output uses clear status lines and actionable error messages for missing files and invalid JSON."
+      ],
+      "failures": []
+    },
+    {
+      "name": "regression_safety",
+      "required": true,
+      "passed": true,
+      "evidence": [
+        "Pre-evaluation tree was clean.",
+        "No application or product implementation files were added.",
+        "Required command suite completed except native bash, which is unavailable on this host and was recorded as unavailable rather than passed."
+      ],
+      "failures": []
+    }
   ],
-  "commands_run": [],
-  "end_to_end_steps_run": [],
-  "disposition": "pending",
+  "commands_run": [
+    "Get-Location",
+    "git branch --show-current",
+    "git status --short --branch",
+    "git log --oneline --decorate -10",
+    "Get-Content -Raw AGENTS.md",
+    "Get-Content -Raw docs/AGENT_HARNESS.md",
+    "Get-Content -Raw agent-state/feature_list.json",
+    "Get-Content -Raw agent-state/current_contract.json",
+    "Get-Content -Raw agent-state/evaluation.json",
+    "Get-Content -Raw agent-state/progress.md",
+    "git show --stat --summary c33949a",
+    "git show --format=fuller --name-status c33949a",
+    "Get-Content -Raw scripts/init.sh",
+    "Get-Content -Raw scripts/smoke.sh",
+    "Get-Content -Raw scripts/init.ps1",
+    "Get-Content -Raw scripts/smoke.ps1",
+    "git diff main...HEAD --stat",
+    "git diff main...HEAD --check",
+    "git check-attr --all -- .gitattributes AGENTS.md agent-state/current_contract.json scripts/init.sh scripts/smoke.sh scripts/init.ps1 scripts/smoke.ps1",
+    "rg network-call patterns in scripts",
+    "rg environment-output patterns in scripts",
+    "rg product-scaffolding patterns in changed F000 paths",
+    "C:\\Program Files\\Git\\bin\\bash.exe scripts/init.sh",
+    "C:\\Program Files\\Git\\bin\\bash.exe scripts/smoke.sh",
+    "bash scripts/init.sh",
+    "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/init.ps1",
+    "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/smoke.ps1",
+    "python -c JSON validation for all three agent-state JSON files",
+    "C:\\Program Files\\Git\\bin\\bash.exe C:/repos/freetier-atlas/scripts/init.sh from C:\\tmp",
+    "C:\\Program Files\\Git\\bin\\bash.exe C:/repos/freetier-atlas/scripts/smoke.sh from C:\\tmp",
+    "pwsh -NoProfile -ExecutionPolicy Bypass -File C:\\repos\\freetier-atlas\\scripts\\init.ps1 from C:\\tmp",
+    "pwsh -NoProfile -ExecutionPolicy Bypass -File C:\\repos\\freetier-atlas\\scripts\\smoke.ps1 from C:\\tmp",
+    "Temporary copied fixture missing-file negative test",
+    "Temporary copied fixture invalid-JSON negative test"
+  ],
+  "end_to_end_steps_run": [
+    "Read required agent instructions, harness docs, feature ledger, current contract, evaluation state, progress log, and builder commit diff.",
+    "Ran canonical initialization and smoke scripts through Git Bash and PowerShell.",
+    "Verified script-root behavior by invoking scripts from outside the repository.",
+    "Verified negative failure behavior using copied temporary fixtures only.",
+    "Confirmed app scaffold health remains pending F002 and was not faked."
+  ],
+  "disposition": "passed",
   "blocking_failures": [],
-  "recommendations": []
+  "recommendations": [
+    "Push codex/f000-harness-foundation and open a PR.",
+    "In the next feature, keep native bash availability documented for Windows hosts where bash is only the WSL launcher."
+  ]
 }

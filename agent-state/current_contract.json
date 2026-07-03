@@ -1,32 +1,87 @@
 {
   "schema_version": 1,
-  "status": "draft",
-  "feature_id": null,
-  "builder": null,
-  "evaluator": null,
-  "objective": null,
-  "scope": [],
-  "out_of_scope": [],
-  "acceptance_criteria": [],
+  "status": "approved",
+  "feature_id": "F000",
+  "builder": "Codex",
+  "evaluator": "fresh independent evaluator",
+  "approved_at": "2026-07-03T18:14:32Z",
+  "approval_notes": [
+    "Contract status changed to approved only after the working tree was diagnosed clean, diagnostic snapshots were written outside the repository, and standalone line-ending normalization was committed."
+  ],
+  "objective": "Establish the F000 harness foundation so a fresh agent can start from repository artifacts, run canonical setup checks, work one increment, and leave independently evaluable handoff state.",
+  "scope": [
+    "Maintain the root .gitattributes policy that normalizes detected text files to LF while preserving CRLF for native Windows command scripts.",
+    "Keep repository line-ending normalization as an explicit F000 foundation requirement.",
+    "Implement and maintain scripts/init.sh and scripts/init.ps1 when F000 continues.",
+    "Require initialization scripts to resolve the repository root from their own script path instead of the caller's current directory.",
+    "Require PowerShell initialization to report unverified when neither pwsh nor Windows PowerShell is available.",
+    "Add baseline smoke-test commands once the application scaffold exists.",
+    "Ensure negative JSON validation tests use temporary copies or temporary fixtures and never corrupt active repository state.",
+    "Have the builder update only the builder progress entry and leave agent-state/evaluation.json pending.",
+    "Require a fresh evaluator to perform and record the independent evaluation."
+  ],
+  "out_of_scope": [
+    "Application scaffolding, provider adapters, catalogue UI, API, workers, scheduler, database schema, and deployment work.",
+    "Changing feature ledger descriptions or acceptance steps outside explicit owner-approved F000 contract updates.",
+    "Marking F000 as passing before all acceptance criteria and independent evaluation succeed.",
+    "Recording evaluator results from the builder context."
+  ],
+  "acceptance_criteria": [
+    "A root .gitattributes file exists and encodes the approved line-ending policy.",
+    "git add --renormalize . has been run after adding .gitattributes, and staged normalization is inspected with status, stat, check, and representative diffs.",
+    "Normalization does not alter textual content beyond line endings.",
+    "scripts/init.sh and scripts/init.ps1 resolve the repository root from their own path.",
+    "PowerShell initialization reports unverified when neither pwsh nor Windows PowerShell is available.",
+    "The canonical initialization path documents bootstrap-incomplete status until runnable setup and smoke scripts exist.",
+    "Negative JSON tests operate on a temporary copy or temporary fixture and leave active repository state unchanged.",
+    "The builder appends only the builder progress entry and leaves agent-state/evaluation.json pending.",
+    "A fresh evaluator records evaluation in agent-state/evaluation.json before F000 can pass."
+  ],
   "verification_plan": {
-    "baseline_commands": [],
-    "unit_commands": [],
-    "integration_commands": [],
-    "end_to_end_steps": [],
-    "negative_tests": []
+    "baseline_commands": [
+      "git status --short --branch",
+      "git log --oneline -20",
+      "Test-Path scripts/init.sh",
+      "Test-Path scripts/init.ps1"
+    ],
+    "unit_commands": [
+      "git diff --check",
+      "git diff --cached --check",
+      "git check-attr --all -- .gitattributes AGENTS.md agent-state/current_contract.json"
+    ],
+    "integration_commands": [
+      "git add --renormalize .",
+      "git status --short",
+      "git diff --cached --stat",
+      "git diff --cached --check"
+    ],
+    "end_to_end_steps": [
+      "Start from a clean checkout and read AGENTS.md, docs/AGENT_HARNESS.md, agent-state/progress.md, agent-state/feature_list.json, and recent git history.",
+      "Run the canonical initialization script when present; until scripts exist, record bootstrap-incomplete status.",
+      "Run the baseline smoke workflow when the application scaffold exists; until then, record scaffold-not-present status.",
+      "Create or review the F000 current contract and verify it names scope, out-of-scope work, acceptance criteria, risks, and evaluator requirements.",
+      "Append a builder handoff to agent-state/progress.md without writing evaluator disposition beyond pending."
+    ],
+    "negative_tests": [
+      "Attempt JSON validation against a temporary malformed copy or fixture and verify the active repository JSON files are unchanged.",
+      "Run initialization from a directory outside the repository and verify scripts still resolve the repository root from their own path.",
+      "Simulate missing PowerShell hosts where practical and verify the result is reported as unverified rather than passed."
+    ]
   },
   "risks": {
-    "data_migration": null,
-    "security_privacy": null,
-    "portability": null,
-    "zero_cost_safety": null,
-    "regression": null
+    "data_migration": "None; F000 does not introduce application or database state.",
+    "security_privacy": "No secrets or user data are introduced. Future scripts must avoid logging secrets and must not mutate active JSON during negative tests.",
+    "portability": "Initialization must work from script-relative paths across supported shells. PowerShell availability must be reported accurately, including unverified when unavailable.",
+    "zero_cost_safety": "No hosting or paid dependency is introduced. F000 must not claim any service is free.",
+    "regression": "Line-ending normalization can create noisy diffs if misconfigured; .gitattributes and renormalization inspection are required to keep future changes reviewable."
   },
-  "required_evaluation_level": null,
+  "required_evaluation_level": 1,
   "contract_review": {
     "required": false,
-    "reviewer": null,
-    "disposition": "pending",
-    "notes": []
+    "reviewer": "owner",
+    "disposition": "approved",
+    "notes": [
+      "Owner explicitly approved amending F000 to include .gitattributes, line-ending normalization, builder/evaluator boundaries, script root resolution, PowerShell unverified behavior, and safe negative JSON tests."
+    ]
   }
 }

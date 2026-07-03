@@ -18,9 +18,15 @@
         "Complete a dry-run evaluator and progress handoff."
       ],
       "required_evaluation_level": 1,
-      "passes": false,
-      "last_verified_at": null,
-      "verification_evidence": []
+      "passes": true,
+      "last_verified_at": "2026-07-03T19:03:23Z",
+      "verification_evidence": [
+        "Independent Level 1 evaluation recorded in agent-state/evaluation.json.",
+        "Git Bash and PowerShell initialization and smoke scripts passed.",
+        "Scripts resolve repository root from their own paths, validate required files and JSON, and report app scaffold checks as pending F002.",
+        "Negative missing-file and invalid-JSON checks used temporary copied fixtures and produced actionable failures.",
+        "No application scaffolding or product implementation was added."
+      ]
     },
     {
       "id": "F001",
