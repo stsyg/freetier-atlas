@@ -1,73 +1,71 @@
 # Long-Running Agent Harness
 
-This repository uses a model-agnostic long-running coding harness adapted from Anthropic's engineering guidance on effective harnesses and long-running application development.
+FreeTier Atlas uses a model-agnostic coding harness adapted from Anthropic's guidance on long-running agents and application development.
 
-The objective is not to make agents work continuously at any cost. It is to make every fresh session capable of understanding the current state quickly, selecting a tractable next increment, verifying it rigorously, and leaving the repository in a clean state for the next session.
+The goal is not uninterrupted autonomy. The goal is that every fresh session can understand repository state quickly, complete one tractable increment, verify it rigorously, and leave a clean handoff.
 
 ## Core principles
 
-1. **Persistent state beats conversational memory.** Git history and structured repository artifacts are the source of truth between sessions.
-2. **Work incrementally.** Default to one feature or one tightly coupled atomic change per session. Do not attempt to one-shot an epic or the entire MVP.
+1. **Persistent state beats conversational memory.** Git history and repository artifacts carry context between sessions.
+2. **Work incrementally.** Default to one feature or one tightly coupled atomic change per session.
 3. **Define done before coding.** Every implementation increment begins with a testable contract.
-4. **Separate building from judging.** Important changes are evaluated by a fresh, skeptical evaluator context rather than accepted solely through builder self-review.
-5. **Test as a user.** Unit tests and API probes are necessary but insufficient for user-facing functionality. Use browser automation and real workflows.
-6. **Leave a clean handoff.** A session ends with working code, tests, a focused commit, and an updated progress artifact.
-7. **Use the simplest harness that works.** Harness components encode assumptions about model limitations. Re-evaluate them when models or tools improve.
+4. **Separate building from judging.** Material work is evaluated by a fresh, skeptical evaluator context.
+5. **Test as a user.** Unit tests and API probes do not replace end-to-end workflows.
+6. **Leave a clean handoff.** End with runnable code, tests, a focused commit, and progress notes.
+7. **Keep the harness as simple as evidence allows.** Remove scaffolding only when realistic evaluations show it is no longer load-bearing.
 
-## Agent roles
+## Roles
 
 ### Initializer / planner
 
-The initializer runs once at project foundation and again only when an approved scope expansion requires re-planning.
+The initializer runs at project foundation and after explicitly approved scope expansion.
 
-Responsibilities:
+It must:
 
-- Read `PLAN.md`, `docs/PRODUCT_REQUIREMENTS.md`, `docs/MVP_ACCEPTANCE.md`, and accepted ADRs.
-- Expand requirements into `.agent/feature_list.json` as end-to-end, independently verifiable behaviours.
-- Mark every new feature `passes: false`.
-- Create or update `scripts/init.sh`, `scripts/init.ps1`, smoke tests, and agent-state templates.
-- Keep the plan focused on deliverables and product behaviour. Avoid prematurely fixing low-level implementation details that later agents should decide from evidence.
-- Create an initial git commit establishing a known baseline.
+- read product requirements, acceptance criteria, decisions, and ADRs
+- expand epics into end-to-end feature records in `agent-state/feature_list.json`
+- mark every new feature `passes: false`
+- create or maintain initialization and smoke-test scripts
+- focus the specification on outcomes and constraints rather than guessing premature implementation details
+- establish a known git baseline
 
-The initializer must not declare the product complete and must not mark features as passing.
+The initializer never declares the product complete and never marks new features passing.
 
 ### Builder / generator
 
-The builder implements one selected feature or tightly coupled atomic unit.
+The builder:
 
-Responsibilities:
-
-- Follow the session startup protocol.
-- Select the highest-priority failing feature that is unblocked.
-- Propose a contract in `.agent/current_contract.json` before coding.
-- Implement only the agreed scope.
-- Add or update tests without weakening existing tests.
-- Self-review and run all relevant automated checks.
-- Hand work to the evaluator when independent evaluation is required.
-- End with a descriptive commit and progress update.
+- follows the startup protocol
+- selects one highest-priority unblocked failing feature
+- writes `agent-state/current_contract.json` before implementation
+- implements only the agreed scope
+- adds tests without weakening existing coverage
+- self-reviews and runs relevant checks
+- requests independent evaluation at the required level
+- records a focused commit and progress handoff
 
 ### Evaluator / QA
 
-The evaluator operates in a fresh context or distinct agent persona and assumes the builder may have missed important defects.
+The evaluator uses a fresh context or distinct agent persona and assumes the builder may have missed defects.
 
-Responsibilities:
+It must:
 
-- Read the feature contract and acceptance steps before inspecting the implementation.
-- Start the application through the documented initialization path.
-- Exercise the feature end to end as a real user.
-- Inspect API responses and database state where relevant.
-- Probe edge cases, failure paths, security boundaries, and regressions.
-- Grade every required criterion against a hard pass threshold.
-- Record specific evidence and actionable failures in `.agent/evaluation.json`.
-- Never talk itself into approving a failed criterion because the implementation is otherwise impressive.
+- read the feature record and contract before reviewing code
+- start the application through the canonical path
+- exercise the feature as a real user
+- inspect API and database state where relevant
+- probe edge cases, failure paths, and regressions
+- grade every required criterion with a hard pass threshold
+- write evidence and failures to `agent-state/evaluation.json`
+- reject any increment with a failed required criterion
 
-The evaluator does not rewrite the acceptance criteria to fit the implementation.
+The evaluator never rewrites acceptance criteria to fit the implementation and never excuses a failed core criterion because the rest of the work looks impressive.
 
 ## Persistent artifacts
 
-### `.agent/feature_list.json`
+### `agent-state/feature_list.json`
 
-Canonical list of end-to-end behaviours. Feature descriptions and acceptance steps are controlled specification data.
+Canonical feature ledger.
 
 Normal coding agents may modify only:
 
@@ -75,168 +73,166 @@ Normal coding agents may modify only:
 - `last_verified_at`
 - `verification_evidence`
 
-Changing descriptions, priorities, or acceptance steps requires an explicit planning/specification change in a separate commit approved by the owner.
+Changing feature descriptions, priorities, or acceptance steps requires an explicit specification change approved by the owner.
 
-A feature may be marked passing only after all acceptance steps succeed and required independent evaluation has passed.
+A feature becomes passing only when all acceptance steps succeed and the required evaluation passes.
 
-### `.agent/progress.md`
+### `agent-state/progress.md`
 
-Append-only human-readable handoff log. Each session records:
+Append-only handoff log recording:
 
-- feature ID and objective
+- feature and objective
 - work completed
-- tests run and exact results
-- evaluator result
+- files changed
+- tests and exact results
+- evaluator disposition
 - commit SHA
-- unresolved issues
+- known issues
 - recommended next action
 
-Do not use this file as a substitute for git history or feature status.
+### `agent-state/current_contract.json`
 
-### `.agent/current_contract.json`
+Defines the active increment before code changes:
 
-Defines the active increment before implementation:
-
-- feature ID
-- scope
-- explicit out-of-scope items
+- feature ID and user-visible outcome
+- scope and explicit out-of-scope items
 - acceptance criteria
-- verification plan
-- risks
-- required evaluator level
+- verification commands and end-to-end steps
+- migration and data implications
+- security/privacy, portability, Z0, and regression risks
+- required evaluation level
 
-The builder proposes the contract. For high-risk work, the evaluator reviews the contract before implementation.
+For high-risk work, the evaluator reviews the contract before implementation.
 
-### `.agent/evaluation.json`
+### `agent-state/evaluation.json`
 
-Stores the latest independent evaluation result, criterion scores, failures, evidence, and disposition.
+Stores the independent evaluator's applicable criteria, evidence, failures, commands, end-to-end steps, and disposition.
 
 ### Git history
 
-Commits must be small enough to understand and revert. A future agent should be able to reconstruct recent work using `git log`, the diff, and progress entries without guessing.
+Commits must be focused, understandable, and revertible. Future agents must be able to reconstruct recent work from git plus the progress log without guessing.
 
 ### Initialization scripts
 
+Task 000 must create and maintain:
+
 - `scripts/init.sh`
 - `scripts/init.ps1`
+- a canonical smoke-test command or script
 
-These scripts provide the canonical path to start dependencies, run migrations, start services, and execute a basic smoke test. As the application grows, update both scripts together.
+The scripts must start dependencies, apply migrations, start services, and run a basic workflow once the application scaffold exists.
 
 ## Session startup protocol
 
-Every coding or evaluation session must:
+Every builder or evaluator session must:
 
-1. Confirm location with `pwd` or `Get-Location`.
-2. Run `git status --short --branch`.
-3. Read `git log --oneline -20`.
-4. Read `AGENTS.md`.
-5. Read `.agent/progress.md` and `.agent/feature_list.json`.
-6. Read the active task, relevant requirements, ADRs, and provider documentation.
-7. Run `scripts/init.sh` or `scripts/init.ps1`.
-8. Run the baseline smoke test and at least one core end-to-end workflow.
-9. Fix an existing broken baseline before starting new feature work.
-10. Select exactly one unblocked feature unless the contract explicitly justifies a tightly coupled atomic group.
+1. confirm the working directory
+2. run `git status --short --branch`
+3. read `git log --oneline -20`
+4. read `AGENTS.md`
+5. read `agent-state/progress.md` and `agent-state/feature_list.json`
+6. read the active task, requirements, and relevant ADRs
+7. run the canonical initialization script when present
+8. run the baseline smoke test and a core end-to-end workflow when available
+9. repair an existing broken baseline before new work
+10. choose exactly one unblocked feature unless the contract justifies a tightly coupled atomic group
 
-Compaction or a prior conversation summary does not replace this protocol.
+Compaction or conversation history does not replace this protocol.
 
 ## Contract-before-code protocol
 
-Before changing implementation files, write `.agent/current_contract.json` with:
+Before changing implementation files, complete `agent-state/current_contract.json` so another agent can objectively decide pass or fail.
 
-- the selected feature ID
-- user-visible outcome
-- exact acceptance criteria
+The contract must include:
+
+- exact user-visible outcome
+- measurable acceptance criteria
 - verification commands and end-to-end steps
-- migration/data implications
-- security and privacy considerations
-- portability and Z0 implications
-- out-of-scope items
-- evaluator requirement
-
-A contract must be specific enough that another agent can determine pass or fail without interpreting the builder's intent.
+- negative and regression tests
+- explicit out-of-scope items
+- data, security, privacy, portability, and Z0 implications
+- evaluation level
 
 ## Evaluation levels
 
 ### Level 0 — Mechanical review
 
-For typo-only or documentation-only changes. Requires lint/link checks and diff review. Independent evaluator optional.
+For typo-only or documentation-only changes. Requires diff, lint, and link checks. Independent evaluation is optional.
 
 ### Level 1 — Standard independent review
 
-Required for normal code changes. A fresh evaluator reviews tests, implementation, regressions, and contract evidence.
+For normal implementation changes. A fresh evaluator reviews contract compliance, tests, code, and regressions.
 
 ### Level 2 — End-to-end adversarial review
 
 Mandatory for:
 
-- public catalogue behaviour
+- public catalogue and adviser workflows
 - provider adapters and evidence extraction
-- Z0 classification or cost calculations
-- database schemas and migrations
-- authentication, authorization, privacy, or rate limiting
-- LLM routing and tool boundaries
-- generated Docker Compose or deployment packages
-- public hosting and quota-proof functionality
-- any change that can publish a free-tier claim automatically
+- Z0 classification, quota, or cost calculations
+- schemas and migrations
+- authentication, privacy, rate limits, and security boundaries
+- LLM routing and tool permissions
+- generated Compose or deployment packages
+- public hosting and quota proof
+- automatic publication decisions
 
 Level 2 uses browser automation where a UI exists, API/database inspection, negative tests, and explicit edge-case probing.
 
 ## FreeTier Atlas evaluation rubric
 
-Every independently evaluated feature is graded on applicable criteria. Each required criterion is pass/fail; there is no compensating average.
+Each applicable required criterion is pass/fail. There is no compensating average.
 
-1. **Functional correctness** — all contract behaviours work end to end.
+1. **Functional correctness** — contract behaviours work end to end.
 2. **Product depth** — no core interaction is a display-only stub or fake success path.
-3. **Data and evidence integrity** — claims, quotas, provenance, versions, and confidence are accurate and reproducible.
-4. **Zero-cost safety** — no Z1/Z2/Z3 component is mislabeled as Z0; exhaustion behaviour and paid dependencies are explicit.
-5. **Security and privacy** — boundaries, secrets, input handling, authorization, retention, and abuse controls behave as designed.
-6. **Portability** — the change does not introduce an undocumented mandatory provider dependency.
-7. **Code quality** — implementation is maintainable, typed where appropriate, tested, and consistent with architecture.
+3. **Data and evidence integrity** — claims, quotas, provenance, history, and confidence are reproducible.
+4. **Zero-cost safety** — no Z1, Z2, Z3, or unknown material condition is mislabeled as Z0.
+5. **Security and privacy** — boundaries, secrets, input handling, authorization, retention, and abuse controls work as designed.
+6. **Portability** — no undocumented mandatory provider dependency is introduced.
+7. **Code quality** — implementation is maintainable, typed where appropriate, tested, and architecture-consistent.
 8. **User experience and accessibility** — workflows are understandable, usable, responsive, and accessible.
 9. **Regression safety** — existing passing features and baseline workflows remain passing.
 
-Any required criterion failure rejects the increment.
+Any failed required criterion rejects the increment.
 
 ## End-of-session protocol
 
 Before stopping, the builder must:
 
-1. Run all contract tests and relevant regression tests.
-2. Run the canonical smoke/end-to-end workflow.
-3. Ensure `git status` contains no accidental or unexplained files.
-4. Obtain required evaluator disposition.
-5. Mark the feature passing only after evaluation succeeds.
-6. Append a structured entry to `.agent/progress.md`.
-7. Create a focused descriptive commit.
-8. Record the commit SHA and recommended next feature.
-9. Leave the application in a state appropriate for merging to `main`.
+1. run contract and regression tests
+2. run the canonical smoke/end-to-end workflow when available
+3. ensure no accidental or unexplained files remain
+4. obtain the required evaluator disposition
+5. mark the feature passing only after evaluation succeeds
+6. append a structured progress entry
+7. create a focused descriptive commit
+8. record the commit SHA and recommended next feature
+9. leave the repository in merge-quality, runnable state
 
-Half-implemented features must not be committed as successful work. When unavoidable, keep them isolated on a branch, mark the feature failing, document the exact state, and ensure the baseline remains runnable.
+Half-implemented work remains failing. When partial work cannot be avoided, keep it isolated on a branch, document the exact state, and preserve a runnable baseline.
 
 ## Context resets and handoffs
 
 Use a fresh session when:
 
 - one feature is complete
-- the context has become dominated by old investigation
-- the agent begins rushing toward premature completion
+- old investigation dominates the current context
+- the agent starts rushing toward premature completion
 - the next task is materially different
-- independent evaluation is required
+- independent evaluation begins
 
-The handoff artifacts must be sufficient for a new agent to resume without relying on hidden conversational context.
+The repository artifacts must be enough to resume without hidden conversational context.
 
-## Harness calibration and simplification
+## Calibration and simplification
 
-Do not assume every task permanently needs the maximum three-agent workflow.
-
-- Start with the lightest evaluation level appropriate to the risk.
-- Record failures the harness catches and failures it misses.
-- Tune evaluator prompts and criteria using real examples.
-- When a new model or tool is adopted, rerun representative tasks and tests.
-- Remove one harness component at a time only after evidence shows it is no longer load-bearing.
-- Add complexity only to address observed failure modes.
+- use the lightest evaluation level appropriate to risk
+- record failures caught and failures missed
+- tune evaluator criteria from realistic examples
+- re-run representative evaluations when models or tools change
+- remove one harness component at a time only after evidence shows it is unnecessary
+- add complexity only to address observed failure modes
 
 ## Source material
 
-- Anthropic, “Effective harnesses for long-running agents,” November 26, 2025.
-- Anthropic, “Harness design for long-running application development,” March 24, 2026.
+- https://www.anthropic.com/engineering/effective-harnesses-for-long-running-agents
+- https://www.anthropic.com/engineering/harness-design-long-running-apps
