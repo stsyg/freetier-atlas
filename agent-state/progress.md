@@ -59,3 +59,19 @@ Append one entry after every meaningful implementation or evaluation session. Do
 - **Commit SHA:** pending at builder handoff; final commit SHA reported by the builder response after commit creation.
 - **Known issues or risks:** F000 remains not passing until fresh evaluation records results. Native `bash` on this Windows host is the WSL launcher and is unusable without a distribution; Git Bash is available and passes. Application scaffold health remains explicitly pending F002.
 - **Recommended next action:** Start a fresh evaluator thread to verify F000 against `agent-state/current_contract.json` and record results in `agent-state/evaluation.json`.
+
+---
+
+## 2026-07-03 19:03 UTC — Evaluator — F000
+
+- **Objective:** Independently evaluate F000 harness foundation against the approved contract.
+- **Contract:** `agent-state/current_contract.json`
+- **Work completed:** Read required harness artifacts and builder commit `c33949a`. Verified `.gitattributes`, script existence, script-root resolution, required-file validation, JSON validation, pending-F002 smoke output, absence of network calls and environment dumps in scripts, actionable missing-file and invalid-JSON failures, temporary-fixture negative testing, pending builder evaluation state, and absence of application scaffolding.
+- **Files changed:** `agent-state/evaluation.json`, `agent-state/feature_list.json`, `agent-state/progress.md`
+- **Tests and checks run:** `git status --short --branch`; `git log --oneline --decorate -10`; `git diff main...HEAD --stat`; `git diff main...HEAD --check`; `git check-attr --all -- .gitattributes AGENTS.md agent-state/current_contract.json scripts/init.sh scripts/smoke.sh scripts/init.ps1 scripts/smoke.ps1`; static script scans for network calls and environment output; Git Bash `scripts/init.sh`; Git Bash `scripts/smoke.sh`; native `bash scripts/init.sh`; `pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/init.ps1`; `pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/smoke.ps1`; Python JSON validation; script-root tests from `C:\tmp`; temporary copied fixture tests for missing file and invalid JSON.
+- **Exact results:** Branch was `codex/f000-harness-foundation`; pre-evaluation tree was clean. Required scripts and `.gitattributes` exist. Attributes report LF normalization for harness text files and scripts. Git Bash init and smoke passed. PowerShell init and smoke passed under PowerShell 7.6.3. Native `bash` is the Windows WSL launcher and failed because no WSL distribution is installed, recorded as unavailable rather than passed. Python JSON validation passed. Outside-directory script invocations resolved `C:\repos\freetier-atlas`. Temporary fixtures failed actionably for missing `PLAN.md` and invalid `agent-state/evaluation.json`; active repo files were unchanged. `git diff main...HEAD --check` passed. No product implementation files were added.
+- **Evaluator disposition:** passed
+- **Evaluation evidence:** `agent-state/evaluation.json`
+- **Commit SHA:** pending at evaluator handoff; final commit SHA reported after commit creation.
+- **Known issues or risks:** Native Windows `bash` remains unavailable without WSL or Git Bash. F002 application scaffold health is intentionally pending and unverified.
+- **Recommended next action:** Push `codex/f000-harness-foundation` and open a PR for F000.
