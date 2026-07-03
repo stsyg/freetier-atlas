@@ -1,0 +1,15 @@
+{
+  "name": "freetier-atlas",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Evidence-backed catalogue and adviser for zero-cost cloud and developer services.",
+  "license": "AGPL-3.0-only",
+  "type": "module",
+  "scripts": {
+    "check": "node tools/node_check.mjs",
+    "test": "node tools/node_check.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

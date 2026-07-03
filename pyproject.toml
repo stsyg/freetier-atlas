@@ -1,0 +1,13 @@
+[project]
+name = "freetier-atlas"
+version = "0.0.0"
+description = "Evidence-backed catalogue and adviser for zero-cost cloud and developer services."
+readme = "README.md"
+requires-python = ">=3.11"
+license = "AGPL-3.0-only"
+authors = [{ name = "Sergiy" }]
+dependencies = []
+
+[tool.freetier-atlas]
+foundation-feature = "F001"
+canonical-test-command = "scripts/test.ps1 or scripts/test.sh"

@@ -1,0 +1,13 @@
+repos:
+  - repo: local
+    hooks:
+      - id: freetier-atlas-repo-checks
+        name: FreeTier Atlas repository checks
+        entry: python tools/repo_checks.py all
+        language: system
+        pass_filenames: false
+      - id: freetier-atlas-node-checks
+        name: FreeTier Atlas Node metadata checks
+        entry: node tools/node_check.mjs
+        language: system
+        pass_filenames: false
