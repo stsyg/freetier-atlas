@@ -45,6 +45,21 @@ Each task below is an epic. The builder implements its constituent feature recor
 
 **Outcome:** The complete development stack starts through one canonical command.
 
+Before or inside the first F002 implementation slice, establish repository-owned development-environment documentation and commands so Codex environments stay thin and the repository remains the source of truth:
+
+- `docs/LOCAL_DEVELOPMENT.md`
+- `docs/CODEX_ENVIRONMENT.md`
+- `scripts/check-env.ps1`
+- `scripts/check-env.sh`
+- `scripts/bootstrap-dev.ps1`
+- `scripts/bootstrap-dev.sh`
+- `scripts/test.ps1`
+- `scripts/test.sh`
+
+The environment scripts must work safely in both the current planning-only state and the scaffolded state. They must fail actionably when required runtimes are missing, avoid printing secrets or full environment dumps, avoid unapproved network calls, and delegate to the canonical init/smoke/test workflow rather than duplicating hard-coded Codex UI setup.
+
+Then implement the application scaffold one bounded slice at a time:
+
 - FastAPI API
 - Python worker and scheduler
 - Static-capable React frontend
@@ -53,7 +68,7 @@ Each task below is an epic. The builder implements its constituent feature recor
 - Health endpoints
 - Migrations and baseline smoke workflow
 
-**Evaluation:** Level 2. Start from a clean checkout, verify health, API, frontend, database connectivity, shutdown, and restart.
+**Evaluation:** Level 2. Start from a clean checkout, verify environment checks, bootstrap, tests, health, API, frontend, database connectivity, shutdown, and restart.
 
 ## 003 Configuration system
 
