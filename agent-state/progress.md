@@ -43,3 +43,19 @@ Append one entry after every meaningful implementation or evaluation session. Do
 - **Commit SHA:** `2aea9d4` (`chore: normalize repository line endings`), `17f390a` (`docs: approve f000 harness contract`)
 - **Known issues or risks:** F000 is not complete. Initialization scripts and canonical smoke workflow still need implementation and fresh Level 1 evaluation before F000 can pass.
 - **Recommended next action:** Run a fresh evaluator against the amended F000 contract, then continue F000 by implementing the initialization scripts and smoke path in a new focused increment.
+
+---
+
+## 2026-07-03 18:54 UTC — Builder — F000
+
+- **Objective:** Add the actual F000 initialization and smoke scripts without starting application scaffolding.
+- **Contract:** `agent-state/current_contract.json`
+- **Work completed:** Added `scripts/init.sh`, `scripts/init.ps1`, `scripts/smoke.sh`, and `scripts/smoke.ps1`. Each script resolves the repository root from its own path, validates required harness files, validates agent-state JSON syntax, avoids network calls and environment output, and reports application scaffold checks as pending F002 instead of healthy. PowerShell scripts re-run under PowerShell 7 when available. Negative JSON validation used a temporary copied fixture under `.tmp` and did not modify active repository JSON.
+- **Files changed:** `scripts/init.sh`, `scripts/init.ps1`, `scripts/smoke.sh`, `scripts/smoke.ps1`, `agent-state/progress.md`
+- **Tests and checks run:** `git status --short --branch`; `git log --oneline --decorate -10`; contract status check with `ConvertFrom-Json`; `.gitattributes` existence check; clean working-tree check; `bash scripts/init.sh`; `bash scripts/smoke.sh`; `C:\Program Files\Git\bin\bash.exe scripts/init.sh`; `C:\Program Files\Git\bin\bash.exe scripts/smoke.sh`; Python JSON validation for `agent-state/feature_list.json`, `agent-state/current_contract.json`, and `agent-state/evaluation.json`; `pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/init.ps1`; `pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/smoke.ps1`; script-root checks from `C:\tmp` for Git Bash and `pwsh`; negative JSON validation against a temporary fixture; `git diff --check`; `git check-attr --all -- scripts/init.sh scripts/smoke.sh scripts/init.ps1 scripts/smoke.ps1`; `git diff -- agent-state/feature_list.json agent-state/current_contract.json agent-state/evaluation.json`
+- **Exact results:** Initial state was clean on `codex/f000-harness-foundation`; contract status was `approved`; `.gitattributes` existed. System `bash` resolved to WSL and failed because no WSL distributions are installed. Git Bash ran `scripts/init.sh` and `scripts/smoke.sh` successfully. Python JSON validation succeeded. PowerShell checks ran under PowerShell 7.6.3 and succeeded. Running scripts from `C:\tmp` still resolved `C:\repos\freetier-atlas` from script paths. Temporary invalid JSON caused both copied init scripts to fail with actionable JSON errors, with active repository JSON unchanged. `git diff --check` was clean. Script attributes report `text: set` and `eol: lf`.
+- **Evaluator disposition:** pending
+- **Evaluation evidence:** Builder did not update `agent-state/evaluation.json`; fresh Level 1 evaluator still required before F000 can pass.
+- **Commit SHA:** pending at builder handoff; final commit SHA reported by the builder response after commit creation.
+- **Known issues or risks:** F000 remains not passing until fresh evaluation records results. Native `bash` on this Windows host is the WSL launcher and is unusable without a distribution; Git Bash is available and passes. Application scaffold health remains explicitly pending F002.
+- **Recommended next action:** Start a fresh evaluator thread to verify F000 against `agent-state/current_contract.json` and record results in `agent-state/evaluation.json`.
