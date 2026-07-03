@@ -2,7 +2,7 @@
 
 These instructions apply to Codex, Claude Code, GitHub Copilot coding agents, and any other autonomous or semi-autonomous agent working in this repository.
 
-Read `docs/AGENT_HARNESS.md` before implementation work. Its long-running session protocol is mandatory.
+Read `docs/AGENT_HARNESS.md` before implementation work. Read `docs/CODEX_AUTONOMY_POLICY.md` before choosing an autonomy level or taking actions beyond read-only diagnosis.
 
 ## Product truth
 
@@ -33,6 +33,12 @@ Do not rely on prior chat context or compaction as project memory.
 - Keep unrelated refactoring out of the increment.
 - Never silently reduce scope or declare incomplete functionality done.
 - Display-only stubs, fake success paths, and TODO-backed core behaviours fail evaluation.
+
+## Autonomy boundaries
+
+Codex may create branches, implement one approved feature, run tests, commit, push, and open pull requests as defined in `docs/CODEX_AUTONOMY_POLICY.md`.
+
+Codex may not merge pull requests, alter feature acceptance criteria, mark features passing without evaluator evidence, add external services, or proceed to the next feature without approval.
 
 ## Structured state
 
