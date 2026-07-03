@@ -1,0 +1,32 @@
+{
+  "schema_version": 1,
+  "status": "draft",
+  "feature_id": null,
+  "builder": null,
+  "evaluator": null,
+  "objective": null,
+  "scope": [],
+  "out_of_scope": [],
+  "acceptance_criteria": [],
+  "verification_plan": {
+    "baseline_commands": [],
+    "unit_commands": [],
+    "integration_commands": [],
+    "end_to_end_steps": [],
+    "negative_tests": []
+  },
+  "risks": {
+    "data_migration": null,
+    "security_privacy": null,
+    "portability": null,
+    "zero_cost_safety": null,
+    "regression": null
+  },
+  "required_evaluation_level": null,
+  "contract_review": {
+    "required": false,
+    "reviewer": null,
+    "disposition": "pending",
+    "notes": []
+  }
+}

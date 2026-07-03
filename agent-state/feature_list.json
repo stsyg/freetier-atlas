@@ -1,0 +1,169 @@
+{
+  "schema_version": 1,
+  "rules": {
+    "normal_agent_mutable_fields": ["passes", "last_verified_at", "verification_evidence"],
+    "spec_changes_require_owner_approval": true,
+    "passing_requires_all_steps_and_required_evaluation": true
+  },
+  "features": [
+    {
+      "id": "F000",
+      "priority": 1,
+      "category": "agent-harness",
+      "description": "A fresh agent can start, understand state, choose one unblocked feature, and leave a clean handoff without prior conversation context.",
+      "acceptance_steps": [
+        "Read agent instructions, progress, feature ledger, and recent git history.",
+        "Run the canonical initialization and smoke path.",
+        "Create a valid current contract for one feature.",
+        "Complete a dry-run evaluator and progress handoff."
+      ],
+      "required_evaluation_level": 1,
+      "passes": false,
+      "last_verified_at": null,
+      "verification_evidence": []
+    },
+    {
+      "id": "F001",
+      "priority": 2,
+      "category": "foundation",
+      "description": "A clean checkout has complete licensing, tooling, CI, security checks, and a reproducible monorepo baseline.",
+      "acceptance_steps": [
+        "Verify approved licence and notice files.",
+        "Run formatting, linting, tests, secret and dependency checks.",
+        "Verify CI rejects a controlled failure and passes after removal."
+      ],
+      "required_evaluation_level": 1,
+      "passes": false,
+      "last_verified_at": null,
+      "verification_evidence": []
+    },
+    {
+      "id": "F002",
+      "priority": 3,
+      "category": "application-scaffold",
+      "description": "The frontend, API, worker, scheduler, and PostgreSQL start through the canonical scripts and remain healthy after restart.",
+      "acceptance_steps": [
+        "Start the full stack through the canonical script.",
+        "Verify frontend, API, worker, scheduler, migrations, and database connectivity.",
+        "Restart and rerun the smoke workflow.",
+        "Stop and clean up through documented commands."
+      ],
+      "required_evaluation_level": 2,
+      "passes": false,
+      "last_verified_at": null,
+      "verification_evidence": []
+    },
+    {
+      "id": "F003",
+      "priority": 4,
+      "category": "data-and-classification",
+      "description": "Typed configuration, the catalogue model, immutable evidence history, and explainable Z0 classification enforce all safety rules.",
+      "acceptance_steps": [
+        "Validate good and bad YAML with actionable errors.",
+        "Apply, rollback, and reapply database migrations.",
+        "Verify immutable offer versions and evidence provenance.",
+        "Run the Z0 truth table including unknown and contradictory conditions."
+      ],
+      "required_evaluation_level": 2,
+      "passes": false,
+      "last_verified_at": null,
+      "verification_evidence": []
+    },
+    {
+      "id": "F004",
+      "priority": 5,
+      "category": "source-ingestion",
+      "description": "Safe official-source adapters produce reproducible candidates, evidence, changes, health, and conflicts without publishing directly.",
+      "acceptance_steps": [
+        "Run contract tests for every source type.",
+        "Verify official-domain allowlists, network blocking, limits, timeouts, and malformed-data handling.",
+        "Verify unchanged, changed, stale, and contradictory fixtures.",
+        "Confirm community sources cannot become verified evidence."
+      ],
+      "required_evaluation_level": 2,
+      "passes": false,
+      "last_verified_at": null,
+      "verification_evidence": []
+    },
+    {
+      "id": "F005",
+      "priority": 6,
+      "category": "cloudflare-vertical-slice",
+      "description": "Cloudflare works end to end from official discovery through verification, history, review, API, and public provider experience.",
+      "acceptance_steps": [
+        "Run Cloudflare scans and deterministic quota extraction.",
+        "Verify repeat scans do not create false changes.",
+        "Exercise changed and contradictory evidence paths.",
+        "Browse category states, offers, evidence, confidence, history, completeness, and freshness."
+      ],
+      "required_evaluation_level": 2,
+      "passes": false,
+      "last_verified_at": null,
+      "verification_evidence": []
+    },
+    {
+      "id": "F006",
+      "priority": 7,
+      "category": "catalogue-and-adviser",
+      "description": "Users can search, compare, inspect evidence, and receive deterministic evidence-backed Z0 architecture recommendations.",
+      "acceptance_steps": [
+        "Test catalogue search, filters, comparison, evidence, and history.",
+        "Disable LLM providers and run the adviser evaluation corpus.",
+        "Verify quota math, Z0 safety, portability, lock-in, and exit-plan explanations.",
+        "Verify impossible workloads follow reduction, recalculation, and self-hosting order."
+      ],
+      "required_evaluation_level": 2,
+      "passes": false,
+      "last_verified_at": null,
+      "verification_evidence": []
+    },
+    {
+      "id": "F007",
+      "priority": 8,
+      "category": "llm-download-admin",
+      "description": "Model routing, browser ZIP generation, and private administration operate under consent, safety, validation, and authorization controls.",
+      "acceptance_steps": [
+        "Test model consent, failure, quota exhaustion, and deterministic fallback.",
+        "Verify generated ZIPs are validated, secret-free, and not persisted server-side.",
+        "Verify only the allowlisted GitHub administrator can use admin functions.",
+        "Exercise negative security and audit scenarios."
+      ],
+      "required_evaluation_level": 2,
+      "passes": false,
+      "last_verified_at": null,
+      "verification_evidence": []
+    },
+    {
+      "id": "F008",
+      "priority": 9,
+      "category": "provider-expansion",
+      "description": "GitHub, AWS, Google Cloud, Azure, Vercel, and Oracle are each investigated across all fourteen categories with official evidence and fixtures.",
+      "acceptance_steps": [
+        "Run official-source adapters and fixtures for each provider.",
+        "Verify every provider-category pair has an explicit state.",
+        "Exercise changed, stale, withdrawn, and contradictory cases.",
+        "Verify community repositories remain non-authoritative."
+      ],
+      "required_evaluation_level": 2,
+      "passes": false,
+      "last_verified_at": null,
+      "verification_evidence": []
+    },
+    {
+      "id": "F009",
+      "priority": 10,
+      "category": "public-deployment-and-release",
+      "description": "A documented public Z0 deployment operates at zero cost and version 0.1.0 passes every mandatory MVP criterion.",
+      "acceptance_steps": [
+        "Complete real no-payment onboarding for every public component.",
+        "Verify public workflows, quota usage, headroom, estimated bill, and mirror deployment.",
+        "Run all functional, data, security, accessibility, portability, and architecture checks.",
+        "Tag version 0.1.0 only after independent release approval."
+      ],
+      "required_evaluation_level": 2,
+      "passes": false,
+      "last_verified_at": null,
+      "verification_evidence": []
+    }
+  ]
+}

@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "feature_id": null,
+  "implementation_commit": null,
+  "evaluator": null,
+  "evaluation_level": null,
+  "criteria": [
+    {"name": "functional_correctness", "required": true, "passed": null, "evidence": [], "failures": []},
+    {"name": "product_depth", "required": false, "passed": null, "evidence": [], "failures": []},
+    {"name": "data_integrity", "required": false, "passed": null, "evidence": [], "failures": []},
+    {"name": "zero_cost_safety", "required": false, "passed": null, "evidence": [], "failures": []},
+    {"name": "security_privacy", "required": false, "passed": null, "evidence": [], "failures": []},
+    {"name": "portability", "required": false, "passed": null, "evidence": [], "failures": []},
+    {"name": "code_quality", "required": true, "passed": null, "evidence": [], "failures": []},
+    {"name": "user_experience", "required": false, "passed": null, "evidence": [], "failures": []},
+    {"name": "regression_safety", "required": true, "passed": null, "evidence": [], "failures": []}
+  ],
+  "commands_run": [],
+  "end_to_end_steps_run": [],
+  "disposition": "pending",
+  "blocking_failures": [],
+  "recommendations": []
+}

@@ -50,3 +50,10 @@
 | D046 | Community lists are discovery/regression inputs, never authoritative. |
 | D047 | First complete provider vertical slice: Cloudflare. |
 | D048 | AWS adapter uses official AWS sources; CostGoat is secondary only. |
+| D049 | Long-running agents use persistent repository state rather than conversation memory. |
+| D050 | Default implementation unit is one feature or one tightly coupled atomic change. |
+| D051 | Every implementation increment requires a testable contract before code changes. |
+| D052 | High-risk work requires a fresh, skeptical, independent evaluator. |
+| D053 | Feature descriptions and acceptance steps are immutable to normal coding agents; only status and evidence may change. |
+| D054 | User-facing features require end-to-end testing, not only unit or API checks. |
+| D055 | Harness complexity is reviewed periodically and removed only after evidence shows a component is no longer load-bearing. |
