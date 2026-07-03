@@ -15,9 +15,14 @@ Azure, AWS, Google Cloud, Oracle Cloud, Cloudflare, Vercel, and GitHub.
 
 ## Repository and public site
 
-- Repository: `https://github.com/stsyg/freetier-atlas`
-- Recommended primary frontend: `https://freetier-atlas.pages.dev/`, subject to availability and a no-payment onboarding test
-- GitHub Pages mirror: `https://stsyg.github.io/freetier-atlas/`
+Planned repository: `https://github.com/stsyg/freetier-atlas`
+
+Recommended frontend:
+
+- Primary: `https://freetier-atlas.pages.dev/`, subject to availability and a no-payment onboarding test
+- Mirror: `https://stsyg.github.io/freetier-atlas/`
+
+The current GitHub account is `stsyg`, so `https://freetier-atlas.github.io/` requires an account or organization named `freetier-atlas`.
 
 ## Start here
 

@@ -1,0 +1,28 @@
+llm:
+  mode: hybrid
+  public_adviser:
+    ai_requests_per_ip_per_day: 3
+    deterministic_requests_per_ip_per_day: 10
+    concurrent_requests_per_session: 1
+    maximum_input_characters: 2000
+    maximum_output_tokens: 4000
+    require_captcha: true
+    reject_urls: true
+    allow_file_uploads: false
+    fallback_to_deterministic: true
+
+  providers:
+    ollama:
+      enabled: false
+      base_url_env: OLLAMA_BASE_URL
+      model: qwen3.5:9b
+    gemini:
+      enabled: false
+      api_key_env: GEMINI_API_KEY
+      external_processing_consent_required: true
+    openai:
+      enabled: false
+      api_key_env: OPENAI_API_KEY
+    anthropic:
+      enabled: false
+      api_key_env: ANTHROPIC_API_KEY

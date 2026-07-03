@@ -1,0 +1,41 @@
+provider:
+  id: cloudflare
+  name: Cloudflare
+  official_domains:
+    - cloudflare.com
+    - developers.cloudflare.com
+
+sources:
+  - id: cloudflare-pages-limits
+    type: html
+    trust_level: official
+    url: https://developers.cloudflare.com/pages/platform/limits/
+    schedule_ref: official_pages
+    extraction_profile: quota_document
+
+  - id: cloudflare-pages-pricing
+    type: html
+    trust_level: official
+    url: https://developers.cloudflare.com/pages/functions/pricing/
+    schedule_ref: official_pages
+    extraction_profile: pricing_document
+
+  - id: cloudflare-changelog
+    type: rss
+    trust_level: official
+    url: https://developers.cloudflare.com/changelog/
+    schedule_ref: rss
+
+  - id: cloudflare-docs-mcp
+    type: mcp
+    trust_level: official
+    schedule_ref: mcp_documentation
+    capabilities:
+      - documentation_search
+      - documentation_fetch
+
+publishing:
+  automatic_threshold: 0.90
+  uncertain_threshold: 0.70
+  require_official_source: true
+  require_deterministic_numeric_validation: true

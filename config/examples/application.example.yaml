@@ -1,0 +1,22 @@
+application:
+  name: FreeTier Atlas
+  public_url: http://localhost:3000
+  api_url: http://localhost:8000
+  environment: development
+
+catalogue:
+  default_zero_cost_classes:
+    - Z0_TRUE_FREE
+  hide_temporary_offers_by_default: true
+  raw_snapshot_retention_days: 90
+
+admin:
+  authentication: github
+  allowed_users:
+    - stsyg
+
+features:
+  public_adviser: true
+  rss: true
+  discord: false
+  web_push: false

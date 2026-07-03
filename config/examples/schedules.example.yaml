@@ -1,0 +1,16 @@
+schedules:
+  rss:
+    cron: "17 * * * *"
+    jitter_seconds: 300
+  structured_apis:
+    cron: "23 */6 * * *"
+    jitter_seconds: 600
+  mcp_documentation:
+    cron: "35 3 * * *"
+  official_pages:
+    cron: "15 4 * * *"
+  full_reconciliation:
+    cron: "0 5 * * 0"
+  conflict_recheck:
+    delay_minutes: 15
+    maximum_attempts: 3
