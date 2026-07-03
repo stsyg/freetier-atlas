@@ -39,9 +39,16 @@
         "Verify CI rejects a controlled failure and passes after removal."
       ],
       "required_evaluation_level": 1,
-      "passes": false,
-      "last_verified_at": null,
-      "verification_evidence": []
+      "passes": true,
+      "last_verified_at": "2026-07-03T20:29:22Z",
+      "verification_evidence": [
+        "Independent Level 1 evaluation recorded in agent-state/evaluation.json.",
+        "PowerShell and Git Bash canonical test scripts passed.",
+        "Direct Python unit tests, npm test, repository policy checks, and git diff --check passed.",
+        "Controlled temporary secret, malformed JSON, and malformed YAML fixtures failed as expected and were removed.",
+        "LICENSE matched GNU's official AGPL-3.0 text after line-ending normalization.",
+        "CI workflow uses read-only contents permission and no secrets; application scaffold remains pending F002."
+      ]
     },
     {
       "id": "F002",

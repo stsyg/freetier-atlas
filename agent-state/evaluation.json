@@ -1,9 +1,10 @@
 {
   "schema_version": 1,
-  "feature_id": "F000",
-  "implementation_commit": "c33949a384bcfb7629eb2f172e2f8f29768f7617",
+  "feature_id": "F001",
+  "implementation_commit": "4689fe0da13428aabbc006e2b65a1576605fb021",
+  "workspace_status": "implementation committed on codex/f001-repository-foundation",
   "evaluator": "Codex independent evaluator",
-  "evaluated_at": "2026-07-03T19:03:23Z",
+  "evaluated_at": "2026-07-03T20:29:22Z",
   "evaluation_level": 1,
   "criteria": [
     {
@@ -11,64 +12,69 @@
       "required": true,
       "passed": true,
       "evidence": [
-        "Confirmed branch codex/f000-harness-foundation and clean pre-evaluation working tree.",
-        "Confirmed .gitattributes exists and git attributes set text/eol=lf for harness files and scripts.",
-        "Confirmed scripts/init.sh, scripts/init.ps1, scripts/smoke.sh, and scripts/smoke.ps1 exist.",
-        "Git Bash init and smoke scripts passed and validated required harness files plus agent-state JSON.",
-        "PowerShell init and smoke scripts passed under PowerShell 7.6.3.",
-        "Invoked scripts from C:\\tmp using absolute paths; scripts resolved C:\\repos\\freetier-atlas from their own locations.",
-        "Smoke scripts reported application scaffold checks as pending F002 and did not claim product health.",
-        "Temporary copied fixtures confirmed missing-file and invalid-JSON failures are actionable."
+        "Confirmed working directory C:\\Users\\sergiyt\\.codex\\worktrees\\b7ed\\freetier-atlas and branch codex/f001-repository-foundation.",
+        "Read AGENTS.md, docs/AGENT_HARNESS.md, docs/CODEX_AUTONOMY_POLICY.md, CODEX_TASKS.md, agent-state/progress.md, agent-state/feature_list.json, and agent-state/current_contract.json before evaluation.",
+        "Read F001-relevant licensing, test, repository structure, and ADR documents including docs/LICENSING.md, docs/TEST_STRATEGY.md, docs/REPOSITORY_STRUCTURE.md, docs/adr/0001-monorepo.md, docs/adr/0005-licence.md, and docs/adr/0006-long-running-agent-harness.md.",
+        "Required F001 legal and community files exist: LICENSE, NOTICE, ADDITIONAL_TERMS.md, TRADEMARKS.md, AUTHORS.md, THIRD_PARTY_NOTICES.md, CONTRIBUTING.md, PR template, issue templates, branch-protection guidance, tooling files, scripts/test.ps1, scripts/test.sh, and CI workflow.",
+        "PowerShell and Git Bash init and smoke scripts passed and continued to report application scaffold checks as pending F002.",
+        "PowerShell and Git Bash canonical test scripts passed. Direct Python unit tests, npm test, and git diff --check passed.",
+        "Controlled temporary secret, JSON, and YAML fixtures failed as expected, were removed, and repository checks passed afterward."
       ],
       "failures": []
     },
     {
       "name": "product_depth",
-      "required": false,
+      "required": true,
       "passed": true,
       "evidence": [
-        "F000 is a harness feature; no display-only product workflow or fake application success path was introduced.",
-        "Smoke scripts explicitly report that application scaffold checks are pending F002."
+        "F001 is a repository-foundation increment; no product UI, API, provider adapter, database, or fake user workflow was introduced.",
+        "apps, packages, migrations, docker-compose.yml, and .env.example are absent, consistent with F001 scope and F002 being the application scaffold feature."
       ],
       "failures": []
     },
     {
-      "name": "data_integrity",
-      "required": false,
+      "name": "data_and_evidence_integrity",
+      "required": true,
       "passed": true,
       "evidence": [
-        "JSON validation passed for agent-state/feature_list.json, agent-state/current_contract.json, and agent-state/evaluation.json before evaluator updates.",
-        "Negative JSON validation used temporary copied fixtures and did not corrupt active repository state."
+        "agent-state/feature_list.json still has F001 passes=false and no evaluator-created status change.",
+        "agent-state/current_contract.json parsed successfully and matches F001 scope.",
+        "Repository checks validate JSON, TOML, structural YAML, required files, license policy, dependency policy, secret patterns, script safety, formatting, and unsupported-claim guardrails.",
+        "Temporary malformed JSON and YAML fixtures produced actionable validation failures without corrupting active repository files."
       ],
       "failures": []
     },
     {
       "name": "zero_cost_safety",
-      "required": false,
+      "required": true,
       "passed": true,
       "evidence": [
-        "No service-free claim, hosting change, deployment, provider integration, or paid dependency was introduced."
+        "python tools/repo_checks.py all passed the unsupported-claims check.",
+        "No new provider records, quota values, pricing claims, region claims, Z0 classification logic, or public deployment proof was introduced.",
+        "Existing planning/product-language claims remain planning context rather than new F001 product evidence; F001 tooling guards new unsupported claims outside allowed planning documents."
       ],
       "failures": []
     },
     {
       "name": "security_privacy",
-      "required": false,
+      "required": true,
       "passed": true,
       "evidence": [
-        "Static scans found no environment-dump commands and no network-call commands in scripts.",
-        "Scripts print only deterministic check status and repository root, not environment variables or secrets."
+        "Controlled fake secret fixture under .tmp/controlled-secret.txt was rejected by the secret scanner and removed.",
+        "Static search found no GitHub Actions secrets context, environment-dump commands, process.env usage, or shell environment printing in CI/scripts; matches found only in scanner patterns and tests.",
+        "CI workflow permissions are contents: read and it does not reference secrets.",
+        ".npmrc disables audit, funding, and update-notifier behavior for deterministic local checks without printing environment data."
       ],
       "failures": []
     },
     {
       "name": "portability",
-      "required": false,
+      "required": true,
       "passed": true,
       "evidence": [
-        "Shell scripts use BASH_SOURCE[0] to resolve the repository root.",
-        "PowerShell scripts use PSCommandPath to resolve the repository root and re-run under pwsh when available.",
-        "Native Windows bash is unavailable because WSL has no installed distribution; recorded as unavailable, while Git Bash passed."
+        "Repository checks passed in Windows PowerShell through scripts/test.ps1.",
+        "Repository checks passed in Git Bash through scripts/test.sh.",
+        "Tooling uses standard Python, Node, npm, Git, PowerShell, and Bash with no mandatory managed-cloud dependency."
       ],
       "failures": []
     },
@@ -77,18 +83,21 @@
       "required": true,
       "passed": true,
       "evidence": [
-        "git diff main...HEAD --check passed.",
-        "Scripts are focused on F000 harness checks and avoid application scaffolding.",
-        "Changed paths are limited to .gitattributes, agent-state contract/progress/evaluation/feature ledger, and scripts."
+        "git diff --check passed.",
+        "Python unit tests passed: 3 tests run successfully.",
+        "npm test passed via node tools/node_check.mjs.",
+        "Pre-commit configuration delegates to repository-local Python and Node checks.",
+        "Dependency policy check passed and no runtime dependencies were added."
       ],
       "failures": []
     },
     {
-      "name": "user_experience",
+      "name": "user_experience_and_accessibility",
       "required": false,
       "passed": true,
       "evidence": [
-        "Script output uses clear status lines and actionable error messages for missing files and invalid JSON."
+        "No public UI exists in F001. Contributor-facing docs provide concise local-check, PR, commit, evidence, and branch-protection guidance.",
+        "Issue templates request official source evidence and quota-exhaustion details without asserting publication."
       ],
       "failures": []
     },
@@ -97,60 +106,100 @@
       "required": true,
       "passed": true,
       "evidence": [
-        "Pre-evaluation tree was clean.",
-        "No application or product implementation files were added.",
-        "Required command suite completed except native bash, which is unavailable on this host and was recorded as unavailable rather than passed."
+        "Canonical F000 init and smoke paths still pass in PowerShell and Git Bash.",
+        "Application scaffold health remains explicitly pending F002.",
+        "No controlled temporary fixtures remained after negative checks; .tmp was empty.",
+        "Final git status showed only the builder's F001 workspace changes plus this evaluation file update."
+      ],
+      "failures": []
+    },
+    {
+      "name": "licensing",
+      "required": true,
+      "passed": true,
+      "evidence": [
+        "LICENSE exactly matched GNU's official AGPL-3.0 text after line-ending normalization using https://www.gnu.org/licenses/agpl-3.0.txt.",
+        "NOTICE, ADDITIONAL_TERMS.md, TRADEMARKS.md, AUTHORS.md, THIRD_PARTY_NOTICES.md, pyproject.toml, and package.json consistently identify AGPL-3.0-only and required attribution/notice boundaries."
       ],
       "failures": []
     }
   ],
   "commands_run": [
     "Get-Location",
-    "git branch --show-current",
     "git status --short --branch",
-    "git log --oneline --decorate -10",
+    "git log --oneline -20",
     "Get-Content -Raw AGENTS.md",
     "Get-Content -Raw docs/AGENT_HARNESS.md",
+    "Get-Content -Raw docs/CODEX_AUTONOMY_POLICY.md",
+    "Get-Content -Raw CODEX_TASKS.md",
+    "Get-Content -Raw agent-state/progress.md",
     "Get-Content -Raw agent-state/feature_list.json",
     "Get-Content -Raw agent-state/current_contract.json",
-    "Get-Content -Raw agent-state/evaluation.json",
-    "Get-Content -Raw agent-state/progress.md",
-    "git show --stat --summary c33949a",
-    "git show --format=fuller --name-status c33949a",
-    "Get-Content -Raw scripts/init.sh",
-    "Get-Content -Raw scripts/smoke.sh",
-    "Get-Content -Raw scripts/init.ps1",
-    "Get-Content -Raw scripts/smoke.ps1",
-    "git diff main...HEAD --stat",
-    "git diff main...HEAD --check",
-    "git check-attr --all -- .gitattributes AGENTS.md agent-state/current_contract.json scripts/init.sh scripts/smoke.sh scripts/init.ps1 scripts/smoke.ps1",
-    "rg network-call patterns in scripts",
-    "rg environment-output patterns in scripts",
-    "rg product-scaffolding patterns in changed F000 paths",
-    "C:\\Program Files\\Git\\bin\\bash.exe scripts/init.sh",
-    "C:\\Program Files\\Git\\bin\\bash.exe scripts/smoke.sh",
-    "bash scripts/init.sh",
+    "Get-Content -Raw docs/LICENSING.md",
+    "Get-Content -Raw docs/TEST_STRATEGY.md",
+    "Get-Content -Raw docs/REPOSITORY_STRUCTURE.md",
+    "Get-Content -Raw docs/adr/0001-monorepo.md",
+    "Get-Content -Raw docs/adr/0005-licence.md",
+    "Get-Content -Raw docs/adr/0006-long-running-agent-harness.md",
+    "Get-Content -Raw docs/adr/0002-zero-cost-taxonomy.md (failed: file not present)",
+    "Get-Content -Raw docs/adr/0002-z0-model.md",
+    "Get-ChildItem -Force",
+    "Get-ChildItem -Recurse -File .github,docs,scripts,tests,tools | Select-Object -ExpandProperty FullName",
+    "Get-Content -Raw pyproject.toml",
+    "Get-Content -Raw package.json",
+    "Get-Content -Raw scripts/test.ps1",
+    "Get-Content -Raw scripts/test.sh",
+    "Get-Content -Raw tools/repo_checks.py",
+    "Get-Content -Raw tools/node_check.mjs",
+    "Get-Content -Raw tests/test_repo_checks.py",
+    "Get-Content -Raw .github/workflows/ci.yml",
+    "Get-Content -Raw .pre-commit-config.yaml",
+    "Get-Content -Raw docs/BRANCH_PROTECTION.md",
+    "Get-Content -Raw CONTRIBUTING.md",
+    "Get-Content -Raw .github/pull_request_template.md",
+    "Get-Content -Raw .github/ISSUE_TEMPLATE/report-incorrect-offer.md",
+    "Get-Content -Raw .github/ISSUE_TEMPLATE/suggest-service.md",
+    "Get-Content -Raw NOTICE",
+    "Get-Content -Raw ADDITIONAL_TERMS.md",
+    "Get-Content -Raw AUTHORS.md",
+    "Get-Content -Raw THIRD_PARTY_NOTICES.md",
+    "Get-Content -Raw TRADEMARKS.md",
     "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/init.ps1",
     "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/smoke.ps1",
-    "python -c JSON validation for all three agent-state JSON files",
-    "C:\\Program Files\\Git\\bin\\bash.exe C:/repos/freetier-atlas/scripts/init.sh from C:\\tmp",
-    "C:\\Program Files\\Git\\bin\\bash.exe C:/repos/freetier-atlas/scripts/smoke.sh from C:\\tmp",
-    "pwsh -NoProfile -ExecutionPolicy Bypass -File C:\\repos\\freetier-atlas\\scripts\\init.ps1 from C:\\tmp",
-    "pwsh -NoProfile -ExecutionPolicy Bypass -File C:\\repos\\freetier-atlas\\scripts\\smoke.ps1 from C:\\tmp",
-    "Temporary copied fixture missing-file negative test",
-    "Temporary copied fixture invalid-JSON negative test"
+    "C:\\Program Files\\Git\\bin\\bash.exe scripts/init.sh",
+    "C:\\Program Files\\Git\\bin\\bash.exe scripts/smoke.sh",
+    "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/test.ps1",
+    "C:\\Program Files\\Git\\bin\\bash.exe scripts/test.sh",
+    "python -m unittest discover -s tests -p \"test_*.py\"",
+    "npm test",
+    "git diff --check",
+    "Temporary .tmp/controlled-secret.txt with python tools/repo_checks.py all (expected failure), then removal",
+    "Temporary .tmp/controlled-bad.json with python tools/repo_checks.py all (expected failure), then removal",
+    "Temporary .tmp/controlled-bad.yaml with python tools/repo_checks.py all (expected failure), then removal",
+    "python tools/repo_checks.py all after removing controlled fixtures",
+    "Invoke-WebRequest https://www.gnu.org/licenses/agpl-3.0.txt and exact normalized comparison to LICENSE (rerun with approved escalation after local TLS failure)",
+    "rg -n \"secrets\\.|\\$\\{\\{\\s*secrets|printenv|Get-ChildItem\\s+Env:|dir\\s+env:|process\\.env|AKIA|ghp_|sk-[A-Za-z0-9]|fta_test_secret_\" .github scripts tools tests package.json pyproject.toml .pre-commit-config.yaml",
+    "Test-Path apps; Test-Path packages; Test-Path migrations; Test-Path docker-compose.yml; Test-Path .env.example",
+    "Get-ChildItem -Force .tmp | Select-Object -ExpandProperty Name",
+    "git diff --stat",
+    "git diff --name-only",
+    "Get-Content -Raw .npmrc",
+    "Get-Content -Raw .gitignore",
+    "Get-Content -Raw .editorconfig",
+    "git status --short --branch"
   ],
   "end_to_end_steps_run": [
-    "Read required agent instructions, harness docs, feature ledger, current contract, evaluation state, progress log, and builder commit diff.",
-    "Ran canonical initialization and smoke scripts through Git Bash and PowerShell.",
-    "Verified script-root behavior by invoking scripts from outside the repository.",
-    "Verified negative failure behavior using copied temporary fixtures only.",
-    "Confirmed app scaffold health remains pending F002 and was not faked."
+    "Started from the current uncommitted F001 workspace and read all required harness, contract, ledger, licensing, test, repository, and ADR context.",
+    "Ran canonical initialization and smoke scripts through PowerShell and Git Bash; both passed and kept app scaffold checks pending F002.",
+    "Ran the canonical repository test command through PowerShell and Git Bash; both passed.",
+    "Ran direct Python unit tests, npm test, and git diff --check; all passed.",
+    "Created controlled ignored temporary fixtures for secret, malformed JSON, and malformed YAML validation; each failed as expected, was removed, and the full repository check suite passed afterward.",
+    "Inspected CI, pre-commit, branch-protection guidance, legal files, community templates, scripts, tooling, and absence of application scaffold paths."
   ],
   "disposition": "passed",
   "blocking_failures": [],
   "recommendations": [
-    "Push codex/f000-harness-foundation and open a PR.",
-    "In the next feature, keep native bash availability documented for Windows hosts where bash is only the WSL launcher."
+    "Builder may use this evaluation as evidence for marking F001 passing after normal end-of-session requirements are complete.",
+    "When opening the PR, mention that the CI controlled-failure gate is verified by the shared canonical check path and local temporary fixture probes, not by committing ignored .tmp fixtures."
   ]
 }
