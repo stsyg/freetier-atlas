@@ -57,3 +57,7 @@
 | D053 | Feature descriptions and acceptance steps are immutable to normal coding agents; only status and evidence may change. |
 | D054 | User-facing features require end-to-end testing, not only unit or API checks. |
 | D055 | Harness complexity is reviewed periodically and removed only after evidence shows a component is no longer load-bearing. |
+| D056 | Codex may create branches, implement one approved feature, run tests, commit, push, and open pull requests. |
+| D057 | Codex may not merge pull requests, alter feature acceptance criteria, mark features passing without evaluator evidence, add external services, or proceed to the next feature without approval. |
+| D058 | Cloud Codex may be used only for bounded tasks that do not require local-only tools, secrets, external services, or unapproved network access. |
+| D059 | Local Codex is preferred for early setup and tasks involving Windows, WSL, Git Bash, PowerShell, Docker Desktop, or local environment behaviour. |
