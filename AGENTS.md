@@ -15,13 +15,13 @@ Before changing code:
 1. Confirm the repository directory.
 2. Run `git status --short --branch`.
 3. Read `git log --oneline -20`.
-4. Read this file, `.agent/progress.md`, and `.agent/feature_list.json`.
+4. Read this file, `agent-state/progress.md`, and `agent-state/feature_list.json`.
 5. Read the active requirements, task, and relevant ADRs.
-6. Run `scripts/init.sh` or `scripts/init.ps1`.
-7. Run the baseline smoke test and a core end-to-end workflow.
+6. Run `scripts/init.sh` or `scripts/init.ps1` when present. Until the initializer feature creates them, document that bootstrap is incomplete.
+7. Run the baseline smoke test and a core end-to-end workflow when the application scaffold exists.
 8. Fix a broken baseline before starting new work.
 9. Select one highest-priority unblocked failing feature.
-10. Write `.agent/current_contract.json` before implementation.
+10. Write `agent-state/current_contract.json` before implementation.
 
 Do not rely on prior chat context or compaction as project memory.
 
@@ -36,12 +36,12 @@ Do not rely on prior chat context or compaction as project memory.
 
 ## Structured state
 
-- `.agent/feature_list.json` is the canonical end-to-end feature ledger.
+- `agent-state/feature_list.json` is the canonical end-to-end feature ledger.
 - Normal coding agents may change only `passes`, `last_verified_at`, and `verification_evidence` for an existing feature.
 - Do not delete, weaken, or rewrite acceptance steps to make implementation pass.
-- `.agent/progress.md` is append-only and must be updated at the end of every meaningful session.
-- `.agent/current_contract.json` defines the active increment.
-- `.agent/evaluation.json` records independent QA results.
+- `agent-state/progress.md` is append-only and must be updated at the end of every meaningful session.
+- `agent-state/current_contract.json` defines the active increment.
+- `agent-state/evaluation.json` records independent QA results.
 - Git history is part of the handoff mechanism; commits must be focused and descriptive.
 
 ## Independent evaluation
@@ -54,7 +54,7 @@ A fresh evaluator context is mandatory for:
 - provider adapters and evidence extraction
 - Z0 classification and quota calculations
 - schemas and migrations
-- auth, privacy, rate limiting, and security boundaries
+- authentication, privacy, rate limiting, and security boundaries
 - LLM routing and tool permissions
 - generated deployment files
 - public hosting and cost-proof functionality
@@ -102,10 +102,10 @@ The evaluator must test against the contract, use browser automation for UI work
 Before stopping:
 
 1. Run contract tests and relevant regression tests.
-2. Run the canonical smoke/end-to-end workflow.
+2. Run the canonical smoke/end-to-end workflow when available.
 3. Obtain the required evaluator disposition.
 4. Mark a feature passing only after evidence-backed evaluation succeeds.
-5. Append the handoff to `.agent/progress.md`.
+5. Append the handoff to `agent-state/progress.md`.
 6. Create a focused descriptive commit.
 7. Leave the repository clean and runnable.
 
