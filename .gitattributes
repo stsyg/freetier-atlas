@@ -1,0 +1,59 @@
+# Normalize all detected text files in the repository to LF.
+* text=auto eol=lf
+
+# Source, configuration, documentation, and agent state.
+*.md text eol=lf
+*.txt text eol=lf
+*.json text eol=lf
+*.jsonl text eol=lf
+*.yaml text eol=lf
+*.yml text eol=lf
+*.toml text eol=lf
+*.ini text eol=lf
+*.cfg text eol=lf
+*.conf text eol=lf
+*.env text eol=lf
+*.example text eol=lf
+
+# Application source.
+*.py text eol=lf
+*.js text eol=lf
+*.jsx text eol=lf
+*.ts text eol=lf
+*.tsx text eol=lf
+*.css text eol=lf
+*.scss text eol=lf
+*.html text eol=lf
+*.sql text eol=lf
+*.graphql text eol=lf
+
+# Scripts.
+*.sh text eol=lf
+*.bash text eol=lf
+*.ps1 text eol=lf
+
+# Native Windows command scripts require CRLF.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Common lock and metadata files.
+Dockerfile text eol=lf
+*.lock text eol=lf
+.gitattributes text eol=lf
+.gitignore text eol=lf
+.editorconfig text eol=lf
+
+# Binary assets.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.ico binary
+*.pdf binary
+*.zip binary
+*.gz binary
+*.tar binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
