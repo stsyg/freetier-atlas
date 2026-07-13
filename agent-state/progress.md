@@ -91,3 +91,19 @@ Append one entry after every meaningful implementation or evaluation session. Do
 - **Commit SHA:** pending at builder handoff.
 - **Known issues or risks:** CI's controlled-failure rejection is demonstrated locally through the shared check logic; the true GitHub Actions run occurs on push/PR. Real GitHub branch-protection settings must be applied by the owner (documented in `CONTRIBUTING.md`).
 - **Recommended next action:** Run a fresh independent Level 1 evaluator against F001, record `agent-state/evaluation.json`, then commit, push, and open a PR into `main`. Do not proceed to F002.
+
+---
+
+## 2026-07-13 — Evaluator — F001
+
+- **Objective:** Independently verify F001 repository foundation against `agent-state/current_contract.json` and the explicit Level 1 evaluation prompt.
+- **Contract:** `agent-state/current_contract.json`
+- **Work completed:** Read the required contract, feature ledger, task, licensing, autonomy, harness, progress, and previous evaluation artifacts; inspected builder commit `b7f5143` and the `main...HEAD` diff; verified licensing files, tooling checks, controlled lint failure, secret baseline portability/false positives, CI safety, script-root resolution, gitignore behavior, and absence of application scaffolding.
+- **Files changed:** `agent-state/evaluation.json`, `agent-state/feature_list.json`, `agent-state/progress.md`
+- **Tests and checks run:** `pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/check.ps1 -NodeAudit`; `.\.venv\Scripts\ruff.exe check .`; `.\.venv\Scripts\ruff.exe format --check .`; `.\.venv\Scripts\pytest.exe -q`; `npm run --silent format:check`; `npm run --silent lint`; `$f = git ls-files -co --exclude-standard; .\.venv\Scripts\detect-secrets-hook.exe --baseline .secrets.baseline @($f)`; controlled `tests\_probe_eval.py` F401 probe; `pwsh -NoProfile -ExecutionPolicy Bypass -File <repo>\scripts\check.ps1 -NodeAudit` from `C:\`; static file inspections.
+- **Exact results:** `scripts/check.ps1 -NodeAudit` exited 0 and ended `ALL CHECKS PASSED`; Ruff lint passed; Ruff format check reported `1 file already formatted`; pytest reported `20 passed`; Prettier reported all matched files use Prettier style; ESLint exited 0; detect-secrets exited 0; pip-audit reported no known vulnerabilities; npm audit reported 0 vulnerabilities. Controlled probe exited 1 with F401, the probe file was removed, and `ruff check tests\` exited 0. Outside-repo script invocation from `C:\` exited 0 and ended `ALL CHECKS PASSED`.
+- **Evaluator disposition:** passed
+- **Evaluation evidence:** `agent-state/evaluation.json`
+- **Commit SHA:** `b7f51436a6dfd88b8e3e4b46faad4e9b68374101`
+- **Known issues or risks:** Real GitHub branch protection remains an owner-side setting documented in `CONTRIBUTING.md`; no F001 blocking issues found.
+- **Recommended next action:** Commit the evaluation-state updates, push the branch, and open a pull request into `main`; do not proceed to F002.
