@@ -1,0 +1,80 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# No secrets are used by CI. Read-only access is sufficient.
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  python:
+    name: Python lint, format, tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install Python dev tools
+        run: python -m pip install --disable-pip-version-check -r requirements-dev.txt
+      - name: Ruff lint
+        run: ruff check .
+      - name: Ruff format check
+        run: ruff format --check .
+      - name: Pytest
+        run: pytest -q
+
+  node:
+    name: Node format and lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Install Node dev tools
+        run: npm ci
+      - name: Prettier check
+        run: npm run format:check
+      - name: ESLint
+        run: npm run lint
+
+  secrets:
+    name: Secret scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install detect-secrets
+        run: python -m pip install --disable-pip-version-check detect-secrets==1.5.0
+      - name: Scan tracked files against baseline
+        shell: bash
+        run: git ls-files -z | xargs -0 detect-secrets-hook --baseline .secrets.baseline
+
+  dependencies:
+    name: Dependency audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install pip-audit
+        run: python -m pip install --disable-pip-version-check pip-audit==2.9.0
+      - name: Audit Python dev dependencies
+        run: pip-audit -r requirements-dev.txt
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Audit Node dependencies
+        run: npm audit --omit=dev --audit-level=high

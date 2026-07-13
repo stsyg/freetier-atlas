@@ -1,0 +1,57 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "freetier-atlas"
+version = "0.1.0.dev0"
+description = "Evidence-backed catalogue and architecture adviser for zero-cost cloud and developer services."
+readme = "README.md"
+requires-python = ">=3.13"
+license = "AGPL-3.0-or-later"
+authors = [{ name = "Sergiy" }]
+keywords = ["free-tier", "cloud", "catalogue", "adviser", "z0"]
+
+# Runtime dependencies are intentionally empty at F001. The application scaffold
+# (FastAPI, Pydantic, SQLAlchemy, Alembic) is added in F002 and later.
+dependencies = []
+
+[project.optional-dependencies]
+dev = [
+  "ruff==0.14.5",
+  "pytest==9.0.3",
+  "detect-secrets==1.5.0",
+  "pip-audit==2.9.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/stsyg/freetier-atlas"
+Repository = "https://github.com/stsyg/freetier-atlas"
+
+[tool.setuptools]
+# No importable packages exist yet at F001; the baseline only ships tests.
+packages = []
+
+[tool.ruff]
+target-version = "py313"
+line-length = 100
+extend-exclude = [".venv", "node_modules", "dist", "build"]
+
+[tool.ruff.lint]
+select = [
+  "E",   # pycodestyle errors
+  "F",   # pyflakes
+  "I",   # isort
+  "UP",  # pyupgrade
+  "B",   # flake8-bugbear
+  "W",   # pycodestyle warnings
+]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["tests"]
+addopts = "-ra"

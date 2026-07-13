@@ -75,3 +75,19 @@ Append one entry after every meaningful implementation or evaluation session. Do
 - **Commit SHA:** pending at evaluator handoff; final commit SHA reported after commit creation.
 - **Known issues or risks:** Native Windows `bash` remains unavailable without WSL or Git Bash. F002 application scaffold health is intentionally pending and unverified.
 - **Recommended next action:** Push `codex/f000-harness-foundation` and open a PR for F000.
+
+---
+
+## 2026-07-12 — Builder — F001
+
+- **Objective:** Establish the clean, reproducible public monorepo baseline: licensing/notice files, Python and Node tooling, formatting, linting, tests, secret and dependency scanning, CI, and PR/commit conventions.
+- **Contract:** `agent-state/current_contract.json` (rewritten for F001, evaluation level 1).
+- **Work completed:** Added AGPL-3.0 `LICENSE` (canonical GNU text) plus `NOTICE`, `ADDITIONAL_TERMS.md`, `TRADEMARKS.md`, `AUTHORS.md`, `THIRD_PARTY_NOTICES.md`, and `CONTRIBUTING.md`; superseded `THIRD_PARTY_NOTICES_DRAFT.md` with a pointer stub. Added Python tooling (`pyproject.toml` with Ruff + pytest, `requirements-dev.txt`) and a repo-baseline `tests/test_repo_baseline.py` (20 tests). Added Node tooling (`package.json`, `package-lock.json`, `eslint.config.js`, `.prettierrc.json`, `.prettierignore`). Added `.editorconfig`, `.gitignore`, `.pre-commit-config.yaml`, and a normalized detect-secrets `.secrets.baseline`. Added `.github/workflows/ci.yml` (python/node/secrets/dependencies jobs, no secrets, read-only), `.github/pull_request_template.md`, and `scripts/check.ps1` / `scripts/check.sh` that mirror CI and resolve the repo root from their own path.
+- **Files changed:** See `git status`; all F001 deliverables listed in the contract scope, plus `agent-state/current_contract.json` and this handoff.
+- **Tests and checks run:** `scripts/check.ps1 -NodeAudit` (Ruff lint, Ruff format --check, pytest, Prettier --check, ESLint, detect-secrets-hook against baseline, pip-audit, npm audit); controlled-failure demo (`ruff check` on an injected unused import); script-root resolution from `C:\`; `git check-ignore .venv node_modules`.
+- **Exact results:** All checks PASS. pytest: 20 passed. pip-audit initially flagged pytest 8.4.2 (PYSEC-2026-1845); pytest was pinned to 9.0.3 and the audit then reported no known vulnerabilities. npm audit: 0 vulnerabilities. Controlled violation: `ruff check` exited 1 with an actionable F401, exited 0 after removal. `check.ps1` run from `C:\` resolved the repository root and passed. `.venv` and `node_modules` are git-ignored. Two detect-secrets findings (a commit SHA in `evaluation.json`; env-var *names* in the LLM example YAML) were confirmed false positives and recorded in the baseline; baseline paths were normalized to forward slashes for Linux CI.
+- **Evaluator disposition:** pending
+- **Evaluation evidence:** Builder left `agent-state/evaluation.json` at its prior state for a fresh independent Level 1 evaluator.
+- **Commit SHA:** pending at builder handoff.
+- **Known issues or risks:** CI's controlled-failure rejection is demonstrated locally through the shared check logic; the true GitHub Actions run occurs on push/PR. Real GitHub branch-protection settings must be applied by the owner (documented in `CONTRIBUTING.md`).
+- **Recommended next action:** Run a fresh independent Level 1 evaluator against F001, record `agent-state/evaluation.json`, then commit, push, and open a PR into `main`. Do not proceed to F002.
