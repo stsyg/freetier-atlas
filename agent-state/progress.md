@@ -140,6 +140,21 @@ Append one entry after every meaningful implementation or evaluation session. Do
 
 ---
 
+## 2026-07-15 — Builder — F002 (slice 1 follow-up: cross-platform secret-scan exclusion)
+
+- **Objective:** Owner asked for the automated test results to be posted on PR #5. Re-running the full suite surfaced a cross-platform bug: the F001 `should_exclude_file` patterns in `.secrets.baseline` used forward-slash-only regexes (e.g. `(^|/)agent-state/`), so on Windows the hook (which sees `agent-state\evaluation.json`) failed to exclude the agent-state metadata dir and flagged the evaluator's commit SHA and a documented dev-default connection string. It passed on Linux CI but failed local Windows runs.
+- **Contract:** `agent-state/current_contract.json` (F002 slice 1; this is an in-scope check-correctness fix, no product behaviour change).
+- **Work completed:** Made the four `should_exclude_file` patterns separator-agnostic (`(^|[/\\])<dir>[/\\]`) so `.venv`, `node_modules`, `.git`, and `agent-state` are excluded on both POSIX and Windows. No result entries added; real source/config/example scanning is unchanged.
+- **Files changed:** `.secrets.baseline`, `agent-state/progress.md`.
+- **Tests and checks run (results captured for the PR comment):** `scripts/check.ps1 -NodeAudit` → ALL CHECKS PASSED (pytest 25 passed / 2 skipped); `stack-up` + `stack-smoke` (health 200, readiness 200, app_meta marker); endpoint bodies for `/health`, `/health/ready`, `/`; negative path with Postgres stopped (`/health/ready`=503 credential-free, `/health`=200) then recovery to 200; live integration tests (2 passed); from-empty-DB test (`stack-down -Volumes` → `stack-up` → smoke pass, `alembic current`=`0001_scaffold_baseline (head)`); final `stack-down`.
+- **Exact results:** All green; no credential leak in the 503 body; migrations apply cleanly from an empty database. Stack left down.
+- **Evaluator disposition:** n/a (in-scope check-correctness fix; the Level 2 functional evaluation of the increment remains passed).
+- **Commit SHA:** recorded on push.
+- **Known issues or risks:** None known. F002 remains `passes: false` (slice 1 only).
+- **Recommended next action:** Owner reviews PR #5 with the posted results; on approval/merge, start slice 2 (worker + scheduler + React frontend) under a new contract.
+
+---
+
 ## 2026-07-15 20:24 UTC — Evaluator — F002 (slice 1)
 
 - **Objective:** Independently verify F002 slice 1 — repository-owned dev-environment commands plus the minimal FastAPI/PostgreSQL/Alembic vertical — against the approved Level 2 contract.
