@@ -1,0 +1,9 @@
+# Runtime dependencies for the FreeTier Atlas API image.
+# Pins MUST stay in sync with [project.dependencies] in pyproject.toml
+# (enforced by tests/unit/test_requirements_sync.py).
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+sqlalchemy==2.0.36
+alembic==1.14.0
+psycopg[binary]==3.2.3
+pydantic-settings==2.7.0
