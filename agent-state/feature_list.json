@@ -39,9 +39,19 @@
         "Verify CI rejects a controlled failure and passes after removal."
       ],
       "required_evaluation_level": 1,
-      "passes": false,
-      "last_verified_at": null,
-      "verification_evidence": []
+      "passes": true,
+      "last_verified_at": "2026-07-13T04:39:01Z",
+      "verification_evidence": [
+        "Independent Level 1 evaluation recorded in agent-state/evaluation.json for commit b7f51436a6dfd88b8e3e4b46faad4e9b68374101.",
+        "Required AGPL-3.0 licence and notice files exist, are non-empty, and match docs/LICENSING.md.",
+        "scripts/check.ps1 -NodeAudit passed all checks: Ruff lint/format, pytest (20 passed), Prettier, ESLint, detect-secrets, pip-audit, and npm audit.",
+        "Individual ruff, pytest, Prettier, and ESLint commands passed independently.",
+        "Controlled unused-import probe failed with F401, was removed, and tests\\ ruff check passed afterward.",
+        "Secret baseline findings are false positives (git commit SHA and environment-variable names) and use forward-slash paths.",
+        "CI is read-only, uses no secrets, and covers Python, Node, secret scan, and dependency audit jobs.",
+        "scripts/check.ps1 resolved the repository root and passed when invoked by absolute path from C:\\.",
+        ".venv and node_modules are ignored and untracked; no application scaffolding was added."
+      ]
     },
     {
       "id": "F002",

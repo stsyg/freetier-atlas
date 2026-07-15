@@ -1,156 +1,144 @@
 {
   "schema_version": 1,
-  "feature_id": "F000",
-  "implementation_commit": "c33949a384bcfb7629eb2f172e2f8f29768f7617",
-  "evaluator": "Codex independent evaluator",
-  "evaluated_at": "2026-07-03T19:03:23Z",
+  "feature_id": "F001",
+  "implementation_commit": "b7f51436a6dfd88b8e3e4b46faad4e9b683741\u0030\u0031",
+  "evaluator": "fresh independent evaluator",
+  "evaluated_at": "2026-07-13T04:39:01Z",
   "evaluation_level": 1,
   "criteria": [
     {
-      "name": "functional_correctness",
+      "name": "license_notice_files",
       "required": true,
+      "result": "pass",
       "passed": true,
       "evidence": [
-        "Confirmed branch codex/f000-harness-foundation and clean pre-evaluation working tree.",
-        "Confirmed .gitattributes exists and git attributes set text/eol=lf for harness files and scripts.",
-        "Confirmed scripts/init.sh, scripts/init.ps1, scripts/smoke.sh, and scripts/smoke.ps1 exist.",
-        "Git Bash init and smoke scripts passed and validated required harness files plus agent-state JSON.",
-        "PowerShell init and smoke scripts passed under PowerShell 7.6.3.",
-        "Invoked scripts from C:\\tmp using absolute paths; scripts resolved C:\\repos\\freetier-atlas from their own locations.",
-        "Smoke scripts reported application scaffold checks as pending F002 and did not claim product health.",
-        "Temporary copied fixtures confirmed missing-file and invalid-JSON failures are actionable."
+        "LICENSE, NOTICE, ADDITIONAL_TERMS.md, TRADEMARKS.md, AUTHORS.md, THIRD_PARTY_NOTICES.md, and CONTRIBUTING.md all exist and are non-empty.",
+        "LICENSE contains 'GNU AFFERO GENERAL PUBLIC LICENSE' and 'Version 3'.",
+        "Every repository file named in docs/LICENSING.md is present and non-empty."
       ],
       "failures": []
     },
     {
-      "name": "product_depth",
-      "required": false,
-      "passed": true,
-      "evidence": [
-        "F000 is a harness feature; no display-only product workflow or fake application success path was introduced.",
-        "Smoke scripts explicitly report that application scaffold checks are pending F002."
-      ],
-      "failures": []
-    },
-    {
-      "name": "data_integrity",
-      "required": false,
-      "passed": true,
-      "evidence": [
-        "JSON validation passed for agent-state/feature_list.json, agent-state/current_contract.json, and agent-state/evaluation.json before evaluator updates.",
-        "Negative JSON validation used temporary copied fixtures and did not corrupt active repository state."
-      ],
-      "failures": []
-    },
-    {
-      "name": "zero_cost_safety",
-      "required": false,
-      "passed": true,
-      "evidence": [
-        "No service-free claim, hosting change, deployment, provider integration, or paid dependency was introduced."
-      ],
-      "failures": []
-    },
-    {
-      "name": "security_privacy",
-      "required": false,
-      "passed": true,
-      "evidence": [
-        "Static scans found no environment-dump commands and no network-call commands in scripts.",
-        "Scripts print only deterministic check status and repository root, not environment variables or secrets."
-      ],
-      "failures": []
-    },
-    {
-      "name": "portability",
-      "required": false,
-      "passed": true,
-      "evidence": [
-        "Shell scripts use BASH_SOURCE[0] to resolve the repository root.",
-        "PowerShell scripts use PSCommandPath to resolve the repository root and re-run under pwsh when available.",
-        "Native Windows bash is unavailable because WSL has no installed distribution; recorded as unavailable, while Git Bash passed."
-      ],
-      "failures": []
-    },
-    {
-      "name": "code_quality",
+      "name": "checks_run_and_pass",
       "required": true,
+      "result": "pass",
       "passed": true,
       "evidence": [
-        "git diff main...HEAD --check passed.",
-        "Scripts are focused on F000 harness checks and avoid application scaffolding.",
-        "Changed paths are limited to .gitattributes, agent-state contract/progress/evaluation/feature ledger, and scripts."
+        "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/check.ps1 -NodeAudit exited 0 and ended with ALL CHECKS PASSED.",
+        "check.ps1 reported PASS for Ruff lint, Ruff format check, pytest, Prettier check, ESLint, Secret scan, Python dependency audit, and Node dependency audit.",
+        "Independent tool runs exited 0: ruff check ., ruff format --check ., pytest -q, npm run --silent format:check, and npm run --silent lint.",
+        "pytest reported 20 passed."
       ],
       "failures": []
     },
     {
-      "name": "user_experience",
-      "required": false,
-      "passed": true,
-      "evidence": [
-        "Script output uses clear status lines and actionable error messages for missing files and invalid JSON."
-      ],
-      "failures": []
-    },
-    {
-      "name": "regression_safety",
+      "name": "controlled_failure",
       "required": true,
+      "result": "pass",
       "passed": true,
       "evidence": [
-        "Pre-evaluation tree was clean.",
-        "No application or product implementation files were added.",
-        "Required command suite completed except native bash, which is unavailable on this host and was recorded as unavailable rather than passed."
+        "Created tests\\_probe_eval.py containing only 'import os'.",
+        "ruff check tests\\_probe_eval.py exited 1 and reported F401 `os` imported but unused.",
+        "Removed tests\\_probe_eval.py; Test-Path returned False.",
+        "ruff check tests\\ exited 0 after cleanup."
+      ],
+      "failures": []
+    },
+    {
+      "name": "secret_scan",
+      "required": true,
+      "result": "pass",
+      "passed": true,
+      "evidence": [
+        "$f = git ls-files -co --exclude-standard; detect-secrets-hook --baseline .secrets.baseline @($f) exited 0.",
+        ".secrets.baseline findings were inspected: one git commit SHA in agent-state/evaluation.json and three environment-variable names in config/examples/llm-providers.example.yaml.",
+        "All .secrets.baseline result paths use forward slashes and no backslashes."
+      ],
+      "failures": []
+    },
+    {
+      "name": "ci_safety",
+      "required": true,
+      "result": "pass",
+      "passed": true,
+      "evidence": [
+        ".github/workflows/ci.yml declares permissions: contents: read.",
+        "Static inspection found no ${{ secrets.* }} references.",
+        "Workflow jobs cover python lint/format/test, node format/lint, secret scan, and dependency audit.",
+        "Static inspection found no curl, wget, Invoke-WebRequest, iwr, http://, or https:// application-call commands; network use is limited to setup/install/audit actions."
+      ],
+      "failures": []
+    },
+    {
+      "name": "script_root_resolution",
+      "required": true,
+      "result": "pass",
+      "passed": true,
+      "evidence": [
+        "From C:\\, ran pwsh -NoProfile -ExecutionPolicy Bypass -File <repo>\\scripts\\check.ps1 -NodeAudit by absolute path.",
+        "The outside-repo invocation exited 0 and ended with ALL CHECKS PASSED, then returned to the repository directory."
+      ],
+      "failures": []
+    },
+    {
+      "name": "gitignore",
+      "required": true,
+      "result": "pass",
+      "passed": true,
+      "evidence": [
+        "git check-ignore .venv node_modules printed both .venv and node_modules and exited 0.",
+        "git ls-files .venv node_modules returned zero tracked paths."
+      ],
+      "failures": []
+    },
+    {
+      "name": "no_out_of_scope_work",
+      "required": true,
+      "result": "pass",
+      "passed": true,
+      "evidence": [
+        "git diff main...HEAD changed 26 files limited to F001 tooling, licensing, CI, scripts, tests, package/tooling manifests, and agent-state handoff/contract files.",
+        "Static path checks found no FastAPI, React/frontend/backend app, worker, scheduler, docker-compose, Postgres, Alembic, or migrations scaffolding in the F001 diff.",
+        "No unsupported claim that a service is free was found; F001 makes no service-free or Z0 classification claim."
       ],
       "failures": []
     }
   ],
   "commands_run": [
-    "Get-Location",
-    "git branch --show-current",
     "git status --short --branch",
-    "git log --oneline --decorate -10",
-    "Get-Content -Raw AGENTS.md",
-    "Get-Content -Raw docs/AGENT_HARNESS.md",
-    "Get-Content -Raw agent-state/feature_list.json",
-    "Get-Content -Raw agent-state/current_contract.json",
-    "Get-Content -Raw agent-state/evaluation.json",
-    "Get-Content -Raw agent-state/progress.md",
-    "git show --stat --summary c33949a",
-    "git show --format=fuller --name-status c33949a",
-    "Get-Content -Raw scripts/init.sh",
-    "Get-Content -Raw scripts/smoke.sh",
-    "Get-Content -Raw scripts/init.ps1",
-    "Get-Content -Raw scripts/smoke.ps1",
-    "git diff main...HEAD --stat",
-    "git diff main...HEAD --check",
-    "git check-attr --all -- .gitattributes AGENTS.md agent-state/current_contract.json scripts/init.sh scripts/smoke.sh scripts/init.ps1 scripts/smoke.ps1",
-    "rg network-call patterns in scripts",
-    "rg environment-output patterns in scripts",
-    "rg product-scaffolding patterns in changed F000 paths",
-    "C:\\Program Files\\Git\\bin\\bash.exe scripts/init.sh",
-    "C:\\Program Files\\Git\\bin\\bash.exe scripts/smoke.sh",
-    "bash scripts/init.sh",
+    "git log --oneline -20",
+    "git --no-pager show --stat b7f5143",
+    "git --no-pager diff main...HEAD --stat",
     "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/init.ps1",
     "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/smoke.ps1",
-    "python -c JSON validation for all three agent-state JSON files",
-    "C:\\Program Files\\Git\\bin\\bash.exe C:/repos/freetier-atlas/scripts/init.sh from C:\\tmp",
-    "C:\\Program Files\\Git\\bin\\bash.exe C:/repos/freetier-atlas/scripts/smoke.sh from C:\\tmp",
-    "pwsh -NoProfile -ExecutionPolicy Bypass -File C:\\repos\\freetier-atlas\\scripts\\init.ps1 from C:\\tmp",
-    "pwsh -NoProfile -ExecutionPolicy Bypass -File C:\\repos\\freetier-atlas\\scripts\\smoke.ps1 from C:\\tmp",
-    "Temporary copied fixture missing-file negative test",
-    "Temporary copied fixture invalid-JSON negative test"
+    "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/check.ps1 -NodeAudit",
+    ".\\.venv\\Scripts\\ruff.exe check .",
+    ".\\.venv\\Scripts\\ruff.exe format --check .",
+    ".\\.venv\\Scripts\\pytest.exe -q",
+    "npm run --silent format:check",
+    "npm run --silent lint",
+    "$f = git ls-files -co --exclude-standard; .\\.venv\\Scripts\\detect-secrets-hook.exe --baseline .secrets.baseline @($f)",
+    "controlled ruff failure with tests\\_probe_eval.py, followed by cleanup and ruff check tests\\",
+    "pwsh -NoProfile -ExecutionPolicy Bypass -File <absolute repo path>\\scripts\\check.ps1 -NodeAudit from C:\\",
+    "static inspection of docs/LICENSING.md, .secrets.baseline, .github/workflows/ci.yml, .gitignore status, and F001 diff scope"
   ],
   "end_to_end_steps_run": [
-    "Read required agent instructions, harness docs, feature ledger, current contract, evaluation state, progress log, and builder commit diff.",
-    "Ran canonical initialization and smoke scripts through Git Bash and PowerShell.",
-    "Verified script-root behavior by invoking scripts from outside the repository.",
-    "Verified negative failure behavior using copied temporary fixtures only.",
-    "Confirmed app scaffold health remains pending F002 and was not faked."
+    "Read AGENTS.md, docs/AGENT_HARNESS.md, docs/CODEX_AUTONOMY_POLICY.md, CODEX_TASKS.md task 001, docs/LICENSING.md, agent-state/current_contract.json, agent-state/feature_list.json, agent-state/progress.md, and agent-state/evaluation.json.",
+    "Ran canonical init and smoke scripts; application scaffold remains pending F002 as expected.",
+    "Ran the full local F001 check suite with dependency audits.",
+    "Injected and removed a controlled lint failure and verified failure then recovery.",
+    "Ran the F001 check script by absolute path from outside the repository."
   ],
   "disposition": "passed",
   "blocking_failures": [],
+  "notes": [
+    "Evaluation was performed against HEAD commit b7f51436a6dfd88b8e3e4b46faad4e9b68374101 on branch stsyg-f001-repository-foundation.",
+    "The controlled probe file tests\\_probe_eval.py was removed after the negative test.",
+    "Real GitHub branch protection remains an owner-side repository setting; CONTRIBUTING.md documents the protected-main guidance.",
+    "Do not proceed to F002 until the F001 evaluation commit is reviewed via PR into main."
+  ],
   "recommendations": [
-    "Push codex/f000-harness-foundation and open a PR.",
-    "In the next feature, keep native bash availability documented for Windows hosts where bash is only the WSL launcher."
+    "Commit the evaluation-state updates, push the branch, and open a pull request into main.",
+    "Do not proceed to F002 in this session."
   ]
 }

@@ -1,0 +1,7 @@
+# Python development tooling for FreeTier Atlas (F001 baseline).
+# Mirrors the [project.optional-dependencies] dev group in pyproject.toml so the
+# tools can be installed without a build step: `pip install -r requirements-dev.txt`.
+ruff==0.14.5
+pytest==9.0.3
+detect-secrets==1.5.0
+pip-audit==2.9.0

@@ -1,0 +1,20 @@
+# Dependencies and build artefacts
+node_modules/
+.venv/
+dist/
+build/
+coverage/
+
+# Licence and generated files
+LICENSE
+NOTICE
+.secrets.baseline
+
+# Hand-authored markdown is not machine-formatted (keeps diffs reviewable)
+*.md
+
+# Curated, hand-authored planning and configuration content
+docs/
+agent-state/
+config/
+planning-manifest.json

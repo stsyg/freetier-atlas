@@ -1,79 +1,77 @@
 {
   "schema_version": 1,
   "status": "approved",
-  "feature_id": "F000",
-  "builder": "Codex",
+  "feature_id": "F001",
+  "builder": "Copilot CLI (Chief)",
   "evaluator": "fresh independent evaluator",
-  "approved_at": "2026-07-03T18:14:32Z",
+  "approved_at": "2026-07-12T00:00:00Z",
   "approval_notes": [
-    "Contract status changed to approved only after the working tree was diagnosed clean, diagnostic snapshots were written outside the repository, and standalone line-ending normalization was committed."
+    "F001 scope, tech, and licence are already owner-approved via DECISIONS.md (D008, D024, D040), ADR 0005, docs/LICENSING.md, docs/ARCHITECTURE.md, and CODEX_TASKS.md task 001. No acceptance steps were altered.",
+    "Secret scanning uses detect-secrets and dependency scanning uses pip-audit and npm audit because they are pip/npm installable and runnable in the local and CI environments without new service dependencies."
   ],
-  "objective": "Establish the F000 harness foundation so a fresh agent can start from repository artifacts, run canonical setup checks, work one increment, and leave independently evaluable handoff state.",
+  "objective": "Establish a clean, reproducible public monorepo baseline with complete licensing and notice files, Python and Node tooling, formatting, linting, tests, secret and dependency scanning, CI that rejects a controlled failure, and focused PR and commit conventions.",
   "scope": [
-    "Maintain the root .gitattributes policy that normalizes detected text files to LF while preserving CRLF for native Windows command scripts.",
-    "Keep repository line-ending normalization as an explicit F000 foundation requirement.",
-    "Implement and maintain scripts/init.sh and scripts/init.ps1 when F000 continues.",
-    "Require initialization scripts to resolve the repository root from their own script path instead of the caller's current directory.",
-    "Require PowerShell initialization to report unverified when neither pwsh nor Windows PowerShell is available.",
-    "Add baseline smoke-test commands once the application scaffold exists.",
-    "Ensure negative JSON validation tests use temporary copies or temporary fixtures and never corrupt active repository state.",
-    "Have the builder update only the builder progress entry and leave agent-state/evaluation.json pending.",
-    "Require a fresh evaluator to perform and record the independent evaluation."
+    "Add AGPL-3.0 LICENSE and the attribution and notice files named in docs/LICENSING.md: NOTICE, ADDITIONAL_TERMS.md, TRADEMARKS.md, AUTHORS.md, THIRD_PARTY_NOTICES.md, CONTRIBUTING.md.",
+    "Add Python tooling in pyproject.toml: ruff lint and format configuration and pytest configuration, plus a repository-baseline pytest suite that asserts repository invariants.",
+    "Add Node tooling in package.json: prettier and eslint (flat config) with ignore files and format and lint scripts.",
+    "Add reproducibility and pre-commit configuration: .editorconfig, .gitignore, .pre-commit-config.yaml, and a detect-secrets .secrets.baseline.",
+    "Add CI at .github/workflows/ci.yml running Python lint/format/test, Node format/lint, secret scan, and dependency audit, with no secrets and no application network access.",
+    "Add governance: .github/pull_request_template.md and protected-main plus commit-convention guidance in CONTRIBUTING.md.",
+    "Add scripts/check.ps1 and scripts/check.sh that run all F001 checks locally and mirror CI, resolving the repository root from their own path."
   ],
   "out_of_scope": [
-    "Application scaffolding, provider adapters, catalogue UI, API, workers, scheduler, database schema, and deployment work.",
-    "Changing feature ledger descriptions or acceptance steps outside explicit owner-approved F000 contract updates.",
-    "Marking F000 as passing before all acceptance criteria and independent evaluation succeed.",
-    "Recording evaluator results from the builder context."
+    "Application scaffolding: FastAPI API, worker, scheduler, React frontend, PostgreSQL, docker-compose (F002 and later).",
+    "Configuration system, domain model, Z0 engine, adapters, adviser, LLM routing, deployment (F003+).",
+    "Changing feature ledger descriptions, priorities, or acceptance steps.",
+    "Merging the pull request, tagging a release, or proceeding to F002.",
+    "Adding GitHub Actions that consume secrets, external services, or network access from tests."
   ],
   "acceptance_criteria": [
-    "A root .gitattributes file exists and encodes the approved line-ending policy.",
-    "git add --renormalize . has been run after adding .gitattributes, and staged normalization is inspected with status, stat, check, and representative diffs.",
-    "Normalization does not alter textual content beyond line endings.",
-    "scripts/init.sh and scripts/init.ps1 resolve the repository root from their own path.",
-    "PowerShell initialization reports unverified when neither pwsh nor Windows PowerShell is available.",
-    "The canonical initialization path documents bootstrap-incomplete status until runnable setup and smoke scripts exist.",
-    "Negative JSON tests operate on a temporary copy or temporary fixture and leave active repository state unchanged.",
-    "The builder appends only the builder progress entry and leaves agent-state/evaluation.json pending.",
-    "A fresh evaluator records evaluation in agent-state/evaluation.json before F000 can pass."
+    "The approved AGPL-3.0 LICENSE and every notice file named in docs/LICENSING.md exist and are non-empty.",
+    "pyproject.toml configures ruff and pytest; ruff check, ruff format --check, and pytest all pass on the repository.",
+    "package.json configures prettier and eslint; prettier --check and eslint pass on tracked sources.",
+    "detect-secrets scan reports no unaudited secrets against the committed baseline.",
+    "pip-audit runs against declared dev dependencies and npm audit runs against the Node manifest without failing the build on the empty baseline.",
+    "scripts/check.ps1 and scripts/check.sh run the full check suite and resolve the repository root from their own path.",
+    "A controlled violation (for example a lint error) causes the check suite and CI logic to fail, and removing it makes them pass.",
+    "The CI workflow declares no secrets and performs no application network calls.",
+    "A fresh independent Level 1 evaluator records results in agent-state/evaluation.json before F001 is marked passing."
   ],
   "verification_plan": {
     "baseline_commands": [
       "git status --short --branch",
-      "git log --oneline -20",
-      "Test-Path scripts/init.sh",
-      "Test-Path scripts/init.ps1"
+      "git log --oneline -20"
     ],
     "unit_commands": [
-      "git diff --check",
-      "git diff --cached --check",
-      "git check-attr --all -- .gitattributes AGENTS.md agent-state/current_contract.json"
+      ".venv/Scripts/ruff.exe check .",
+      ".venv/Scripts/ruff.exe format --check .",
+      ".venv/Scripts/pytest.exe -q",
+      "npx prettier --check .",
+      "npx eslint ."
     ],
     "integration_commands": [
-      "git add --renormalize .",
-      "git status --short",
-      "git diff --cached --stat",
-      "git diff --cached --check"
+      "pwsh -File scripts/check.ps1",
+      ".venv/Scripts/detect-secrets.exe scan --baseline .secrets.baseline",
+      ".venv/Scripts/pip-audit.exe -r requirements-dev.txt"
     ],
     "end_to_end_steps": [
-      "Start from a clean checkout and read AGENTS.md, docs/AGENT_HARNESS.md, agent-state/progress.md, agent-state/feature_list.json, and recent git history.",
-      "Run the canonical initialization script when present; until scripts exist, record bootstrap-incomplete status.",
-      "Run the baseline smoke workflow when the application scaffold exists; until then, record scaffold-not-present status.",
-      "Create or review the F000 current contract and verify it names scope, out-of-scope work, acceptance criteria, risks, and evaluator requirements.",
-      "Append a builder handoff to agent-state/progress.md without writing evaluator disposition beyond pending."
+      "From a clean checkout, read the licence and notice files and confirm they exist and are non-empty.",
+      "Run scripts/check.ps1 (or scripts/check.sh) and confirm all checks pass.",
+      "Introduce a controlled lint violation, confirm the check suite fails, remove it, and confirm the suite passes.",
+      "Inspect .github/workflows/ci.yml and confirm it declares no secrets and no application network access."
     ],
     "negative_tests": [
-      "Attempt JSON validation against a temporary malformed copy or fixture and verify the active repository JSON files are unchanged.",
-      "Run initialization from a directory outside the repository and verify scripts still resolve the repository root from their own path.",
-      "Simulate missing PowerShell hosts where practical and verify the result is reported as unverified rather than passed."
+      "A deliberate ruff violation must make ruff check and the check suite fail with an actionable message.",
+      "An unaudited high-entropy string must make detect-secrets fail until baselined or removed.",
+      "Running scripts/check from outside the repository must still resolve the repository root from the script path."
     ]
   },
   "risks": {
-    "data_migration": "None; F000 does not introduce application or database state.",
-    "security_privacy": "No secrets or user data are introduced. Future scripts must avoid logging secrets and must not mutate active JSON during negative tests.",
-    "portability": "Initialization must work from script-relative paths across supported shells. PowerShell availability must be reported accurately, including unverified when unavailable.",
-    "zero_cost_safety": "No hosting or paid dependency is introduced. F000 must not claim any service is free.",
-    "regression": "Line-ending normalization can create noisy diffs if misconfigured; .gitattributes and renormalization inspection are required to keep future changes reviewable."
+    "data_migration": "None; F001 introduces no application or database state.",
+    "security_privacy": "Checks must not print secrets or full environment dumps. Secret scanning baseline must not contain real secrets. CI uses no secrets.",
+    "portability": "Tooling must run on Windows PowerShell and POSIX shells; check scripts resolve the repository root from their own path. Node and Python dev tools are pinned for reproducibility.",
+    "zero_cost_safety": "No hosting or paid dependency is introduced. No free-tier or Z0 claim is made by F001.",
+    "regression": "Prettier and ruff formatting must not rewrite hand-authored docs and agent-state files; ignore files scope formatters away from curated content to keep diffs reviewable."
   },
   "required_evaluation_level": 1,
   "contract_review": {
@@ -81,7 +79,7 @@
     "reviewer": "owner",
     "disposition": "approved",
     "notes": [
-      "Owner explicitly approved amending F000 to include .gitattributes, line-ending normalization, builder/evaluator boundaries, script root resolution, PowerShell unverified behavior, and safe negative JSON tests."
+      "Scope is bounded to the owner-approved F001 foundation deliverables in CODEX_TASKS.md task 001 and docs/LICENSING.md; acceptance steps in the feature ledger are unchanged."
     ]
   }
 }
