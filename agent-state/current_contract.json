@@ -1,85 +1,92 @@
 {
   "schema_version": 1,
   "status": "approved",
-  "feature_id": "F001",
+  "feature_id": "F002",
+  "increment": "slice-1-dev-env-and-minimal-vertical",
   "builder": "Copilot CLI (Chief)",
   "evaluator": "fresh independent evaluator",
-  "approved_at": "2026-07-12T00:00:00Z",
+  "approved_at": "2026-07-15T00:00:00Z",
   "approval_notes": [
-    "F001 scope, tech, and licence are already owner-approved via DECISIONS.md (D008, D024, D040), ADR 0005, docs/LICENSING.md, docs/ARCHITECTURE.md, and CODEX_TASKS.md task 001. No acceptance steps were altered.",
-    "Secret scanning uses detect-secrets and dependency scanning uses pip-audit and npm audit because they are pip/npm installable and runnable in the local and CI environments without new service dependencies."
+    "Owner approved starting F002 with the dev-environment groundwork plus a minimal, live-verified API/PostgreSQL/health vertical slice (prompt: 'do it' on the proposed slice-1 scope).",
+    "Technology (FastAPI, SQLAlchemy, Alembic, PostgreSQL, Docker Compose, psycopg, pydantic-settings) is the owner-approved F002 baseline in docs/ARCHITECTURE.md, ADR 0004, and CODEX_TASKS.md task 002, not a new dependency requiring fresh approval.",
+    "F002 is an epic; this contract intentionally covers only slice 1. Worker, scheduler, and the React frontend are out of scope for this increment and require an owner checkpoint before slice 2. F002 remains failing until the full stack and Level 2 evaluation land."
   ],
-  "objective": "Establish a clean, reproducible public monorepo baseline with complete licensing and notice files, Python and Node tooling, formatting, linting, tests, secret and dependency scanning, CI that rejects a controlled failure, and focused PR and commit conventions.",
+  "objective": "Establish repository-owned development-environment documentation and commands, and a minimal but real vertical (FastAPI API + PostgreSQL + Alembic migrations) that starts through one canonical script and is verified live end to end, without adding the worker, scheduler, or frontend yet.",
   "scope": [
-    "Add AGPL-3.0 LICENSE and the attribution and notice files named in docs/LICENSING.md: NOTICE, ADDITIONAL_TERMS.md, TRADEMARKS.md, AUTHORS.md, THIRD_PARTY_NOTICES.md, CONTRIBUTING.md.",
-    "Add Python tooling in pyproject.toml: ruff lint and format configuration and pytest configuration, plus a repository-baseline pytest suite that asserts repository invariants.",
-    "Add Node tooling in package.json: prettier and eslint (flat config) with ignore files and format and lint scripts.",
-    "Add reproducibility and pre-commit configuration: .editorconfig, .gitignore, .pre-commit-config.yaml, and a detect-secrets .secrets.baseline.",
-    "Add CI at .github/workflows/ci.yml running Python lint/format/test, Node format/lint, secret scan, and dependency audit, with no secrets and no application network access.",
-    "Add governance: .github/pull_request_template.md and protected-main plus commit-convention guidance in CONTRIBUTING.md.",
-    "Add scripts/check.ps1 and scripts/check.sh that run all F001 checks locally and mirror CI, resolving the repository root from their own path."
+    "Add docs/LOCAL_DEVELOPMENT.md and docs/CODEX_ENVIRONMENT.md describing the canonical bootstrap, stack, test, and teardown commands and required runtimes.",
+    "Add scripts/check-env.ps1 and scripts/check-env.sh that verify Docker, Node, and Python are available and fail actionably when missing, without printing secrets or full environment dumps.",
+    "Add scripts/bootstrap-dev.ps1 and scripts/bootstrap-dev.sh that create the Python .venv, install dev and runtime dependencies, and install Node dev dependencies.",
+    "Add scripts/test.ps1 and scripts/test.sh that run the pytest suite and delegate to the existing check workflow rather than duplicating hard-coded setup.",
+    "Add apps/api: a FastAPI application exposing GET /health (liveness) and GET /health/ready (executes SELECT 1 against PostgreSQL and returns 503 when the database is unreachable), Pydantic settings that read configuration from environment variable names, a Dockerfile, and a README.",
+    "Add docker-compose.yml defining postgres and api services with health checks and dependency ordering; web, worker, and scheduler are documented as deferred to slice 2.",
+    "Add Alembic configuration (alembic.ini, migrations/env.py, migrations/script.py.mako) and a baseline migration that creates a scaffold app_meta table; the domain model remains F003.",
+    "Add .env.example listing required environment variable names with placeholder values only.",
+    "Add runtime dependencies to pyproject.toml and a pinned apps/api/requirements.txt used by the Docker image, kept in sync by a test.",
+    "Add scripts/stack-up, scripts/stack-down, and scripts/stack-smoke (.ps1 and .sh) to build and start the stack, verify live health and database connectivity and applied migrations, and tear the stack down.",
+    "Add pytest unit tests for the API health endpoints and a test asserting the runtime dependency pins stay in sync between pyproject.toml and apps/api/requirements.txt."
   ],
   "out_of_scope": [
-    "Application scaffolding: FastAPI API, worker, scheduler, React frontend, PostgreSQL, docker-compose (F002 and later).",
-    "Configuration system, domain model, Z0 engine, adapters, adviser, LLM routing, deployment (F003+).",
-    "Changing feature ledger descriptions, priorities, or acceptance steps.",
-    "Merging the pull request, tagging a release, or proceeding to F002.",
-    "Adding GitHub Actions that consume secrets, external services, or network access from tests."
+    "Python worker and scheduler services (F002 slice 2).",
+    "React frontend / static web application (F002 slice 2).",
+    "Domain model, catalogue tables, evidence history, Z0 classification (F003+).",
+    "Configuration system beyond the minimal API settings needed to connect to PostgreSQL (F003).",
+    "Merging the pull request, tagging a release, marking F002 passing, or proceeding to F003.",
+    "Any external network access from tests or application code, and any use of secrets in CI."
   ],
   "acceptance_criteria": [
-    "The approved AGPL-3.0 LICENSE and every notice file named in docs/LICENSING.md exist and are non-empty.",
-    "pyproject.toml configures ruff and pytest; ruff check, ruff format --check, and pytest all pass on the repository.",
-    "package.json configures prettier and eslint; prettier --check and eslint pass on tracked sources.",
-    "detect-secrets scan reports no unaudited secrets against the committed baseline.",
-    "pip-audit runs against declared dev dependencies and npm audit runs against the Node manifest without failing the build on the empty baseline.",
-    "scripts/check.ps1 and scripts/check.sh run the full check suite and resolve the repository root from their own path.",
-    "A controlled violation (for example a lint error) causes the check suite and CI logic to fail, and removing it makes them pass.",
-    "The CI workflow declares no secrets and performs no application network calls.",
-    "A fresh independent Level 1 evaluator records results in agent-state/evaluation.json before F001 is marked passing."
+    "docs/LOCAL_DEVELOPMENT.md and docs/CODEX_ENVIRONMENT.md exist, are non-empty, and document the canonical bootstrap, stack-up, test, stack-smoke, and stack-down commands.",
+    "scripts/check-env resolves the repository root from its own path, reports Docker, Node, and Python availability, and exits non-zero with an actionable message when a required runtime is missing.",
+    "scripts/bootstrap-dev creates .venv, installs the project with dev extras and runtime dependencies, and installs Node dev dependencies.",
+    "scripts/test runs pytest and reports pass/fail; the existing scripts/check.ps1 suite (ruff, ruff format, pytest, prettier, eslint, secret scan, pip-audit) still passes.",
+    "docker-compose.yml starts postgres and api; the api container applies Alembic migrations to head on startup and serves /health and /health/ready.",
+    "A live run of scripts/stack-up followed by scripts/stack-smoke confirms GET /health returns 200, GET /health/ready returns 200 with the database reachable, and the baseline migration created the app_meta table.",
+    "Stopping and restarting the stack (stack-down then stack-up) leaves the database and migrations intact and stack-smoke passes again.",
+    "A fresh independent Level 2 evaluator records adversarial end-to-end results (API, database, negative readiness when DB is down, regression) in agent-state/evaluation.json before F002 is considered for any status change.",
+    "No secrets are printed or committed; the secret-scan check remains green; .env.example contains only variable names and placeholders."
   ],
   "verification_plan": {
     "baseline_commands": [
       "git status --short --branch",
-      "git log --oneline -20"
+      "git log --oneline -20",
+      "pwsh -File scripts/check-env.ps1"
     ],
     "unit_commands": [
-      ".venv/Scripts/ruff.exe check .",
-      ".venv/Scripts/ruff.exe format --check .",
-      ".venv/Scripts/pytest.exe -q",
-      "npx prettier --check .",
-      "npx eslint ."
+      "pwsh -File scripts/bootstrap-dev.ps1",
+      "pwsh -File scripts/test.ps1",
+      "pwsh -File scripts/check.ps1 -NodeAudit"
     ],
     "integration_commands": [
-      "pwsh -File scripts/check.ps1",
-      ".venv/Scripts/detect-secrets.exe scan --baseline .secrets.baseline",
-      ".venv/Scripts/pip-audit.exe -r requirements-dev.txt"
+      "pwsh -File scripts/stack-up.ps1",
+      "pwsh -File scripts/stack-smoke.ps1",
+      "pwsh -File scripts/stack-down.ps1"
     ],
     "end_to_end_steps": [
-      "From a clean checkout, read the licence and notice files and confirm they exist and are non-empty.",
-      "Run scripts/check.ps1 (or scripts/check.sh) and confirm all checks pass.",
-      "Introduce a controlled lint violation, confirm the check suite fails, remove it, and confirm the suite passes.",
-      "Inspect .github/workflows/ci.yml and confirm it declares no secrets and no application network access."
+      "Run scripts/check-env and confirm Docker, Node, and Python are reported available.",
+      "Run scripts/bootstrap-dev and scripts/test and confirm the pytest suite passes.",
+      "Run scripts/stack-up, then scripts/stack-smoke, and confirm live /health is 200, /health/ready is 200, and the app_meta table exists.",
+      "Stop the api container (or the database) and confirm /health/ready returns 503 while /health stays 200.",
+      "Run scripts/stack-down then scripts/stack-up again and confirm stack-smoke still passes with data intact."
     ],
     "negative_tests": [
-      "A deliberate ruff violation must make ruff check and the check suite fail with an actionable message.",
-      "An unaudited high-entropy string must make detect-secrets fail until baselined or removed.",
-      "Running scripts/check from outside the repository must still resolve the repository root from the script path."
+      "With PostgreSQL stopped, GET /health/ready must return 503 with an actionable body and GET /health must still return 200.",
+      "scripts/check-env must exit non-zero with an actionable message when a required runtime is simulated missing.",
+      "A drift between pyproject.toml runtime pins and apps/api/requirements.txt must fail the sync test."
     ]
   },
   "risks": {
-    "data_migration": "None; F001 introduces no application or database state.",
-    "security_privacy": "Checks must not print secrets or full environment dumps. Secret scanning baseline must not contain real secrets. CI uses no secrets.",
-    "portability": "Tooling must run on Windows PowerShell and POSIX shells; check scripts resolve the repository root from their own path. Node and Python dev tools are pinned for reproducibility.",
-    "zero_cost_safety": "No hosting or paid dependency is introduced. No free-tier or Z0 claim is made by F001.",
-    "regression": "Prettier and ruff formatting must not rewrite hand-authored docs and agent-state files; ignore files scope formatters away from curated content to keep diffs reviewable."
+    "data_migration": "Alembic baseline creates only a scaffold app_meta table; the real domain model arrives in F003. Migrations must apply cleanly from an empty database and be idempotent to head.",
+    "security_privacy": "Scripts must not print secrets or full environment dumps. .env.example holds names and placeholders only. The database password default is a non-secret local development value documented as such and never used in production.",
+    "portability": "Scripts must run on Windows PowerShell 7 and POSIX shells and resolve the repository root from their own path. Docker images target linux and remain multi-architecture compatible.",
+    "zero_cost_safety": "The scaffold runs entirely locally via Docker Compose; no hosting, paid dependency, or free-tier/Z0 claim is introduced.",
+    "regression": "Runtime dependencies are added without breaking the F001 check suite; migrations and app code live outside the paths formatters curate for docs and agent-state."
   },
-  "required_evaluation_level": 1,
+  "required_evaluation_level": 2,
   "contract_review": {
-    "required": false,
+    "required": true,
     "reviewer": "owner",
     "disposition": "approved",
     "notes": [
-      "Scope is bounded to the owner-approved F001 foundation deliverables in CODEX_TASKS.md task 001 and docs/LICENSING.md; acceptance steps in the feature ledger are unchanged."
+      "Owner approved the slice-1 scope in the current prompt. Scope is bounded to the dev-environment groundwork and a minimal API/PostgreSQL/health vertical; the F002 feature-ledger acceptance steps are unchanged and F002 will not be marked passing by this increment."
     ]
   }
 }

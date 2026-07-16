@@ -12,9 +12,17 @@ license = "AGPL-3.0-or-later"
 authors = [{ name = "Sergiy" }]
 keywords = ["free-tier", "cloud", "catalogue", "adviser", "z0"]
 
-# Runtime dependencies are intentionally empty at F001. The application scaffold
-# (FastAPI, Pydantic, SQLAlchemy, Alembic) is added in F002 and later.
-dependencies = []
+# Runtime dependencies for the F002 application scaffold. These pins MUST stay
+# in sync with apps/api/requirements.txt (enforced by
+# tests/unit/test_requirements_sync.py).
+dependencies = [
+  "fastapi==0.115.6",
+  "uvicorn[standard]==0.34.0",
+  "sqlalchemy==2.0.36",
+  "alembic==1.14.0",
+  "psycopg[binary]==3.2.3",
+  "pydantic-settings==2.7.0",
+]
 
 [project.optional-dependencies]
 dev = [
@@ -22,15 +30,17 @@ dev = [
   "pytest==9.0.3",
   "detect-secrets==1.5.0",
   "pip-audit==2.9.0",
+  "httpx==0.28.1",
 ]
 
 [project.urls]
 Homepage = "https://github.com/stsyg/freetier-atlas"
 Repository = "https://github.com/stsyg/freetier-atlas"
 
-[tool.setuptools]
-# No importable packages exist yet at F001; the baseline only ships tests.
-packages = []
+[tool.setuptools.packages.find]
+# The API application package lives under apps/api.
+where = ["apps/api"]
+include = ["app*"]
 
 [tool.ruff]
 target-version = "py313"
@@ -55,3 +65,8 @@ indent-style = "space"
 minversion = "8.0"
 testpaths = ["tests"]
 addopts = "-ra"
+# Make the API package importable in tests without requiring an editable install.
+pythonpath = ["apps/api"]
+markers = [
+  "integration: tests that require the live Docker Compose stack (run by scripts/stack-smoke).",
+]
