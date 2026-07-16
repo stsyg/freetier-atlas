@@ -155,6 +155,22 @@ Append one entry after every meaningful implementation or evaluation session. Do
 
 ---
 
+## 2026-07-15 — Builder — F002 (slice 1 follow-up: CI Python job install fix)
+
+- **Objective:** PR #5's "Python lint, format, tests" CI job failed on GitHub Actions (it had passed locally on Windows). Diagnose and fix while keeping F002 slice 1 in scope.
+- **Root cause:** The CI Python job installed only `requirements-dev.txt` (ruff, pytest, detect-secrets, pip-audit). That sufficed under F001 (no app code), but F002 added tests importing the application, so CI failed at pytest collection with `ModuleNotFoundError: No module named 'fastapi'` (`tests/unit/test_api_health.py` → `app.main`) and `'httpx'` (`tests/integration/test_stack_health.py`). Local runs passed because `bootstrap-dev` does `pip install -e ".[dev]"`, which pulls in the runtime deps and httpx; CI never installed them.
+- **Contract:** `agent-state/current_contract.json` (F002 slice 1; in-scope CI-correctness fix, no product behaviour change).
+- **Work completed:** Changed the CI Python job to install the project with dev extras (`python -m pip install --disable-pip-version-check -e ".[dev]"`) so runtime dependencies and the editable `app` package are available to ruff and pytest, mirroring `bootstrap-dev`. Added `httpx==0.28.1` to `requirements-dev.txt` to restore the documented "mirrors the dev group" invariant so the dependency-audit job also covers it.
+- **Files changed:** `.github/workflows/ci.yml`, `requirements-dev.txt`, `agent-state/progress.md`.
+- **Tests and checks run:** Reproduced the CI Python job in a clean throwaway venv: `pip install -e ".[dev]"`; `ruff check .`; `ruff format --check .`; `pytest -q`; plus `pip-audit -r requirements-dev.txt`. Pushed `801916b` and watched the GitHub Actions run to completion; queried the PR check rollup.
+- **Exact results:** Clean-venv simulation — ruff pass, format pass (10 files), pytest 25 passed / 2 integration skipped, pip-audit no known vulnerabilities. GitHub Actions run 29461311183: Ruff lint / Ruff format / Pytest all ✓. PR #5 rollup now all SUCCESS (Python, Node, Secret scan, Dependency audit, GitGuardian) with `mergeStateStatus: CLEAN`. Only remaining annotations are GitHub's non-blocking Node 20 runner-deprecation warnings.
+- **Evaluator disposition:** n/a (in-scope CI-correctness fix on the open F002 PR; the Level 2 functional evaluation of the increment remains passed).
+- **Commit SHA:** `801916b` (pushed).
+- **Known issues or risks:** None known. F002 remains `passes: false` (slice 1 only). Node 20 action-runner deprecation is a GitHub-side warning affecting all jobs; a future maintenance bump of `actions/*` versions would clear it (out of scope here).
+- **Recommended next action:** Owner reviews/merges PR #5 (checks green). On merge, start slice 2 (worker + scheduler + React frontend) under a new contract at the owner checkpoint.
+
+---
+
 ## 2026-07-15 20:24 UTC — Evaluator — F002 (slice 1)
 
 - **Objective:** Independently verify F002 slice 1 — repository-owned dev-environment commands plus the minimal FastAPI/PostgreSQL/Alembic vertical — against the approved Level 2 contract.
