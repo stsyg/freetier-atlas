@@ -35,6 +35,22 @@ if ! "${PYTEST}" "${PYTEST_ARGS[@]}"; then
   exit 1
 fi
 
+WEB_DIR="${REPO_ROOT}/apps/web"
+if [[ -f "${WEB_DIR}/package.json" && -d "${WEB_DIR}/node_modules" ]]; then
+  echo "==> Web unit tests (apps/web: vitest run)"
+  if ! ( cd "${WEB_DIR}" && npm run test ); then
+    echo "WEB TESTS FAILED"
+    exit 1
+  fi
+  echo "==> Web build (apps/web: vite build)"
+  if ! ( cd "${WEB_DIR}" && npm run build ); then
+    echo "WEB BUILD FAILED"
+    exit 1
+  fi
+elif [[ -f "${WEB_DIR}/package.json" ]]; then
+  echo "Note: apps/web present but node_modules missing; skipping web tests/build. Run scripts/bootstrap-dev.sh first."
+fi
+
 if [[ "${RUN_FULL}" -eq 1 ]]; then
   echo "==> Full check suite (scripts/check.sh --node-audit)"
   if ! bash "${SCRIPT_DIR}/check.sh" --node-audit; then

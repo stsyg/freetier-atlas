@@ -2,46 +2,45 @@
   "schema_version": 1,
   "status": "approved",
   "feature_id": "F002",
-  "increment": "slice-2-worker-and-scheduler",
+  "increment": "slice-3-web-frontend",
   "builder": "Copilot CLI (Chief)",
   "evaluator": "fresh independent evaluator",
   "approved_at": "2026-07-16T00:00:00Z",
   "approval_notes": [
-    "Owner approved starting F002 slice 2 scoped to the Python worker service + scheduler service backed by a real PostgreSQL job queue, wired into the existing Docker Compose stack and canonical scripts. The React frontend is explicitly deferred to a later slice (prompt: plan approved with 'autopilot' on the proposed worker+scheduler scope).",
-    "Technology (FastAPI/SQLAlchemy/Alembic/PostgreSQL/Docker Compose/psycopg/pydantic-settings) is the owner-approved F002 baseline in docs/ARCHITECTURE.md, ADR 0004, and CODEX_TASKS.md task 002. No new runtime, framework, queue library, or managed-cloud dependency is introduced; the queue is the architecture's PostgreSQL-backed queue implemented with plain SQL.",
-    "F002 is an epic; this contract intentionally covers only slice 2 (worker + scheduler). The React frontend, domain model, adapters, and Z0 classification remain out of scope and require their own increments. F002 remains failing until the full stack and its Level 2 evaluation land."
+    "Owner approved starting F002 slice 3 scoped to the React frontend served and wired into the existing Docker Compose stack, reusing the established api /health seam. Domain data (F003 catalogue/offer/evidence/region/quota/Z0) and provider adapters are explicitly deferred (prompt: plan approved with 'autopilot' on the proposed web-frontend scope).",
+    "Technology (Vite + React + TypeScript built to static assets and served by nginx:alpine, wired into Docker Compose) sits within the owner-approved React/Vite frontend toolchain in docs/ARCHITECTURE.md and the future static-host plan. The one base image outside the npm toolchain is nginx:alpine, a tiny ubiquitous multi-arch static server, not a managed-cloud service or app dependency. No new heavyweight dependency or managed-cloud service is introduced.",
+    "F002 is an epic; this contract intentionally covers only slice 3 (the web frontend). With slices 1 (api + PostgreSQL) and 2 (worker + scheduler) already merged, this completes the service topology, but F002 remains failing until the FULL epic is verified together by a fresh-context full-epic Level 2 evaluation."
   ],
-  "objective": "Add a Python worker service and scheduler service that operate a real PostgreSQL-backed job queue, wired into the existing Docker Compose stack, database, migrations, and canonical scripts, and verified live end to end. The scheduler enqueues jobs on an interval and the worker atomically claims and completes them, with database-backed liveness health checks for both non-HTTP services. The React frontend is not added in this increment.",
+  "objective": "Add apps/web, a Vite + React + TypeScript single-page application built to static assets and served by nginx, wired into the existing Docker Compose stack as the web service with a container healthcheck and depends_on api service_healthy. The app reaches the existing API health endpoint through a same-origin nginx /api/ reverse proxy and renders the live API status/version. The canonical scripts and smoke test are extended to build, test, and verify the web service live. No F003 domain data or provider adapters are added in this increment.",
   "scope": [
-    "Add apps/worker package (settings, database helpers, queue operations, heartbeat, worker loop, scheduler loop, and a health CLI) that shares the owner-approved runtime dependencies and the environment-variable configuration pattern used by apps/api.",
-    "Implement a PostgreSQL-backed job queue: the scheduler enqueues heartbeat jobs on a configurable interval; the worker claims one pending job at a time using SELECT ... FOR UPDATE SKIP LOCKED, processes it, and marks it done, incrementing attempts and recording timestamps.",
-    "Implement service liveness via python -m worker.health --service <name>: it returns exit 0 only when the named service's service_heartbeat row is fresh within a configurable threshold and the database is reachable, and exits non-zero otherwise without printing connection strings or credentials.",
-    "Add apps/worker/Dockerfile, entrypoint scripts, a pinned apps/worker/requirements.txt used by the image, and apps/worker/README.md.",
-    "Add an Alembic migration 0002_worker_queue creating the job_queue and service_heartbeat infrastructure tables; it must apply cleanly from an empty database to head and its downgrade must drop both tables. These are queue/heartbeat infrastructure for the worker scaffold, not the F003 catalogue/evidence/Z0 domain model.",
-    "Enable worker and scheduler services in docker-compose.yml with database-backed health checks and depends_on postgres service_healthy ordering; the web frontend remains documented as deferred.",
-    "Extend scripts/stack-smoke.ps1 and scripts/stack-smoke.sh to assert worker and scheduler are healthy, at least one job was enqueued and processed to done, and both heartbeats are fresh, in addition to the existing API/database/migration checks.",
-    "Add pytest unit tests for pure queue-state transitions, heartbeat freshness, and claim-SQL construction that do not require a live database, and extend the requirements-sync test to cover apps/worker/requirements.txt.",
-    "Add worker runtime environment variable names to .env.example with placeholder or non-secret local defaults only."
+    "Add a self-contained apps/web Vite + React + TypeScript app: package.json (own deps), vite.config.ts, a separate vitest.config.ts, tsconfig*.json, index.html, src/ sources, an offline vitest unit test with mocked fetch, and its own eslint/prettier config.",
+    "Render a minimal FreeTier Atlas landing view with a live API status panel that fetches /api/health and shows ok/version or an error state (real integration through the proxy seam, no fake success path).",
+    "Add apps/web/Dockerfile (multi-stage: node:20-alpine build via npm ci -> nginx:1.27-alpine runtime) with a portable NPM_REGISTRY build arg defaulting to the public npm registry, and apps/web/nginx.conf (SPA fallback, /healthz liveness, /api/ reverse proxy to api:8000).",
+    "Keep the committed apps/web/package-lock.json pinned to public registry.npmjs.org URLs so it is portable; environments that mirror or block the public registry override the registry via user npmrc (host) or the NPM_REGISTRY build arg (image) without changing the lockfile.",
+    "Enable the web service in docker-compose.yml (build context ./apps/web, WEB_PORT:80 host mapping, wget /healthz healthcheck, depends_on api service_healthy, restart unless-stopped) replacing the commented deferred block.",
+    "Extend scripts/stack-smoke.ps1 and scripts/stack-smoke.sh with three checks: the web container is healthy, GET / returns 200 HTML containing the SPA root element, and GET /api/health through the web container returns 200 with status ok, in addition to all existing API/database/migration/worker/scheduler checks.",
+    "Add WEB_PORT and NPM_REGISTRY (non-secret, public default) to .env.example, ignore apps/web in the root eslint and prettier config, and wire scripts/bootstrap-dev.{ps1,sh} (install apps/web deps) and scripts/test.{ps1,sh} (web unit tests + build, guarded/graceful when node or deps are absent).",
+    "Update docs/LOCAL_DEVELOPMENT.md to document the web service, WEB_PORT, the /api proxy, and the registry-override guidance (light touch)."
   ],
   "out_of_scope": [
-    "React frontend / static web application and its Docker image, static serving, and end-to-end tooling (F002 later slice).",
-    "Catalogue/offer/evidence/region domain model, immutable offer versions, evidence history, and Z0 classification (F003+).",
-    "Real source adapters, extraction, verification, and publication logic (F004+); the queued job is a no-op heartbeat, not a real scan.",
-    "Any external network access from tests, scripts, or application code, and any use of secrets in CI.",
-    "Adding a new runtime, framework, message broker, or managed-cloud dependency.",
+    "Catalogue/offer/evidence/region/quota domain model and real API domain routes; the app shows only the health seam (F003+).",
+    "Provider adapters, extraction, verification, and Z0 classification (F004+).",
+    "Public Z0 hosting, static-host split, or GitHub Pages mirror (F009/F015).",
+    "Real product UI (catalogue, adviser, comparison, ZIP generator) and Playwright/e2e browser automation (F006/F008/F012 and a later catalogue-experience slice).",
+    "Adding a new runtime, framework, or managed-cloud dependency, or any heavyweight dependency beyond the React/Vite toolchain (+ the nginx:alpine static-server base image).",
     "Merging the pull request, tagging a release, marking F002 passing, or proceeding to the next feature."
   ],
   "acceptance_criteria": [
-    "docker compose config --services returns exactly postgres, api, worker, and scheduler; worker and scheduler define health checks and depend on postgres service_healthy.",
-    "Alembic migration 0002_worker_queue creates job_queue and service_heartbeat, applies from an empty database to head, and its downgrade drops both tables.",
-    "After scripts/stack-up, the scheduler enqueues at least one job and the worker moves at least one job to status='done'; service_heartbeat contains fresh rows for both the worker and scheduler services.",
-    "docker compose ps reports the worker and scheduler containers as healthy.",
-    "A live run of scripts/stack-smoke asserts worker and scheduler health, a processed job, and fresh heartbeats in addition to the existing API/database/migration checks, and passes.",
-    "Stopping and restarting the stack (stack-down without volumes, then stack-up) leaves the database and migrations intact, stack-smoke passes again, and no duplicate service_heartbeat rows are created.",
-    "With PostgreSQL stopped, the worker and scheduler health commands exit non-zero (containers become unhealthy) and recover after PostgreSQL restarts; the health output leaks no connection string or credential.",
-    "scripts/test and scripts/check.ps1 -NodeAudit remain green; the requirements-sync test covers apps/worker/requirements.txt and fails on drift.",
-    "A fresh independent Level 2 evaluator records adversarial end-to-end results (compose services, migrations, live enqueue/process, heartbeats, health, negative database-down, restart, fresh-volume, regression) in agent-state/evaluation.json before F002 is considered for any status change.",
-    "No secrets are printed or committed; the secret-scan check remains green; .env.example contains only variable names and non-secret local defaults; no unsupported free-tier or Z0 claim is introduced."
+    "docker compose config --services returns exactly postgres, api, worker, scheduler, and web; web defines a healthcheck and depends on api service_healthy.",
+    "apps/web builds and passes offline: npm ci then npm run build produces dist/index.html, and npm run lint and npm run test (vitest) pass without network access.",
+    "After scripts/stack-up, docker compose ps reports the web container healthy.",
+    "GET http://localhost:${WEB_PORT}/ returns 200 and HTML containing the SPA root element.",
+    "GET http://localhost:${WEB_PORT}/api/health returns 200 with status=ok, proving the nginx /api/ proxy reaches the api service.",
+    "A live run of scripts/stack-smoke.{ps1,sh} asserts web-healthy, web-serving, and proxied /api/health in addition to all existing API/database/migration/worker/scheduler checks, and passes.",
+    "Stopping and restarting the stack (stack-down without volumes, then stack-up) leaves the stack healthy and stack-smoke passes again.",
+    "scripts/test and scripts/check.ps1 -NodeAudit remain green; the root Python/Node checks are unaffected and web tests/build pass where deps are present.",
+    "No secrets are printed or committed; the secret-scan check remains green; .env.example gains only WEB_PORT and a non-secret public NPM_REGISTRY default; the committed lockfile contains no internal-feed URLs; no unsupported free-tier or Z0 claim is introduced.",
+    "A fresh independent Level 2 evaluator records adversarial end-to-end results (compose topology, web build, live serve, proxied API seam, container health, restart, regression, and a negative api-down case) in agent-state/evaluation.json before F002 is considered for any status change."
   ],
   "verification_plan": {
     "baseline_commands": [
@@ -61,26 +60,26 @@
       "pwsh -File scripts/stack-down.ps1"
     ],
     "end_to_end_steps": [
-      "Re-run scripts/stack-up and scripts/stack-smoke on the branch to confirm the slice-1 baseline is green before new work.",
-      "Run scripts/test and scripts/check.ps1 -NodeAudit and confirm the suite passes.",
-      "Run scripts/stack-up, then scripts/stack-smoke, and confirm the worker/scheduler are healthy, at least one job reached done, and heartbeats are fresh.",
-      "Stop PostgreSQL and confirm the worker/scheduler health commands exit non-zero and the containers report unhealthy; restart PostgreSQL and confirm recovery.",
-      "Run scripts/stack-down (without volumes) then scripts/stack-up again and confirm stack-smoke still passes with data intact and no duplicate heartbeat rows.",
-      "Drop the database volume, restart from empty, and confirm migrations apply and stack-smoke passes."
+      "Re-run scripts/stack-up and scripts/stack-smoke on the branch to confirm the slices 1+2 baseline is green before new work.",
+      "Build and test the web app in isolation: npm ci, npm run lint, npm run test, npm run build in apps/web, and confirm dist/index.html is produced.",
+      "Run scripts/test and scripts/check.ps1 -NodeAudit and confirm the suite passes (including the guarded web tests + build).",
+      "Run scripts/stack-up, then scripts/stack-smoke, and confirm the web container is healthy, serves the SPA on WEB_PORT, and proxies /api/health to the api service.",
+      "Run scripts/stack-down (without volumes) then scripts/stack-up again and confirm stack-smoke still passes.",
+      "Stop the api service and confirm the web container keeps serving / while /api/health returns a non-200 through the proxy, demonstrating the seam is real and not mocked."
     ],
     "negative_tests": [
-      "With PostgreSQL stopped, python -m worker.health --service worker and --service scheduler must exit non-zero with an actionable, credential-free message.",
-      "A drift between pyproject.toml runtime pins and apps/worker/requirements.txt must fail the sync test.",
-      "A job that raises during processing must be recorded as failed (or retried per policy) rather than silently marked done."
+      "With the api service stopped, GET /api/health through the web container must return a non-200 (proxy fail-through) while GET / still returns the SPA.",
+      "npm run test and npm run build must succeed with no network access (offline), proving the unit test mocks fetch and the build has no runtime API dependency.",
+      "The committed package-lock.json must contain no internal-feed hostnames (only public registry.npmjs.org URLs), keeping the repository portable."
     ]
   },
   "risks": {
-    "data_migration": "Migration 0002 adds job_queue and service_heartbeat infrastructure tables only; the real domain model remains F003. Migrations must apply cleanly from an empty database and be reversible.",
-    "security_privacy": "Worker/scheduler and the health CLI must not print secrets, connection strings, or full environment dumps. .env.example holds names and non-secret local defaults only.",
-    "portability": "Scripts must run on Windows PowerShell 7 and POSIX shells and resolve the repository root from their own path. The worker image targets linux and remains multi-architecture compatible.",
-    "zero_cost_safety": "The worker/scheduler run entirely locally via Docker Compose; no hosting, paid dependency, or free-tier/Z0 claim is introduced.",
-    "regression": "New services and the queue migration must not break the F001/slice-1 check suite; the queue is implemented with plain SQL and shared runtime pins, adding no new dependency.",
-    "concurrency": "The worker claim uses SELECT ... FOR UPDATE SKIP LOCKED so multiple workers cannot double-process a job; the smoke test verifies at-least-once processing to done."
+    "data_migration": "This slice adds no database migration; it is a stateless static frontend and touches no schema. The existing migrations remain the source of truth.",
+    "security_privacy": "The frontend ships only static assets; no secrets are embedded at build time. nginx exposes only /, /healthz, and the /api/ proxy. .env.example holds only non-secret names/defaults, and the committed lockfile uses public URLs with no internal infrastructure leaked.",
+    "portability": "Scripts run on Windows PowerShell 7 and POSIX shells and resolve the repo root from their own path. The image is node:20-alpine + nginx:alpine (multi-arch). The lockfile is public-registry portable; registry mirrors are an opt-in override, not a requirement.",
+    "zero_cost_safety": "The web frontend runs entirely locally via Docker Compose; no hosting, paid dependency, or free-tier/Z0 claim is introduced. It surfaces only the health seam.",
+    "regression": "apps/web is self-contained (own tooling); the root eslint/prettier ignore it so F001 root-check semantics are unchanged. Script web steps are guarded and skip gracefully when node/deps are absent, never faking a pass.",
+    "supply_chain": "npm supply-chain exposure is reduced: dev dependencies are pinned via package-lock.json, transitive nested vite/esbuild are deduped to patched versions via an npm override, vitest is pinned to a fixed release, npm audit reports zero vulnerabilities, and no brand-new (quarantined) package versions are required."
   },
   "required_evaluation_level": 2,
   "contract_review": {
@@ -88,7 +87,7 @@
     "reviewer": "owner",
     "disposition": "approved",
     "notes": [
-      "Owner approved the slice-2 scope (worker + scheduler backed by a PostgreSQL job queue) in the current session; the React frontend is deferred to a later slice. The F002 feature-ledger acceptance steps are unchanged and F002 will not be marked passing by this increment."
+      "Owner approved the slice-3 scope (React frontend served by nginx and wired into the Compose stack, reusing the api /health seam) in the current session; domain data and adapters are deferred. The F002 feature-ledger acceptance steps are unchanged and F002 will not be marked passing by this increment; the full epic requires a fresh-context full-epic Level 2 evaluation."
     ]
   }
 }

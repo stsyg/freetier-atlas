@@ -54,6 +54,12 @@ fi
 echo "==> Installing Node dev dependencies (npm install)"
 npm install
 
+WEB_DIR="${REPO_ROOT}/apps/web"
+if [[ -f "${WEB_DIR}/package.json" ]]; then
+  echo "==> Installing web frontend dependencies (apps/web)"
+  ( cd "${WEB_DIR}" && npm install )
+fi
+
 echo ""
 echo "BOOTSTRAP COMPLETE"
 echo "Next: scripts/test.sh to run tests, or scripts/stack-up.sh to start the stack."

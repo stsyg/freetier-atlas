@@ -5,6 +5,9 @@ dist/
 build/
 coverage/
 
+# Self-contained web frontend (own eslint/prettier tooling in apps/web)
+apps/web/
+
 # Licence and generated files
 LICENSE
 NOTICE

@@ -21,6 +21,7 @@ $RepoRoot = Split-Path -Parent $PSScriptRoot
 Set-Location $RepoRoot
 
 $apiPort = if ($env:API_PORT) { $env:API_PORT } else { "8000" }
+$webPort = if ($env:WEB_PORT) { $env:WEB_PORT } else { "8080" }
 $pgUser = if ($env:POSTGRES_USER) { $env:POSTGRES_USER } else { "atlas" }
 $pgDb = if ($env:POSTGRES_DB) { $env:POSTGRES_DB } else { "atlas" }
 
@@ -107,6 +108,23 @@ Invoke-SmokeCheck "Queue processed (>=1 job reached done)" {
 Invoke-SmokeCheck "Heartbeats fresh (worker + scheduler)" {
     $n = Invoke-Psql "SELECT count(*) FROM service_heartbeat WHERE service IN ('worker','scheduler') AND last_beat_at > now() - interval '60 seconds'"
     if ([int]$n -ne 2) { throw "expected 2 fresh heartbeats, got '$n'" }
+}
+
+Invoke-SmokeCheck "Web container healthy" {
+    Wait-Until -TimeoutSeconds 90 -Condition { (Get-ContainerHealth "web") -eq "healthy" }
+}
+
+Invoke-SmokeCheck "Web serves SPA (GET / = 200 HTML with #root)" {
+    $resp = Invoke-WebRequest -Uri "http://localhost:$webPort/" -UseBasicParsing -TimeoutSec 5
+    if ($resp.StatusCode -ne 200) { throw "status $($resp.StatusCode)" }
+    if ($resp.Content -notmatch 'id="root"') { throw "root element not found in served HTML" }
+}
+
+Invoke-SmokeCheck "Web proxies API (GET /api/health = 200, status ok)" {
+    $resp = Invoke-WebRequest -Uri "http://localhost:$webPort/api/health" -UseBasicParsing -TimeoutSec 5
+    if ($resp.StatusCode -ne 200) { throw "status $($resp.StatusCode)" }
+    $body = $resp.Content | ConvertFrom-Json
+    if ($body.status -ne "ok") { throw "unexpected status '$($body.status)'" }
 }
 
 Write-Host ""

@@ -1,8 +1,8 @@
 # FreeTier Atlas — local development stack.
 #
-# Slice 1 brought up PostgreSQL and the FastAPI API. Slice 2 adds the worker and
-# scheduler services (a PostgreSQL-backed job queue). The React web frontend is
-# still deferred (see the commented block at the end of this file).
+# Slice 1 brought up PostgreSQL and the FastAPI API. Slice 2 added the worker and
+# scheduler services (a PostgreSQL-backed job queue). Slice 3 adds the React web
+# frontend (nginx-served static build, reverse-proxying /api/ to the api service).
 #
 # Values are sourced from a local .env file (copy .env.example -> .env). The
 # defaults are non-secret local development values and MUST NOT be used in any
@@ -88,13 +88,24 @@ services:
       start_period: 30s
     restart: unless-stopped
 
+  web:
+    build:
+      context: ./apps/web
+      dockerfile: Dockerfile
+      args:
+        NPM_REGISTRY: ${NPM_REGISTRY:-https://registry.npmjs.org/}
+    ports:
+      - "${WEB_PORT:-8080}:80"
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://127.0.0.1/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+
 volumes:
   atlas_pgdata:
-# --- Deferred to a later F002 slice (do not enable without an owner checkpoint) ---
-#   web:
-#     build:
-#       context: .
-#       dockerfile: apps/web/Dockerfile
-#     depends_on:
-#       api:
-#         condition: service_healthy
