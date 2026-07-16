@@ -65,8 +65,8 @@ indent-style = "space"
 minversion = "8.0"
 testpaths = ["tests"]
 addopts = "-ra"
-# Make the API package importable in tests without requiring an editable install.
-pythonpath = ["apps/api"]
+# Make the application packages importable in tests without an editable install.
+pythonpath = ["apps/api", "apps/worker"]
 markers = [
   "integration: tests that require the live Docker Compose stack (run by scripts/stack-smoke).",
 ]
