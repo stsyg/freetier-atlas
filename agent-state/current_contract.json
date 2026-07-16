@@ -2,53 +2,53 @@
   "schema_version": 1,
   "status": "approved",
   "feature_id": "F002",
-  "increment": "slice-1-dev-env-and-minimal-vertical",
+  "increment": "slice-2-worker-and-scheduler",
   "builder": "Copilot CLI (Chief)",
   "evaluator": "fresh independent evaluator",
-  "approved_at": "2026-07-15T00:00:00Z",
+  "approved_at": "2026-07-16T00:00:00Z",
   "approval_notes": [
-    "Owner approved starting F002 with the dev-environment groundwork plus a minimal, live-verified API/PostgreSQL/health vertical slice (prompt: 'do it' on the proposed slice-1 scope).",
-    "Technology (FastAPI, SQLAlchemy, Alembic, PostgreSQL, Docker Compose, psycopg, pydantic-settings) is the owner-approved F002 baseline in docs/ARCHITECTURE.md, ADR 0004, and CODEX_TASKS.md task 002, not a new dependency requiring fresh approval.",
-    "F002 is an epic; this contract intentionally covers only slice 1. Worker, scheduler, and the React frontend are out of scope for this increment and require an owner checkpoint before slice 2. F002 remains failing until the full stack and Level 2 evaluation land."
+    "Owner approved starting F002 slice 2 scoped to the Python worker service + scheduler service backed by a real PostgreSQL job queue, wired into the existing Docker Compose stack and canonical scripts. The React frontend is explicitly deferred to a later slice (prompt: plan approved with 'autopilot' on the proposed worker+scheduler scope).",
+    "Technology (FastAPI/SQLAlchemy/Alembic/PostgreSQL/Docker Compose/psycopg/pydantic-settings) is the owner-approved F002 baseline in docs/ARCHITECTURE.md, ADR 0004, and CODEX_TASKS.md task 002. No new runtime, framework, queue library, or managed-cloud dependency is introduced; the queue is the architecture's PostgreSQL-backed queue implemented with plain SQL.",
+    "F002 is an epic; this contract intentionally covers only slice 2 (worker + scheduler). The React frontend, domain model, adapters, and Z0 classification remain out of scope and require their own increments. F002 remains failing until the full stack and its Level 2 evaluation land."
   ],
-  "objective": "Establish repository-owned development-environment documentation and commands, and a minimal but real vertical (FastAPI API + PostgreSQL + Alembic migrations) that starts through one canonical script and is verified live end to end, without adding the worker, scheduler, or frontend yet.",
+  "objective": "Add a Python worker service and scheduler service that operate a real PostgreSQL-backed job queue, wired into the existing Docker Compose stack, database, migrations, and canonical scripts, and verified live end to end. The scheduler enqueues jobs on an interval and the worker atomically claims and completes them, with database-backed liveness health checks for both non-HTTP services. The React frontend is not added in this increment.",
   "scope": [
-    "Add docs/LOCAL_DEVELOPMENT.md and docs/CODEX_ENVIRONMENT.md describing the canonical bootstrap, stack, test, and teardown commands and required runtimes.",
-    "Add scripts/check-env.ps1 and scripts/check-env.sh that verify Docker, Node, and Python are available and fail actionably when missing, without printing secrets or full environment dumps.",
-    "Add scripts/bootstrap-dev.ps1 and scripts/bootstrap-dev.sh that create the Python .venv, install dev and runtime dependencies, and install Node dev dependencies.",
-    "Add scripts/test.ps1 and scripts/test.sh that run the pytest suite and delegate to the existing check workflow rather than duplicating hard-coded setup.",
-    "Add apps/api: a FastAPI application exposing GET /health (liveness) and GET /health/ready (executes SELECT 1 against PostgreSQL and returns 503 when the database is unreachable), Pydantic settings that read configuration from environment variable names, a Dockerfile, and a README.",
-    "Add docker-compose.yml defining postgres and api services with health checks and dependency ordering; web, worker, and scheduler are documented as deferred to slice 2.",
-    "Add Alembic configuration (alembic.ini, migrations/env.py, migrations/script.py.mako) and a baseline migration that creates a scaffold app_meta table; the domain model remains F003.",
-    "Add .env.example listing required environment variable names with placeholder values only.",
-    "Add runtime dependencies to pyproject.toml and a pinned apps/api/requirements.txt used by the Docker image, kept in sync by a test.",
-    "Add scripts/stack-up, scripts/stack-down, and scripts/stack-smoke (.ps1 and .sh) to build and start the stack, verify live health and database connectivity and applied migrations, and tear the stack down.",
-    "Add pytest unit tests for the API health endpoints and a test asserting the runtime dependency pins stay in sync between pyproject.toml and apps/api/requirements.txt."
+    "Add apps/worker package (settings, database helpers, queue operations, heartbeat, worker loop, scheduler loop, and a health CLI) that shares the owner-approved runtime dependencies and the environment-variable configuration pattern used by apps/api.",
+    "Implement a PostgreSQL-backed job queue: the scheduler enqueues heartbeat jobs on a configurable interval; the worker claims one pending job at a time using SELECT ... FOR UPDATE SKIP LOCKED, processes it, and marks it done, incrementing attempts and recording timestamps.",
+    "Implement service liveness via python -m worker.health --service <name>: it returns exit 0 only when the named service's service_heartbeat row is fresh within a configurable threshold and the database is reachable, and exits non-zero otherwise without printing connection strings or credentials.",
+    "Add apps/worker/Dockerfile, entrypoint scripts, a pinned apps/worker/requirements.txt used by the image, and apps/worker/README.md.",
+    "Add an Alembic migration 0002_worker_queue creating the job_queue and service_heartbeat infrastructure tables; it must apply cleanly from an empty database to head and its downgrade must drop both tables. These are queue/heartbeat infrastructure for the worker scaffold, not the F003 catalogue/evidence/Z0 domain model.",
+    "Enable worker and scheduler services in docker-compose.yml with database-backed health checks and depends_on postgres service_healthy ordering; the web frontend remains documented as deferred.",
+    "Extend scripts/stack-smoke.ps1 and scripts/stack-smoke.sh to assert worker and scheduler are healthy, at least one job was enqueued and processed to done, and both heartbeats are fresh, in addition to the existing API/database/migration checks.",
+    "Add pytest unit tests for pure queue-state transitions, heartbeat freshness, and claim-SQL construction that do not require a live database, and extend the requirements-sync test to cover apps/worker/requirements.txt.",
+    "Add worker runtime environment variable names to .env.example with placeholder or non-secret local defaults only."
   ],
   "out_of_scope": [
-    "Python worker and scheduler services (F002 slice 2).",
-    "React frontend / static web application (F002 slice 2).",
-    "Domain model, catalogue tables, evidence history, Z0 classification (F003+).",
-    "Configuration system beyond the minimal API settings needed to connect to PostgreSQL (F003).",
-    "Merging the pull request, tagging a release, marking F002 passing, or proceeding to F003.",
-    "Any external network access from tests or application code, and any use of secrets in CI."
+    "React frontend / static web application and its Docker image, static serving, and end-to-end tooling (F002 later slice).",
+    "Catalogue/offer/evidence/region domain model, immutable offer versions, evidence history, and Z0 classification (F003+).",
+    "Real source adapters, extraction, verification, and publication logic (F004+); the queued job is a no-op heartbeat, not a real scan.",
+    "Any external network access from tests, scripts, or application code, and any use of secrets in CI.",
+    "Adding a new runtime, framework, message broker, or managed-cloud dependency.",
+    "Merging the pull request, tagging a release, marking F002 passing, or proceeding to the next feature."
   ],
   "acceptance_criteria": [
-    "docs/LOCAL_DEVELOPMENT.md and docs/CODEX_ENVIRONMENT.md exist, are non-empty, and document the canonical bootstrap, stack-up, test, stack-smoke, and stack-down commands.",
-    "scripts/check-env resolves the repository root from its own path, reports Docker, Node, and Python availability, and exits non-zero with an actionable message when a required runtime is missing.",
-    "scripts/bootstrap-dev creates .venv, installs the project with dev extras and runtime dependencies, and installs Node dev dependencies.",
-    "scripts/test runs pytest and reports pass/fail; the existing scripts/check.ps1 suite (ruff, ruff format, pytest, prettier, eslint, secret scan, pip-audit) still passes.",
-    "docker-compose.yml starts postgres and api; the api container applies Alembic migrations to head on startup and serves /health and /health/ready.",
-    "A live run of scripts/stack-up followed by scripts/stack-smoke confirms GET /health returns 200, GET /health/ready returns 200 with the database reachable, and the baseline migration created the app_meta table.",
-    "Stopping and restarting the stack (stack-down then stack-up) leaves the database and migrations intact and stack-smoke passes again.",
-    "A fresh independent Level 2 evaluator records adversarial end-to-end results (API, database, negative readiness when DB is down, regression) in agent-state/evaluation.json before F002 is considered for any status change.",
-    "No secrets are printed or committed; the secret-scan check remains green; .env.example contains only variable names and placeholders."
+    "docker compose config --services returns exactly postgres, api, worker, and scheduler; worker and scheduler define health checks and depend on postgres service_healthy.",
+    "Alembic migration 0002_worker_queue creates job_queue and service_heartbeat, applies from an empty database to head, and its downgrade drops both tables.",
+    "After scripts/stack-up, the scheduler enqueues at least one job and the worker moves at least one job to status='done'; service_heartbeat contains fresh rows for both the worker and scheduler services.",
+    "docker compose ps reports the worker and scheduler containers as healthy.",
+    "A live run of scripts/stack-smoke asserts worker and scheduler health, a processed job, and fresh heartbeats in addition to the existing API/database/migration checks, and passes.",
+    "Stopping and restarting the stack (stack-down without volumes, then stack-up) leaves the database and migrations intact, stack-smoke passes again, and no duplicate service_heartbeat rows are created.",
+    "With PostgreSQL stopped, the worker and scheduler health commands exit non-zero (containers become unhealthy) and recover after PostgreSQL restarts; the health output leaks no connection string or credential.",
+    "scripts/test and scripts/check.ps1 -NodeAudit remain green; the requirements-sync test covers apps/worker/requirements.txt and fails on drift.",
+    "A fresh independent Level 2 evaluator records adversarial end-to-end results (compose services, migrations, live enqueue/process, heartbeats, health, negative database-down, restart, fresh-volume, regression) in agent-state/evaluation.json before F002 is considered for any status change.",
+    "No secrets are printed or committed; the secret-scan check remains green; .env.example contains only variable names and non-secret local defaults; no unsupported free-tier or Z0 claim is introduced."
   ],
   "verification_plan": {
     "baseline_commands": [
       "git status --short --branch",
       "git log --oneline -20",
-      "pwsh -File scripts/check-env.ps1"
+      "pwsh -File scripts/stack-up.ps1",
+      "pwsh -File scripts/stack-smoke.ps1"
     ],
     "unit_commands": [
       "pwsh -File scripts/bootstrap-dev.ps1",
@@ -61,24 +61,26 @@
       "pwsh -File scripts/stack-down.ps1"
     ],
     "end_to_end_steps": [
-      "Run scripts/check-env and confirm Docker, Node, and Python are reported available.",
-      "Run scripts/bootstrap-dev and scripts/test and confirm the pytest suite passes.",
-      "Run scripts/stack-up, then scripts/stack-smoke, and confirm live /health is 200, /health/ready is 200, and the app_meta table exists.",
-      "Stop the api container (or the database) and confirm /health/ready returns 503 while /health stays 200.",
-      "Run scripts/stack-down then scripts/stack-up again and confirm stack-smoke still passes with data intact."
+      "Re-run scripts/stack-up and scripts/stack-smoke on the branch to confirm the slice-1 baseline is green before new work.",
+      "Run scripts/test and scripts/check.ps1 -NodeAudit and confirm the suite passes.",
+      "Run scripts/stack-up, then scripts/stack-smoke, and confirm the worker/scheduler are healthy, at least one job reached done, and heartbeats are fresh.",
+      "Stop PostgreSQL and confirm the worker/scheduler health commands exit non-zero and the containers report unhealthy; restart PostgreSQL and confirm recovery.",
+      "Run scripts/stack-down (without volumes) then scripts/stack-up again and confirm stack-smoke still passes with data intact and no duplicate heartbeat rows.",
+      "Drop the database volume, restart from empty, and confirm migrations apply and stack-smoke passes."
     ],
     "negative_tests": [
-      "With PostgreSQL stopped, GET /health/ready must return 503 with an actionable body and GET /health must still return 200.",
-      "scripts/check-env must exit non-zero with an actionable message when a required runtime is simulated missing.",
-      "A drift between pyproject.toml runtime pins and apps/api/requirements.txt must fail the sync test."
+      "With PostgreSQL stopped, python -m worker.health --service worker and --service scheduler must exit non-zero with an actionable, credential-free message.",
+      "A drift between pyproject.toml runtime pins and apps/worker/requirements.txt must fail the sync test.",
+      "A job that raises during processing must be recorded as failed (or retried per policy) rather than silently marked done."
     ]
   },
   "risks": {
-    "data_migration": "Alembic baseline creates only a scaffold app_meta table; the real domain model arrives in F003. Migrations must apply cleanly from an empty database and be idempotent to head.",
-    "security_privacy": "Scripts must not print secrets or full environment dumps. .env.example holds names and placeholders only. The database password default is a non-secret local development value documented as such and never used in production.",
-    "portability": "Scripts must run on Windows PowerShell 7 and POSIX shells and resolve the repository root from their own path. Docker images target linux and remain multi-architecture compatible.",
-    "zero_cost_safety": "The scaffold runs entirely locally via Docker Compose; no hosting, paid dependency, or free-tier/Z0 claim is introduced.",
-    "regression": "Runtime dependencies are added without breaking the F001 check suite; migrations and app code live outside the paths formatters curate for docs and agent-state."
+    "data_migration": "Migration 0002 adds job_queue and service_heartbeat infrastructure tables only; the real domain model remains F003. Migrations must apply cleanly from an empty database and be reversible.",
+    "security_privacy": "Worker/scheduler and the health CLI must not print secrets, connection strings, or full environment dumps. .env.example holds names and non-secret local defaults only.",
+    "portability": "Scripts must run on Windows PowerShell 7 and POSIX shells and resolve the repository root from their own path. The worker image targets linux and remains multi-architecture compatible.",
+    "zero_cost_safety": "The worker/scheduler run entirely locally via Docker Compose; no hosting, paid dependency, or free-tier/Z0 claim is introduced.",
+    "regression": "New services and the queue migration must not break the F001/slice-1 check suite; the queue is implemented with plain SQL and shared runtime pins, adding no new dependency.",
+    "concurrency": "The worker claim uses SELECT ... FOR UPDATE SKIP LOCKED so multiple workers cannot double-process a job; the smoke test verifies at-least-once processing to done."
   },
   "required_evaluation_level": 2,
   "contract_review": {
@@ -86,7 +88,7 @@
     "reviewer": "owner",
     "disposition": "approved",
     "notes": [
-      "Owner approved the slice-1 scope in the current prompt. Scope is bounded to the dev-environment groundwork and a minimal API/PostgreSQL/health vertical; the F002 feature-ledger acceptance steps are unchanged and F002 will not be marked passing by this increment."
+      "Owner approved the slice-2 scope (worker + scheduler backed by a PostgreSQL job queue) in the current session; the React frontend is deferred to a later slice. The F002 feature-ledger acceptance steps are unchanged and F002 will not be marked passing by this increment."
     ]
   }
 }

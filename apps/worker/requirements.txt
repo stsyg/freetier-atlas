@@ -1,0 +1,7 @@
+# Runtime dependencies for the FreeTier Atlas worker/scheduler image.
+# Every pin MUST match the corresponding pin in [project.dependencies] in
+# pyproject.toml (enforced by tests/unit/test_requirements_sync.py). The worker
+# uses a subset of the API's runtime dependencies (no FastAPI/uvicorn/Alembic).
+sqlalchemy==2.0.36
+psycopg[binary]==3.2.3
+pydantic-settings==2.7.0

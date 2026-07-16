@@ -1,212 +1,203 @@
 {
   "schema_version": 1,
   "feature_id": "F002",
-  "increment": "slice-1-dev-env-and-minimal-vertical",
-  "implementation_commit": "a09a5c3c12d23c11e08c0a082daa93a34786e0a4",
+  "increment": "slice-2-worker-scheduler",
+  "implementation_commit": "219760b8bd6c2cbcce73c314a3f3bd34b200ed9d",
   "evaluator": "fresh independent evaluator",
-  "evaluated_at": "2026-07-15T20:24:00Z",
+  "evaluated_at": "2026-07-16T21:24:04Z",
   "evaluation_level": 2,
   "criteria": [
     {
-      "name": "static_docs_scaffold_and_compose",
+      "name": "startup_ritual_clean_tree_at_commit",
       "required": true,
       "result": "pass",
       "passed": true,
       "evidence": [
-        "docs\\LOCAL_DEVELOPMENT.md length=3517 and docs\\CODEX_ENVIRONMENT.md length=2709; both document check-env, bootstrap-dev, test/check, stack-up, stack-smoke, and stack-down commands.",
-        ".env.example length=745; it contains local-development placeholders/defaults only (POSTGRES_USER=atlas, POSTGRES_PASSWORD=atlas, POSTGRES_DB=atlas, DATABASE_URL=postgresql+psycopg://atlas:atlas@postgres:5432/atlas) with comments stating these are NON-SECRET local development defaults and not production credentials.",
-        "apps\\api\\app\\main.py length=2206, apps\\api\\Dockerfile length=956, alembic.ini length=798, migrations\\versions\\0001_scaffold_baseline.py length=1396, docker-compose.yml length=2245.",
-        "docker compose config --services returned exactly: postgres, api.",
-        "apps\\web exists=False, apps\\worker exists=False, apps\\scheduler exists=False; docker-compose.yml has web/worker/scheduler only in a commented deferred block."
+        "git status --short --branch returned only '## stsyg-glowing-waffle...origin/stsyg-glowing-waffle' (clean working tree).",
+        "git --no-pager log --oneline -10 top entry: '219760b feat(worker): add worker + scheduler with PostgreSQL job queue (F002 slice 2)' over '6049e7f F002 slice 1 ...'.",
+        "git rev-parse HEAD returned 219760b8bd6c2cbcce73c314a3f3bd34b200ed9d, matching the implementation commit under test.",
+        "Read agent-state/current_contract.json (F002 slice-2, required_evaluation_level 2, approved), feature_list.json (F002 passes=false), progress.md tail (Builder slice-2 entry), docker-compose.yml, migrations/versions/0002_worker_queue.py, and all apps/worker sources before grading."
       ],
       "failures": []
     },
     {
-      "name": "check_env_runtime_detection",
+      "name": "service_topology_healthchecks_and_ordering",
       "required": true,
       "result": "pass",
       "passed": true,
       "evidence": [
-        "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts\\check-env.ps1 from repo root exited 0 and printed Docker 29.1.4-rd, Node.js v24.11.0, npm 11.6.1, Python 3.13.14, Docker daemon reachable, and ENVIRONMENT CHECK PASSED.",
-        "Invoking the script by absolute path from C:\\ exited 0 and still printed Repository root: C:\\Users\\sergiyt\\.copilot\\repos\\copilot-worktrees\\freetier-atlas\\stsyg-glowing-broccoli.",
-        "Simulated missing runtime with empty PATH exited 1 and printed actionable messages for Docker, Node.js, npm, and Python, ending ENVIRONMENT CHECK FAILED: missing Docker, Node.js, npm, Python.",
-        "Static inspection: scripts\\check-env.ps1 sets $RepoRoot = Split-Path -Parent $PSScriptRoot and Set-Location $RepoRoot."
+        "docker compose config --services returned exactly: postgres, api, scheduler, worker.",
+        "docker-compose.yml worker service: command python -m worker.main; healthcheck test [CMD, python, -m, worker.health, --service, worker] (interval 10s, timeout 10s, retries 5, start_period 30s); depends_on postgres condition: service_healthy.",
+        "docker-compose.yml scheduler service: command python -m worker.scheduler; healthcheck test [CMD, python, -m, worker.health, --service, scheduler] (interval 10s, retries 5, start_period 30s); depends_on postgres condition: service_healthy.",
+        "The web (React) frontend remains only in a commented '--- Deferred to a later F002 slice ---' block; no apps/web service is defined."
       ],
       "failures": []
     },
     {
-      "name": "bootstrap_and_test_regression",
+      "name": "static_scope_review_no_frontend_domain_or_new_deps",
       "required": true,
       "result": "pass",
       "passed": true,
       "evidence": [
-        "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts\\bootstrap-dev.ps1 exited 0; it reused .venv, installed the Python project editable with dev/runtime dependencies, ran npm install, and ended BOOTSTRAP COMPLETE.",
-        "Static inspection of scripts\\bootstrap-dev.ps1 shows it creates .venv when .venv\\Scripts\\python.exe is absent, runs pip install -e .[dev], and runs npm install.",
-        "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts\\test.ps1 exited 0; pytest collected 27 items and reported 25 passed, 2 skipped, TESTS PASSED.",
-        "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts\\check.ps1 -NodeAudit exited 0 and ended ALL CHECKS PASSED.",
-        "check.ps1 reported PASS for Ruff lint, Ruff format check, Pytest, Prettier check, ESLint, Secret scan, Python dependency audit, and Node dependency audit; pytest reported 25 passed, 2 skipped; pip-audit reported no known vulnerabilities; npm audit found 0 vulnerabilities."
+        "git --no-pager diff main...HEAD --stat: 23 files changed, 1098 insertions(+), 78 deletions(-), limited to .env.example, agent-state contract/progress, apps/worker/** (new), docker-compose.yml, migrations/versions/0002_worker_queue.py, pyproject.toml, scripts/stack-smoke.{ps1,sh}, tests/unit/test_requirements_sync.py, tests/unit/test_worker_queue.py.",
+        "Directory probe: apps\\web exists=False, apps\\scheduler exists=False (scheduler runs from the shared apps/worker image), domain exists=False, catalogue exists=False, apps\\api\\app\\domain exists=False. No catalogue/offer/evidence/region/quota/adapter code present.",
+        "apps/worker/requirements.txt pins (sqlalchemy==2.0.36, psycopg[binary]==3.2.3, pydantic-settings==2.7.0) are a strict subset of pyproject.toml [project.dependencies]; no new runtime framework, message broker, or managed-cloud dependency added. The queue is plain SQL (FOR UPDATE SKIP LOCKED / ON CONFLICT upsert).",
+        "Diff scan for '\\bfree\\b|\\bZ0\\b|zero-cost|$0' found only scoping/out-of-scope statements (e.g. 'no ... free-tier/Z0 claim is introduced', 'Z0 classification remain out of scope'); no unsupported service-is-free or Z0 claim was introduced."
       ],
       "failures": []
     },
     {
-      "name": "live_stack_smoke_and_database",
+      "name": "regression_check_and_test_suites_green",
       "required": true,
       "result": "pass",
       "passed": true,
       "evidence": [
-        "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts\\stack-up.ps1 exited 0; docker compose built the API image, started postgres and api, postgres became Healthy, and the script ended STACK UP: API is live at http://localhost:8000/health.",
-        "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts\\stack-smoke.ps1 exited 0 and ended STACK SMOKE PASSED after PASS results for API liveness, API readiness, and Migration applied.",
-        "Independent GET /health returned status 200 body {\"status\":\"ok\",\"service\":\"FreeTier Atlas API\",\"version\":\"0.1.0.dev0\",\"environment\":\"development\"}.",
-        "Independent GET /health/ready returned status 200 body {\"status\":\"ready\",\"checks\":{\"database\":\"ok\"}}.",
-        "docker compose exec -T postgres psql -U atlas -d atlas -c \"select * from app_meta;\" returned one row: scaffold_initialized | true | 2026-07-15 20:00:57.869586+00."
+        "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts\\check.ps1 -NodeAudit exited 0 and ended ALL CHECKS PASSED with PASS for Ruff lint, Ruff format check (21 files), Pytest (42 passed, 2 skipped), Prettier check, ESLint, Secret scan, Python dependency audit (no known vulnerabilities), and Node dependency audit (0 vulnerabilities).",
+        "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts\\test.ps1 exited 0: collected 44 items, 42 passed, 2 skipped (both the ATLAS_STACK_BASE_URL-gated integration tests), TESTS PASSED; tests/unit/test_worker_queue.py contributed 16 passing tests and test_requirements_sync.py 2 (including test_worker_pins_subset_of_declared).",
+        "The 2 skipped tests are the integration tests that require a live stack base URL (skipped in the offline suite), not failures."
       ],
       "failures": []
     },
     {
-      "name": "negative_readiness_when_database_down",
+      "name": "migration_0002_creates_and_reverses_tables",
       "required": true,
       "result": "pass",
       "passed": true,
       "evidence": [
-        "docker compose stop postgres exited 0.",
-        "While postgres was stopped, GET /health returned status 200 body {\"status\":\"ok\",\"service\":\"FreeTier Atlas API\",\"version\":\"0.1.0.dev0\",\"environment\":\"development\"}.",
-        "While postgres was stopped, GET /health/ready with -SkipHttpErrorCheck returned status 503 body {\"status\":\"not_ready\",\"checks\":{\"database\":\"unreachable\"},\"detail\":\"Database connectivity check failed; the API is not ready.\"}.",
-        "Leak probe against the 503 body for atlas, postgresql+psycopg://, or :// returned leak_detected=False.",
-        "docker compose start postgres exited 0, and readiness recovered to status 200 body {\"status\":\"ready\",\"checks\":{\"database\":\"ok\"}}."
+        "From a fresh volume (stack-down.ps1 -Volumes removed stsyg-glowing-waffle_atlas_pgdata, then stack-up.ps1 built images and started the stack), docker compose exec api alembic current returned 0002_worker_queue (head).",
+        "smoke check 'Worker migration applied (job_queue + service_heartbeat)' PASS; independent to_regclass returned job_queue and service_heartbeat present after fresh up.",
+        "docker compose exec api alembic downgrade -1 ran '0002_worker_queue -> 0001_scaffold_baseline'; afterwards SELECT to_regclass('public.job_queue'), to_regclass('public.service_heartbeat') returned '|' (both NULL).",
+        "docker compose exec api alembic upgrade head ran '0001_scaffold_baseline -> 0002_worker_queue'; afterwards to_regclass returned 'job_queue|service_heartbeat' and alembic current returned 0002_worker_queue (head)."
       ],
       "failures": []
     },
     {
-      "name": "persistence_and_idempotency_after_restart",
+      "name": "live_smoke_queue_processed_and_heartbeats_fresh",
       "required": true,
       "result": "pass",
       "passed": true,
       "evidence": [
-        "docker compose down without --volumes exited 0, then pwsh -File scripts\\stack-up.ps1 exited 0 and pwsh -File scripts\\stack-smoke.ps1 exited 0 with STACK SMOKE PASSED.",
-        "After restart with the named volume kept, SELECT count(*) FROM app_meta WHERE key='scaffold_initialized' AND value='true' returned 1.",
-        "After restart, docker compose exec -T postgres psql -U atlas -d atlas -c \"select * from app_meta;\" returned exactly one marker row with updated_at 2026-07-15 20:00:57.869586+00, proving data was retained and not duplicated.",
-        "docker compose exec -T api alembic current returned 0001_scaffold_baseline (head)."
+        "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts\\stack-smoke.ps1 exited 0 with STACK SMOKE PASSED across all 8 checks (API liveness, API readiness, migration applied, worker migration applied, worker healthy, scheduler healthy, queue processed >=1 done, heartbeats fresh).",
+        "Independent psql: SELECT status, count(*) FROM job_queue GROUP BY status returned 'done | 9' (>=1 job reached done).",
+        "Independent psql: SELECT service, count(*), max(last_beat_at) FROM service_heartbeat GROUP BY service returned worker (1 row, 2026-07-16 21:18:32+00) and scheduler (1 row, 2026-07-16 21:18:30+00) — one fresh row per service."
       ],
       "failures": []
     },
     {
-      "name": "live_integration_tests",
+      "name": "container_health_all_four_healthy",
       "required": true,
       "result": "pass",
       "passed": true,
       "evidence": [
-        "With ATLAS_STACK_BASE_URL=http://localhost:8000, .\\.venv\\Scripts\\python.exe -m pytest tests\\integration -m integration -v exited 0.",
-        "Integration pytest collected 2 items and passed tests/integration/test_stack_health.py::test_live_health_ok and ::test_live_readiness_ok (2 passed in 2.33s)."
+        "docker compose ps reported all four containers Up and (healthy): stsyg-glowing-waffle-api-1, -postgres-1, -scheduler-1, -worker-1.",
+        "docker inspect -f '{{.State.Health.Status}}' for each service returned worker=healthy, scheduler=healthy, api=healthy, postgres=healthy."
       ],
       "failures": []
     },
     {
-      "name": "secrets_and_configuration_safety",
+      "name": "negative_fail_closed_and_no_credential_leak",
       "required": true,
       "result": "pass",
       "passed": true,
       "evidence": [
-        "scripts\\check.ps1 -NodeAudit reported PASS: Secret scan.",
-        "Independent secret scan command $files=git ls-files -co --exclude-standard; .\\.venv\\Scripts\\detect-secrets-hook.exe --baseline .secrets.baseline @($files) exited 0.",
-        "Static inspection of .env.example, apps\\api\\app\\settings.py, and docker-compose.yml found only documented non-secret local defaults using atlas/atlas and comments warning they must not be used in production; no real credential material was found.",
-        "The 503 readiness response did not include the atlas placeholder password or any connection string."
+        "docker compose stop postgres; docker compose exec -T worker python -m worker.health --service worker printed 'database unreachable (OperationalError)' and exited 1; --service scheduler printed the same and exited 1.",
+        "Neither health message contained a connection string, the atlas password, 'postgres', or 'postgresql+psycopg://' — only the exception type name is surfaced (confirmed by inspecting the emitted lines).",
+        "After ~60s the containers flipped to unhealthy: docker inspect showed worker=unhealthy streak=5 and scheduler=unhealthy streak=5 (interval 10s x 5 retries), matching the configured healthcheck.",
+        "The worker's .State.Health.Log output lines were all 'database unreachable (OperationalError)' with no credential/connection-string leak.",
+        "Before restart worker and scheduler had RestartCount=0. docker compose start postgres; after ~45s both returned to healthy with RestartCount still 0 and unchanged StartedAt (2026-07-16T21:17:47Z) — the loops survived the outage and the containers did NOT restart."
       ],
       "failures": []
     },
     {
-      "name": "scope_discipline_and_no_unsupported_free_claims",
+      "name": "restart_persistence_and_no_duplicate_heartbeats",
       "required": true,
       "result": "pass",
       "passed": true,
       "evidence": [
-        "git --no-pager diff main...HEAD --stat reported 36 files changed, 1563 insertions(+), 56 deletions(-), limited to .env.example, agent-state contract/progress, API scaffold, Alembic/migrations, docker-compose, dev docs, scripts, pyproject, and tests.",
-        "Changed-file out-of-scope path probe found no apps/web, apps/worker, apps/scheduler, frontend, domain, catalogue, classification, provider, offer, or quota implementation paths.",
-        "docker compose config --services returned only postgres and api.",
-        "Diff search for free/Z0/zero-cost found only scoping statements such as 'no hosting, paid dependency, or free-tier/Z0 claim is introduced' and deferred Z0 classification references; no unsupported service-free or Z0 claim was introduced."
+        "pwsh scripts\\stack-down.ps1 (without -Volumes, keeping the volume) then stack-up.ps1 then stack-smoke.ps1 exited 0 with STACK SMOKE PASSED.",
+        "After restart, SELECT service, count(*) FROM service_heartbeat GROUP BY service returned worker=1 and scheduler=1 — the ON CONFLICT (service) DO UPDATE upsert produced no duplicate rows across the restart.",
+        "SELECT count(*) FROM app_meta WHERE key='scaffold_initialized' AND value='true' returned 1, confirming the database and migrations survived the restart intact."
       ],
       "failures": []
     },
     {
-      "name": "empty_database_migration_sanity",
+      "name": "cleanup_stack_left_down",
       "required": true,
       "result": "pass",
       "passed": true,
       "evidence": [
-        "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts\\stack-down.ps1 -Volumes exited 0 and removed Volume stsyg-glowing-broccoli_atlas_pgdata.",
-        "From the empty database volume, pwsh -File scripts\\stack-up.ps1 exited 0 and pwsh -File scripts\\stack-smoke.ps1 exited 0 with STACK SMOKE PASSED.",
-        "Fresh-volume SELECT count(*) FROM app_meta WHERE key='scaffold_initialized' AND value='true' returned 1; select * from app_meta returned scaffold_initialized | true | 2026-07-15 20:19:50.999281+00.",
-        "Fresh-volume docker compose exec -T api alembic current returned 0001_scaffold_baseline (head).",
-        "Final cleanup ran pwsh -NoProfile -ExecutionPolicy Bypass -File scripts\\stack-down.ps1; it exited 0 and docker compose ps --format json returned no services."
+        "Final pwsh -NoProfile -ExecutionPolicy Bypass -File scripts\\stack-down.ps1 stopped and removed all four containers and the default network and ended STACK DOWN.",
+        "docker compose ps afterwards listed no running services (header only).",
+        "git status --short --branch remained clean ('## stsyg-glowing-waffle...origin/stsyg-glowing-waffle') — no product source was modified during evaluation."
       ],
       "failures": []
     }
   ],
   "commands_run": [
-    "read C:\\Users\\sergiyt\\.copilot\\agent-state\\HARNESS.md (Harness-Version: 2026-07-02.1)",
-    "read agent-state\\current_contract.json, docs\\CODEX_AUTONOMY_POLICY.md, docs\\AGENT_HARNESS.md, agent-state\\feature_list.json, agent-state\\evaluation.json, CODEX_TASKS.md, docs\\ARCHITECTURE.md",
-    "read AGENTS.md, agent-state\\progress.md, docs\\DECISIONS.md, docs\\adr\\0004-yaml-and-postgres.md",
+    "read agent-state/current_contract.json, agent-state/feature_list.json, agent-state/evaluation.json, agent-state/progress.md (tail)",
+    "read docker-compose.yml, migrations/versions/0002_worker_queue.py, pyproject.toml, .env.example",
+    "read apps/worker/worker/{settings,db,queue,heartbeat,runtime,main,scheduler,health}.py, apps/worker/requirements.txt",
+    "read scripts/stack-smoke.ps1, tests/unit/test_requirements_sync.py, tests/unit/test_worker_queue.py",
     "git status --short --branch",
-    "git --no-pager log --oneline -20",
+    "git --no-pager log --oneline -10",
     "git rev-parse HEAD",
-    "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts\\init.ps1",
-    "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts\\check-env.ps1",
-    "pwsh -NoProfile -ExecutionPolicy Bypass -File <repo>\\scripts\\check-env.ps1 from C:\\",
-    "nested pwsh with empty PATH: pwsh -NoProfile -ExecutionPolicy Bypass -File <repo>\\scripts\\check-env.ps1",
-    "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts\\bootstrap-dev.ps1",
-    "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts\\test.ps1",
-    "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts\\check.ps1 -NodeAudit",
-    "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts\\stack-up.ps1",
-    "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts\\stack-smoke.ps1",
-    "Invoke-WebRequest http://localhost:8000/health and http://localhost:8000/health/ready",
-    "docker compose exec -T postgres psql -U atlas -d atlas -c \"select * from app_meta;\"",
-    "docker compose config --services",
-    "docker compose stop postgres",
-    "Invoke-WebRequest -SkipHttpErrorCheck http://localhost:8000/health and http://localhost:8000/health/ready with postgres stopped",
-    "docker compose start postgres and poll http://localhost:8000/health/ready",
-    "docker compose down",
-    "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts\\stack-up.ps1 after compose down",
-    "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts\\stack-smoke.ps1 after compose down",
-    "docker compose exec -T postgres psql -U atlas -d atlas -tAc \"select count(*) from app_meta where key='scaffold_initialized' and value='true';\"",
-    "docker compose exec -T api alembic current",
-    "$env:ATLAS_STACK_BASE_URL='http://localhost:8000'; .\\.venv\\Scripts\\python.exe -m pytest tests\\integration -m integration -v",
-    "$files=git ls-files -co --exclude-standard; .\\.venv\\Scripts\\detect-secrets-hook.exe --baseline .secrets.baseline @($files)",
     "git --no-pager diff main...HEAD --stat",
     "git --no-pager diff main...HEAD --name-only",
-    "static out-of-scope path probe over changed files",
-    "git --no-pager diff main...HEAD -U0 | Select-String '(?i)\\bfree\\b|\\bZ0\\b|zero-cost|\\$0'",
+    "git --no-pager diff main...HEAD -- .env.example",
+    "git --no-pager diff main...HEAD -U0 | Select-String '(?i)\\bfree\\b|\\bZ0\\b|zero-cost|$0'",
+    "directory existence probe for apps/web, apps/scheduler, domain, catalogue, apps/api/app/domain",
+    "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts\\check.ps1 -NodeAudit",
+    "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts\\test.ps1",
+    "docker compose config --services",
     "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts\\stack-down.ps1 -Volumes",
-    "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts\\stack-up.ps1 from empty database volume",
-    "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts\\stack-smoke.ps1 from empty database volume",
-    "docker compose exec -T postgres psql -U atlas -d atlas -tAc \"select count(*) from app_meta where key='scaffold_initialized' and value='true';\" from empty database volume",
-    "docker compose exec -T postgres psql -U atlas -d atlas -c \"select * from app_meta;\" from empty database volume",
-    "docker compose exec -T api alembic current from empty database volume",
-    "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts\\stack-down.ps1",
-    "docker compose ps --format json",
-    "git status --short --branch"
+    "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts\\stack-up.ps1 (fresh volume)",
+    "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts\\stack-smoke.ps1 (fresh volume)",
+    "docker compose exec -T postgres psql -U atlas -d atlas -c \"SELECT status, count(*) FROM job_queue GROUP BY status;\"",
+    "docker compose exec -T postgres psql -U atlas -d atlas -c \"SELECT service, count(*), max(last_beat_at) FROM service_heartbeat GROUP BY service;\"",
+    "docker compose ps; docker inspect -f '{{.State.Health.Status}}' for worker/scheduler/api/postgres",
+    "docker compose exec -T api alembic current",
+    "docker compose exec -T api alembic downgrade -1",
+    "docker compose exec -T postgres psql -U atlas -d atlas -tAc \"SELECT to_regclass('public.job_queue'), to_regclass('public.service_heartbeat');\"",
+    "docker compose exec -T api alembic upgrade head",
+    "docker compose stop postgres",
+    "docker compose exec -T worker python -m worker.health --service worker (exit 1)",
+    "docker compose exec -T worker python -m worker.health --service scheduler (exit 1)",
+    "Start-Sleep 60; docker inspect Health.Status/FailingStreak for worker+scheduler (unhealthy, streak 5)",
+    "docker inspect -f '{{range .State.Health.Log}}{{.Output}}{{end}}' worker (leak probe)",
+    "docker inspect RestartCount/StartedAt before recovery; docker compose start postgres; re-inspect after 45s",
+    "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts\\stack-down.ps1 (keep volume)",
+    "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts\\stack-up.ps1 (keep volume)",
+    "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts\\stack-smoke.ps1 (keep volume)",
+    "docker compose exec -T postgres psql -U atlas -d atlas -c \"SELECT service, count(*) FROM service_heartbeat GROUP BY service;\"",
+    "docker compose exec -T postgres psql -U atlas -d atlas -tAc \"SELECT count(*) FROM app_meta WHERE key='scaffold_initialized' AND value='true';\"",
+    "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts\\stack-down.ps1 (final); docker compose ps"
   ],
   "end_to_end_steps_run": [
-    "Read the contract, feature ledger, previous evaluation, autonomy and harness rules, task 002 context, architecture, decision register, and ADR 0004 before grading.",
-    "Verified check-env from repo root, from C:\\ by absolute path, and by simulated missing PATH failure.",
-    "Ran bootstrap-dev, test.ps1, and the full check.ps1 -NodeAudit regression suite.",
-    "Started the Docker Compose stack through scripts\\stack-up.ps1 and smoked it through scripts\\stack-smoke.ps1.",
-    "Independently probed /health, /health/ready, docker compose services, and app_meta via psql.",
-    "Stopped PostgreSQL and verified readiness failed closed with a credential-free 503 while liveness stayed 200; restarted PostgreSQL and verified readiness recovery.",
-    "Ran live integration pytest against http://localhost:8000.",
-    "Ran docker compose down without volumes, restarted, confirmed smoke, exactly one marker row, and Alembic at head.",
-    "Reviewed diff scope and service scope for absence of worker, scheduler, frontend, domain model, and unsupported free/Z0 claims.",
-    "Dropped the named database volume, restarted from empty database, confirmed migrations and smoke pass, then left the stack down."
+    "Read the contract, feature ledger, prior evaluation, progress tail, compose, migration, and all worker source before grading.",
+    "Performed the startup ritual and confirmed a clean tree at commit 219760b.",
+    "Confirmed the compose topology is exactly postgres/api/worker/scheduler with worker+scheduler healthchecks and depends_on postgres service_healthy.",
+    "Reviewed the diff for scope: no React frontend, no F003 domain model, no new runtime/broker/managed-cloud dependency, worker pins are a subset of pyproject, and no unsupported free/Z0 claim.",
+    "Ran scripts/check.ps1 -NodeAudit and scripts/test.ps1 and recorded 42 passed / 2 skipped, ALL CHECKS PASSED.",
+    "Brought the stack up from a fresh volume, ran stack-smoke, and independently corroborated job_queue done count and fresh worker+scheduler heartbeats via psql.",
+    "Verified all four containers healthy via docker compose ps and docker inspect.",
+    "Exercised the migration downgrade/upgrade roundtrip and confirmed both tables drop and recreate.",
+    "Stopped PostgreSQL, confirmed both health commands exit non-zero with credential-free output, containers went unhealthy (streak 5) with leak-free logs, then restarted PostgreSQL and confirmed both recover to healthy with RestartCount 0 (loops survived without container restart).",
+    "Ran stack-down (keep volume), stack-up, and stack-smoke again; confirmed pass, exactly one heartbeat row per service, and app_meta persisted.",
+    "Left the stack down; docker compose ps shows no services."
   ],
   "disposition": "passed",
   "blocking_failures": [],
   "notes": [
-    "Evaluation was performed against HEAD commit a09a5c3c12d23c11e08c0a082daa93a34786e0a4 on branch stsyg-glowing-broccoli.",
-    "F002 remains an epic and must stay passes=false; this verdict covers only slice-1-dev-env-and-minimal-vertical.",
-    "The atlas/atlas strings are documented local-development placeholders/defaults, not production secrets. They are allowlisted for scanners and were not leaked by the failure response.",
-    "The final cleanup left the Docker Compose stack down; docker compose ps --format json returned no services."
+    "Evaluation performed against HEAD commit 219760b8bd6c2cbcce73c314a3f3bd34b200ed9d on branch stsyg-glowing-waffle (open PR #6 into main).",
+    "This verdict covers ONLY the F002 slice-2 worker + scheduler increment (a PostgreSQL-backed job queue wired into the existing compose/DB/migration/scripts pipeline). F002 is an epic and MUST remain passes=false: the React frontend and the F003 catalogue/offer/evidence/Z0 domain model are still out of scope and require their own increments and Level 2 evaluations.",
+    "job_queue and service_heartbeat are queue/heartbeat infrastructure tables, not the F003 domain model.",
+    "The atlas/atlas strings are documented non-secret local-development defaults; the health CLI and DB-down failures leaked no connection string or credential.",
+    "The evaluator wrote only agent-state/evaluation.json and agent-state/progress.md; no product/source/config files, dependencies, or services were modified, and the PR was not merged.",
+    "A named local volume (stsyg-glowing-waffle_atlas_pgdata) remains from the restart-persistence test; the final state is stack down (no running containers)."
   ],
   "recommendations": [
-    "Commit these evaluator-state updates and proceed with PR review for the F002 slice-1 branch.",
-    "Do not mark F002 passes=true until the full F002 epic (including frontend, worker, scheduler, restart, and cleanup workflows) receives Level 2 evaluation.",
-    "Before slice 2, get the owner checkpoint required by the slice-1 contract for worker, scheduler, and frontend scope."
+    "Proceed with owner review of PR #6 for the F002 slice-2 worker+scheduler increment; the increment meets its Level 2 contract.",
+    "Keep F002 passes=false until the remaining slices (React frontend and the F003 domain model) land and pass their own independent Level 2 evaluations.",
+    "Before the next slice, obtain the owner checkpoint required by the contract for the React frontend scope."
   ]
 }

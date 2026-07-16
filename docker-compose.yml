@@ -1,8 +1,8 @@
 # FreeTier Atlas — local development stack.
 #
-# Slice 1 of the F002 scaffold brings up PostgreSQL and the FastAPI API. The
-# web frontend, worker, and scheduler services are added in slice 2 (see the
-# commented block at the end of this file).
+# Slice 1 brought up PostgreSQL and the FastAPI API. Slice 2 adds the worker and
+# scheduler services (a PostgreSQL-backed job queue). The React web frontend is
+# still deferred (see the commented block at the end of this file).
 #
 # Values are sourced from a local .env file (copy .env.example -> .env). The
 # defaults are non-secret local development values and MUST NOT be used in any
@@ -48,28 +48,53 @@ services:
       start_period: 20s
     restart: unless-stopped
 
+  worker:
+    build:
+      context: .
+      dockerfile: apps/worker/Dockerfile
+    command: ["python", "-m", "worker.main"]
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://atlas:atlas@postgres:5432/atlas} # pragma: allowlist secret
+      WORKER_POLL_INTERVAL_SECONDS: ${WORKER_POLL_INTERVAL_SECONDS:-2}
+      HEARTBEAT_STALE_SECONDS: ${HEARTBEAT_STALE_SECONDS:-30}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-m", "worker.health", "--service", "worker"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+
+  scheduler:
+    build:
+      context: .
+      dockerfile: apps/worker/Dockerfile
+    command: ["python", "-m", "worker.scheduler"]
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://atlas:atlas@postgres:5432/atlas} # pragma: allowlist secret
+      SCHEDULER_INTERVAL_SECONDS: ${SCHEDULER_INTERVAL_SECONDS:-5}
+      HEARTBEAT_STALE_SECONDS: ${HEARTBEAT_STALE_SECONDS:-30}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-m", "worker.health", "--service", "scheduler"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+
 volumes:
   atlas_pgdata:
-# --- Deferred to F002 slice 2 (do not enable without an owner checkpoint) ---
+# --- Deferred to a later F002 slice (do not enable without an owner checkpoint) ---
 #   web:
 #     build:
 #       context: .
 #       dockerfile: apps/web/Dockerfile
 #     depends_on:
 #       api:
-#         condition: service_healthy
-#   worker:
-#     build:
-#       context: .
-#       dockerfile: apps/worker/Dockerfile
-#     depends_on:
-#       postgres:
-#         condition: service_healthy
-#   scheduler:
-#     build:
-#       context: .
-#       dockerfile: apps/worker/Dockerfile
-#     command: ["python", "-m", "worker.scheduler"]
-#     depends_on:
-#       postgres:
 #         condition: service_healthy
