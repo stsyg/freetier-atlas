@@ -1,218 +1,254 @@
 {
   "schema_version": 1,
-  "feature_id": "F002",
-  "increment": "full-epic-close-out",
-  "implementation_commit": "9f43e07239c768ff48aed79332f46eb5ee4b74af",
+  "feature_id": "F003",
+  "increment": "slice-1-configuration-system",
+  "implementation_commit": "dd7fbf9c4b7ffdbc232e43dd94e4199906357f53",
+  "evaluated_commit": "dd7fbf9c4b7ffdbc232e43dd94e4199906357f53",
   "evaluator": "fresh independent Level 2 evaluator (Copilot CLI Chief)",
-  "evaluated_at": "2026-07-17T14:08:11Z",
+  "evaluated_at": "2026-07-17T15:45:58Z",
   "evaluation_level": 2,
+  "required_evaluation_level": 2,
+  "disposition": "passed",
+  "blocking_issues": [],
+  "blocking_failures": [],
   "criteria": [
     {
-      "name": "startup_contract_and_main_head",
-      "required": true,
+      "name": "examples_validate_with_wrappers",
+      "acceptance_criterion": "scripts/validate-config.{ps1,sh} validates every *.yaml under config/examples (application, schedules, llm-providers, providers/cloudflare) and exits 0.",
       "result": "pass",
       "passed": true,
       "evidence": [
-        "Harness loaded before substantive evaluation: Harness-Version 2026-07-02.1, content-hash 00b135ae447ca6ce.",
-        "Repository directory confirmed as C:\\Users\\sergiyt\\.copilot\\repos\\copilot-worktrees\\freetier-atlas\\stsyg-automatic-garbanzo.",
-        "git rev-parse HEAD returned 9f43e07239c768ff48aed79332f46eb5ee4b74af, matching the requested merged main F002 slice-3 squash commit.",
-        "git status --short --branch returned ## stsyg-f002-close-out...origin/main plus a pre-existing agent-state/current_contract.json modification on entry; evaluator did not modify current_contract.json or feature_list.json.",
-        "git --no-pager log --oneline -20 showed 9f43e07 (#7), bd41c98 (#6), and 6049e7f (#5) at the top, confirming all F002 slices are present.",
-        "agent-state/feature_list.json was read and F002 was confirmed passes=false before evaluation. agent-state/current_contract.json was read as increment full-epic-close-out with required_evaluation_level 2."
+        "pwsh -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\validate-config.ps1 exited 0 and printed OK for application.example.yaml (ApplicationConfig), llm-providers.example.yaml (LlmProvidersConfig), schedules.example.yaml (SchedulesConfig), and providers\\cloudflare.example.yaml (ProviderConfig), ending: All 4 configuration file(s) valid.",
+        "Git Bash path C:\\Program Files\\Git\\bin\\bash.exe was available; bash scripts/validate-config.sh exited 0 and printed OK for all four example configs, ending: All 4 configuration file(s) valid."
       ],
       "failures": []
     },
     {
-      "name": "A_topology_services_web_healthcheck_depends_on",
-      "required": true,
+      "name": "typed_models_forbid_unknown_fields",
+      "acceptance_criterion": "Each configuration family has a typed Pydantic model that forbids unknown fields; an unknown field produces an actionable error naming the file and the field path with a non-zero exit.",
       "result": "pass",
       "passed": true,
       "evidence": [
-        "pwsh scripts/init.ps1 passed: required repository files ok, agent-state JSON syntax ok, PowerShell 7.6.3 available.",
-        "npm config get registry returned https://packagefeedproxy.microsoft.io/npm/ and replace-registry-host returned npmjs before npm commands.",
-        ".env existed with NPM_REGISTRY=https://packagefeedproxy.microsoft.io/npm/ and WEB_PORT=8080, so Docker npm ci used the approved proxy.",
-        "docker compose config --services returned exactly five services and no extras: postgres, scheduler, api, web, worker. Compose v5 emitted a different order than the prompt prose; the service set is exactly postgres/api/worker/scheduler/web.",
-        "docker compose config showed web build context apps\\web, NPM_REGISTRY build arg resolved to https://packagefeedproxy.microsoft.io/npm/, web depends_on api condition: service_healthy, and a wget /healthz healthcheck."
+        "apps/api/app/config/models.py defines ApplicationConfig, SchedulesConfig, LlmProvidersConfig, and ProviderConfig; all inherit _Base with model_config = ConfigDict(extra=\"forbid\").",
+        "Adversarial command .\\.venv\\Scripts\\python.exe -m app.config.cli validate <TEMP>\\unknown-extra-field.yaml exited 1 and printed: FAIL <file>; - application.typo_field: Extra inputs are not permitted (type=extra_forbidden); 1 of 1 configuration file(s) failed validation."
       ],
       "failures": []
     },
     {
-      "name": "B_regression_tests_and_audits",
-      "required": true,
+      "name": "malformed_yaml_actionable_line_column",
+      "acceptance_criterion": "Malformed YAML produces an actionable error naming the file with the line and column of the syntax error, with a non-zero exit.",
       "result": "pass",
       "passed": true,
       "evidence": [
-        "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts\\test.ps1 exited 0: pytest collected 44 items; 42 passed, 2 skipped; web Vitest src/App.test.tsx 4 passed; Vite build produced dist/index.html 0.58 kB and JS/CSS assets; TESTS PASSED.",
-        "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts\\check.ps1 -NodeAudit exited 0: Ruff lint PASS, Ruff format check PASS (21 files already formatted), Pytest PASS (42 passed, 2 skipped), Prettier PASS, ESLint PASS, Secret scan PASS, Python dependency audit PASS (No known vulnerabilities found), Node dependency audit PASS.",
-        "npm audit line captured from check.ps1 -NodeAudit: found 0 vulnerabilities.",
-        "No npm output indicated contact with registry.npmjs.org; host registry was the Microsoft package feed proxy before running npm-backed checks."
+        "Adversarial command .\\.venv\\Scripts\\python.exe -m app.config.cli validate <TEMP>\\malformed-yaml.yaml exited 1 and printed: FAIL <file>; - YAML syntax error at line 4 column 4: expected <block end>, but found '<block mapping start>'; 1 of 1 configuration file(s) failed validation."
       ],
       "failures": []
     },
     {
-      "name": "C_canonical_stack_up_all_services_healthy",
-      "required": true,
+      "name": "missing_required_field_actionable",
+      "acceptance_criterion": "A missing required field produces an actionable error naming the field path (type=missing), with a non-zero exit.",
       "result": "pass",
       "passed": true,
       "evidence": [
-        "A pre-clean pwsh scripts\\stack-down.ps1 (without -Volumes) completed STACK DOWN to avoid stale containers; no database volume was removed.",
-        "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts\\stack-up.ps1 ran docker compose up -d --build and ended STACK UP: API is live at http://localhost:8000/health.",
-        "Docker build evidence showed web RUN npm ci --registry \"https://packagefeedproxy.microsoft.io/npm/\" (cached), satisfying the npm IT policy.",
-        "docker compose ps after stack-up listed api, postgres, scheduler, web, worker all Up and healthy; web exposed 0.0.0.0:8080->80, api exposed 0.0.0.0:8000->8000, postgres exposed 5432."
+        "Adversarial command .\\.venv\\Scripts\\python.exe -m app.config.cli validate <TEMP>\\missing-required-field.yaml exited 1 and printed: FAIL <file>; - provider.name: Field required (type=missing); 1 of 1 configuration file(s) failed validation."
       ],
       "failures": []
     },
     {
-      "name": "D_full_stack_smoke_workflow",
-      "required": true,
+      "name": "emit_schema_all_families",
+      "acceptance_criterion": "python -m app.config.cli emit-schema <family> prints a valid JSON Schema (type=object with properties) for each of the four families.",
       "result": "pass",
       "passed": true,
       "evidence": [
-        "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts\\stack-smoke.ps1 passed all 11 checks and ended STACK SMOKE PASSED.",
-        "Passed checks: API liveness (/health = 200), API readiness (/health/ready = 200, db ok), Migration applied (app_meta table + marker row), Worker migration applied (job_queue + service_heartbeat), Worker container healthy, Scheduler container healthy, Queue processed (>=1 job reached done), Heartbeats fresh (worker + scheduler), Web container healthy, Web serves SPA (GET / = 200 HTML with #root), Web proxies API (GET /api/health = 200, status ok).",
-        "Independent DB corroboration after smoke: app_meta=1, job_queue_done=218, fresh_heartbeats=2, tables=app_meta,job_queue,service_heartbeat."
+        "For application: .\\.venv\\Scripts\\python.exe -m app.config.cli emit-schema application exited 0; ConvertFrom-Json parsed stdout; PARSED: type=object properties=True root_additionalProperties=False additionalProperties_false_count=5; stdout first line { and last line }.",
+        "For schedules: .\\.venv\\Scripts\\python.exe -m app.config.cli emit-schema schedules exited 0; ConvertFrom-Json parsed stdout; PARSED: type=object properties=True root_additionalProperties=False additionalProperties_false_count=4; stdout first line { and last line }.",
+        "For llm-providers: .\\.venv\\Scripts\\python.exe -m app.config.cli emit-schema llm-providers exited 0; ConvertFrom-Json parsed stdout; PARSED: type=object properties=True root_additionalProperties=False additionalProperties_false_count=4; stdout first line { and last line }.",
+        "For provider: .\\.venv\\Scripts\\python.exe -m app.config.cli emit-schema provider exited 0; ConvertFrom-Json parsed stdout; PARSED: type=object properties=True root_additionalProperties=False additionalProperties_false_count=4; stdout first line { and last line }."
       ],
       "failures": []
     },
     {
-      "name": "E_independent_http_and_api_corroboration",
-      "required": true,
+      "name": "secret_safety",
+      "acceptance_criterion": "Secret safety: a raw inline secret key (api_key, password, token, secret, etc.) anywhere in a file is rejected; secrets are referenced only via *_env environment-variable names; a non-env-name reference is rejected; the detect-secrets scan stays green and no secret value is printed.",
       "result": "pass",
       "passed": true,
       "evidence": [
-        "Invoke-WebRequest http://localhost:8080/ returned status=200, Content-Type=text/html, hasRoot=True.",
-        "Invoke-WebRequest http://localhost:8080/api/health returned status=200 and body={\"status\":\"ok\",\"service\":\"FreeTier Atlas API\",\"version\":\"0.1.0.dev0\",\"environment\":\"development\"}.",
-        "Invoke-WebRequest http://localhost:8000/health returned status=200 and body={\"status\":\"ok\",\"service\":\"FreeTier Atlas API\",\"version\":\"0.1.0.dev0\",\"environment\":\"development\"}.",
-        "Invoke-WebRequest http://localhost:8000/health/ready returned status=200 and body={\"status\":\"ready\",\"checks\":{\"database\":\"ok\"}}."
+        "Adversarial inline-secret command exited 1 and printed: FAIL <file>; - llm.providers.gemini.api_key: inline secret key 'api_key' is forbidden; reference an environment variable via 'api_key_env' instead (values live in the environment, never in the repository); 1 of 1 configuration file(s) failed validation.",
+        "Inline-secret test used sentinel value LEAK_SENTINEL_DO_NOT_PRINT_173; output check printed SECRET_LEAK_CHECK: passed (sentinel value was not echoed).",
+        "Adversarial bad-env-reference command exited 1 and printed: FAIL <file>; - llm.providers.gemini.api_key_env: String should match pattern '^[A-Z][A-Z0-9_]*$' (type=string_pattern_mismatch); 1 of 1 configuration file(s) failed validation.",
+        "scripts/check.ps1 -NodeAudit output included: ==> Secret scan; PASS: Secret scan.",
+        "Secret grep of apps/api/app/config, tests/unit/test_config_system.py, docs/CONFIGURATION.md, and config/examples found only secret-key vocabulary, environment-variable names GEMINI_API_KEY/OPENAI_API_KEY/ANTHROPIC_API_KEY, and the synthetic negative-test literal sk-should-never-be-here; no real credential value was found in source, docs, tests, or examples."
       ],
       "failures": []
     },
     {
-      "name": "F_restart_resilience",
-      "required": true,
+      "name": "offline_pytest_suite",
+      "acceptance_criterion": "The offline pytest suite (valid examples, unknown/malformed/missing/bad-cron/threshold/mcp/inline-secret/env-name, schema export, CLI) passes.",
       "result": "pass",
       "passed": true,
       "evidence": [
-        "Restart step used pwsh scripts\\stack-down.ps1 without -Volumes and completed STACK DOWN, preserving the PostgreSQL data volume.",
-        "Then pwsh scripts\\stack-up.ps1 completed STACK UP: API is live at http://localhost:8000/health.",
-        "docker compose ps immediately after restart listed api/postgres/scheduler/worker healthy and web starting; the subsequent smoke wait promoted web to healthy.",
-        "pwsh scripts\\stack-smoke.ps1 after restart again passed all 11 checks and ended STACK SMOKE PASSED."
+        "pwsh -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\test.ps1 exited 0; pytest collected 67 items with 65 passed, 2 skipped in 2.30s; tests\\unit\\test_config_system.py .......................; tests\\unit\\test_requirements_sync.py ...; TESTS PASSED.",
+        "The two skips were integration stack tests gated by ATLAS_STACK_BASE_URL not being set, matching the prompt's expected no-live-stack condition."
       ],
       "failures": []
     },
     {
-      "name": "G_negative_api_down_proxy_seam",
-      "required": true,
+      "name": "regression_green",
+      "acceptance_criterion": "Regression green: scripts/test.ps1 (pytest + config validation + web tests/build) and scripts/check.ps1 -NodeAudit (ruff, format, pytest, prettier, eslint, secret scan, pip-audit, npm audit), including the requirements-sync guard with the new pyyaml pin.",
       "result": "pass",
       "passed": true,
       "evidence": [
-        "docker compose stop api stopped stsyg-automatic-garbanzo-api-1.",
-        "With api stopped, Invoke-WebRequest http://localhost:8080/ returned status=200 and hasRoot=True, proving the SPA still served from nginx static assets.",
-        "With api stopped, Invoke-WebRequest http://localhost:8080/api/health -SkipHttpErrorCheck returned status=504 with Gateway Time-out HTML, proving the /api path is a real nginx proxy seam and not a mocked success path.",
-        "docker compose start api restarted the service; api health polling observed starting, starting, healthy.",
-        "After recovery, Invoke-WebRequest http://localhost:8080/api/health returned status=200 and body={\"status\":\"ok\",\"service\":\"FreeTier Atlas API\",\"version\":\"0.1.0.dev0\",\"environment\":\"development\"}."
+        "scripts/test.ps1 exited 0: pytest 65 passed, 2 skipped; config validation All 4 configuration file(s) valid; Vitest src/App.test.tsx 4 tests passed; Vite build succeeded with 31 modules transformed; TESTS PASSED.",
+        "scripts/check.ps1 -NodeAudit exited 0: Ruff lint PASS (All checks passed!), Ruff format check PASS (26 files already formatted), Pytest PASS (65 passed, 2 skipped in 2.23s), Prettier PASS, ESLint PASS, Secret scan PASS, Python dependency audit PASS (No known vulnerabilities found), Node dependency audit PASS (found 0 vulnerabilities), ALL CHECKS PASSED.",
+        ".\\.venv\\Scripts\\pytest.exe -q tests\\unit\\test_requirements_sync.py exited 0 with: 2 passed in 0.05s."
       ],
       "failures": []
     },
     {
-      "name": "H_lockfile_portability",
-      "required": true,
+      "name": "product_truth_no_unsupported_claim",
+      "acceptance_criterion": "No unsupported free-tier/zero-cost/Z0 product claim is introduced (backend configuration only; product-truth rule).",
       "result": "pass",
       "passed": true,
       "evidence": [
-        "Select-String apps\\web\\package-lock.json for pkgs.visualstudio.com, vsblob, packagefeedproxy, microsoft.io, and azure returned internal-host-matches=0.",
-        "Unique resolved hosts in apps\\web\\package-lock.json were resolved-hosts=registry.npmjs.org only.",
-        "registry.npmjs.org resolved URL count was 336. The committed lockfile remains portable with public registry URLs while host/Docker npm registry remapping uses the Microsoft proxy."
+        "Focused scan of F003 source/config/docs/test/script/dependency files for guaranteed free|guaranteed $0|zero-cost|$0|free found product-name occurrences (FreeTier Atlas), backend vocabulary/comments (zero-cost classes, Z0_TRUE_FREE), and pyproject metadata only.",
+        "pyproject.toml description/keywords containing zero-cost/free-tier were verified present in HEAD^ before this slice; they were not introduced by dd7fbf9. No new unsupported marketing/product claim was found in docs/CONFIGURATION.md, config/examples, scripts, tests, or apps/api/app/config."
       ],
       "failures": []
     },
     {
-      "name": "I_product_truth_shipped_copy",
-      "required": true,
+      "name": "level2_evaluation_recorded_feature_remains_false",
+      "acceptance_criterion": "A fresh-context independent Level 2 evaluator records an adversarial verdict in agent-state/evaluation.json before any status change is claimed; F003 remains passes:false (epic incomplete).",
       "result": "pass",
       "passed": true,
       "evidence": [
-        "Scanned apps\\web\\index.html and apps\\web\\src\\** for zero-cost|free|$0|Z0. There were 9 textual matches, all reviewed.",
-        "Matches were product name/service name occurrences (FreeTier Atlas, FreeTier Atlas API) plus technical phrases in comments: \"free of hard-coded hosts\" and \"credential-free message\". There were no shipped UI/meta claims that any service is free, zero-cost, $0, or Z0.",
-        "Shipped UI/meta copy remains neutral: \"evidence-backed catalogue and architecture adviser for cloud and developer service tiers\" and \"Application scaffold — F002. Catalogue and adviser features arrive in later increments.\""
-      ],
-      "failures": []
-    },
-    {
-      "name": "J_cleanup_and_documentation",
-      "required": true,
-      "result": "pass",
-      "passed": true,
-      "evidence": [
-        "docs/LOCAL_DEVELOPMENT.md documents bash commands scripts/stack-up.sh, scripts/stack-smoke.sh, scripts/stack-down.sh, scripts/stack-down.sh --volumes at lines 76-79.",
-        "docs/LOCAL_DEVELOPMENT.md documents PowerShell commands pwsh -File scripts/stack-up.ps1, pwsh -File scripts/stack-smoke.ps1, and pwsh -File scripts/stack-down.ps1 (# -Volumes to drop data) at lines 85-87.",
-        "Before final cleanup, docker compose ps listed all five services healthy: api, postgres, scheduler, web, worker.",
-        "Final pwsh -NoProfile -ExecutionPolicy Bypass -File scripts\\stack-down.ps1 completed STACK DOWN.",
-        "docker compose ps after cleanup printed only the header NAME IMAGE COMMAND SERVICE CREATED STATUS PORTS, i.e. no running services remained."
+        "Fresh evaluator loaded harness first (Harness-Version 2026-07-02.1, content-hash 00b135ae447ca6ce), read current_contract.json and confirmed feature_id=F003, increment=slice-1-configuration-system, required_evaluation_level=2.",
+        "agent-state/feature_list.json was read before evaluation and F003 passes was false. After all checks, .\\.venv\\Scripts\\python.exe confirmed: F003 passes after: False.",
+        "This file overwrites agent-state/evaluation.json with disposition=passed and blocking_issues=[] for only F003 slice 1. F003 remains an incomplete epic; no feature_list.json edit was made."
       ],
       "failures": []
     }
   ],
+  "per_criterion_evidence": {
+    "examples_validate_with_wrappers": [
+      "pwsh -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\validate-config.ps1 exited 0 and printed OK for application.example.yaml (ApplicationConfig), llm-providers.example.yaml (LlmProvidersConfig), schedules.example.yaml (SchedulesConfig), and providers\\cloudflare.example.yaml (ProviderConfig), ending: All 4 configuration file(s) valid.",
+      "Git Bash path C:\\Program Files\\Git\\bin\\bash.exe was available; bash scripts/validate-config.sh exited 0 and printed OK for all four example configs, ending: All 4 configuration file(s) valid."
+    ],
+    "typed_models_forbid_unknown_fields": [
+      "apps/api/app/config/models.py defines ApplicationConfig, SchedulesConfig, LlmProvidersConfig, and ProviderConfig; all inherit _Base with model_config = ConfigDict(extra=\"forbid\").",
+      "Adversarial command .\\.venv\\Scripts\\python.exe -m app.config.cli validate <TEMP>\\unknown-extra-field.yaml exited 1 and printed: FAIL <file>; - application.typo_field: Extra inputs are not permitted (type=extra_forbidden); 1 of 1 configuration file(s) failed validation."
+    ],
+    "malformed_yaml_actionable_line_column": [
+      "Adversarial command .\\.venv\\Scripts\\python.exe -m app.config.cli validate <TEMP>\\malformed-yaml.yaml exited 1 and printed: FAIL <file>; - YAML syntax error at line 4 column 4: expected <block end>, but found '<block mapping start>'; 1 of 1 configuration file(s) failed validation."
+    ],
+    "missing_required_field_actionable": [
+      "Adversarial command .\\.venv\\Scripts\\python.exe -m app.config.cli validate <TEMP>\\missing-required-field.yaml exited 1 and printed: FAIL <file>; - provider.name: Field required (type=missing); 1 of 1 configuration file(s) failed validation."
+    ],
+    "emit_schema_all_families": [
+      "For application: .\\.venv\\Scripts\\python.exe -m app.config.cli emit-schema application exited 0; ConvertFrom-Json parsed stdout; PARSED: type=object properties=True root_additionalProperties=False additionalProperties_false_count=5; stdout first line { and last line }.",
+      "For schedules: .\\.venv\\Scripts\\python.exe -m app.config.cli emit-schema schedules exited 0; ConvertFrom-Json parsed stdout; PARSED: type=object properties=True root_additionalProperties=False additionalProperties_false_count=4; stdout first line { and last line }.",
+      "For llm-providers: .\\.venv\\Scripts\\python.exe -m app.config.cli emit-schema llm-providers exited 0; ConvertFrom-Json parsed stdout; PARSED: type=object properties=True root_additionalProperties=False additionalProperties_false_count=4; stdout first line { and last line }.",
+      "For provider: .\\.venv\\Scripts\\python.exe -m app.config.cli emit-schema provider exited 0; ConvertFrom-Json parsed stdout; PARSED: type=object properties=True root_additionalProperties=False additionalProperties_false_count=4; stdout first line { and last line }."
+    ],
+    "secret_safety": [
+      "Adversarial inline-secret command exited 1 and printed: FAIL <file>; - llm.providers.gemini.api_key: inline secret key 'api_key' is forbidden; reference an environment variable via 'api_key_env' instead (values live in the environment, never in the repository); 1 of 1 configuration file(s) failed validation.",
+      "Inline-secret test used sentinel value LEAK_SENTINEL_DO_NOT_PRINT_173; output check printed SECRET_LEAK_CHECK: passed (sentinel value was not echoed).",
+      "Adversarial bad-env-reference command exited 1 and printed: FAIL <file>; - llm.providers.gemini.api_key_env: String should match pattern '^[A-Z][A-Z0-9_]*$' (type=string_pattern_mismatch); 1 of 1 configuration file(s) failed validation.",
+      "scripts/check.ps1 -NodeAudit output included: ==> Secret scan; PASS: Secret scan.",
+      "Secret grep of apps/api/app/config, tests/unit/test_config_system.py, docs/CONFIGURATION.md, and config/examples found only secret-key vocabulary, environment-variable names GEMINI_API_KEY/OPENAI_API_KEY/ANTHROPIC_API_KEY, and the synthetic negative-test literal sk-should-never-be-here; no real credential value was found in source, docs, tests, or examples."
+    ],
+    "offline_pytest_suite": [
+      "pwsh -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\test.ps1 exited 0; pytest collected 67 items with 65 passed, 2 skipped in 2.30s; tests\\unit\\test_config_system.py .......................; tests\\unit\\test_requirements_sync.py ...; TESTS PASSED.",
+      "The two skips were integration stack tests gated by ATLAS_STACK_BASE_URL not being set, matching the prompt's expected no-live-stack condition."
+    ],
+    "regression_green": [
+      "scripts/test.ps1 exited 0: pytest 65 passed, 2 skipped; config validation All 4 configuration file(s) valid; Vitest src/App.test.tsx 4 tests passed; Vite build succeeded with 31 modules transformed; TESTS PASSED.",
+      "scripts/check.ps1 -NodeAudit exited 0: Ruff lint PASS (All checks passed!), Ruff format check PASS (26 files already formatted), Pytest PASS (65 passed, 2 skipped in 2.23s), Prettier PASS, ESLint PASS, Secret scan PASS, Python dependency audit PASS (No known vulnerabilities found), Node dependency audit PASS (found 0 vulnerabilities), ALL CHECKS PASSED.",
+      ".\\.venv\\Scripts\\pytest.exe -q tests\\unit\\test_requirements_sync.py exited 0 with: 2 passed in 0.05s."
+    ],
+    "product_truth_no_unsupported_claim": [
+      "Focused scan of F003 source/config/docs/test/script/dependency files for guaranteed free|guaranteed $0|zero-cost|$0|free found product-name occurrences (FreeTier Atlas), backend vocabulary/comments (zero-cost classes, Z0_TRUE_FREE), and pyproject metadata only.",
+      "pyproject.toml description/keywords containing zero-cost/free-tier were verified present in HEAD^ before this slice; they were not introduced by dd7fbf9. No new unsupported marketing/product claim was found in docs/CONFIGURATION.md, config/examples, scripts, tests, or apps/api/app/config."
+    ],
+    "level2_evaluation_recorded_feature_remains_false": [
+      "Fresh evaluator loaded harness first (Harness-Version 2026-07-02.1, content-hash 00b135ae447ca6ce), read current_contract.json and confirmed feature_id=F003, increment=slice-1-configuration-system, required_evaluation_level=2.",
+      "agent-state/feature_list.json was read before evaluation and F003 passes was false. After all checks, .\\.venv\\Scripts\\python.exe confirmed: F003 passes after: False.",
+      "This file overwrites agent-state/evaluation.json with disposition=passed and blocking_issues=[] for only F003 slice 1. F003 remains an incomplete epic; no feature_list.json edit was made."
+    ]
+  },
+  "regression_cli_results": {
+    "repository_startup": {
+      "git_status_initial": "## stsyg-f003-slice1-config-system...origin/stsyg-f003-slice1-config-system",
+      "git_rev_parse_head": "dd7fbf9c4b7ffdbc232e43dd94e4199906357f53",
+      "git_log_top": "dd7fbf9 feat(config): typed, validated YAML configuration system (F003 slice 1)",
+      "scripts_init_ps1": "exit 0; Required repository files: ok; Agent-state JSON syntax: ok; PowerShell verification available: PowerShell 7.6.3; Application scaffold checks: pending F002 - no product services are started by F000 initialization; F000 initialization checks completed"
+    },
+    "positive_validation": {
+      "powershell": "pwsh -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\validate-config.ps1 => exit 0; OK application.example.yaml (ApplicationConfig); OK llm-providers.example.yaml (LlmProvidersConfig); OK schedules.example.yaml (SchedulesConfig); OK providers\\cloudflare.example.yaml (ProviderConfig); All 4 configuration file(s) valid.",
+      "bash": "C:\\Program Files\\Git\\bin\\bash.exe scripts/validate-config.sh => exit 0; OK application.example.yaml, llm-providers.example.yaml, providers/cloudflare.example.yaml, schedules.example.yaml; All 4 configuration file(s) valid."
+    },
+    "negative_cli_tests": {
+      "unknown_extra_field": "exit 1; FAIL <file>; application.typo_field: Extra inputs are not permitted (type=extra_forbidden); 1 of 1 configuration file(s) failed validation.",
+      "malformed_yaml": "exit 1; FAIL <file>; YAML syntax error at line 4 column 4: expected <block end>, but found '<block mapping start>'; 1 of 1 configuration file(s) failed validation.",
+      "missing_required_field": "exit 1; FAIL <file>; provider.name: Field required (type=missing); 1 of 1 configuration file(s) failed validation.",
+      "inline_secret": "exit 1; FAIL <file>; llm.providers.gemini.api_key: inline secret key 'api_key' is forbidden; reference an environment variable via 'api_key_env' instead (values live in the environment, never in the repository); sentinel value not echoed.",
+      "bad_env_reference": "exit 1; FAIL <file>; llm.providers.gemini.api_key_env: String should match pattern '^[A-Z][A-Z0-9_]*$' (type=string_pattern_mismatch); 1 of 1 configuration file(s) failed validation.",
+      "unrecognised_top_level": "exit 1; FAIL <file>; could not determine configuration family from top-level keys ['unknown_root']; expected one of application/schedules/llm/provider; 1 of 1 configuration file(s) failed validation."
+    },
+    "schema_cli": {
+      "application": "exit 0; parsed JSON; type=object; properties=True; root_additionalProperties=False; additionalProperties_false_count=5; stdout first line { last line }.",
+      "schedules": "exit 0; parsed JSON; type=object; properties=True; root_additionalProperties=False; additionalProperties_false_count=4; stdout first line { last line }.",
+      "llm-providers": "exit 0; parsed JSON; type=object; properties=True; root_additionalProperties=False; additionalProperties_false_count=4; stdout first line { last line }.",
+      "provider": "exit 0; parsed JSON; type=object; properties=True; root_additionalProperties=False; additionalProperties_false_count=4; stdout first line { last line }."
+    },
+    "scripts_test_ps1": "exit 0; pytest collected 67 items; tests\\integration\\test_stack_health.py ss; 65 passed, 2 skipped in 2.30s; config validation All 4 configuration file(s) valid; Vitest src/App.test.tsx 4 tests passed; Vite build succeeded; TESTS PASSED.",
+    "scripts_check_ps1_nodeaudit": "exit 0; Ruff lint PASS; Ruff format check PASS (26 files already formatted); Pytest PASS (65 passed, 2 skipped in 2.23s); Prettier PASS; ESLint PASS; Secret scan PASS; Python dependency audit PASS (No known vulnerabilities found); Node dependency audit PASS (found 0 vulnerabilities); ALL CHECKS PASSED.",
+    "dependency_hygiene": "pyyaml==6.0.3 present at pyproject.toml:25 and apps/api/requirements.txt:10; .\\.venv\\Scripts\\pytest.exe -q tests\\unit\\test_requirements_sync.py => 2 passed in 0.05s; apps/worker/requirements.txt remains a subset (sqlalchemy, psycopg, pydantic-settings).",
+    "feature_flag": "F003 passes before: false; F003 passes after: False; feature_list.json was not modified.",
+    "git_status_after_checks_before_evaluation_write": "## stsyg-f003-slice1-config-system...origin/stsyg-f003-slice1-config-system"
+  },
   "commands_run": [
     "Read C:\\Users\\sergiyt\\.copilot\\agent-state\\HARNESS.md",
-    "git rev-parse HEAD",
-    "git status --short --branch",
-    "git --no-pager log --oneline -20",
-    "npm config get registry",
-    "npm config get replace-registry-host",
-    "Read agent-state/current_contract.json, feature_list.json, evaluation.json, progress.md tail, .github/*, docs/AGENT_HARNESS.md, docs/CODEX_AUTONOMY_POLICY.md, docs/ARCHITECTURE.md, docs/LOCAL_DEVELOPMENT.md",
-    "Skimmed apps/api, apps/worker, apps/web, migrations, docker-compose.yml, and scripts/* relevant to F002",
-    "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts\\init.ps1",
-    "docker compose config --services",
-    "docker compose config (web healthcheck and depends_on inspection)",
-    "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts\\test.ps1",
-    "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts\\check.ps1 -NodeAudit",
-    "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts\\stack-down.ps1",
-    "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts\\stack-up.ps1",
-    "docker compose ps",
-    "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts\\stack-smoke.ps1",
-    "Invoke-WebRequest http://localhost:8080/",
-    "Invoke-WebRequest http://localhost:8080/api/health",
-    "Invoke-WebRequest http://localhost:8000/health",
-    "Invoke-WebRequest http://localhost:8000/health/ready",
-    "docker compose exec -T postgres psql -U atlas -d atlas -tAc <migration/job/heartbeat corroboration SQL>",
-    "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts\\stack-down.ps1 (restart, without -Volumes)",
-    "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts\\stack-up.ps1 (restart)",
-    "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts\\stack-smoke.ps1 (after restart)",
-    "docker compose stop api",
-    "Invoke-WebRequest http://localhost:8080/ -SkipHttpErrorCheck",
-    "Invoke-WebRequest http://localhost:8080/api/health -SkipHttpErrorCheck",
-    "docker compose start api and health polling via docker inspect",
-    "Select-String apps\\web\\package-lock.json for internal hosts and resolved host extraction",
-    "Select-String apps\\web\\index.html and apps\\web\\src\\** for zero-cost|free|$0|Z0",
-    "Select-String docs\\LOCAL_DEVELOPMENT.md for stack-up/stack-smoke/stack-down documentation",
-    "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts\\stack-down.ps1 (final cleanup)",
-    "docker compose ps (after cleanup)"
+    "Read agent-state/current_contract.json, feature_list.json, evaluation.json, progress.md, AGENTS.md, docs/AGENT_HARNESS.md, docs/CODEX_AUTONOMY_POLICY.md, CODEX_TASKS.md, docs/PRODUCT_REQUIREMENTS.md, docs/adr/0004-yaml-and-postgres.md, docs/adr/0002-z0-model.md, docs/DATA_MODEL.md",
+    "Read apps/api/app/config/{__init__,models,loader,cli}.py, docs/CONFIGURATION.md, example YAML files, scripts/test.ps1, scripts/check.ps1, scripts/validate-config.{ps1,sh}, tests/unit/test_config_system.py, tests/unit/test_requirements_sync.py",
+    "git --no-pager status --short --branch; git rev-parse HEAD; git --no-pager log --oneline -20",
+    "pwsh -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\init.ps1",
+    "pwsh -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\validate-config.ps1",
+    "C:\\Program Files\\Git\\bin\\bash.exe scripts/validate-config.sh",
+    "pwsh -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\test.ps1",
+    "pwsh -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\check.ps1 -NodeAudit",
+    ".\\.venv\\Scripts\\python.exe -m app.config.cli validate <TEMP>\\unknown-extra-field.yaml",
+    ".\\.venv\\Scripts\\python.exe -m app.config.cli validate <TEMP>\\malformed-yaml.yaml",
+    ".\\.venv\\Scripts\\python.exe -m app.config.cli validate <TEMP>\\missing-required-field.yaml",
+    ".\\.venv\\Scripts\\python.exe -m app.config.cli validate <TEMP>\\inline-secret.yaml",
+    ".\\.venv\\Scripts\\python.exe -m app.config.cli validate <TEMP>\\bad-env-reference.yaml",
+    ".\\.venv\\Scripts\\python.exe -m app.config.cli validate <TEMP>\\unrecognised-top-level.yaml",
+    ".\\.venv\\Scripts\\python.exe -m app.config.cli emit-schema application",
+    ".\\.venv\\Scripts\\python.exe -m app.config.cli emit-schema schedules",
+    ".\\.venv\\Scripts\\python.exe -m app.config.cli emit-schema llm-providers",
+    ".\\.venv\\Scripts\\python.exe -m app.config.cli emit-schema provider",
+    "Secret vocabulary grep over apps/api/app/config, tests/unit/test_config_system.py, docs/CONFIGURATION.md, config/examples",
+    "Product-truth scan over F003 source/config/docs/test/script/dependency files and HEAD^ pyproject corroboration",
+    "Select-String pyyaml==6.0.3 in pyproject.toml and apps/api/requirements.txt",
+    ".\\.venv\\Scripts\\pytest.exe -q tests\\unit\\test_requirements_sync.py",
+    "git --no-pager status --short --branch; confirm F003 passes after False"
   ],
   "end_to_end_steps_run": [
-    "Confirmed merged main HEAD 9f43e07239c768ff48aed79332f46eb5ee4b74af and all F002 slice squash commits (#5/#6/#7) were present in the recent log.",
-    "Verified npm policy before npm-backed work: host registry was the Microsoft package feed proxy with replace-registry-host=npmjs; .env supplied the proxy registry to Docker builds.",
-    "Ran the baseline init script, topology inspection, scripts/test.ps1, and scripts/check.ps1 -NodeAudit successfully.",
-    "Started the full five-service stack through scripts/stack-up.ps1, verified docker compose ps all-services-healthy, and ran scripts/stack-smoke.ps1 successfully.",
-    "Independently probed web root, web /api proxy, direct API liveness, direct API readiness, and PostgreSQL migration/job/heartbeat state.",
-    "Restarted with stack-down without volumes, stack-up, and stack-smoke; the workflow passed again.",
-    "Stopped api to prove the nginx seam: root stayed 200 while /api/health became 504, then api restart recovered /api/health to 200.",
-    "Verified lockfile portability, product-truth copy safety, and LOCAL_DEVELOPMENT command documentation.",
-    "Stopped the stack through scripts/stack-down.ps1 and confirmed docker compose ps showed no running services."
+    "Confirmed the F003 slice-1 contract identity and required Level 2 evaluation gate.",
+    "Validated all four example YAML files through both PowerShell and Git Bash wrappers.",
+    "Ran the full repository test and check scripts requested by the contract.",
+    "Crafted six adversarial YAML files outside the repository and verified every required failure mode exits non-zero with file-scoped output.",
+    "Verified inline-secret rejection does not echo the sentinel secret value.",
+    "Emitted and parsed JSON Schema for all four families and confirmed additionalProperties=false.",
+    "Corroborated secret-scan, product-truth, and dependency hygiene constraints.",
+    "Confirmed agent-state/feature_list.json still has F003 passes:false and was not edited."
   ],
-  "disposition": "passed",
-  "blocking_failures": [],
   "notes": [
-    "This is the FULL-EPIC F002 verdict against merged main commit 9f43e07239c768ff48aed79332f46eb5ee4b74af, covering slices 1+2+3 together rather than a single slice.",
-    "All required F002 acceptance steps passed end-to-end: canonical start, frontend/API/worker/scheduler/migrations/database verification, restart + smoke rerun, documented cleanup.",
-    "The negative api-down check proved the web /api integration is real: static SPA stayed available while the proxied API returned 504 until api recovered.",
-    "No unsupported shipped claim that a service is free, zero-cost, $0, or Z0 was found; matches were product-name or technical credential/host comments only.",
-    "The evaluator did not change agent-state/feature_list.json. Because disposition is passed, F002 may now be flipped to passes:true by the authorized builder/ledger step.",
-    "A pre-existing working-tree modification to agent-state/current_contract.json was present on evaluator entry and was not changed by this evaluator."
+    "Disposition is passed for F003 slice 1 only. The overall F003 epic remains incomplete because domain model/migrations and Z0 classification slices are out of scope and still pending.",
+    "A first schema-summary helper command had an evaluator-side quoting SyntaxError after the CLI itself exited 0; the schema commands were immediately rerun and parsed successfully with PowerShell ConvertFrom-Json. This did not affect the implementation under test.",
+    "Only repository files intentionally written by this evaluator are agent-state/evaluation.json (overwrite) and agent-state/progress.md (append). No commit, push, merge, or feature_list.json edit was performed."
   ],
   "recommendations": [
-    "Flip only F002 passes, last_verified_at, and verification_evidence in agent-state/feature_list.json based on this full-epic Level 2 passed verdict.",
-    "Keep the final stack down; it was stopped and docker compose ps showed no running services.",
-    "Proceed to the next owner-approved feature only after the ledger flip/handoff is recorded; do not infer any F003+ domain capability from this scaffold verdict."
+    "Treat slice 1 as evaluator-approved, but keep F003 passes:false until slices 2 and 3 and a full F003 Level 2 close-out evaluation pass.",
+    "Proceed next with the approved F003 slice 2 domain model/Alembic migration contract rather than changing the feature ledger to passed."
   ]
 }
