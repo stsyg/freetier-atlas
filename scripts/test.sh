@@ -35,6 +35,12 @@ if ! "${PYTEST}" "${PYTEST_ARGS[@]}"; then
   exit 1
 fi
 
+echo "==> Config validation (scripts/validate-config.sh)"
+if ! bash "${SCRIPT_DIR}/validate-config.sh"; then
+  echo "CONFIG VALIDATION FAILED"
+  exit 1
+fi
+
 WEB_DIR="${REPO_ROOT}/apps/web"
 if [[ -f "${WEB_DIR}/package.json" && -d "${WEB_DIR}/node_modules" ]]; then
   echo "==> Web unit tests (apps/web: vitest run)"

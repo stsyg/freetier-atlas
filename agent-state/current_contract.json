@@ -1,78 +1,76 @@
 {
   "schema_version": 1,
   "status": "approved",
-  "feature_id": "F002",
-  "increment": "full-epic-close-out",
+  "feature_id": "F003",
+  "increment": "slice-1-configuration-system",
   "builder": "Copilot CLI (Chief)",
-  "evaluator": "fresh independent full-epic evaluator",
-  "approved_at": "2026-07-17T13:45:00Z",
+  "evaluator": "fresh independent Level 2 evaluator",
+  "approved_at": "2026-07-17T15:00:00Z",
   "approval_notes": [
-    "Owner explicitly approved merging F002 slice 3 (PR #7) to main and then running the full-epic F002 Level 2 evaluation and flipping F002 passes:true with evidence (prompt: 'checked by humna, looks good, merge and delete branch. after that do full epic F002 eval and flip to true with evidence').",
-    "F002 slices 1 (API + PostgreSQL + Alembic), 2 (worker + scheduler PostgreSQL job queue), and 3 (React web frontend served by nginx) are all now merged to main (squash commits #5 6049e7f, #6 bd41c98, #7 9f43e07). This close-out is EVAL-ONLY: it verifies the complete epic together against main and, on a passing verdict, records the ledger flip. No product/source/config code is changed by this increment.",
-    "Marking F002 passes:true is permitted only after a fresh-context full-epic Level 2 evaluator records disposition=passed in agent-state/evaluation.json against the merged main state."
+    "Owner approved starting the F003 epic and, when presented with the scoped plan, selected 'Approve as scoped (implement now)' including the addition of the lightweight pyyaml==6.0.3 runtime dependency.",
+    "This is the FIRST of three F003 slices. Slice 1 = the configuration system (CODEX task 003 = F003 acceptance step 1: validate good and bad YAML with actionable errors). Slice 2 = the domain model + Alembic migrations (task 004 = acceptance steps 2 and 3). Slice 3 = the Z0 classification engine (task 005 = acceptance step 4).",
+    "F003 stays passes:false after this slice. Flipping F003 passes:true requires the FULL epic (config + domain model + Z0 engine) plus a fresh-context full-epic Level 2 evaluation, exactly as F002 was closed out."
   ],
-  "objective": "Verify the complete F002 epic end-to-end on the merged main branch: the frontend, API, worker, scheduler, and PostgreSQL all start through the canonical scripts, are individually verified (including migrations and database connectivity), remain healthy after a restart, and stop/clean up through the documented commands. On a passing fresh-context Level 2 verdict, flip the F002 feature-ledger entry to passes:true with evaluator-backed evidence.",
+  "objective": "Add a typed, validated, documented declarative YAML configuration system: Pydantic v2 models for the four configuration families (application, schedules, llm-providers, provider files) that forbid unknown fields, a loader that produces actionable file-scoped errors for malformed YAML / unknown fields / missing required fields / inline secrets, a JSON Schema export, and a validation CLI plus cross-platform wrapper scripts. Secrets are referenced by environment-variable name only and never stored or printed.",
   "scope": [
-    "Run a fresh-context, independent, full-epic Level 2 evaluation of F002 against merged main (9f43e07): all five services (postgres, api, worker, scheduler, web) via the canonical scripts.",
-    "Record the full-epic verdict in agent-state/evaluation.json (overwrite) and append an Evaluator entry to agent-state/progress.md.",
-    "On disposition=passed, set F002 passes:true, last_verified_at, and verification_evidence in agent-state/feature_list.json (the only feature-ledger fields a non-planner may change), leaving acceptance_steps unchanged."
+    "New package apps/api/app/config/: models.py (typed Pydantic v2 models, extra=forbid, closed Z0-class vocabulary from docs/DATA_MODEL.md, slug-validated open vocabularies, env-var-name references), loader.py (YAML parse + family detection + inline-secret scan + actionable error formatting), cli.py (validate + emit-schema), __init__.py.",
+    "scripts/validate-config.ps1 and scripts/validate-config.sh wrappers, invoked from scripts/test.ps1 and scripts/test.sh after pytest.",
+    "Add pyyaml==6.0.3 to pyproject.toml [project.dependencies] and apps/api/requirements.txt (kept in sync per tests/unit/test_requirements_sync.py; the worker subset is unaffected).",
+    "tests/unit/test_config_system.py: valid examples pass; unknown field, malformed YAML, missing required, bad cron, threshold ordering, mcp-without-capabilities, inline secret, and non-env-name reference all rejected with actionable errors; JSON Schema export; CLI success and failure paths.",
+    "docs/CONFIGURATION.md documenting the families, the validation commands, and the secret-name rule."
   ],
   "out_of_scope": [
-    "Any change to product/source/config/dependency files, docker-compose, scripts, or docs; this increment changes only agent-state files.",
-    "Any F003+ domain model, provider adapters, extraction, Z0 classification, or hosting work.",
-    "Changing F002 acceptance_steps or any other feature's ledger entry.",
-    "Marking any feature other than F002 as passing."
+    "The F003 domain model (Provider/Service/Offer/Quota/Region/Evidence/Snapshot/OfferVersion/ChangeEvent/ScanRun/ReviewItem), Alembic migrations, rollback/reapply, immutable offer versions, and evidence provenance -> F003 slice 2.",
+    "The Z0 classification engine and truth table (including unknown/contradictory handling) -> F003 slice 3.",
+    "Runtime consumption of this configuration by the API/worker/scheduler beyond validation; full secret injection wiring; provider adapters; any network or source fetching.",
+    "Marking F003 (or any feature) passes:true; adding managed-cloud services or heavyweight dependencies; advancing past this slice."
   ],
   "acceptance_criteria": [
-    "The full stack starts through the canonical script: pwsh -File scripts/stack-up.ps1 brings up postgres, api, worker, scheduler, and web with no manual steps.",
-    "docker compose ps reports all five services (postgres, api, worker, scheduler, web) healthy.",
-    "Frontend is verified: GET http://localhost:${WEB_PORT}/ returns 200 HTML with the SPA root element, and GET http://localhost:${WEB_PORT}/api/health returns 200 status=ok through the nginx /api/ proxy.",
-    "API is verified: /health = 200 and /health/ready = 200 with database ok.",
-    "Worker and scheduler are verified: containers healthy, the job queue processes at least one job to done, and worker+scheduler heartbeats are fresh.",
-    "Migrations and database connectivity are verified: the app_meta and worker (job_queue + service_heartbeat) migrations are applied against PostgreSQL.",
-    "A live run of scripts/stack-smoke.{ps1,sh} passes all checks (all API/database/migration/worker/scheduler/web assertions).",
-    "Restart resilience: scripts/stack-down.ps1 (without volumes) then scripts/stack-up.ps1 then scripts/stack-smoke.ps1 passes again.",
-    "Regression suites are green on main: scripts/test.ps1 and scripts/check.ps1 -NodeAudit (ruff, format, pytest, prettier, eslint, secret scan, pip-audit, npm audit -> 0 vulnerabilities).",
-    "Stop and clean up through documented commands: scripts/stack-down.ps1 leaves no running services (and -Volumes removes the data volume) as documented in docs/LOCAL_DEVELOPMENT.md.",
-    "No unsupported free-tier/zero-cost/Z0 product claim exists in the shipped app copy (product-truth rule)."
+    "scripts/validate-config.{ps1,sh} validates every *.yaml under config/examples (application, schedules, llm-providers, providers/cloudflare) and exits 0.",
+    "Each configuration family has a typed Pydantic model that forbids unknown fields; an unknown field produces an actionable error naming the file and the field path with a non-zero exit.",
+    "Malformed YAML produces an actionable error naming the file with the line and column of the syntax error, with a non-zero exit.",
+    "A missing required field produces an actionable error naming the field path (type=missing), with a non-zero exit.",
+    "python -m app.config.cli emit-schema <family> prints a valid JSON Schema (type=object with properties) for each of the four families.",
+    "Secret safety: a raw inline secret key (api_key, password, token, secret, etc.) anywhere in a file is rejected; secrets are referenced only via *_env environment-variable names; a non-env-name reference is rejected; the detect-secrets scan stays green and no secret value is printed.",
+    "The offline pytest suite (valid examples, unknown/malformed/missing/bad-cron/threshold/mcp/inline-secret/env-name, schema export, CLI) passes.",
+    "Regression green: scripts/test.ps1 (pytest + config validation + web tests/build) and scripts/check.ps1 -NodeAudit (ruff, format, pytest, prettier, eslint, secret scan, pip-audit, npm audit), including the requirements-sync guard with the new pyyaml pin.",
+    "No unsupported free-tier/zero-cost/Z0 product claim is introduced (backend configuration only; product-truth rule).",
+    "A fresh-context independent Level 2 evaluator records an adversarial verdict in agent-state/evaluation.json before any status change is claimed; F003 remains passes:false (epic incomplete)."
   ],
   "verification_plan": {
     "baseline_commands": [
       "git status --short --branch",
       "git rev-parse HEAD",
-      "git --no-pager log --oneline -5",
-      "docker compose config --services"
+      "git --no-pager log --oneline -5"
     ],
     "unit_commands": [
       "pwsh -File scripts/test.ps1",
       "pwsh -File scripts/check.ps1 -NodeAudit"
     ],
     "integration_commands": [
-      "pwsh -File scripts/stack-up.ps1",
-      "pwsh -File scripts/stack-smoke.ps1",
-      "pwsh -File scripts/stack-down.ps1"
+      "pwsh -File scripts/validate-config.ps1",
+      "python -m app.config.cli emit-schema application"
     ],
     "end_to_end_steps": [
-      "Confirm HEAD is the merged main tip (9f43e07) and the tree is clean before evaluating.",
-      "Bring the full stack up through scripts/stack-up.ps1 and confirm all five services reach healthy.",
-      "Run scripts/stack-smoke.ps1 and confirm every check passes (API liveness/readiness, migrations, worker+scheduler health, queue processed, heartbeats, web healthy, web serves SPA, web proxies /api/health).",
-      "Independently corroborate GET / and GET /api/health through WEB_PORT, and docker compose ps health for all services.",
-      "Restart: scripts/stack-down.ps1 (keep volumes) then scripts/stack-up.ps1 then scripts/stack-smoke.ps1 -> all pass again.",
-      "Run scripts/test.ps1 and scripts/check.ps1 -NodeAudit and confirm both pass end-to-end.",
-      "Stop and clean up via scripts/stack-down.ps1 and confirm no services remain running."
+      "Run scripts/validate-config.ps1 and confirm all four example configs validate with exit 0.",
+      "Craft an invalid config for each failure mode (unknown field, malformed YAML, missing required, inline secret) and confirm the CLI reports an actionable, file-scoped error and exits non-zero.",
+      "Run python -m app.config.cli emit-schema for each family and confirm a valid JSON Schema is printed.",
+      "Run scripts/test.ps1 and scripts/check.ps1 -NodeAudit and confirm both pass end-to-end, including the requirements-sync guard.",
+      "Confirm the detect-secrets scan is green and no secret value appears in any config, code, or output."
     ],
     "negative_tests": [
-      "With the api service stopped, GET / through the web container still returns 200 while GET /api/health returns a non-200 through the nginx proxy; restarting api recovers /api/health to 200 (proves the seam is real, not mocked).",
-      "The committed apps/web/package-lock.json contains no internal-feed hostnames (only public registry.npmjs.org URLs)."
+      "A config containing a raw api_key (rather than api_key_env) is rejected with an 'inline secret' message.",
+      "A cron expression that is not five fields is rejected; a provider whose automatic_threshold is below uncertain_threshold is rejected; an mcp source without capabilities is rejected.",
+      "An unrecognised top-level structure is rejected with a family-detection error rather than being silently accepted."
     ]
   },
   "risks": {
-    "data_migration": "Eval-only; no schema change. Existing Alembic migrations remain the source of truth and are verified applied.",
-    "security_privacy": "No secrets printed or committed; secret-scan must stay green. Only agent-state files change.",
-    "portability": "Evaluation uses the canonical cross-platform scripts; npm uses the approved corp proxy on this device without altering the portable public lockfile.",
-    "zero_cost_safety": "The stack runs entirely locally via Docker Compose; no hosting or paid dependency. Product-truth: confirm no unsupported free/zero-cost claim in shipped copy.",
-    "regression": "Full regression (test.ps1 + check.ps1 -NodeAudit) is re-run on main to confirm the merged epic is green.",
-    "supply_chain": "npm audit must report 0 vulnerabilities on main; lockfile stays public-registry portable."
+    "data_migration": "No schema or migration change in this slice; configuration is parsed and validated only, not persisted.",
+    "security_privacy": "Secrets are referenced by environment-variable name only; the loader never reads or prints secret values and actively rejects inline secrets. detect-secrets must stay green.",
+    "portability": "pyyaml is a pure, ubiquitous, permissively licensed YAML parser (ADR 0004 mandates YAML config); it adds no managed-cloud dependency and builds on amd64 and arm64.",
+    "zero_cost_safety": "Backend configuration only; introduces no product claim. The closed Z0-class vocabulary mirrors docs/DATA_MODEL.md.",
+    "regression": "Adding pyyaml touches both pyproject.toml and apps/api/requirements.txt; the requirements-sync guard is re-run to confirm no drift.",
+    "supply_chain": "pyyaml==6.0.3 is an established release well beyond any quarantine window; no new npm dependency is added by this Python-only slice."
   },
   "required_evaluation_level": 2,
   "contract_review": {
@@ -80,7 +78,7 @@
     "reviewer": "owner",
     "disposition": "approved",
     "notes": [
-      "Owner authorized the merge of PR #7 and the subsequent full-epic F002 evaluation + ledger flip in this session. F002 acceptance_steps are unchanged; only passes/last_verified_at/verification_evidence will be set, and only on a passing fresh-context full-epic Level 2 verdict."
+      "Owner approved the scoped slice and the pyyaml dependency ('Approve as scoped (implement now)'). This slice does not mark F003 passing; it is the first of three F003 slices and requires an independent Level 2 evaluation before its own completion is claimed."
     ]
   }
 }
