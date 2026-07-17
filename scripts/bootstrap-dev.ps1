@@ -52,6 +52,16 @@ Write-Host "==> Installing Node dev dependencies (npm install)" -ForegroundColor
 & npm install
 if ($LASTEXITCODE -ne 0) { Write-Error "npm install failed"; exit 1 }
 
+$webDir = Join-Path $RepoRoot "apps/web"
+if (Test-Path (Join-Path $webDir "package.json")) {
+    Write-Host "==> Installing web frontend dependencies (apps/web)" -ForegroundColor Cyan
+    Push-Location $webDir
+    & npm install
+    $webExit = $LASTEXITCODE
+    Pop-Location
+    if ($webExit -ne 0) { Write-Error "apps/web npm install failed"; exit 1 }
+}
+
 Write-Host ""
 Write-Host "BOOTSTRAP COMPLETE" -ForegroundColor Green
 Write-Host "Next: scripts/test.ps1 to run tests, or scripts/stack-up.ps1 to start the stack." -ForegroundColor Green

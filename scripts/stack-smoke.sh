@@ -14,6 +14,7 @@ REPO_ROOT="$(cd -- "${SCRIPT_DIR}/.." && pwd)"
 cd -- "${REPO_ROOT}"
 
 API_PORT="${API_PORT:-8000}"
+WEB_PORT="${WEB_PORT:-8080}"
 PG_USER="${POSTGRES_USER:-atlas}"
 PG_DB="${POSTGRES_DB:-atlas}"
 
@@ -101,6 +102,21 @@ check_heartbeats_fresh() {
   [[ "${n}" == "2" ]]
 }
 
+web_healthy() { [[ "$(container_health web)" == "healthy" ]]; }
+check_web_healthy() { wait_until 90 web_healthy; }
+
+check_web_serves_spa() {
+  local body
+  body="$(curl -fsS -m 5 "http://localhost:${WEB_PORT}/")" || return 1
+  echo "${body}" | grep -q 'id="root"'
+}
+
+check_web_proxies_api() {
+  local body
+  body="$(curl -fsS -m 5 "http://localhost:${WEB_PORT}/api/health")" || return 1
+  echo "${body}" | grep -q '"status":"ok"'
+}
+
 run_check "API liveness (/health = 200)" check_liveness
 run_check "API readiness (/health/ready = 200, db ok)" check_readiness
 run_check "Migration applied (app_meta table + marker row)" check_migration
@@ -109,6 +125,9 @@ run_check "Worker container healthy" check_worker_healthy
 run_check "Scheduler container healthy" check_scheduler_healthy
 run_check "Queue processed (>=1 job reached done)" check_queue_processed
 run_check "Heartbeats fresh (worker + scheduler)" check_heartbeats_fresh
+run_check "Web container healthy" check_web_healthy
+run_check "Web serves SPA (GET / = 200 HTML with #root)" check_web_serves_spa
+run_check "Web proxies API (GET /api/health = 200, status ok)" check_web_proxies_api
 
 echo ""
 if [[ "${#failures[@]}" -gt 0 ]]; then

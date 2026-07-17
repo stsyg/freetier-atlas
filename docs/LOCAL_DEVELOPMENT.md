@@ -27,8 +27,22 @@ scripts/bootstrap-dev.sh  # or: pwsh -File scripts/bootstrap-dev.ps1
 ```
 
 This creates `.venv`, installs the Python project with its runtime and dev
-dependencies (`pip install -e ".[dev]"`), and installs Node dev dependencies
-(`npm install`). Both `.venv` and `node_modules` are git-ignored.
+dependencies (`pip install -e ".[dev]"`), installs the root Node dev dependencies
+(`npm install`), and — when `apps/web` is present — installs the web frontend
+dependencies (`npm install` in `apps/web`). `.venv` and all `node_modules` are
+git-ignored.
+
+### npm registry (mirrors / proxies)
+
+The committed `apps/web/package-lock.json` pins **public** `registry.npmjs.org`
+URLs, so it works anywhere by default. If your environment blocks or mirrors the
+public registry, point npm at your approved feed and npm remaps the lockfile URLs
+automatically (no lockfile changes needed):
+
+- Host installs: set `registry=<your-feed>` in your user `~/.npmrc` (keep
+  `replace-registry-host=npmjs`, the default).
+- The web Docker image: set `NPM_REGISTRY=<your-feed>` in `.env`; it is passed to
+  the image build as a build arg (defaults to the public registry).
 
 ## Environment configuration
 
@@ -47,11 +61,16 @@ Variable names (values live in your environment, not the repo):
 - `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`, `POSTGRES_PORT`
 - `DATABASE_URL` — SQLAlchemy URL used by the API
 - `APP_ENV`, `API_PORT`
+- `WORKER_POLL_INTERVAL_SECONDS`, `SCHEDULER_INTERVAL_SECONDS`, `HEARTBEAT_STALE_SECONDS`
+- `WEB_PORT` — host port for the nginx-served web frontend (default `8080`)
+- `NPM_REGISTRY` — npm registry used when building the web image (default public)
 
 ## The development stack
 
-Slice 1 of the scaffold runs two services: `postgres` and `api`. The `web`,
-`worker`, and `scheduler` services arrive in a later increment.
+The stack runs five services: `postgres`, `api`, `worker`, `scheduler`, and
+`web`. The `web` service is a Vite + React single-page app built to static assets
+and served by nginx; it reverse-proxies `/api/` to the `api` service so the
+browser talks to a single origin.
 
 ```bash
 scripts/stack-up.sh       # build + start; waits for API liveness
@@ -70,9 +89,11 @@ pwsh -File scripts/stack-down.ps1            # -Volumes to drop data
 
 ### What the stack exposes
 
+- Web frontend: <http://localhost:8080/> (nginx-served SPA; `WEB_PORT` overrides)
 - API liveness: <http://localhost:8000/health>
 - API readiness: <http://localhost:8000/health/ready> (200 when PostgreSQL is reachable, 503 otherwise)
 - OpenAPI docs: <http://localhost:8000/docs>
+- Web → API proxy: <http://localhost:8080/api/health> (served through the web container)
 
 The API container runs `alembic upgrade head` on startup, so migrations are
 applied automatically. The baseline migration creates a scaffold `app_meta`
@@ -81,15 +102,17 @@ table; the real domain model is added in F003.
 ## Tests and checks
 
 ```bash
-scripts/test.sh           # pytest (unit tests; no database required)
-scripts/test.sh --full    # pytest + the full repo check suite
+scripts/test.sh           # pytest, then web unit tests + build when apps/web deps are present
+scripts/test.sh --full    # the above + the full repo check suite
 scripts/check.sh --node-audit   # ruff, pytest, prettier, eslint, secret scan, audits
 ```
 
-Unit tests do not need the stack running. The optional live integration tests in
-`tests/integration/` are skipped unless `ATLAS_STACK_BASE_URL` is set (for
-example `http://localhost:8000`); the stack smoke scripts are the authoritative
-live verification.
+Unit tests do not need the stack running. `scripts/test` also runs the web unit
+tests (`vitest run`) and a production `vite build` when `apps/web/node_modules`
+is present; it prints a skip note (never a fake pass) when they are absent. The
+optional live integration tests in `tests/integration/` are skipped unless
+`ATLAS_STACK_BASE_URL` is set (for example `http://localhost:8000`); the stack
+smoke scripts are the authoritative live verification.
 
 ## Typical loop
 

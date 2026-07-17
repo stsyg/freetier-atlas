@@ -38,6 +38,24 @@ if ($testExit -ne 0) {
     exit $testExit
 }
 
+$webDir = Join-Path $RepoRoot "apps/web"
+if ((Test-Path (Join-Path $webDir "package.json")) -and (Test-Path (Join-Path $webDir "node_modules"))) {
+    Write-Host "==> Web unit tests (apps/web: vitest run)" -ForegroundColor Cyan
+    Push-Location $webDir
+    & npm run test
+    $webExit = $LASTEXITCODE
+    if ($webExit -eq 0) {
+        Write-Host "==> Web build (apps/web: vite build)" -ForegroundColor Cyan
+        & npm run build
+        $webExit = $LASTEXITCODE
+    }
+    Pop-Location
+    if ($webExit -ne 0) { Write-Host "WEB TESTS/BUILD FAILED (exit $webExit)" -ForegroundColor Red; exit $webExit }
+}
+elseif (Test-Path (Join-Path $webDir "package.json")) {
+    Write-Host "Note: apps/web present but node_modules missing; skipping web tests/build. Run scripts/bootstrap-dev.ps1 first." -ForegroundColor Yellow
+}
+
 if ($Full) {
     Write-Host "==> Full check suite (scripts/check.ps1 -NodeAudit)" -ForegroundColor Cyan
     & (Join-Path $PSScriptRoot "check.ps1") -NodeAudit
