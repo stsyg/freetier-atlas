@@ -272,3 +272,19 @@ Append one entry after every meaningful implementation or evaluation session. Do
 - **Known issues or risks:** No F002 blocking issues found. This verdict proves the local scaffold topology only; it does not claim F003+ catalogue, evidence, provider adapter, quota, or Z0 classification functionality. A pre-existing uncommitted agent-state/current_contract.json modification was present on evaluator entry and was not changed by the evaluator.
 - **Recommended next action:** Flip F002 to passes:true (only allowed ledger fields) using this Level 2 passed verdict as evidence, then stop for the next owner-approved feature contract.
 
+
+---
+
+## 2026-07-17 15:30 UTC — Builder — F003
+
+- **Objective:** Implement F003 slice 1, the declarative YAML configuration system (CODEX task 003 = F003 acceptance step 1): typed, validated, documented configuration with actionable errors and env-var-name-only secret handling.
+- **Contract:** `agent-state/current_contract.json` (feature_id=F003, increment=slice-1-configuration-system, required_evaluation_level=2, owner-approved "Approve as scoped (implement now)").
+- **Work completed:** Added the `apps/api/app/config/` package: Pydantic v2 models for the four families (application, schedules, llm-providers, provider files) with `extra="forbid"`, the closed Z0-class vocabulary from docs/DATA_MODEL.md, slug-validated open vocabularies, `*_env` environment-variable-name references, cron/threshold/mcp-capability validators; a loader with YAML parsing, family auto-detection, a recursive inline-secret scan, and actionable file-scoped error formatting (unknown field, malformed YAML with line/column, missing required, inline secret); a CLI (`validate`, `emit-schema`). Added `scripts/validate-config.{ps1,sh}` and wired them into `scripts/test.{ps1,sh}` after pytest. Added `pyyaml==6.0.3` to pyproject.toml and apps/api/requirements.txt (sync-guarded; worker subset unaffected). Added tests and docs/CONFIGURATION.md.
+- **Files changed:** apps/api/app/config/{__init__,models,loader,cli}.py; scripts/validate-config.ps1; scripts/validate-config.sh; scripts/test.ps1; scripts/test.sh; pyproject.toml; apps/api/requirements.txt; tests/unit/test_config_system.py; docs/CONFIGURATION.md; agent-state/current_contract.json; agent-state/progress.md.
+- **Tests and checks run:** scripts/validate-config.ps1 on the 4 example configs; pytest tests/unit/test_config_system.py + test_requirements_sync.py; ruff check + format --check on the new code; full scripts/test.ps1 and scripts/check.ps1 -NodeAudit (results captured for the PR).
+- **Exact results:** (to be finalised by the verification run and attached to the PR).
+- **Evaluator disposition:** pending — a fresh-context independent Level 2 evaluation is required before completion is claimed.
+- **Evaluation evidence:** pending.
+- **Commit SHA:** pending.
+- **Known issues or risks:** Configuration is validated only, not yet consumed at runtime (deferred). Domain model + migrations (slice 2) and the Z0 engine (slice 3) remain, so F003 stays passes:false.
+- **Recommended next action:** Run full local verification, commit, push, open a PR with test results attached, then run the fresh-context Level 2 evaluation.

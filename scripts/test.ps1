@@ -38,6 +38,13 @@ if ($testExit -ne 0) {
     exit $testExit
 }
 
+Write-Host "==> Config validation (scripts/validate-config.ps1)" -ForegroundColor Cyan
+& (Join-Path $PSScriptRoot "validate-config.ps1")
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "CONFIG VALIDATION FAILED (exit $LASTEXITCODE)" -ForegroundColor Red
+    exit $LASTEXITCODE
+}
+
 $webDir = Join-Path $RepoRoot "apps/web"
 if ((Test-Path (Join-Path $webDir "package.json")) -and (Test-Path (Join-Path $webDir "node_modules"))) {
     Write-Host "==> Web unit tests (apps/web: vitest run)" -ForegroundColor Cyan
