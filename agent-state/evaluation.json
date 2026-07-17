@@ -1,185 +1,218 @@
 {
   "schema_version": 1,
   "feature_id": "F002",
-  "increment": "slice-3-web-frontend",
-  "implementation_commit": "01d03ffa69c0ee9f3b0e985d2437f5b1a3cf970f",
+  "increment": "full-epic-close-out",
+  "implementation_commit": "9f43e07239c768ff48aed79332f46eb5ee4b74af",
   "evaluator": "fresh independent Level 2 evaluator (Copilot CLI Chief)",
-  "evaluated_at": "2026-07-16T23:53:00Z",
+  "evaluated_at": "2026-07-17T14:08:11Z",
   "evaluation_level": 2,
   "criteria": [
     {
-      "name": "startup_ritual_contract_and_clean_head",
+      "name": "startup_contract_and_main_head",
       "required": true,
       "result": "pass",
       "passed": true,
       "evidence": [
-        "Harness previously loaded in this evaluator session: Harness-Version 2026-07-02.1, content-hash 00b135ae447ca6ce.",
+        "Harness loaded before substantive evaluation: Harness-Version 2026-07-02.1, content-hash 00b135ae447ca6ce.",
         "Repository directory confirmed as C:\\Users\\sergiyt\\.copilot\\repos\\copilot-worktrees\\freetier-atlas\\stsyg-automatic-garbanzo.",
-        "git rev-parse HEAD returned 01d03ffa69c0ee9f3b0e985d2437f5b1a3cf970f, matching the amended slice-3 commit under test.",
-        "git status --short --branch returned '## stsyg-f002-slice3-web-frontend' plus only the evaluator's pending writes to agent-state/evaluation.json and agent-state/progress.md.",
-        "git --no-pager show --stat HEAD | Select-Object -First 30 showed commit 01d03ffa..., title 'feat(web): add React frontend served by nginx, wired into the stack (F002 slice 3)', and commit notes explicitly deferring F003 catalogue/offer/evidence/Z0 domain data and provider adapters.",
-        "The prior failed verdict at 270c747 was read and used only as a baseline; this file overwrites it with the 01d03ff re-check verdict. feature_list.json was not changed and F002 remains passes=false."
+        "git rev-parse HEAD returned 9f43e07239c768ff48aed79332f46eb5ee4b74af, matching the requested merged main F002 slice-3 squash commit.",
+        "git status --short --branch returned ## stsyg-f002-close-out...origin/main plus a pre-existing agent-state/current_contract.json modification on entry; evaluator did not modify current_contract.json or feature_list.json.",
+        "git --no-pager log --oneline -20 showed 9f43e07 (#7), bd41c98 (#6), and 6049e7f (#5) at the top, confirming all F002 slices are present.",
+        "agent-state/feature_list.json was read and F002 was confirmed passes=false before evaluation. agent-state/current_contract.json was read as increment full-epic-close-out with required_evaluation_level 2."
       ],
       "failures": []
     },
     {
-      "name": "topology_web_healthcheck_and_depends_on",
+      "name": "A_topology_services_web_healthcheck_depends_on",
       "required": true,
       "result": "pass",
       "passed": true,
       "evidence": [
-        "Re-checked at 01d03ff: docker compose config --services returned five services and no extras: postgres, api, scheduler, web, worker. This is the required service set; Docker Compose emitted scheduler/web/worker order on this host rather than the prompt's prose order.",
-        "Prior 270c747 evaluation verified web build context apps\\web, Dockerfile, NPM_REGISTRY arg, port ${WEB_PORT:-8080}:80, depends_on api condition: service_healthy, and wget /healthz healthcheck. The amend changed only copy in web UI/meta/test, not docker-compose.yml or nginx/Dockerfile wiring.",
-        "Live 01d03ff stack-smoke passed Web container healthy, Web serves SPA, and Web proxies API, corroborating the topology after rebuild."
+        "pwsh scripts/init.ps1 passed: required repository files ok, agent-state JSON syntax ok, PowerShell 7.6.3 available.",
+        "npm config get registry returned https://packagefeedproxy.microsoft.io/npm/ and replace-registry-host returned npmjs before npm commands.",
+        ".env existed with NPM_REGISTRY=https://packagefeedproxy.microsoft.io/npm/ and WEB_PORT=8080, so Docker npm ci used the approved proxy.",
+        "docker compose config --services returned exactly five services and no extras: postgres, scheduler, api, web, worker. Compose v5 emitted a different order than the prompt prose; the service set is exactly postgres/api/worker/scheduler/web.",
+        "docker compose config showed web build context apps\\web, NPM_REGISTRY build arg resolved to https://packagefeedproxy.microsoft.io/npm/, web depends_on api condition: service_healthy, and a wget /healthz healthcheck."
       ],
       "failures": []
     },
     {
-      "name": "web_offline_build_lint_test_and_audit",
+      "name": "B_regression_tests_and_audits",
       "required": true,
       "result": "pass",
       "passed": true,
       "evidence": [
-        "Before npm commands at 01d03ff, npm config get registry returned https://packagefeedproxy.microsoft.io/npm/ and npm config get replace-registry-host returned npmjs; no npm command was directed at registry.npmjs.org.",
-        "At 01d03ff in apps/web, npm run lint exited 0 (eslint .).",
-        "At 01d03ff, npm run test exited 0: Vitest v3.2.7, src/App.test.tsx 4 tests passed, 1 test file passed, duration 3.40s; fetch remains mocked by vi.stubGlobal('fetch', vi.fn(...)).",
-        "At 01d03ff, npm run build exited 0: tsc -b && vite build; 31 modules transformed; dist/index.html 0.58 kB plus hashed CSS/JS assets produced; Get-Item dist\\index.html reported Length 582.",
-        "npm ci and npm audit were verified at the prior tree: npm ci via the Microsoft proxy added 336 packages/audited 337 and found 0 vulnerabilities; npm audit found 0 vulnerabilities. The amended commit changed only copy in index.html/App.tsx/App.test.tsx, not package.json or package-lock.json, so the audit result is unaffected."
+        "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts\\test.ps1 exited 0: pytest collected 44 items; 42 passed, 2 skipped; web Vitest src/App.test.tsx 4 passed; Vite build produced dist/index.html 0.58 kB and JS/CSS assets; TESTS PASSED.",
+        "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts\\check.ps1 -NodeAudit exited 0: Ruff lint PASS, Ruff format check PASS (21 files already formatted), Pytest PASS (42 passed, 2 skipped), Prettier PASS, ESLint PASS, Secret scan PASS, Python dependency audit PASS (No known vulnerabilities found), Node dependency audit PASS.",
+        "npm audit line captured from check.ps1 -NodeAudit: found 0 vulnerabilities.",
+        "No npm output indicated contact with registry.npmjs.org; host registry was the Microsoft package feed proxy before running npm-backed checks."
       ],
       "failures": []
     },
     {
-      "name": "static_scope_review_and_claim_safety",
+      "name": "C_canonical_stack_up_all_services_healthy",
       "required": true,
       "result": "pass",
       "passed": true,
       "evidence": [
-        "At 01d03ff, git --no-pager diff main...HEAD --stat/show review remains limited to apps/web/** plus docker-compose.yml, .env.example, root eslint/prettier ignore, bootstrap/test/stack-smoke scripts, docs/LOCAL_DEVELOPMENT.md, and agent-state ledgers. No F003 catalogue/offer/evidence/region/quota domain model files or provider adapters were added.",
-        "Re-ran claim scan with pattern zero-cost|zero cost|$0|free[- ]tier|is free|are free|Z0 over git --no-pager diff main...HEAD and apps/web sources.",
-        "apps/web source scan returned no UI/meta/test matches for zero-cost, zero cost, $0, free-tier, is free, are free, or Z0. The only apps/web matches were five package-lock.json integrity hash false positives containing 'Z0' at lines 84, 1064, 1078, 2765, and 4522.",
-        "Full-diff scan still includes agent-state contract/progress scoping/negation references such as 'Z0 classification ... out of scope' and 'no unsupported free-tier or Z0 claim is introduced'; those are allowed scoping statements under the original acceptance criteria and are not UI/meta/test product claims.",
-        "The specific prior blocker is fixed: apps/web/index.html, apps/web/src/App.tsx, and apps/web/src/App.test.tsx no longer contain 'zero-cost cloud and developer services' and now use neutral copy ('catalogue and architecture adviser for cloud and developer service tiers').",
-        "Live root probe at 01d03ff returned StatusCode 200, HasRoot=True, HasOldClaim=False for zero-cost/zero cost, and HasNeutralCopy=True for 'cloud and developer service tiers'."
+        "A pre-clean pwsh scripts\\stack-down.ps1 (without -Volumes) completed STACK DOWN to avoid stale containers; no database volume was removed.",
+        "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts\\stack-up.ps1 ran docker compose up -d --build and ended STACK UP: API is live at http://localhost:8000/health.",
+        "Docker build evidence showed web RUN npm ci --registry \"https://packagefeedproxy.microsoft.io/npm/\" (cached), satisfying the npm IT policy.",
+        "docker compose ps after stack-up listed api, postgres, scheduler, web, worker all Up and healthy; web exposed 0.0.0.0:8080->80, api exposed 0.0.0.0:8000->8000, postgres exposed 5432."
       ],
       "failures": []
     },
     {
-      "name": "lockfile_portability",
+      "name": "D_full_stack_smoke_workflow",
       "required": true,
       "result": "pass",
       "passed": true,
       "evidence": [
-        "Re-checked at 01d03ff: Select-String apps\\web\\package-lock.json for pkgs.visualstudio.com, vsblob, packagefeedproxy, and internal-feed returned NO_MATCHES.",
-        "Re-checked at 01d03ff: unique package-lock resolved-host scan returned only registry.npmjs.org.",
-        "Prior 270c747 evaluation counted 336 registry.npmjs.org resolved URLs; package-lock.json was not changed by the copy-only amend, so portability is unchanged."
+        "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts\\stack-smoke.ps1 passed all 11 checks and ended STACK SMOKE PASSED.",
+        "Passed checks: API liveness (/health = 200), API readiness (/health/ready = 200, db ok), Migration applied (app_meta table + marker row), Worker migration applied (job_queue + service_heartbeat), Worker container healthy, Scheduler container healthy, Queue processed (>=1 job reached done), Heartbeats fresh (worker + scheduler), Web container healthy, Web serves SPA (GET / = 200 HTML with #root), Web proxies API (GET /api/health = 200, status ok).",
+        "Independent DB corroboration after smoke: app_meta=1, job_queue_done=218, fresh_heartbeats=2, tables=app_meta,job_queue,service_heartbeat."
       ],
       "failures": []
     },
     {
-      "name": "regression_scripts_green",
+      "name": "E_independent_http_and_api_corroboration",
       "required": true,
       "result": "pass",
       "passed": true,
       "evidence": [
-        "Carried forward from the prior 270c747 evaluation because the amend changed only UI/meta/test copy and did not modify Python, scripts/check.ps1, package manifests, lockfiles, root lint config, or secret baseline.",
-        "Prior pwsh -NoProfile -ExecutionPolicy Bypass -File scripts\\test.ps1 exited 0: pytest 42 passed/2 skipped, web Vitest 4 passed, web build succeeded, TESTS PASSED.",
-        "Prior pwsh -NoProfile -ExecutionPolicy Bypass -File scripts\\check.ps1 -NodeAudit exited 0 and ended ALL CHECKS PASSED: Ruff lint pass, Ruff format check 21 files already formatted, pytest 42 passed/2 skipped, Prettier pass, ESLint pass, Secret scan pass, pip-audit no known vulnerabilities, npm audit found 0 vulnerabilities.",
-        "At 01d03ff the directly affected web checks were re-run: npm run lint/test/build all passed."
+        "Invoke-WebRequest http://localhost:8080/ returned status=200, Content-Type=text/html, hasRoot=True.",
+        "Invoke-WebRequest http://localhost:8080/api/health returned status=200 and body={\"status\":\"ok\",\"service\":\"FreeTier Atlas API\",\"version\":\"0.1.0.dev0\",\"environment\":\"development\"}.",
+        "Invoke-WebRequest http://localhost:8000/health returned status=200 and body={\"status\":\"ok\",\"service\":\"FreeTier Atlas API\",\"version\":\"0.1.0.dev0\",\"environment\":\"development\"}.",
+        "Invoke-WebRequest http://localhost:8000/health/ready returned status=200 and body={\"status\":\"ready\",\"checks\":{\"database\":\"ok\"}}."
       ],
       "failures": []
     },
     {
-      "name": "live_stack_smoke_and_proxy",
+      "name": "F_restart_resilience",
       "required": true,
       "result": "pass",
       "passed": true,
       "evidence": [
-        "At 01d03ff, pwsh -NoProfile -ExecutionPolicy Bypass -File scripts\\stack-up.ps1 rebuilt the web image from amended source: Docker build reran COPY . ./ and npm run build; dist/index.html 0.58 kB and hashed JS index-D7ajEKNf.js were produced in the image.",
-        "At 01d03ff, pwsh -NoProfile -ExecutionPolicy Bypass -File scripts\\stack-smoke.ps1 passed all 11 checks, including Web container healthy, Web serves SPA (GET / = 200 HTML with #root), and Web proxies API (GET /api/health = 200, status ok).",
-        "At 01d03ff, independent Invoke-WebRequest http://localhost:8080/ returned StatusCode 200, HasRoot=True, HasOldClaim=False, HasNeutralCopy=True.",
-        "Prior 270c747 evaluation independently corroborated docker compose ps with all five containers healthy and Invoke-WebRequest http://localhost:8080/api/health returning 200 status=ok/version=0.1.0.dev0; the amend changed only display/meta/test copy, not proxy code or compose wiring."
+        "Restart step used pwsh scripts\\stack-down.ps1 without -Volumes and completed STACK DOWN, preserving the PostgreSQL data volume.",
+        "Then pwsh scripts\\stack-up.ps1 completed STACK UP: API is live at http://localhost:8000/health.",
+        "docker compose ps immediately after restart listed api/postgres/scheduler/worker healthy and web starting; the subsequent smoke wait promoted web to healthy.",
+        "pwsh scripts\\stack-smoke.ps1 after restart again passed all 11 checks and ended STACK SMOKE PASSED."
       ],
       "failures": []
     },
     {
-      "name": "restart_smoke_persistence",
+      "name": "G_negative_api_down_proxy_seam",
       "required": true,
       "result": "pass",
       "passed": true,
       "evidence": [
-        "Carried forward from the prior 270c747 evaluation because the amend changed only UI/meta/test copy and did not alter compose services, database, worker/scheduler, migrations, volumes, or stack scripts.",
-        "Prior restart test: pwsh scripts\\stack-down.ps1 (without -Volumes), then stack-up.ps1, then stack-smoke.ps1 passed all 11 checks including all three web checks."
+        "docker compose stop api stopped stsyg-automatic-garbanzo-api-1.",
+        "With api stopped, Invoke-WebRequest http://localhost:8080/ returned status=200 and hasRoot=True, proving the SPA still served from nginx static assets.",
+        "With api stopped, Invoke-WebRequest http://localhost:8080/api/health -SkipHttpErrorCheck returned status=504 with Gateway Time-out HTML, proving the /api path is a real nginx proxy seam and not a mocked success path.",
+        "docker compose start api restarted the service; api health polling observed starting, starting, healthy.",
+        "After recovery, Invoke-WebRequest http://localhost:8080/api/health returned status=200 and body={\"status\":\"ok\",\"service\":\"FreeTier Atlas API\",\"version\":\"0.1.0.dev0\",\"environment\":\"development\"}."
       ],
       "failures": []
     },
     {
-      "name": "negative_api_down_proxy_seam",
+      "name": "H_lockfile_portability",
       "required": true,
       "result": "pass",
       "passed": true,
       "evidence": [
-        "Carried forward from the prior 270c747 evaluation because the amend changed only UI/meta/test copy and did not alter nginx.conf, api.ts endpoint path, docker-compose.yml, or stack service wiring.",
-        "Prior negative test: after docker compose stop api, GET http://localhost:8080/ stayed 200 with id=\"root\" while GET http://localhost:8080/api/health returned 504 Gateway Time-out through nginx; after docker compose start api and health polling, /api/health recovered to 200 status=ok/version=0.1.0.dev0.",
-        "At 01d03ff, live stack-smoke and root probe confirmed the rebuilt image remains healthy and serving after the copy amend."
+        "Select-String apps\\web\\package-lock.json for pkgs.visualstudio.com, vsblob, packagefeedproxy, microsoft.io, and azure returned internal-host-matches=0.",
+        "Unique resolved hosts in apps\\web\\package-lock.json were resolved-hosts=registry.npmjs.org only.",
+        "registry.npmjs.org resolved URL count was 336. The committed lockfile remains portable with public registry URLs while host/Docker npm registry remapping uses the Microsoft proxy."
       ],
       "failures": []
     },
     {
-      "name": "secrets_config_safety_and_cleanup",
+      "name": "I_product_truth_shipped_copy",
       "required": true,
       "result": "pass",
       "passed": true,
       "evidence": [
-        "Secret scan result carried forward from prior scripts\\check.ps1 -NodeAudit: Secret scan PASS. The amend changed only non-secret UI/meta/test text and did not modify .env.example or secret-scan configuration.",
-        "Prior .env.example diff review showed only WEB_PORT=8080 and public NPM_REGISTRY=https://registry.npmjs.org/ plus explanatory comments added for the web frontend section; no secret value was added.",
-        "At 01d03ff, local npm registry remained https://packagefeedproxy.microsoft.io/npm/ and Docker stack-up used the proxy via NPM_REGISTRY while repository lockfile stayed portable.",
-        "At 01d03ff, final pwsh -NoProfile -ExecutionPolicy Bypass -File scripts\\stack-down.ps1 exited 0 and ended STACK DOWN.",
-        "At 01d03ff, docker compose ps after cleanup printed only the header (no running services).",
-        "Final repository changes are limited to evaluator-owned agent-state/evaluation.json and agent-state/progress.md; product/source/config/dependency files and agent-state/feature_list.json were not modified by the evaluator."
+        "Scanned apps\\web\\index.html and apps\\web\\src\\** for zero-cost|free|$0|Z0. There were 9 textual matches, all reviewed.",
+        "Matches were product name/service name occurrences (FreeTier Atlas, FreeTier Atlas API) plus technical phrases in comments: \"free of hard-coded hosts\" and \"credential-free message\". There were no shipped UI/meta claims that any service is free, zero-cost, $0, or Z0.",
+        "Shipped UI/meta copy remains neutral: \"evidence-backed catalogue and architecture adviser for cloud and developer service tiers\" and \"Application scaffold — F002. Catalogue and adviser features arrive in later increments.\""
+      ],
+      "failures": []
+    },
+    {
+      "name": "J_cleanup_and_documentation",
+      "required": true,
+      "result": "pass",
+      "passed": true,
+      "evidence": [
+        "docs/LOCAL_DEVELOPMENT.md documents bash commands scripts/stack-up.sh, scripts/stack-smoke.sh, scripts/stack-down.sh, scripts/stack-down.sh --volumes at lines 76-79.",
+        "docs/LOCAL_DEVELOPMENT.md documents PowerShell commands pwsh -File scripts/stack-up.ps1, pwsh -File scripts/stack-smoke.ps1, and pwsh -File scripts/stack-down.ps1 (# -Volumes to drop data) at lines 85-87.",
+        "Before final cleanup, docker compose ps listed all five services healthy: api, postgres, scheduler, web, worker.",
+        "Final pwsh -NoProfile -ExecutionPolicy Bypass -File scripts\\stack-down.ps1 completed STACK DOWN.",
+        "docker compose ps after cleanup printed only the header NAME IMAGE COMMAND SERVICE CREATED STATUS PORTS, i.e. no running services remained."
       ],
       "failures": []
     }
   ],
   "commands_run": [
+    "Read C:\\Users\\sergiyt\\.copilot\\agent-state\\HARNESS.md",
     "git rev-parse HEAD",
     "git status --short --branch",
-    "git --no-pager show --stat HEAD | Select-Object -First 30",
+    "git --no-pager log --oneline -20",
     "npm config get registry",
     "npm config get replace-registry-host",
-    "git --no-pager diff main...HEAD | Select-String 'zero-cost|zero cost|$0|free[- ]tier|is free|are free|Z0' -CaseSensitive:$false",
-    "Get-ChildItem apps\\web -Recurse -File (excluding node_modules/dist) | Select-String claim-safety pattern",
-    "Select-String apps\\web\\package-lock.json for internal-feed hostnames",
-    "Unique package-lock resolved-host scan",
-    "apps/web: npm run lint",
-    "apps/web: npm run test",
-    "apps/web: npm run build",
-    "Get-Item apps\\web\\dist\\index.html",
+    "Read agent-state/current_contract.json, feature_list.json, evaluation.json, progress.md tail, .github/*, docs/AGENT_HARNESS.md, docs/CODEX_AUTONOMY_POLICY.md, docs/ARCHITECTURE.md, docs/LOCAL_DEVELOPMENT.md",
+    "Skimmed apps/api, apps/worker, apps/web, migrations, docker-compose.yml, and scripts/* relevant to F002",
+    "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts\\init.ps1",
+    "docker compose config --services",
+    "docker compose config (web healthcheck and depends_on inspection)",
+    "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts\\test.ps1",
+    "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts\\check.ps1 -NodeAudit",
+    "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts\\stack-down.ps1",
     "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts\\stack-up.ps1",
+    "docker compose ps",
     "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts\\stack-smoke.ps1",
     "Invoke-WebRequest http://localhost:8080/",
-    "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts\\stack-down.ps1",
-    "docker compose ps"
+    "Invoke-WebRequest http://localhost:8080/api/health",
+    "Invoke-WebRequest http://localhost:8000/health",
+    "Invoke-WebRequest http://localhost:8000/health/ready",
+    "docker compose exec -T postgres psql -U atlas -d atlas -tAc <migration/job/heartbeat corroboration SQL>",
+    "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts\\stack-down.ps1 (restart, without -Volumes)",
+    "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts\\stack-up.ps1 (restart)",
+    "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts\\stack-smoke.ps1 (after restart)",
+    "docker compose stop api",
+    "Invoke-WebRequest http://localhost:8080/ -SkipHttpErrorCheck",
+    "Invoke-WebRequest http://localhost:8080/api/health -SkipHttpErrorCheck",
+    "docker compose start api and health polling via docker inspect",
+    "Select-String apps\\web\\package-lock.json for internal hosts and resolved host extraction",
+    "Select-String apps\\web\\index.html and apps\\web\\src\\** for zero-cost|free|$0|Z0",
+    "Select-String docs\\LOCAL_DEVELOPMENT.md for stack-up/stack-smoke/stack-down documentation",
+    "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts\\stack-down.ps1 (final cleanup)",
+    "docker compose ps (after cleanup)"
   ],
   "end_to_end_steps_run": [
-    "Confirmed amended HEAD 01d03ffa69c0ee9f3b0e985d2437f5b1a3cf970f and no unexpected working-tree changes beyond evaluator-owned agent-state files.",
-    "Re-ran the claim-safety grep over the full diff and apps/web sources; confirmed the prior UI/meta/test zero-cost copy was removed and source matches are only package-lock integrity hash false positives, with remaining full-diff Z0/free-tier matches limited to agent-state scoping/negation statements.",
-    "Re-ran apps/web lint, Vitest tests with mocked fetch, and production build using the Microsoft npm proxy configuration.",
-    "Rebuilt and started the Docker Compose stack at 01d03ff, ran stack-smoke, and independently probed the rebuilt web root for 200, id=\"root\", absence of old zero-cost copy, and presence of neutral copy.",
-    "Stopped the stack and confirmed docker compose ps showed no running services.",
-    "Carried forward previously passing runtime/regression/lockfile/secret/restart/negative-proxy evidence where unaffected by the copy-only amend, per the re-evaluation prompt."
+    "Confirmed merged main HEAD 9f43e07239c768ff48aed79332f46eb5ee4b74af and all F002 slice squash commits (#5/#6/#7) were present in the recent log.",
+    "Verified npm policy before npm-backed work: host registry was the Microsoft package feed proxy with replace-registry-host=npmjs; .env supplied the proxy registry to Docker builds.",
+    "Ran the baseline init script, topology inspection, scripts/test.ps1, and scripts/check.ps1 -NodeAudit successfully.",
+    "Started the full five-service stack through scripts/stack-up.ps1, verified docker compose ps all-services-healthy, and ran scripts/stack-smoke.ps1 successfully.",
+    "Independently probed web root, web /api proxy, direct API liveness, direct API readiness, and PostgreSQL migration/job/heartbeat state.",
+    "Restarted with stack-down without volumes, stack-up, and stack-smoke; the workflow passed again.",
+    "Stopped api to prove the nginx seam: root stayed 200 while /api/health became 504, then api restart recovered /api/health to 200.",
+    "Verified lockfile portability, product-truth copy safety, and LOCAL_DEVELOPMENT command documentation.",
+    "Stopped the stack through scripts/stack-down.ps1 and confirmed docker compose ps showed no running services."
   ],
   "disposition": "passed",
   "blocking_failures": [],
   "notes": [
-    "This verdict covers ONLY the F002 slice-3 web frontend increment at commit 01d03ffa69c0ee9f3b0e985d2437f5b1a3cf970f.",
-    "F002 MUST remain passes=false because the full epic, including the F003 catalogue/offer/evidence/region/quota/Z0 domain model, still requires a fresh-context full-epic Level 2 evaluation.",
-    "This re-check supersedes the prior failed slice-3 verdict at 270c747. The blocking unsupported zero-cost UI/meta/test copy was removed, and the rebuilt web image passed live smoke.",
-    "All carried-forward criteria are explicitly limited to checks unaffected by the copy-only amend; directly affected web lint/test/build, claim-safety, and live rebuilt serving checks were re-run at 01d03ff.",
-    "The evaluator modified only agent-state/evaluation.json and agent-state/progress.md; no product/source/config/dependency files, feature_list.json, git history, push, or merge was touched."
+    "This is the FULL-EPIC F002 verdict against merged main commit 9f43e07239c768ff48aed79332f46eb5ee4b74af, covering slices 1+2+3 together rather than a single slice.",
+    "All required F002 acceptance steps passed end-to-end: canonical start, frontend/API/worker/scheduler/migrations/database verification, restart + smoke rerun, documented cleanup.",
+    "The negative api-down check proved the web /api integration is real: static SPA stayed available while the proxied API returned 504 until api recovered.",
+    "No unsupported shipped claim that a service is free, zero-cost, $0, or Z0 was found; matches were product-name or technical credential/host comments only.",
+    "The evaluator did not change agent-state/feature_list.json. Because disposition is passed, F002 may now be flipped to passes:true by the authorized builder/ledger step.",
+    "A pre-existing working-tree modification to agent-state/current_contract.json was present on evaluator entry and was not changed by this evaluator."
   ],
   "recommendations": [
-    "Proceed with owner review of the F002 slice-3 web frontend increment; this re-check passes the approved slice-3 Level 2 contract.",
-    "Keep F002 passes=false until the full F002 epic is evaluated end-to-end by a fresh-context Level 2 evaluator, including confirmation that the completed service topology satisfies the feature ledger.",
-    "Do not begin F003 domain work without the required owner checkpoint and a fresh contract."
+    "Flip only F002 passes, last_verified_at, and verification_evidence in agent-state/feature_list.json based on this full-epic Level 2 passed verdict.",
+    "Keep the final stack down; it was stopped and docker compose ps showed no running services.",
+    "Proceed to the next owner-approved feature only after the ledger flip/handoff is recorded; do not infer any F003+ domain capability from this scaffold verdict."
   ]
 }

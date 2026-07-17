@@ -65,9 +65,16 @@
         "Stop and clean up through documented commands."
       ],
       "required_evaluation_level": 2,
-      "passes": false,
-      "last_verified_at": null,
-      "verification_evidence": []
+      "passes": true,
+      "last_verified_at": "2026-07-17T14:08:11Z",
+      "verification_evidence": [
+        "Fresh-context independent full-epic Level 2 evaluation of the merged main branch (commit 9f43e07) recorded disposition=passed with 0 blocking failures across all 11 criteria in agent-state/evaluation.json (increment full-epic-close-out).",
+        "Canonical stack-up brought all five services healthy (postgres, api, worker, scheduler, web) and scripts/stack-smoke.ps1 passed all 11 checks: API liveness/readiness, app_meta + worker (job_queue/service_heartbeat) migrations, worker/scheduler healthy, queue processed >=1 job to done, fresh heartbeats, web healthy, web serves the SPA (GET / 200 with #root), and web proxies GET /api/health (200 status=ok).",
+        "Restart resilience confirmed: stack-down (keep volumes) -> stack-up -> stack-smoke passed all 11 checks again; clean stop via scripts/stack-down.ps1 left no running services.",
+        "Negative seam proof (real integration, not mocked): with the api service stopped, GET / stayed 200 while GET /api/health returned 504 through the nginx proxy, then recovered to 200 after api restarted.",
+        "Regression green on main: scripts/test.ps1 (42 Python passed + 4 web tests + web build) and scripts/check.ps1 -NodeAudit (ruff, format, pytest, prettier, eslint, secret scan, pip-audit, npm audit = 0 vulnerabilities) both passed.",
+        "Delivered across three merged slices: PR #5 (6049e7f, API + PostgreSQL + Alembic), PR #6 (bd41c98, worker + scheduler PostgreSQL job queue), PR #7 (9f43e07, React web frontend served by nginx)."
+      ]
     },
     {
       "id": "F003",
