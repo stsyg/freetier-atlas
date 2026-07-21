@@ -88,9 +88,17 @@
         "Run the Z0 truth table including unknown and contradictory conditions."
       ],
       "required_evaluation_level": 2,
-      "passes": false,
-      "last_verified_at": null,
-      "verification_evidence": []
+      "passes": true,
+      "last_verified_at": "2026-07-21T16:45:00Z",
+      "verification_evidence": [
+        "Fresh-context independent full-epic Level 2 evaluation of merged main (commit e23212997763bf4e3a2bd9f72e53d475dfc2ec36, covering config PR #9, domain model/migration PR #10, and Z0 engine PR #11) recorded disposition=passed with 0 blocking issues across all four acceptance steps in agent-state/evaluation.json (increment full-epic-close-out).",
+        "Step 1 (config): app.config.cli validated all 4 config/examples files (exit 0); independent adversarial bad-YAML probes for syntax error, unknown family, inline secret, schema violation, and empty file each returned exit 1 with actionable file-scoped messages, and a mixed good+bad batch produced per-file OK/FAIL and exit 1.",
+        "Step 2 (migrations): against live PostgreSQL, an independent Alembic probe ran upgrade(head) -> downgrade(0002_worker_queue) -> upgrade(head) with domain tables removed then recreated and infra tables untouched; tests/integration/test_domain_migration.py::test_migration_round_trip and test_no_model_migration_drift passed.",
+        "Step 3 (immutability + provenance): direct-SQL adversarial probe confirmed UPDATE/DELETE of an existing offer_version is rejected by trg_offer_version_immutable (restrict_violation) while appending a new version succeeds; deleting a Source/Snapshot referenced by Evidence is RESTRICTed and dangling-FK Evidence is rejected; the four related integration tests passed on live Postgres.",
+        "Step 4 (Z0 truth table): tests/unit/test_z0_classifier.py 75 passed; an independent adversarial probe over the gate matrix plus a 558-combination invariant grid recorded 0 Z0-on-unknown/contradictory violations, with deterministic contradiction handling (billing dominates) and explainable reasons/blocking_conditions on every result.",
+        "Regression green on merged main: scripts/test.ps1 (147 passed/10 skipped + 4 web tests + web build) and scripts/check.ps1 -NodeAudit (ruff, format, pytest, prettier, eslint, detect-secrets, pip-audit 0, npm audit 0) both exit 0; full live stack cycle stack-up -> stack-smoke (12/12 incl. domain migration + immutability trigger) -> stack-down passed with no running services afterward.",
+        "No new runtime dependency (dependency manifest diff vs origin/main empty) and no unsupported free-tier/Z0 product claim introduced."
+      ]
     },
     {
       "id": "F004",
