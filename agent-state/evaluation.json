@@ -1,254 +1,165 @@
 {
   "schema_version": 1,
   "feature_id": "F003",
-  "increment": "slice-1-configuration-system",
-  "implementation_commit": "dd7fbf9c4b7ffdbc232e43dd94e4199906357f53",
-  "evaluated_commit": "dd7fbf9c4b7ffdbc232e43dd94e4199906357f53",
+  "increment": "slice-2-domain-model-and-migrations",
+  "evaluated_commit": "b93e6a96f6875e060113b953689c2fe1715b502f",
+  "commit_sha_evaluated": "b93e6a96f6875e060113b953689c2fe1715b502f",
   "evaluator": "fresh independent Level 2 evaluator (Copilot CLI Chief)",
-  "evaluated_at": "2026-07-17T15:45:58Z",
-  "evaluation_level": 2,
+  "evaluated_at": "2026-07-17T22:13:17Z",
+  "harness": {
+    "version": "2026-07-02.1",
+    "content_hash": "00b135ae447ca6ce",
+    "loaded_first": true
+  },
   "required_evaluation_level": 2,
+  "evaluation_level": 2,
   "disposition": "passed",
   "blocking_issues": [],
-  "blocking_failures": [],
   "criteria": [
     {
-      "name": "examples_validate_with_wrappers",
-      "acceptance_criterion": "scripts/validate-config.{ps1,sh} validates every *.yaml under config/examples (application, schedules, llm-providers, providers/cloudflare) and exits 0.",
-      "result": "pass",
+      "name": "all_13_declarative_models_shared_metadata",
+      "acceptance_criterion": "All 13 domain entities are defined as SQLAlchemy declarative models on shared metadata with deterministic naming convention.",
       "passed": true,
       "evidence": [
-        "pwsh -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\validate-config.ps1 exited 0 and printed OK for application.example.yaml (ApplicationConfig), llm-providers.example.yaml (LlmProvidersConfig), schedules.example.yaml (SchedulesConfig), and providers\\cloudflare.example.yaml (ProviderConfig), ending: All 4 configuration file(s) valid.",
-        "Git Bash path C:\\Program Files\\Git\\bin\\bash.exe was available; bash scripts/validate-config.sh exited 0 and printed OK for all four example configs, ending: All 4 configuration file(s) valid."
-      ],
-      "failures": []
+        "Read apps/api/app/models/{__init__,base,vocab,domain}.py: Base uses MetaData(naming_convention=...), __init__ exports the domain package, and domain.py defines Provider, Category, Service, Offer, OfferVersion, Quota, RegionAvailability, Source, Snapshot, Evidence, ChangeEvent, ScanRun, ReviewItem.",
+        "Offline regression: tests/unit/test_domain_models.py passed inside scripts/test.ps1 and scripts/check.ps1; metadata table set is exactly 13 tables."
+      ]
     },
     {
-      "name": "typed_models_forbid_unknown_fields",
-      "acceptance_criterion": "Each configuration family has a typed Pydantic model that forbids unknown fields; an unknown field produces an actionable error naming the file and the field path with a non-zero exit.",
-      "result": "pass",
+      "name": "alembic_0003_upgrade_creates_schema",
+      "acceptance_criterion": "Alembic 'upgrade head' applies migration 0003 cleanly against PostgreSQL, creating all 13 tables with FKs, check constraints, and indexes.",
       "passed": true,
       "evidence": [
-        "apps/api/app/config/models.py defines ApplicationConfig, SchedulesConfig, LlmProvidersConfig, and ProviderConfig; all inherit _Base with model_config = ConfigDict(extra=\"forbid\").",
-        "Adversarial command .\\.venv\\Scripts\\python.exe -m app.config.cli validate <TEMP>\\unknown-extra-field.yaml exited 1 and printed: FAIL <file>; - application.typo_field: Extra inputs are not permitted (type=extra_forbidden); 1 of 1 configuration file(s) failed validation."
-      ],
-      "failures": []
+        "scripts/stack-up.ps1 exited 0; API container applied migrations and became live at http://localhost:8000/health.",
+        "Live integration test_all_domain_tables_created passed; smoke confirmed provider/service/offer/offer_version/evidence plus trigger; PK/unique indexes and constraints are present in the migration and compare cleanly against metadata."
+      ]
     },
     {
-      "name": "malformed_yaml_actionable_line_column",
-      "acceptance_criterion": "Malformed YAML produces an actionable error naming the file with the line and column of the syntax error, with a non-zero exit.",
-      "result": "pass",
+      "name": "downgrade_upgrade_round_trip_no_drift",
+      "acceptance_criterion": "Downgrade to 0002 removes every domain table/function/trigger; subsequent upgrade head recreates identical schema with compare_metadata reporting no drift.",
       "passed": true,
       "evidence": [
-        "Adversarial command .\\.venv\\Scripts\\python.exe -m app.config.cli validate <TEMP>\\malformed-yaml.yaml exited 1 and printed: FAIL <file>; - YAML syntax error at line 4 column 4: expected <block end>, but found '<block mapping start>'; 1 of 1 configuration file(s) failed validation."
-      ],
-      "failures": []
+        "Live pytest test_migration_round_trip passed.",
+        "Independent adversarial probe: downgrade_0002 remaining_domain_tables=[] trigger_count=0 pass=True; reupgrade_head tables_present=True compare_metadata_diffs=0 pass=True."
+      ]
     },
     {
-      "name": "missing_required_field_actionable",
-      "acceptance_criterion": "A missing required field produces an actionable error naming the field path (type=missing), with a non-zero exit.",
-      "result": "pass",
+      "name": "offer_version_append_only",
+      "acceptance_criterion": "offer_version is append-only: UPDATE and DELETE are rejected by a database trigger while INSERT of a new version succeeds.",
       "passed": true,
       "evidence": [
-        "Adversarial command .\\.venv\\Scripts\\python.exe -m app.config.cli validate <TEMP>\\missing-required-field.yaml exited 1 and printed: FAIL <file>; - provider.name: Field required (type=missing); 1 of 1 configuration file(s) failed validation."
-      ],
-      "failures": []
+        "Live pytest test_offer_version_is_append_only passed, including append INSERT and rejected UPDATE/DELETE.",
+        "Independent adversarial probe: update_rejected sqlstate=23001 pass=True; delete_rejected sqlstate=23001 pass=True."
+      ]
     },
     {
-      "name": "emit_schema_all_families",
-      "acceptance_criterion": "python -m app.config.cli emit-schema <family> prints a valid JSON Schema (type=object with properties) for each of the four families.",
-      "result": "pass",
+      "name": "evidence_provenance_fk_enforced",
+      "acceptance_criterion": "Evidence requires valid source_id, offer_version_id, and snapshot_id; non-existent provenance references are rejected.",
       "passed": true,
       "evidence": [
-        "For application: .\\.venv\\Scripts\\python.exe -m app.config.cli emit-schema application exited 0; ConvertFrom-Json parsed stdout; PARSED: type=object properties=True root_additionalProperties=False additionalProperties_false_count=5; stdout first line { and last line }.",
-        "For schedules: .\\.venv\\Scripts\\python.exe -m app.config.cli emit-schema schedules exited 0; ConvertFrom-Json parsed stdout; PARSED: type=object properties=True root_additionalProperties=False additionalProperties_false_count=4; stdout first line { and last line }.",
-        "For llm-providers: .\\.venv\\Scripts\\python.exe -m app.config.cli emit-schema llm-providers exited 0; ConvertFrom-Json parsed stdout; PARSED: type=object properties=True root_additionalProperties=False additionalProperties_false_count=4; stdout first line { and last line }.",
-        "For provider: .\\.venv\\Scripts\\python.exe -m app.config.cli emit-schema provider exited 0; ConvertFrom-Json parsed stdout; PARSED: type=object properties=True root_additionalProperties=False additionalProperties_false_count=4; stdout first line { and last line }."
-      ],
-      "failures": []
+        "Read Evidence model/migration: source_id, offer_version_id, snapshot_id are NOT NULL foreign keys.",
+        "Live pytest test_evidence_requires_valid_provenance_fks passed; independent adversarial probe evidence_fk_rejected sqlstate=23503 pass=True."
+      ]
     },
     {
-      "name": "secret_safety",
-      "acceptance_criterion": "Secret safety: a raw inline secret key (api_key, password, token, secret, etc.) anywhere in a file is rejected; secrets are referenced only via *_env environment-variable names; a non-env-name reference is rejected; the detect-secrets scan stays green and no secret value is printed.",
-      "result": "pass",
+      "name": "closed_vocabulary_constraints",
+      "acceptance_criterion": "Closed-vocabulary CHECK constraints reject out-of-vocabulary zero_cost_class, offer_type, and exhaustion_behaviour values using exactly docs/DATA_MODEL.md membership.",
       "passed": true,
       "evidence": [
-        "Adversarial inline-secret command exited 1 and printed: FAIL <file>; - llm.providers.gemini.api_key: inline secret key 'api_key' is forbidden; reference an environment variable via 'api_key_env' instead (values live in the environment, never in the repository); 1 of 1 configuration file(s) failed validation.",
-        "Inline-secret test used sentinel value LEAK_SENTINEL_DO_NOT_PRINT_173; output check printed SECRET_LEAK_CHECK: passed (sentinel value was not echoed).",
-        "Adversarial bad-env-reference command exited 1 and printed: FAIL <file>; - llm.providers.gemini.api_key_env: String should match pattern '^[A-Z][A-Z0-9_]*$' (type=string_pattern_mismatch); 1 of 1 configuration file(s) failed validation.",
-        "scripts/check.ps1 -NodeAudit output included: ==> Secret scan; PASS: Secret scan.",
-        "Secret grep of apps/api/app/config, tests/unit/test_config_system.py, docs/CONFIGURATION.md, and config/examples found only secret-key vocabulary, environment-variable names GEMINI_API_KEY/OPENAI_API_KEY/ANTHROPIC_API_KEY, and the synthetic negative-test literal sk-should-never-be-here; no real credential value was found in source, docs, tests, or examples."
-      ],
-      "failures": []
+        "Read docs/DATA_MODEL.md and app/models/vocab.py: ZERO_COST_CLASSES has 5 values, OFFER_TYPES 11, EXHAUSTION_BEHAVIOURS 12 with matching membership.",
+        "Offline unit vocabulary tests passed; live pytest test_check_constraints_reject_out_of_vocabulary passed for zero_cost_class, offer_type, and exhaustion_behaviour.",
+        "Independent adversarial probe: zero_cost_check_rejected sqlstate=23514 pass=True."
+      ]
     },
     {
-      "name": "offline_pytest_suite",
-      "acceptance_criterion": "The offline pytest suite (valid examples, unknown/malformed/missing/bad-cron/threshold/mcp/inline-secret/env-name, schema export, CLI) passes.",
-      "result": "pass",
+      "name": "alembic_target_metadata_no_drift",
+      "acceptance_criterion": "migrations/env.py sets target_metadata to domain metadata; compare_metadata reports no operations after upgrade head.",
       "passed": true,
       "evidence": [
-        "pwsh -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\test.ps1 exited 0; pytest collected 67 items with 65 passed, 2 skipped in 2.30s; tests\\unit\\test_config_system.py .......................; tests\\unit\\test_requirements_sync.py ...; TESTS PASSED.",
-        "The two skips were integration stack tests gated by ATLAS_STACK_BASE_URL not being set, matching the prompt's expected no-live-stack condition."
-      ],
-      "failures": []
+        "Read migrations/env.py: imports app.models metadata as domain_metadata and sets target_metadata = domain_metadata with include_object=alembic_include_object.",
+        "Live pytest test_no_model_migration_drift passed; independent reupgrade probe reported compare_metadata_diffs=0."
+      ]
+    },
+    {
+      "name": "representative_queries",
+      "acceptance_criterion": "Representative joins Provider -> Service -> Offer -> OfferVersion and OfferVersion -> Evidence -> Source return expected seeded rows.",
+      "passed": true,
+      "evidence": [
+        "Live pytest test_representative_provenance_query passed: seeded provider acme, service widgets, offer_type always_free, version_number 1, source trust_level official were returned through the join."
+      ]
+    },
+    {
+      "name": "stack_smoke_domain_check",
+      "acceptance_criterion": "scripts/stack-smoke.{ps1,sh} pass against live stack with domain-table and immutability-trigger checks; full stack-up/smoke/down cycle succeeds.",
+      "passed": true,
+      "evidence": [
+        "Read scripts/stack-smoke.ps1 and scripts/stack-smoke.sh: both include Domain migration applied (0003 tables + immutability trigger).",
+        "scripts/stack-smoke.ps1 passed all 12 checks: API liveness/readiness, app_meta, worker migration, domain migration+trigger, worker/scheduler health, queue done, fresh heartbeats, web health, SPA, web API proxy; final output STACK SMOKE PASSED.",
+        "scripts/stack-down.ps1 exited 0 with STACK DOWN; docker compose ps returned no running services."
+      ]
     },
     {
       "name": "regression_green",
-      "acceptance_criterion": "Regression green: scripts/test.ps1 (pytest + config validation + web tests/build) and scripts/check.ps1 -NodeAudit (ruff, format, pytest, prettier, eslint, secret scan, pip-audit, npm audit), including the requirements-sync guard with the new pyyaml pin.",
-      "result": "pass",
+      "acceptance_criterion": "scripts/test.ps1 and scripts/check.ps1 -NodeAudit pass, including requirements-sync and no new dependency.",
       "passed": true,
       "evidence": [
-        "scripts/test.ps1 exited 0: pytest 65 passed, 2 skipped; config validation All 4 configuration file(s) valid; Vitest src/App.test.tsx 4 tests passed; Vite build succeeded with 31 modules transformed; TESTS PASSED.",
-        "scripts/check.ps1 -NodeAudit exited 0: Ruff lint PASS (All checks passed!), Ruff format check PASS (26 files already formatted), Pytest PASS (65 passed, 2 skipped in 2.23s), Prettier PASS, ESLint PASS, Secret scan PASS, Python dependency audit PASS (No known vulnerabilities found), Node dependency audit PASS (found 0 vulnerabilities), ALL CHECKS PASSED.",
-        ".\\.venv\\Scripts\\pytest.exe -q tests\\unit\\test_requirements_sync.py exited 0 with: 2 passed in 0.05s."
-      ],
-      "failures": []
+        "scripts/test.ps1 exited 0: pytest 72 passed, 10 skipped in 2.13s; config validation all 4 valid; Vitest 4 tests passed; Vite build completed; TESTS PASSED.",
+        "scripts/check.ps1 -NodeAudit exited 0: Ruff lint PASS, Ruff format PASS (33 files), Pytest 72 passed/10 skipped, Prettier PASS, ESLint PASS, Secret scan PASS, pip-audit PASS (No known vulnerabilities found), npm audit PASS (0 vulnerabilities), ALL CHECKS PASSED.",
+        "Dependency manifest diff for HEAD^..HEAD was empty for pyproject.toml, requirements files, and package manifests."
+      ]
     },
     {
-      "name": "product_truth_no_unsupported_claim",
-      "acceptance_criterion": "No unsupported free-tier/zero-cost/Z0 product claim is introduced (backend configuration only; product-truth rule).",
-      "result": "pass",
+      "name": "product_truth_security_scope",
+      "acceptance_criterion": "No unsupported free-tier/zero-cost/Z0 claim, no secrets, no new managed-cloud/heavyweight dependencies, and runtime data population/Z0 engine remain deferred.",
       "passed": true,
       "evidence": [
-        "Focused scan of F003 source/config/docs/test/script/dependency files for guaranteed free|guaranteed $0|zero-cost|$0|free found product-name occurrences (FreeTier Atlas), backend vocabulary/comments (zero-cost classes, Z0_TRUE_FREE), and pyproject metadata only.",
-        "pyproject.toml description/keywords containing zero-cost/free-tier were verified present in HEAD^ before this slice; they were not introduced by dd7fbf9. No new unsupported marketing/product claim was found in docs/CONFIGURATION.md, config/examples, scripts, tests, or apps/api/app/config."
-      ],
-      "failures": []
+        "Product-truth token scan of added lines found only product name, schema/vocabulary names (zero-cost class/Z0_TRUE_FREE/always_free), tests, and column names such as free_available; no product/service assertion that a real service is free was introduced.",
+        "scripts/check.ps1 Secret scan passed; pip-audit and npm audit passed; dependency manifest diff was empty, confirming no new dependency was added.",
+        "Read current_contract out_of_scope and implementation: no provider adapters, runtime table population, API routes, worker usage, source scanning, or Z0 classification engine were added; Z0 engine remains slice 3/task 005."
+      ]
     },
     {
-      "name": "level2_evaluation_recorded_feature_remains_false",
-      "acceptance_criterion": "A fresh-context independent Level 2 evaluator records an adversarial verdict in agent-state/evaluation.json before any status change is claimed; F003 remains passes:false (epic incomplete).",
-      "result": "pass",
+      "name": "fresh_level2_evaluation_recorded_feature_false",
+      "acceptance_criterion": "Fresh independent Level 2 evaluator records adversarial verdict before status change; F003 remains passes:false.",
       "passed": true,
       "evidence": [
-        "Fresh evaluator loaded harness first (Harness-Version 2026-07-02.1, content-hash 00b135ae447ca6ce), read current_contract.json and confirmed feature_id=F003, increment=slice-1-configuration-system, required_evaluation_level=2.",
-        "agent-state/feature_list.json was read before evaluation and F003 passes was false. After all checks, .\\.venv\\Scripts\\python.exe confirmed: F003 passes after: False.",
-        "This file overwrites agent-state/evaluation.json with disposition=passed and blocking_issues=[] for only F003 slice 1. F003 remains an incomplete epic; no feature_list.json edit was made."
-      ],
-      "failures": []
+        "This fresh evaluator loaded HARNESS.md first (Harness-Version 2026-07-02.1, content-hash 00b135ae447ca6ce), read the contract/ledger/progress/evaluation, inspected implementation, and ran offline, live, and independent adversarial checks.",
+        "agent-state/feature_list.json check before evaluation write: F003 passes=False last_verified_at=None evidence_count=0. This evaluator did not edit feature_list.json.",
+        "agent-state/evaluation.json is overwritten with this Level 2 verdict and agent-state/progress.md is appended; no commit/push/merge performed."
+      ]
     }
   ],
-  "per_criterion_evidence": {
-    "examples_validate_with_wrappers": [
-      "pwsh -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\validate-config.ps1 exited 0 and printed OK for application.example.yaml (ApplicationConfig), llm-providers.example.yaml (LlmProvidersConfig), schedules.example.yaml (SchedulesConfig), and providers\\cloudflare.example.yaml (ProviderConfig), ending: All 4 configuration file(s) valid.",
-      "Git Bash path C:\\Program Files\\Git\\bin\\bash.exe was available; bash scripts/validate-config.sh exited 0 and printed OK for all four example configs, ending: All 4 configuration file(s) valid."
-    ],
-    "typed_models_forbid_unknown_fields": [
-      "apps/api/app/config/models.py defines ApplicationConfig, SchedulesConfig, LlmProvidersConfig, and ProviderConfig; all inherit _Base with model_config = ConfigDict(extra=\"forbid\").",
-      "Adversarial command .\\.venv\\Scripts\\python.exe -m app.config.cli validate <TEMP>\\unknown-extra-field.yaml exited 1 and printed: FAIL <file>; - application.typo_field: Extra inputs are not permitted (type=extra_forbidden); 1 of 1 configuration file(s) failed validation."
-    ],
-    "malformed_yaml_actionable_line_column": [
-      "Adversarial command .\\.venv\\Scripts\\python.exe -m app.config.cli validate <TEMP>\\malformed-yaml.yaml exited 1 and printed: FAIL <file>; - YAML syntax error at line 4 column 4: expected <block end>, but found '<block mapping start>'; 1 of 1 configuration file(s) failed validation."
-    ],
-    "missing_required_field_actionable": [
-      "Adversarial command .\\.venv\\Scripts\\python.exe -m app.config.cli validate <TEMP>\\missing-required-field.yaml exited 1 and printed: FAIL <file>; - provider.name: Field required (type=missing); 1 of 1 configuration file(s) failed validation."
-    ],
-    "emit_schema_all_families": [
-      "For application: .\\.venv\\Scripts\\python.exe -m app.config.cli emit-schema application exited 0; ConvertFrom-Json parsed stdout; PARSED: type=object properties=True root_additionalProperties=False additionalProperties_false_count=5; stdout first line { and last line }.",
-      "For schedules: .\\.venv\\Scripts\\python.exe -m app.config.cli emit-schema schedules exited 0; ConvertFrom-Json parsed stdout; PARSED: type=object properties=True root_additionalProperties=False additionalProperties_false_count=4; stdout first line { and last line }.",
-      "For llm-providers: .\\.venv\\Scripts\\python.exe -m app.config.cli emit-schema llm-providers exited 0; ConvertFrom-Json parsed stdout; PARSED: type=object properties=True root_additionalProperties=False additionalProperties_false_count=4; stdout first line { and last line }.",
-      "For provider: .\\.venv\\Scripts\\python.exe -m app.config.cli emit-schema provider exited 0; ConvertFrom-Json parsed stdout; PARSED: type=object properties=True root_additionalProperties=False additionalProperties_false_count=4; stdout first line { and last line }."
-    ],
-    "secret_safety": [
-      "Adversarial inline-secret command exited 1 and printed: FAIL <file>; - llm.providers.gemini.api_key: inline secret key 'api_key' is forbidden; reference an environment variable via 'api_key_env' instead (values live in the environment, never in the repository); 1 of 1 configuration file(s) failed validation.",
-      "Inline-secret test used sentinel value LEAK_SENTINEL_DO_NOT_PRINT_173; output check printed SECRET_LEAK_CHECK: passed (sentinel value was not echoed).",
-      "Adversarial bad-env-reference command exited 1 and printed: FAIL <file>; - llm.providers.gemini.api_key_env: String should match pattern '^[A-Z][A-Z0-9_]*$' (type=string_pattern_mismatch); 1 of 1 configuration file(s) failed validation.",
-      "scripts/check.ps1 -NodeAudit output included: ==> Secret scan; PASS: Secret scan.",
-      "Secret grep of apps/api/app/config, tests/unit/test_config_system.py, docs/CONFIGURATION.md, and config/examples found only secret-key vocabulary, environment-variable names GEMINI_API_KEY/OPENAI_API_KEY/ANTHROPIC_API_KEY, and the synthetic negative-test literal sk-should-never-be-here; no real credential value was found in source, docs, tests, or examples."
-    ],
-    "offline_pytest_suite": [
-      "pwsh -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\test.ps1 exited 0; pytest collected 67 items with 65 passed, 2 skipped in 2.30s; tests\\unit\\test_config_system.py .......................; tests\\unit\\test_requirements_sync.py ...; TESTS PASSED.",
-      "The two skips were integration stack tests gated by ATLAS_STACK_BASE_URL not being set, matching the prompt's expected no-live-stack condition."
-    ],
-    "regression_green": [
-      "scripts/test.ps1 exited 0: pytest 65 passed, 2 skipped; config validation All 4 configuration file(s) valid; Vitest src/App.test.tsx 4 tests passed; Vite build succeeded with 31 modules transformed; TESTS PASSED.",
-      "scripts/check.ps1 -NodeAudit exited 0: Ruff lint PASS (All checks passed!), Ruff format check PASS (26 files already formatted), Pytest PASS (65 passed, 2 skipped in 2.23s), Prettier PASS, ESLint PASS, Secret scan PASS, Python dependency audit PASS (No known vulnerabilities found), Node dependency audit PASS (found 0 vulnerabilities), ALL CHECKS PASSED.",
-      ".\\.venv\\Scripts\\pytest.exe -q tests\\unit\\test_requirements_sync.py exited 0 with: 2 passed in 0.05s."
-    ],
-    "product_truth_no_unsupported_claim": [
-      "Focused scan of F003 source/config/docs/test/script/dependency files for guaranteed free|guaranteed $0|zero-cost|$0|free found product-name occurrences (FreeTier Atlas), backend vocabulary/comments (zero-cost classes, Z0_TRUE_FREE), and pyproject metadata only.",
-      "pyproject.toml description/keywords containing zero-cost/free-tier were verified present in HEAD^ before this slice; they were not introduced by dd7fbf9. No new unsupported marketing/product claim was found in docs/CONFIGURATION.md, config/examples, scripts, tests, or apps/api/app/config."
-    ],
-    "level2_evaluation_recorded_feature_remains_false": [
-      "Fresh evaluator loaded harness first (Harness-Version 2026-07-02.1, content-hash 00b135ae447ca6ce), read current_contract.json and confirmed feature_id=F003, increment=slice-1-configuration-system, required_evaluation_level=2.",
-      "agent-state/feature_list.json was read before evaluation and F003 passes was false. After all checks, .\\.venv\\Scripts\\python.exe confirmed: F003 passes after: False.",
-      "This file overwrites agent-state/evaluation.json with disposition=passed and blocking_issues=[] for only F003 slice 1. F003 remains an incomplete epic; no feature_list.json edit was made."
-    ]
-  },
-  "regression_cli_results": {
-    "repository_startup": {
-      "git_status_initial": "## stsyg-f003-slice1-config-system...origin/stsyg-f003-slice1-config-system",
-      "git_rev_parse_head": "dd7fbf9c4b7ffdbc232e43dd94e4199906357f53",
-      "git_log_top": "dd7fbf9 feat(config): typed, validated YAML configuration system (F003 slice 1)",
-      "scripts_init_ps1": "exit 0; Required repository files: ok; Agent-state JSON syntax: ok; PowerShell verification available: PowerShell 7.6.3; Application scaffold checks: pending F002 - no product services are started by F000 initialization; F000 initialization checks completed"
-    },
-    "positive_validation": {
-      "powershell": "pwsh -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\validate-config.ps1 => exit 0; OK application.example.yaml (ApplicationConfig); OK llm-providers.example.yaml (LlmProvidersConfig); OK schedules.example.yaml (SchedulesConfig); OK providers\\cloudflare.example.yaml (ProviderConfig); All 4 configuration file(s) valid.",
-      "bash": "C:\\Program Files\\Git\\bin\\bash.exe scripts/validate-config.sh => exit 0; OK application.example.yaml, llm-providers.example.yaml, providers/cloudflare.example.yaml, schedules.example.yaml; All 4 configuration file(s) valid."
-    },
-    "negative_cli_tests": {
-      "unknown_extra_field": "exit 1; FAIL <file>; application.typo_field: Extra inputs are not permitted (type=extra_forbidden); 1 of 1 configuration file(s) failed validation.",
-      "malformed_yaml": "exit 1; FAIL <file>; YAML syntax error at line 4 column 4: expected <block end>, but found '<block mapping start>'; 1 of 1 configuration file(s) failed validation.",
-      "missing_required_field": "exit 1; FAIL <file>; provider.name: Field required (type=missing); 1 of 1 configuration file(s) failed validation.",
-      "inline_secret": "exit 1; FAIL <file>; llm.providers.gemini.api_key: inline secret key 'api_key' is forbidden; reference an environment variable via 'api_key_env' instead (values live in the environment, never in the repository); sentinel value not echoed.",
-      "bad_env_reference": "exit 1; FAIL <file>; llm.providers.gemini.api_key_env: String should match pattern '^[A-Z][A-Z0-9_]*$' (type=string_pattern_mismatch); 1 of 1 configuration file(s) failed validation.",
-      "unrecognised_top_level": "exit 1; FAIL <file>; could not determine configuration family from top-level keys ['unknown_root']; expected one of application/schedules/llm/provider; 1 of 1 configuration file(s) failed validation."
-    },
-    "schema_cli": {
-      "application": "exit 0; parsed JSON; type=object; properties=True; root_additionalProperties=False; additionalProperties_false_count=5; stdout first line { last line }.",
-      "schedules": "exit 0; parsed JSON; type=object; properties=True; root_additionalProperties=False; additionalProperties_false_count=4; stdout first line { last line }.",
-      "llm-providers": "exit 0; parsed JSON; type=object; properties=True; root_additionalProperties=False; additionalProperties_false_count=4; stdout first line { last line }.",
-      "provider": "exit 0; parsed JSON; type=object; properties=True; root_additionalProperties=False; additionalProperties_false_count=4; stdout first line { last line }."
-    },
-    "scripts_test_ps1": "exit 0; pytest collected 67 items; tests\\integration\\test_stack_health.py ss; 65 passed, 2 skipped in 2.30s; config validation All 4 configuration file(s) valid; Vitest src/App.test.tsx 4 tests passed; Vite build succeeded; TESTS PASSED.",
-    "scripts_check_ps1_nodeaudit": "exit 0; Ruff lint PASS; Ruff format check PASS (26 files already formatted); Pytest PASS (65 passed, 2 skipped in 2.23s); Prettier PASS; ESLint PASS; Secret scan PASS; Python dependency audit PASS (No known vulnerabilities found); Node dependency audit PASS (found 0 vulnerabilities); ALL CHECKS PASSED.",
-    "dependency_hygiene": "pyyaml==6.0.3 present at pyproject.toml:25 and apps/api/requirements.txt:10; .\\.venv\\Scripts\\pytest.exe -q tests\\unit\\test_requirements_sync.py => 2 passed in 0.05s; apps/worker/requirements.txt remains a subset (sqlalchemy, psycopg, pydantic-settings).",
-    "feature_flag": "F003 passes before: false; F003 passes after: False; feature_list.json was not modified.",
-    "git_status_after_checks_before_evaluation_write": "## stsyg-f003-slice1-config-system...origin/stsyg-f003-slice1-config-system"
+  "command_results": {
+    "git_rev_parse_head": "b93e6a96f6875e060113b953689c2fe1715b502f",
+    "scripts_init_ps1": "exit 0; Required repository files ok; Agent-state JSON syntax ok; PowerShell 7.6.3; F000 initialization checks completed.",
+    "scripts_test_ps1": "exit 0; pytest 72 passed, 10 skipped in 2.13s; config examples all 4 valid; Vitest 4 tests passed; Vite build ok; TESTS PASSED.",
+    "scripts_check_ps1_nodeaudit": "exit 0; Ruff lint/format PASS; Pytest 72 passed, 10 skipped in 1.66s; Prettier PASS; ESLint PASS; Secret scan PASS; pip-audit No known vulnerabilities; npm audit 0 vulnerabilities; ALL CHECKS PASSED.",
+    "scripts_stack_up_ps1": "exit 0; compose built/started postgres, api, worker, scheduler, web; API live at http://localhost:8000/health.",
+    "scripts_stack_smoke_ps1": "exit 0; 12/12 checks PASS including Domain migration applied (0003 tables + immutability trigger); STACK SMOKE PASSED.",
+    "live_domain_integration_pytest": "exit 0; tests/integration/test_domain_migration.py -v collected 8 items; 8 passed in 4.27s.",
+    "independent_adversarial_db_probe": "exit 0; update/delete rejected sqlstate=23001; zero_cost CHECK rejected sqlstate=23514; evidence provenance FK rejected sqlstate=23503; downgrade removed all domain tables and trigger; re-upgrade tables present and compare_metadata_diffs=0.",
+    "scripts_stack_down_ps1": "exit 0; STACK DOWN; compose services removed.",
+    "dependency_manifest_diff": "empty for pyproject.toml, apps/api/requirements.txt, apps/worker/requirements.txt, apps/web/package.json, apps/web/package-lock.json, package manifests.",
+    "feature_list_f003": "passes=False last_verified_at=None verification_evidence_count=0."
   },
   "commands_run": [
-    "Read C:\\Users\\sergiyt\\.copilot\\agent-state\\HARNESS.md",
-    "Read agent-state/current_contract.json, feature_list.json, evaluation.json, progress.md, AGENTS.md, docs/AGENT_HARNESS.md, docs/CODEX_AUTONOMY_POLICY.md, CODEX_TASKS.md, docs/PRODUCT_REQUIREMENTS.md, docs/adr/0004-yaml-and-postgres.md, docs/adr/0002-z0-model.md, docs/DATA_MODEL.md",
-    "Read apps/api/app/config/{__init__,models,loader,cli}.py, docs/CONFIGURATION.md, example YAML files, scripts/test.ps1, scripts/check.ps1, scripts/validate-config.{ps1,sh}, tests/unit/test_config_system.py, tests/unit/test_requirements_sync.py",
-    "git --no-pager status --short --branch; git rev-parse HEAD; git --no-pager log --oneline -20",
+    "Read C:\\Users\\sergiyt\\.copilot\\agent-state\\HARNESS.md first",
+    "Read AGENTS.md, docs/AGENT_HARNESS.md, docs/CODEX_AUTONOMY_POLICY.md, agent-state/current_contract.json, feature_list.json, evaluation.json, progress.md tail, docs/DATA_MODEL.md, CODEX_TASKS.md task 004, docs/ARCHITECTURE.md, docs/PRODUCT_REQUIREMENTS.md, docs/adr/*.md",
+    "Read apps/api/app/models/{__init__,base,vocab,domain}.py, migrations/env.py, migrations/versions/0003_domain_model.py, tests/unit/test_domain_models.py, tests/integration/test_domain_migration.py, scripts/stack-smoke.{ps1,sh}",
+    "git rev-parse HEAD; git status --short --branch; git log --oneline -20",
     "pwsh -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\init.ps1",
-    "pwsh -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\validate-config.ps1",
-    "C:\\Program Files\\Git\\bin\\bash.exe scripts/validate-config.sh",
     "pwsh -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\test.ps1",
     "pwsh -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\check.ps1 -NodeAudit",
-    ".\\.venv\\Scripts\\python.exe -m app.config.cli validate <TEMP>\\unknown-extra-field.yaml",
-    ".\\.venv\\Scripts\\python.exe -m app.config.cli validate <TEMP>\\malformed-yaml.yaml",
-    ".\\.venv\\Scripts\\python.exe -m app.config.cli validate <TEMP>\\missing-required-field.yaml",
-    ".\\.venv\\Scripts\\python.exe -m app.config.cli validate <TEMP>\\inline-secret.yaml",
-    ".\\.venv\\Scripts\\python.exe -m app.config.cli validate <TEMP>\\bad-env-reference.yaml",
-    ".\\.venv\\Scripts\\python.exe -m app.config.cli validate <TEMP>\\unrecognised-top-level.yaml",
-    ".\\.venv\\Scripts\\python.exe -m app.config.cli emit-schema application",
-    ".\\.venv\\Scripts\\python.exe -m app.config.cli emit-schema schedules",
-    ".\\.venv\\Scripts\\python.exe -m app.config.cli emit-schema llm-providers",
-    ".\\.venv\\Scripts\\python.exe -m app.config.cli emit-schema provider",
-    "Secret vocabulary grep over apps/api/app/config, tests/unit/test_config_system.py, docs/CONFIGURATION.md, config/examples",
-    "Product-truth scan over F003 source/config/docs/test/script/dependency files and HEAD^ pyproject corroboration",
-    "Select-String pyyaml==6.0.3 in pyproject.toml and apps/api/requirements.txt",
-    ".\\.venv\\Scripts\\pytest.exe -q tests\\unit\\test_requirements_sync.py",
-    "git --no-pager status --short --branch; confirm F003 passes after False"
+    "pwsh -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\stack-up.ps1",
+    "pwsh -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\stack-smoke.ps1",
+    "$env:DATABASE_URL='postgresql+psycopg://atlas:<redacted>@localhost:5432/atlas'; $env:PYTHONPATH='apps/api'; .\\.venv\\Scripts\\python.exe -m pytest tests/integration/test_domain_migration.py -v",
+    "Independent SQLAlchemy/Alembic adversarial probe: trigger UPDATE/DELETE, CHECK, FK, downgrade/upgrade, compare_metadata",
+    "pwsh -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\stack-down.ps1",
+    "git diff HEAD^ HEAD product-truth/dependency scans; feature_list F003 status check"
   ],
-  "end_to_end_steps_run": [
-    "Confirmed the F003 slice-1 contract identity and required Level 2 evaluation gate.",
-    "Validated all four example YAML files through both PowerShell and Git Bash wrappers.",
-    "Ran the full repository test and check scripts requested by the contract.",
-    "Crafted six adversarial YAML files outside the repository and verified every required failure mode exits non-zero with file-scoped output.",
-    "Verified inline-secret rejection does not echo the sentinel secret value.",
-    "Emitted and parsed JSON Schema for all four families and confirmed additionalProperties=false.",
-    "Corroborated secret-scan, product-truth, and dependency hygiene constraints.",
-    "Confirmed agent-state/feature_list.json still has F003 passes:false and was not edited."
+  "known_issues_or_risks": [
+    "F003 epic is not complete: Z0 classification engine/truth table remains out of scope for slice 3, so F003 must stay passes:false.",
+    "Domain tables are schema-only in this slice; provider adapters, source scans, runtime data population, API routes, and worker consumption are correctly deferred."
   ],
-  "notes": [
-    "Disposition is passed for F003 slice 1 only. The overall F003 epic remains incomplete because domain model/migrations and Z0 classification slices are out of scope and still pending.",
-    "A first schema-summary helper command had an evaluator-side quoting SyntaxError after the CLI itself exited 0; the schema commands were immediately rerun and parsed successfully with PowerShell ConvertFrom-Json. This did not affect the implementation under test.",
-    "Only repository files intentionally written by this evaluator are agent-state/evaluation.json (overwrite) and agent-state/progress.md (append). No commit, push, merge, or feature_list.json edit was performed."
-  ],
-  "recommendations": [
-    "Treat slice 1 as evaluator-approved, but keep F003 passes:false until slices 2 and 3 and a full F003 Level 2 close-out evaluation pass.",
-    "Proceed next with the approved F003 slice 2 domain model/Alembic migration contract rather than changing the feature ledger to passed."
-  ]
+  "recommendation": "Accept F003 slice 2 as evaluator-passed. Keep F003 passes:false and proceed to slice 3 (task 005 Z0 classification engine) after review/PR flow."
 }

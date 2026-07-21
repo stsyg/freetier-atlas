@@ -100,3 +100,38 @@ Store a numeric score internally. Public labels are:
 - Conflicting sources
 - Stale verification
 - Withdrawn
+
+## Implementation
+
+The domain model above is implemented as SQLAlchemy 2.0 declarative models in
+`apps/api/app/models/` and created by the Alembic migration
+`migrations/versions/0003_domain_model.py` (revision `0003_domain_model`,
+following the F002 baseline `0001`/`0002`).
+
+- **Models.** `app/models/domain.py` defines the 13 entities on a shared
+  `Base.metadata` (`app/models/base.py`) with a deterministic constraint/index
+  naming convention. `app/models/vocab.py` holds the closed vocabularies
+  (zero-cost classes, offer types, exhaustion behaviours, change types, and the
+  smaller status/visibility/materiality vocabularies) as the single source of
+  truth for the `CHECK` constraints, so the models and the migration cannot
+  drift apart.
+- **Migration.** `migrations/env.py` sets `target_metadata` to the domain
+  metadata and scopes autogenerate/`compare_metadata` to the domain tables (the
+  `0001`/`0002` infrastructure tables are left untouched). Apply with
+  `alembic upgrade head`; roll back this slice with
+  `alembic downgrade 0002_worker_queue`. The API container applies migrations on
+  startup (`apps/api/entrypoint.sh`).
+- **Immutable offer versions.** `offer_version` holds *immutable material offer
+  facts*. The migration installs a `BEFORE UPDATE OR DELETE` trigger
+  (`trg_offer_version_immutable`) that rejects any mutation of an existing row;
+  new versions are appended via `INSERT`.
+- **Evidence provenance.** `evidence` links a `source`, an `offer_version`, and
+  a `snapshot` via mandatory (`NOT NULL`) foreign keys, so every stored fact is
+  traceable to its origin.
+- **Tests.** `tests/unit/test_domain_models.py` checks the metadata shape and
+  vocabulary membership offline; `tests/integration/test_domain_migration.py`
+  (run against a live PostgreSQL) verifies apply, model/migration drift,
+  foreign-key and check-constraint enforcement, offer_version immutability,
+  provenance queries, and a downgrade/re-apply round trip. `scripts/stack-smoke`
+  asserts the domain tables and the immutability trigger exist on the running
+  stack.

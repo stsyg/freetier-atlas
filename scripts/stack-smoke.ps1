@@ -91,6 +91,15 @@ Invoke-SmokeCheck "Worker migration applied (job_queue + service_heartbeat)" {
     if ($sh -ne "service_heartbeat") { throw "service_heartbeat table not found (got '$sh')" }
 }
 
+Invoke-SmokeCheck "Domain migration applied (0003 tables + immutability trigger)" {
+    foreach ($t in @("provider", "service", "offer", "offer_version", "evidence")) {
+        $r = Invoke-Psql "SELECT to_regclass('public.$t')"
+        if ($r -ne $t) { throw "$t table not found (got '$r')" }
+    }
+    $trg = Invoke-Psql "SELECT count(*) FROM pg_trigger WHERE tgname='trg_offer_version_immutable'"
+    if ([int]$trg -ne 1) { throw "offer_version immutability trigger not installed (got '$trg')" }
+}
+
 Invoke-SmokeCheck "Worker container healthy" {
     Wait-Until -TimeoutSeconds 90 -Condition { (Get-ContainerHealth "worker") -eq "healthy" }
 }
