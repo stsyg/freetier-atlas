@@ -24,7 +24,7 @@ Provider region code, free availability, residency, data-plane location, control
 
 ### Evidence
 
-Source, offer version, official flag, URL, title, excerpt, hash, retrieval/effective dates, selector/location, snapshot.
+Source, offer version *or* candidate (pre-publication), official flag, URL, title, excerpt, hash, retrieval/effective dates, selector/location, snapshot. `source` and `snapshot` are always mandatory; a `CHECK` requires at least one subject link (`offer_version_id` or `candidate_id`).
 
 ### Snapshot
 
@@ -49,6 +49,22 @@ Source, timing, status, documents, candidates, changes, errors.
 ### ReviewItem
 
 Reason, evidence conflict, candidate facts, recommended action, admin disposition.
+
+### Candidate
+
+A pre-publication observation produced by a `ScanRun`: scan run, source, optional
+service/offer links, verification state, extracted `candidate_facts` (JSONB), a
+deterministic `content_hash` of those facts, a stable `candidate_key` (identity
+for cross-scan change detection), an `official` flag, and timestamps. A candidate
+never links to an `offer_version` and is never born `verified`. Only candidates
+from official sources receive `evidence`.
+
+### DiscoveryCandidate
+
+A quarantined, community-provenance discovery record: source, repository, url,
+licence, discovery date, import method, verification status, candidate/official
+names, notes. It has **no** foreign key to `evidence` or `offer_version` — a
+community source can surface a coverage gap but can never establish a fact.
 
 ## Enums
 
@@ -108,7 +124,7 @@ The domain model above is implemented as SQLAlchemy 2.0 declarative models in
 `migrations/versions/0003_domain_model.py` (revision `0003_domain_model`,
 following the F002 baseline `0001`/`0002`).
 
-- **Models.** `app/models/domain.py` defines the 13 entities on a shared
+- **Models.** `app/models/domain.py` defines the 15 entities on a shared
   `Base.metadata` (`app/models/base.py`) with a deterministic constraint/index
   naming convention. `app/models/vocab.py` holds the closed vocabularies
   (zero-cost classes, offer types, exhaustion behaviours, change types, and the
@@ -125,9 +141,25 @@ following the F002 baseline `0001`/`0002`).
   facts*. The migration installs a `BEFORE UPDATE OR DELETE` trigger
   (`trg_offer_version_immutable`) that rejects any mutation of an existing row;
   new versions are appended via `INSERT`.
-- **Evidence provenance.** `evidence` links a `source`, an `offer_version`, and
-  a `snapshot` via mandatory (`NOT NULL`) foreign keys, so every stored fact is
-  traceable to its origin.
+- **Evidence provenance.** `evidence` links a `source` and a `snapshot` via
+  mandatory (`NOT NULL`) foreign keys, so every stored fact is traceable to its
+  origin. Its *subject* is either a published `offer_version` (F003) or a
+  pre-publication `candidate` (F004); both links are individually optional but a
+  `CHECK` (`ck_evidence_evidence_link_target`) requires at least one, so evidence
+  is never orphaned.
+- **Ingestion persistence (migration `0004_ingest_candidates`).** Adds the
+  `candidate` and `discovery_candidate` tables and relaxes `evidence` (adds the
+  optional `candidate_id` link, makes `offer_version_id` nullable, adds the
+  link-target `CHECK`). `app.ingest.scan.run_scan(source, fetcher, session)`
+  orchestrates one scan — fetch → canonicalize → extract → validate → persist a
+  hashed `Snapshot`, `Candidate` rows, and (for `trust_level == "official"`
+  sources only) `Evidence`; community sources write only `discovery_candidate`
+  and never `evidence`. There is **no publication path**: `run_scan` never
+  creates or mutates `offer`/`offer_version` and writes no `change_event` rows,
+  so the offer-version immutability trigger is untouched. Content hashing is
+  deterministic, so re-scanning identical input yields identical candidate hashes
+  and detects zero changes. The migration is reversible (`alembic downgrade
+  0003_domain_model`).
 - **Tests.** `tests/unit/test_domain_models.py` checks the metadata shape and
   vocabulary membership offline; `tests/integration/test_domain_migration.py`
   (run against a live PostgreSQL) verifies apply, model/migration drift,

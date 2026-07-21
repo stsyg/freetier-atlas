@@ -2,98 +2,67 @@
   "schema_version": 1,
   "status": "approved",
   "feature_id": "F004",
-  "increment": "slice-1-safe-fetch-guard-and-adapter-contract",
+  "increment": "slice-2-migration-0004-and-scanrun-orchestration",
   "builder": "Copilot CLI (Chief)",
   "evaluator": "fresh independent Level 2 evaluator",
-  "approved_at": "2026-07-21T15:10:00Z",
+  "approved_at": "2026-07-21T16:20:00Z",
   "approval_notes": [
-    "The owner-approved F004 plan authorises this as F004 Slice 1 (Safe fetch guard + adapter contract). The Chief implements it under the standing autonomy boundaries: may branch/implement/test/commit/push/open one PR; may NOT merge, flip any passes flag, add runtime dependencies, or advance to Slice 2.",
-    "F004 is the source-ingestion epic. Slice 1 establishes the sole network seam (a safe fetcher) and the SourceAdapter contract with typed carriers, so later slices (provider adapters, extraction, evidence, health, conflicts) build on a proven-safe foundation.",
-    "F004 stays passes:false after this slice. A fresh-context Level 2 slice evaluation reviews Slice 1 before Slice 2 proceeds; flipping F004 passes:true requires a full-epic Level 2 evaluation.",
-    "Stdlib-only: the live transport uses urllib/http.client from the Python standard library. No new runtime (or npm) dependency is added; the requirements-sync guard stays green."
+    "Owner-approved F004 plan. Slice 1 (safe fetch guard + SourceAdapter contract in apps/api/app/ingest/) is merged to main (PR #14). This contract governs Slice 2 ONLY.",
+    "Standing autonomy boundaries: may branch/implement/test/commit/push/open ONE PR; may NOT merge, flip any passes flag, add a runtime/npm dependency, start Slice 3, or touch the offer_version immutability trigger.",
+    "F004 stays passes:false after this slice. A fresh-context Level 2 slice evaluation reviews Slice 2 before Slice 3 proceeds."
   ],
-  "objective": "Establish the safe source-fetching seam and the source-adapter contract for the ingestion epic. Introduce a SafeFetcher whose network policy is expressed as pure, independently-testable functions (official-domain allowlist, SSRF/private-network blocking, https-only scheme allowlist, MIME validation, bounded redirects with per-hop re-validation, connect/read timeouts, and a streamed max-size cap with early abort) over a thin I/O layer. The default fetcher opens no socket; a live urllib-based transport is gated behind an explicit flag that is disabled by default. Define the SourceAdapter ABC enforcing the seven contract methods plus typed carriers, the closed verification-state vocabulary, a deterministic offline FixtureFetcher, and one minimal reference JSON adapter that makes the contract concrete.",
+  "objective": "Add DB persistence and scan orchestration to the ingestion pipeline. Migration 0004 introduces a pre-publication `candidate` table and a `discovery_candidate` community-quarantine table, and relaxes `evidence` so candidate-stage evidence can link Source+Snapshot+Candidate without an offer_version (offer_version_id becomes nullable, a new nullable candidate_id FK is added, and a CHECK requires at least one linkage target; source_id and snapshot_id stay NOT NULL). app/ingest/scan.py adds run_scan(source, fetcher, session) that runs fetch -> canonicalize -> extract -> validate and persists a hashed Snapshot, Candidate rows in a pre-publication state, Evidence for OFFICIAL sources only, DiscoveryCandidate quarantine rows for COMMUNITY sources only, and updates ScanRun counts + Source.health. Content hashing is deterministic so re-scanning identical input yields identical candidate hashes, changes_count=0, and zero ChangeEvent rows.",
   "scope": [
-    "New package apps/api/app/ingest/ with __init__.py exports.",
-    "apps/api/app/ingest/fetch.py: pure policy functions (scheme allowlist, host/official-domain allowlist with subdomain match, IP address block classification for loopback/RFC1918/link-local 169.254/16/ULA fc00::7/metadata 169.254.169.254/unspecified/reserved/mapped, MIME parse+validate, redirect-budget check, size-cap check); a Fetcher Protocol; typed FetchResult (content, mime, final_url, content_hash sha256, fetched_at, status); a FetchPolicy config dataclass; a typed FetchError hierarchy; a default OfflineFetcher that never opens a socket; a live urllib-based LiveFetcher gated behind an explicit enable_network flag (disabled by default) that re-runs the host allowlist and SSRF checks on every redirect hop, streams with an early size abort, and enforces timeouts; and a deterministic offline FixtureFetcher test transport.",
-    "apps/api/app/ingest/base.py: the SourceAdapter abc.ABC enforcing discover/fetch/canonicalize/extract/validate/evidence/health, plus frozen typed carriers SourceDocument, CandidateFacts, EvidenceLocation, AdapterHealth. Adapters depend only on the Fetcher protocol (the sole network seam) and never import an HTTP client directly.",
-    "apps/api/app/ingest/vocab.py: the closed VERIFICATION_STATES vocabulary (detected, extracting, candidate, verified, verified_with_caveats, conflict, stale, withdrawn, rejected) mirroring docs/ARCHITECTURE.md, plus a small membership helper.",
-    "apps/api/app/ingest/reference.py: a minimal reference structured/JSON SourceAdapter that discovers configured URLs, fetches via the injected Fetcher, canonicalizes JSON, extracts CandidateFacts, validates required fields, emits EvidenceLocation, and reports AdapterHealth. Produces candidate facts only (never verified).",
-    "tests/unit/test_ingest_fetch.py and tests/unit/test_ingest_contract.py (offline; no external network egress).",
-    "docs: a short 'Safe source fetching + adapter contract' note (docs/DATA_MODEL.md or docs/PROVIDER_ADAPTERS.md) documenting the network policy, the network seam, and the contract."
+    "migrations/versions/0004_ingest_candidates.py: create `candidate` and `discovery_candidate`; ALTER `evidence` (add candidate_id FK, make offer_version_id nullable, add CHECK ck_evidence_evidence_link_target). Reversible upgrade/downgrade.",
+    "apps/api/app/models/vocab.py: add VERIFICATION_STATES (mirrors app.ingest.vocab), IMPORT_METHODS, DISCOVERY_VERIFICATION_STATUSES.",
+    "apps/api/app/models/domain.py: add Candidate + DiscoveryCandidate ORM models; update Evidence (nullable offer_version_id, candidate_id FK, CHECK). Export via app/models/__init__.py.",
+    "apps/api/app/ingest/scan.py: run_scan(source, fetcher, session) orchestration + a small adapter registry (build_adapter) keyed by Source.adapter_type (reference JSON adapter for this slice). Deterministic content_hash + candidate_key and change detection.",
+    "apps/api/app/ingest/__init__.py: export run_scan (and build_adapter).",
+    "tests/integration/test_ingest_scan.py (live Postgres) and updates to tests/unit/test_domain_models.py + a vocab drift-guard test.",
+    "scripts/stack-smoke.ps1 + scripts/stack-smoke.sh: assert the 0004 tables exist.",
+    "docs/DATA_MODEL.md: document the candidate/discovery_candidate tables and the evidence candidate-stage linkage."
   ],
   "out_of_scope": [
-    "Any Alembic migration or database write (F004 Slice 1 adds no schema and writes no rows).",
-    "Real provider adapters, MCP/RSS/HTML/browser transports, or live provider scanning.",
-    "Persisting candidates/evidence/snapshots, ScanRun orchestration, change detection, conflict review, or offer_version mutation (offer_version immutability is untouched).",
-    "API routes, worker/scheduler wiring, or any publication path; no user-controlled URLs in public endpoints; no direct LLM-to-publication path.",
-    "Marking F004 (or any feature) passes:true; adding managed-cloud services or heavyweight dependencies; advancing to Slice 2."
+    "Creating or mutating offer/offer_version (no publication path). The offer_version immutability trigger is untouched.",
+    "Real provider adapters, live network scanning, MCP/RSS/HTML transports (Slice 1 fetch seam is reused as-is; no second network path).",
+    "Change-event/offer-history writes, conflict review workflows, admin UI, API routes.",
+    "Residual R1 (DNS-rebinding IP pinning) from Slice 1 — explicitly deferred.",
+    "Any new runtime or npm dependency (requirements-sync guard stays green). Marking F004 passes:true. Advancing to Slice 3."
   ],
   "acceptance_criteria": [
-    "A non-allowlisted host is rejected PRE-connect (the host allowlist check fires before DNS resolution or any socket use).",
-    "A redirect to a disallowed or private host is rejected MID-chain (the host allowlist and SSRF address checks re-run on every redirect hop).",
-    "A non-https URL is rejected by the scheme allowlist (default allowed schemes = {https}).",
-    "Private, loopback, link-local, and cloud-metadata IPs (127.0.0.1, ::1, RFC1918 10/172.16/192.168, 169.254.0.0/16 incl. 169.254.169.254, fe80::/10, fc00::/7, 0.0.0.0, IPv4-mapped) are rejected by the SSRF address classifier.",
-    "A slow response aborts within the timeout budget (raises a typed timeout error).",
-    "An oversized response is aborted early by the streamed size cap (raises a typed too-large error) without buffering the whole body.",
-    "A disallowed MIME type is rejected by MIME validation.",
-    "The default fetcher (OfflineFetcher) opens NO socket, and the live transport is disabled by default (constructing/using it without the explicit enable_network flag fails).",
-    "The SourceAdapter ABC cannot be instantiated when any of the seven contract methods (discover, fetch, canonicalize, extract, validate, evidence, health) is missing.",
-    "The reference JSON adapter runs end-to-end offline through the FixtureFetcher and produces CandidateFacts (verification_state=candidate, never verified) with EvidenceLocation and an AdapterHealth report.",
-    "The verification-state vocabulary is closed and exactly matches docs/ARCHITECTURE.md.",
-    "Regression green: scripts/test.ps1 and scripts/check.ps1 -NodeAudit both pass offline (ruff, format, pytest, prettier, eslint, detect-secrets, pip-audit, npm audit), including the requirements-sync guard (no new dependency); no external network egress occurs in the suite or CI (the single loopback test binds 127.0.0.1 and allowlists it for that test only).",
-    "No unsupported free-tier/Z0 product claim is introduced; no DB migration or row write is added; offer_version immutability is not touched.",
-    "A fresh-context independent Level 2 evaluator records an adversarial verdict for Slice 1 in agent-state/evaluation.json before any status change is claimed; F004 remains passes:false."
+    "A FixtureFetcher-driven scan of an OFFICIAL source produces a ScanRun with correct documents/candidates/changes/errors counts, a hashed Snapshot, Candidate rows in a pre-publication state, and Evidence rows linked to the Source + Snapshot (+ Candidate).",
+    "Re-scanning identical input yields identical candidate content hashes, changes_count == 0 on the second run, and ZERO ChangeEvent rows (idempotent/reproducible).",
+    "run_scan NEVER creates or mutates offer or offer_version rows, and the offer_version immutability trigger remains installed and intact.",
+    "A COMMUNITY-source scan creates DiscoveryCandidate quarantine rows and unverified Candidate rows and creates NO Evidence and NO offer_version rows.",
+    "Only sources with trust_level == 'official' create evidence rows; community sources never write evidence.",
+    "Migration 0004 is reversible: upgrade -> downgrade -> upgrade leaves no model/migration drift (compare_metadata == []), and the 0001/0002/0003 tables + immutability trigger survive intact.",
+    "stack-smoke asserts the candidate and discovery_candidate tables exist on the running stack.",
+    "Regression green: scripts/test.ps1 and scripts/check.ps1 -NodeAudit pass offline (ruff, format, pytest, prettier, eslint, detect-secrets, pip-audit, npm audit) including the requirements-sync guard (no new dependency).",
+    "A fresh-context independent Level 2 evaluator records an adversarial verdict for Slice 2 before any status change; F004 remains passes:false."
   ],
   "verification_plan": {
-    "baseline_commands": [
-      "git status --short --branch",
-      "git rev-parse HEAD",
-      "git --no-pager log --oneline -5"
-    ],
-    "unit_commands": [
-      "pwsh -File scripts/test.ps1",
-      "pwsh -File scripts/check.ps1 -NodeAudit"
-    ],
+    "baseline_commands": ["git status --short --branch", "git --no-pager log --oneline -5"],
+    "unit_commands": ["pwsh -File scripts/test.ps1", "pwsh -File scripts/check.ps1 -NodeAudit"],
     "integration_commands": [
-      "pwsh -File scripts/stack-up.ps1",
+      "pwsh -File scripts/stack-up.ps1 (POSTGRES_PORT=55432 API_PORT=8010 WEB_PORT=8090)",
+      "DATABASE_URL=postgresql+psycopg://atlas:atlas@localhost:55432/atlas pytest tests/integration/test_ingest_scan.py tests/integration/test_domain_migration.py",
       "pwsh -File scripts/stack-smoke.ps1",
       "pwsh -File scripts/stack-down.ps1"
-    ],
-    "end_to_end_steps": [
-      "Run tests/unit/test_ingest_fetch.py and tests/unit/test_ingest_contract.py and confirm every acceptance criterion is exercised offline.",
-      "Run scripts/test.ps1 and scripts/check.ps1 -NodeAudit and confirm both pass end-to-end (no new dependency; requirements-sync green).",
-      "Confirm detect-secrets is green and no credential appears in code or output.",
-      "Confirm the live stack cycle is unaffected (the seam adds no runtime coupling)."
-    ],
-    "negative_tests": [
-      "fetch to a non-allowlisted host => DisallowedHostError before any socket/getaddrinfo call.",
-      "302 redirect to a non-allowlisted host => DisallowedHostError mid-chain.",
-      "302 redirect to an allowlisted host that is an RFC1918 IP => BlockedAddressError mid-chain (loopback allowance does not cover private ranges).",
-      "http:// URL with https-only policy => DisallowedSchemeError.",
-      "address classifier blocks 127.0.0.1/::1/10.0.0.1/172.16.0.1/192.168.1.1/169.254.169.254/fe80::1/fc00::1/0.0.0.0/::ffff:127.0.0.1.",
-      "loopback server that sleeps beyond read_timeout => FetchTimeoutError within budget.",
-      "loopback response larger than max_bytes => ResponseTooLargeError, body not fully buffered.",
-      "response Content-Type outside the allowed MIME set => DisallowedMimeError.",
-      "OfflineFetcher.fetch with socket patched to fail => raises NetworkDisabledError without touching the socket.",
-      "SourceAdapter subclass missing any contract method => TypeError on instantiation."
     ]
   },
   "risks": {
-    "data_migration": "None. This slice adds no schema and no migration; it introduces a network seam and a contract only.",
-    "security_privacy": "The whole point of the slice is defence in depth against SSRF and egress abuse. Policy is pure and unit-tested; the live transport is off by default; no credentials are handled; detect-secrets stays green. The one loopback test binds 127.0.0.1 and allowlists it only for that test, with no external egress.",
-    "portability": "Pure standard-library Python (urllib/http.client/ipaddress/socket); no managed-cloud dependency; runs identically on amd64 and arm64.",
-    "zero_cost_safety": "No offer data or free/Z0 claim is added; adapters produce candidate facts only and never publish.",
-    "regression": "No dependency change, so the requirements-sync guard is unaffected. The package is additive and imported by nothing at runtime yet, so existing services and tests are unchanged.",
-    "supply_chain": "No new dependency (Python or npm) is added by this slice."
+    "data_migration": "0004 creates two tables and alters evidence (add nullable candidate_id FK, relax offer_version_id to nullable, add CHECK). Reversible. offer_version and its immutability trigger are untouched. Making offer_version_id nullable does NOT weaken published-evidence provenance: source_id + snapshot_id remain NOT NULL, FKs still enforced when present, and the new CHECK requires a linkage target.",
+    "security_privacy": "Community prose is quarantined in discovery_candidate and never linked to evidence/offer_version; official-only evidence rule enforced in run_scan and tested. No credentials handled; detect-secrets stays green.",
+    "portability": "Pure standard-library Python + SQLAlchemy/Alembic already in use; no new dependency; amd64/arm64 unaffected.",
+    "zero_cost_safety": "No offer data is published; candidates are pre-publication and never verified; no Z0/free claim is asserted.",
+    "regression": "No dependency change (requirements-sync green). Existing evidence provenance tests still pass (FKs enforced; dangling FK still rejected). One unit test updated to reflect the intentional evidence nullability/linkage change.",
+    "supply_chain": "No new Python or npm dependency."
   },
   "required_evaluation_level": 2,
   "contract_review": {
     "required": true,
     "reviewer": "owner",
     "disposition": "approved",
-    "notes": [
-      "Owner approved the F004 plan and directed the builder to implement Slice 1 only, then stop for a fresh-context Level 2 slice evaluation before Slice 2. This slice does not mark F004 passing."
-    ]
+    "notes": ["Owner approved the F004 plan and directed Slice 2 implementation, then stop for a fresh-context Level 2 slice evaluation before Slice 3."]
   }
 }

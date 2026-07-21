@@ -100,6 +100,15 @@ Invoke-SmokeCheck "Domain migration applied (0003 tables + immutability trigger)
     if ([int]$trg -ne 1) { throw "offer_version immutability trigger not installed (got '$trg')" }
 }
 
+Invoke-SmokeCheck "Ingest migration applied (0004 candidate + discovery_candidate tables)" {
+    foreach ($t in @("candidate", "discovery_candidate")) {
+        $r = Invoke-Psql "SELECT to_regclass('public.$t')"
+        if ($r -ne $t) { throw "$t table not found (got '$r')" }
+    }
+    $link = Invoke-Psql "SELECT count(*) FROM pg_constraint WHERE conname='ck_evidence_evidence_link_target'"
+    if ([int]$link -ne 1) { throw "evidence link-target check constraint not installed (got '$link')" }
+}
+
 Invoke-SmokeCheck "Worker container healthy" {
     Wait-Until -TimeoutSeconds 90 -Condition { (Get-ContainerHealth "worker") -eq "healthy" }
 }

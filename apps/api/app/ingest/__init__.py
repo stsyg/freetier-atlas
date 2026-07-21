@@ -6,6 +6,7 @@ The ingestion pipeline's foundation:
 * :mod:`app.ingest.base` -- the :class:`SourceAdapter` contract and typed carriers.
 * :mod:`app.ingest.vocab` -- the closed verification-state vocabulary.
 * :mod:`app.ingest.reference` -- a minimal reference JSON adapter.
+* :mod:`app.ingest.scan` -- ScanRun orchestration and candidate/evidence persistence.
 
 Adapters produce *candidate* facts only; nothing here publishes or verifies.
 """
@@ -37,6 +38,7 @@ from .fetch import (
     TooManyRedirectsError,
 )
 from .reference import JsonOfferAdapter
+from .scan import ADAPTER_REGISTRY, UnknownAdapterError, build_adapter, run_scan
 from .vocab import VERIFICATION_STATES, is_verification_state
 
 __all__ = (
@@ -64,6 +66,11 @@ __all__ = (
     "AdapterHealth",
     # reference adapter
     "JsonOfferAdapter",
+    # scan orchestration
+    "run_scan",
+    "build_adapter",
+    "ADAPTER_REGISTRY",
+    "UnknownAdapterError",
     # vocab
     "VERIFICATION_STATES",
     "is_verification_state",
