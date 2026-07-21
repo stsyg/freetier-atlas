@@ -195,3 +195,60 @@ imported from `app.models.vocab`, so the engine and the schema share a single
 source of truth. `tests/unit/test_z0_classifier.py` is a comprehensive truth
 table covering every gate, every exhaustion behaviour, boundary/contradictory
 inputs, and the safety invariant.
+
+## Source ingestion: safe fetch guard and adapter contract
+
+The ingestion pipeline (`apps/api/app/ingest/`) is built on two foundations
+introduced in F004 Slice 1: a **safe fetch guard** (the sole network seam) and
+the **source-adapter contract**. Both are additive and pure/standard-library
+only; no new runtime dependency is introduced and nothing here writes to the
+database or publishes offers.
+
+### Safe fetch guard (`app.ingest.fetch`)
+
+Every adapter reaches the network only through a `Fetcher`. The guard splits
+into pure, independently-testable policy functions over a thin I/O layer
+(docs/SECURITY_PRIVACY_ABUSE.md "Source fetching"):
+
+- **Scheme allowlist** — `check_scheme` permits only the configured schemes
+  (default `{https}`).
+- **Official-domain allowlist** — `check_host` accepts a host only if it equals
+  or is a subdomain of a provider's `official_domains`, evaluated **before** any
+  DNS resolution or socket use.
+- **SSRF / private-network blocking** — `address_block_reason` rejects loopback,
+  RFC1918 private ranges, link-local `169.254.0.0/16` (including the
+  `169.254.169.254` cloud-metadata address) and IPv6 `fe80::/10`, ULA
+  `fc00::/7`, the unspecified address, multicast/reserved ranges, and unmasks
+  IPv4-mapped IPv6 so a private v4 cannot be smuggled.
+- **MIME validation**, a **bounded redirect count**, and a **streamed max-size
+  cap** (`validate_mime`, `check_redirect_budget`, `check_size`).
+
+The typed `FetchResult` carries `content`, `mime`, `final_url`, a SHA-256
+`content_hash`, `fetched_at`, and `status`. Transports:
+
+- `OfflineFetcher` — the safe default; **never opens a socket** (always raises
+  `NetworkDisabledError`).
+- `LiveFetcher` — a stdlib `urllib` transport **disabled by default**; it must be
+  constructed with `enable_network=True`. It re-runs the scheme, host-allowlist
+  and SSRF checks on **every redirect hop**, streams the body with an early size
+  abort, and enforces connect/read timeouts.
+- `FixtureFetcher` — a deterministic, offline test transport that still applies
+  the pure URL/MIME policy checks.
+
+### Adapter contract (`app.ingest.base`)
+
+`SourceAdapter` is an `abc.ABC` enforcing the seven methods from
+docs/ARCHITECTURE.md — `discover`, `fetch`, `canonicalize`, `extract`,
+`validate`, `evidence`, `health` — so a subclass missing any one cannot be
+instantiated. Adapters are constructed with a `Fetcher` and never import an HTTP
+client directly. They exchange typed carriers `SourceDocument`, `CandidateFacts`,
+`EvidenceLocation`, and `AdapterHealth`, and produce **candidate facts only**:
+`CandidateFacts.verification_state` is constrained to
+`app.ingest.vocab.ADAPTER_ASSIGNABLE_STATES`, so an adapter can never mint a
+`verified` fact. `app.ingest.vocab.VERIFICATION_STATES` is the closed
+verification-state vocabulary. `app.ingest.reference.JsonOfferAdapter` is a
+minimal reference JSON adapter that makes the contract concrete end-to-end
+offline. `tests/unit/test_ingest_fetch.py` and
+`tests/unit/test_ingest_contract.py` cover the guard and the contract; the one
+live-transport test binds `127.0.0.1` and allowlists it for that test only, so
+the suite performs no external network egress.
