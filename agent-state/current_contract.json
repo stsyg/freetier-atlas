@@ -2,46 +2,47 @@
   "schema_version": 1,
   "status": "approved",
   "feature_id": "F003",
-  "increment": "slice-2-domain-model-and-migrations",
+  "increment": "slice-3-z0-classification-engine",
   "builder": "Copilot CLI (Chief)",
   "evaluator": "fresh independent Level 2 evaluator",
-  "approved_at": "2026-07-18T00:00:00Z",
+  "approved_at": "2026-07-21T00:00:00Z",
   "approval_notes": [
-    "Owner selected 'Full task-004 in one slice (Recommended)' for the scope decision and then 'Approve - implement slice 2 now', authorising the full task-004 domain model as a single atomic increment.",
-    "This is the SECOND of three F003 slices. Slice 1 (configuration system, CODEX task 003 = F003 acceptance step 1) is merged to main (PR #9, squash 3b7e0b1). Slice 2 = the domain model + Alembic migrations (CODEX task 004 = F003 acceptance steps 2 and 3). Slice 3 = the Z0 classification engine (task 005 = acceptance step 4).",
-    "F003 stays passes:false after this slice. Flipping F003 passes:true requires the FULL epic (config + domain model + Z0 engine) plus a fresh-context full-epic Level 2 evaluation, exactly as F002 was closed out.",
-    "No new runtime dependency: SQLAlchemy 2.0.36 and Alembic 1.14.0 are already pinned in pyproject.toml and apps/api/requirements.txt."
+    "Owner instructed 'take next task' and, when asked to confirm scope, delegated the decision ('work autonomously and make good decisions'). The Chief scoped this as the final F003 slice and is implementing it under the standing autonomy boundaries (may branch/implement/test/commit/push/open PR; may NOT merge, flip passes:true, or add dependencies).",
+    "This is the THIRD and final F003 slice. Slice 1 (configuration system, CODEX task 003 = acceptance step 1) merged as PR #9 (squash 3b7e0b1). Slice 2 (domain model + Alembic migrations, task 004 = acceptance steps 2 and 3) merged as PR #10 (squash 7ec4257). Slice 3 = the Z0 classification engine (task 005 = acceptance step 4).",
+    "F003 stays passes:false after this slice. Flipping F003 passes:true requires a fresh-context FULL-EPIC Level 2 evaluation (config + domain model + Z0 engine together), exactly as F002 was closed out.",
+    "No new runtime dependency: the engine is pure standard-library Python over the vocabularies already defined in apps/api/app/models/vocab.py."
   ],
-  "objective": "Introduce the FreeTier Atlas catalogue/evidence domain model as SQLAlchemy 2.0 declarative ORM models and a forward-and-reversible Alembic migration (0003). Enforce referential integrity (foreign keys), closed-vocabulary check constraints drawn from docs/DATA_MODEL.md (zero-cost classes, offer types, exhaustion behaviours, change types, etc.), append-only immutability of offer_version rows via a database trigger, and full evidence provenance (Evidence references a Source, an OfferVersion, and a Snapshot). The migration must apply, roll back, and re-apply cleanly against PostgreSQL, and the ORM metadata must be wired into Alembic (target_metadata) so schema/model drift can be detected.",
+  "objective": "Introduce the Z0 classification engine: a pure, deterministic function that maps an offer's material facts (offer type, card requirement, paid dependencies, eligibility, availability window, and per-quota exhaustion behaviour) to an explainable zero-cost class (Z0_TRUE_FREE, Z1_BILLING_EXPOSURE, Z2_TEMPORARY_OR_CONDITIONAL, Z3_SELF_HOSTED_BUILDING_BLOCK, or UNKNOWN). Classification must never infer Z0 from missing or contradictory material data, must gate Z0 on the explicit absence of card/purchase/paid-dependency/automatic-billing exposure AND a safe quota-exhaustion behaviour, and must emit a human-readable explanation of the deciding reasons and blocking conditions.",
   "scope": [
-    "New package apps/api/app/models/: base.py (DeclarativeBase with a deterministic naming_convention + shared metadata), domain.py (the 13 entities: Provider, Category, Service, Offer, OfferVersion, Quota, RegionAvailability, Source, Snapshot, Evidence, ChangeEvent, ScanRun, ReviewItem), vocab.py (closed-vocabulary tuples mirroring docs/DATA_MODEL.md), __init__.py exports.",
-    "migrations/versions/0003_domain_model.py: creates all 13 tables with FKs, check constraints, indexes, and a BEFORE UPDATE OR DELETE trigger + function that makes offer_version append-only; downgrade() drops the trigger/function and all tables in dependency order.",
-    "migrations/env.py: import the domain metadata and set target_metadata = Base.metadata so autogenerate / compare_metadata drift checks work.",
-    "tests/integration/test_domain_migration.py (integration-marked, gated on DATABASE_URL): apply head, assert the 13 tables + trigger exist, assert compare_metadata reports no drift, exercise FK + check-constraint rejections, assert offer_version UPDATE and DELETE are rejected by the trigger, run representative provenance queries, then downgrade to 0002 (assert domain tables gone) and upgrade head again (round trip).",
-    "tests/unit/test_domain_models.py (offline): assert the ORM metadata exposes the 13 tables, the closed-vocabulary check constraints are present with the exact docs/DATA_MODEL.md membership, evidence carries the three provenance foreign keys, and the models import without a database.",
-    "scripts/stack-smoke.ps1 and scripts/stack-smoke.sh: add checks asserting the domain tables exist (e.g. provider, offer, offer_version, evidence) and that the offer_version immutability trigger is installed, run against the live stack Postgres.",
-    "docs/DATA_MODEL.md: append an 'Implementation' section cross-referencing the ORM module, the 0003 migration, the immutability trigger, and how to apply/roll back."
+    "New package apps/api/app/classify/: engine.py (a ClassificationResult dataclass plus the deterministic classify() function and its ordered decision gates), __init__.py exports.",
+    "The engine consumes a small, explicit input structure (offer_type, requires_card: bool|None, has_paid_dependencies: bool|None, eligibility, available_from/until, and the set/list of quota exhaustion_behaviours). Nullable booleans (None) and 'unknown' exhaustion behaviour represent UNKNOWN material conditions.",
+    "Decision rules mirroring docs/PRODUCT_REQUIREMENTS.md and docs/DATA_MODEL.md: (Z1) card required, purchase required, paid dependency, or an automatic_billing exhaustion behaviour => Z1_BILLING_EXPOSURE (never Z0); (Z3) self-hosted offer types (self_hosted_open_source) => Z3_SELF_HOSTED_BUILDING_BLOCK; (Z2) trial / new_customer_credit / time-limited (available_until in the past or a bounded window) / eligibility-conditional (student/startup/hackathon/open-source programs) => Z2_TEMPORARY_OR_CONDITIONAL; (UNKNOWN) any material gate whose value is unknown (requires_card None, has_paid_dependencies None, or any quota exhaustion_behaviour == 'unknown', or no quota data at all) => UNKNOWN; (Z0) only when every billing gate is explicitly clear AND every quota exhaustion behaviour is a SAFE stop-type (hard_stop, request_rejected, throttled, service_sleeps, read_only, deployment_blocked, site_disabled_until_reset, resource_reclaimed, data_deleted) => Z0_TRUE_FREE.",
+    "Explanation output: ClassificationResult carries the assigned class, an ordered list of human-readable reasons, and a list of blocking_conditions (empty for Z0). No numeric confidence is surfaced in this slice.",
+    "A thin, read-only ORM adapter classify_offer(offer) that reads an Offer instance and its related Quota rows and returns a ClassificationResult, performing NO database writes.",
+    "tests/unit/test_z0_classifier.py (offline): a comprehensive truth table exercising each gate, each exhaustion behaviour (safe vs unsafe vs unknown), boundary and contradictory inputs, the no-quota case, and the 'no unknown material condition may yield Z0' rule; plus explanation-content assertions.",
+    "docs: a 'Z0 classification' section (in docs/DATA_MODEL.md or a short docs/Z0_CLASSIFICATION.md) documenting the gates, the safety rule, and the explanation output."
   ],
   "out_of_scope": [
-    "The Z0 classification engine and truth table (task 005) -> F003 slice 3.",
-    "Provider adapters, source scanning, document fetching, evidence extraction, or any network I/O.",
-    "API routes or worker/scheduler logic that read or write the new tables at runtime; seeding real catalogue/offer data.",
-    "Runtime consumption of slice-1 configuration by services.",
+    "Provider adapters, source scanning, document fetching, or evidence extraction (task 006+).",
+    "Persisting classifications back to the database, ScanRun orchestration, or recomputing offer.zero_cost_class at runtime.",
+    "Composing Z3 self-hosted building blocks onto verified Z0 hosting infrastructure (task 015).",
+    "Confidence-score calibration and the public confidence labels.",
+    "API routes, worker/scheduler wiring, or UI surfacing beyond the existing /health seam.",
     "Marking F003 (or any feature) passes:true; adding managed-cloud services or heavyweight dependencies; advancing past this slice."
   ],
   "acceptance_criteria": [
-    "All 13 domain entities (Provider, Category, Service, Offer, OfferVersion, Quota, RegionAvailability, Source, Snapshot, Evidence, ChangeEvent, ScanRun, ReviewItem) are defined as SQLAlchemy declarative models on a shared metadata with a deterministic naming convention.",
-    "Alembic 'upgrade head' applies migration 0003 cleanly against PostgreSQL, creating all 13 tables with their foreign keys, check constraints, and indexes.",
-    "Round trip: 'downgrade 0002' removes every domain table, function, and trigger, and a subsequent 'upgrade head' recreates the identical schema (verified by alembic compare_metadata reporting no drift after re-apply).",
-    "offer_version is append-only: an UPDATE or a DELETE against an existing offer_version row is rejected by a database trigger (raises an exception); INSERT of a new version succeeds.",
-    "Evidence provenance is FK-enforced: an Evidence row requires a valid source_id, offer_version_id, and snapshot_id; inserting Evidence that references a non-existent source/offer_version/snapshot is rejected.",
-    "Closed-vocabulary check constraints reject out-of-vocabulary values for zero_cost_class (5 classes), offer_type (11 types), and exhaustion_behaviour (12 behaviours), using exactly the membership listed in docs/DATA_MODEL.md.",
-    "migrations/env.py sets target_metadata to the domain metadata; an integration test confirms compare_metadata reports no operations after 'upgrade head' (migration and models agree).",
-    "Representative queries succeed: joining Provider -> Service -> Offer -> OfferVersion and OfferVersion -> Evidence -> Source return expected rows for seeded fixture data inside the test.",
-    "scripts/stack-smoke.{ps1,sh} pass against the live stack including new assertions that the domain tables exist and the offer_version immutability trigger is installed; a full stack-up / stack-smoke / stack-down cycle succeeds.",
-    "Regression green: scripts/test.ps1 (pytest offline + config validation + web tests/build) and scripts/check.ps1 -NodeAudit (ruff, format, pytest, prettier, eslint, detect-secrets, pip-audit, npm audit), including the requirements-sync guard (no new dependency).",
-    "No unsupported free-tier/zero-cost/Z0 product claim is introduced (schema and constraints only; no offer data asserting a service is free).",
-    "A fresh-context independent Level 2 evaluator records an adversarial verdict in agent-state/evaluation.json before any status change is claimed; F003 remains passes:false (epic incomplete)."
+    "classify() is a pure deterministic function (no I/O, no network, no LLM) importable offline; identical inputs always yield an identical ClassificationResult.",
+    "Billing gates: an offer with requires_card True, has_paid_dependencies True, or any quota whose exhaustion_behaviour is automatic_billing is classified Z1_BILLING_EXPOSURE and NEVER Z0, with the specific gate named in blocking_conditions.",
+    "Safety rule: any material condition that is unknown (requires_card None, has_paid_dependencies None, an exhaustion_behaviour of 'unknown', or the total absence of quota data) yields UNKNOWN and NEVER Z0.",
+    "Z0 rule: Z0_TRUE_FREE is returned only when all billing gates are explicitly clear (requires_card False, has_paid_dependencies False, no automatic_billing) AND every quota exhaustion behaviour is a safe stop-type; the result's blocking_conditions is empty and reasons explain why it is $0.",
+    "Z2 rule: trial, new_customer_credit, bounded/expired availability windows, and eligibility-conditional program offer types are classified Z2_TEMPORARY_OR_CONDITIONAL (assuming no dominating billing exposure).",
+    "Z3 rule: self_hosted_open_source offers are classified Z3_SELF_HOSTED_BUILDING_BLOCK.",
+    "Every ClassificationResult includes an ordered, human-readable reasons list; every non-Z0 result names at least one blocking or downgrading condition.",
+    "classify_offer(orm_offer) reads an Offer plus its Quota rows and returns the same result the pure function would for those facts, performing no writes.",
+    "A comprehensive truth-table unit suite (tests/unit/test_z0_classifier.py) covers each gate, each exhaustion behaviour, missing/contradictory/boundary data, and the no-Z0-on-unknown rule, and all tests pass offline.",
+    "Regression green: scripts/test.ps1 (pytest offline + config validation + web tests/build) and scripts/check.ps1 -NodeAudit (ruff, format, pytest, prettier, eslint, detect-secrets, pip-audit, npm audit), including the requirements-sync guard (no new dependency); the full live stack cycle stack-up -> stack-smoke -> stack-down still passes.",
+    "No unsupported free-tier/zero-cost/Z0 product claim is introduced: the engine only classifies supplied facts and defaults to UNKNOWN rather than guessing; no offer data asserting a real service is free is added.",
+    "A fresh-context independent Level 2 evaluator records an adversarial verdict in agent-state/evaluation.json (probing missing, contradictory, and boundary data to confirm no unknown material condition yields Z0) before any status change is claimed; F003 remains passes:false (epic close-out is a separate full-epic evaluation)."
   ],
   "verification_plan": {
     "baseline_commands": [
@@ -55,32 +56,31 @@
     ],
     "integration_commands": [
       "pwsh -File scripts/stack-up.ps1",
-      "$env:DATABASE_URL to the live stack Postgres; .venv pytest -m integration tests/integration/test_domain_migration.py",
       "pwsh -File scripts/stack-smoke.ps1",
       "pwsh -File scripts/stack-down.ps1"
     ],
     "end_to_end_steps": [
-      "Bring up the stack; confirm the API entrypoint applied 0003 (domain tables present via psql).",
-      "Run the integration migration test: apply head, assert 13 tables + trigger, compare_metadata clean, FK/check rejections, offer_version UPDATE/DELETE rejected, provenance query, downgrade 0002, upgrade head again.",
-      "Run scripts/stack-smoke.ps1 and confirm the new domain-table and immutability-trigger checks pass alongside the existing API/worker/scheduler/web checks.",
-      "Run scripts/test.ps1 and scripts/check.ps1 -NodeAudit and confirm both pass end-to-end.",
-      "Confirm detect-secrets is green and no credential appears in code, migration, or output."
+      "Run tests/unit/test_z0_classifier.py and confirm the full truth table passes offline.",
+      "Run scripts/test.ps1 and scripts/check.ps1 -NodeAudit and confirm both pass end-to-end (no new dependency; requirements-sync green).",
+      "Bring up the live stack and confirm stack-smoke still passes (the engine adds no runtime coupling), then bring it down.",
+      "Confirm detect-secrets is green and no credential appears in code or output."
     ],
     "negative_tests": [
-      "UPDATE offer_version SET ... is rejected by the immutability trigger with a raised exception.",
-      "DELETE FROM offer_version WHERE ... is rejected by the immutability trigger.",
-      "INSERT into offer with zero_cost_class='ZX' (not in the 5-class vocabulary) is rejected by a check constraint.",
-      "INSERT into offer with offer_type='freebie' (not in the 11-type vocabulary) is rejected.",
-      "INSERT into quota with exhaustion_behaviour='melts' (not in the 12-behaviour vocabulary) is rejected.",
-      "INSERT into evidence referencing a non-existent snapshot_id/source_id/offer_version_id is rejected by a foreign key."
+      "requires_card None => UNKNOWN, not Z0.",
+      "has_paid_dependencies None => UNKNOWN, not Z0.",
+      "a quota with exhaustion_behaviour 'unknown' => UNKNOWN, not Z0.",
+      "no quota data at all => UNKNOWN, not Z0.",
+      "any quota with exhaustion_behaviour 'automatic_billing' => Z1, not Z0.",
+      "requires_card True (even with otherwise-safe quotas) => Z1, not Z0.",
+      "contradictory facts (e.g. always_free offer_type but requires_card True) => the billing gate dominates (Z1)."
     ]
   },
   "risks": {
-    "data_migration": "This slice introduces the first real domain migration (0003). It is additive (creates new tables) and fully reversible; downgrade drops the trigger, function, and tables in dependency order. The pre-existing app_meta scaffold table is left untouched (superseded logically, not dropped, to keep 0001/0002 round trips intact).",
-    "security_privacy": "Schema only; no credentials. The migration hardcodes no connection string (env.py reads DATABASE_URL). No secret values are logged.",
-    "portability": "No managed-cloud dependency. Uses standard PostgreSQL DDL (tables, FKs, check constraints, one PL/pgSQL trigger function). Builds on amd64 and arm64; SQLAlchemy/Alembic already present.",
-    "zero_cost_safety": "The check-constraint vocabularies mirror docs/DATA_MODEL.md exactly. No offer row asserting a service is free is seeded; the schema is empty of product claims.",
-    "regression": "No dependency change, so the requirements-sync guard is unaffected. The immutability trigger only affects offer_version; existing 0001/0002 tables and their tests are unchanged.",
+    "data_migration": "None. This slice adds no schema and no migration; it is a pure computation module over the slice-2 vocabularies.",
+    "security_privacy": "No credentials, no I/O. The engine reads only supplied facts. detect-secrets remains green.",
+    "portability": "Pure standard-library Python; no managed-cloud dependency; runs identically on amd64 and arm64.",
+    "zero_cost_safety": "The engine's central invariant is that no unknown or contradictory material condition may yield Z0; it defaults to UNKNOWN. This is the product's core anti-false-claim safeguard and is covered by adversarial truth-table tests.",
+    "regression": "No dependency change, so the requirements-sync guard is unaffected. The engine is additive and imported by nothing at runtime yet, so existing services and tests are unchanged.",
     "supply_chain": "No new dependency (Python or npm) is added by this slice."
   },
   "required_evaluation_level": 2,
@@ -89,7 +89,7 @@
     "reviewer": "owner",
     "disposition": "approved",
     "notes": [
-      "Owner approved the full task-004 domain-model scope as one slice and authorised implementation ('Approve - implement slice 2 now'). This slice does not mark F003 passing; it is the second of three F003 slices and requires an independent Level 2 evaluation covering migration, constraints, immutability, rollback, and representative queries before its completion is claimed."
+      "Owner delegated the go/no-go decision to the Chief ('work autonomously and make good decisions') after being presented with the scoped slice-3 plan, acceptance criteria, deferrals, and cost estimate. This slice does not mark F003 passing; it is the final of three F003 slices and requires a fresh-context independent Level 2 evaluation that adversarially probes missing/contradictory/boundary data before its completion is claimed."
     ]
   }
 }
