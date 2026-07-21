@@ -396,3 +396,24 @@ Append one entry after every meaningful implementation or evaluation session. Do
 - **Recommended next action:** F003 is now passes:true. Proceed to F004 (source-ingestion) under the standard autonomy boundaries. No PR was opened or merged by this evaluation; branch pushed for review.
 
 ---
+
+## 2026-07-21 - F004 slice 1 (Safe fetch guard + adapter contract) - Builder (Copilot CLI Chief)
+
+- **Feature and objective:** F004 (source-ingestion) Slice 1. Establish the sole network seam (a safe fetcher whose policy is expressed as pure, independently-testable functions) and the SourceAdapter contract with typed carriers, so later slices build on a proven-safe, DB-free foundation. No migration, no DB writes, no publication path; offer_version immutability untouched.
+- **Contract:** agent-state/current_contract.json rewritten for feature_id=F004, increment=slice-1-safe-fetch-guard-and-adapter-contract, required_evaluation_level=2. F004 remains passes:false.
+- **Session startup:** Loaded HARNESS.md first (2026-07-02.1 / 00b135ae447ca6ce). Confirmed repo dir; git status clean on branch stsyg-stsyg-f004-slice1-fetch-guard off main (HEAD bef7695, F000-F003 passing). Read agent instructions, progress.md, feature_list.json (F004), evaluation.json, and docs (DATA_MODEL, ARCHITECTURE, PROVIDER_ADAPTERS, SOURCE_REUSE_AND_PROVENANCE, SECURITY_PRIVACY_ABUSE, TEST_STRATEGY). Ran scripts/init.ps1 (exit 0) and scripts/bootstrap-dev.ps1; confirmed green baseline (147 offline tests) before new work.
+- **Work completed (stdlib-only; no new runtime or npm dependency):**
+  - apps/api/app/ingest/fetch.py: pure policy functions (check_scheme, host_is_allowlisted/check_host, address_block_reason/check_addresses, parse_mime/validate_mime, check_redirect_budget, check_size, content_hash); typed FetchResult; FetchPolicy; a FetchError hierarchy; a Fetcher Protocol; OfflineFetcher (default, never opens a socket); LiveFetcher (urllib-based, gated behind enable_network=False by default, re-runs host+SSRF checks on every redirect hop, streams with early size abort, enforces timeouts, no proxy/redirect/error handlers); FixtureFetcher (deterministic offline test transport).
+  - apps/api/app/ingest/base.py: SourceAdapter abc.ABC enforcing discover/fetch/canonicalize/extract/validate/evidence/health + frozen carriers SourceDocument, CandidateFacts (candidate-only; verification_state constrained to ADAPTER_ASSIGNABLE_STATES), EvidenceLocation, AdapterHealth. Adapters depend only on the Fetcher seam.
+  - apps/api/app/ingest/vocab.py: closed VERIFICATION_STATES vocab (9 states) mirroring docs/ARCHITECTURE.md + helpers.
+  - apps/api/app/ingest/reference.py: JsonOfferAdapter reference adapter making the contract concrete offline.
+  - apps/api/app/ingest/__init__.py exports.
+  - tests/unit/test_ingest_fetch.py (pure policy + OfflineFetcher no-socket + LiveFetcher gating/pre-connect + loopback-server timeout/oversize/mime/redirect-mid-chain/budget) and tests/unit/test_ingest_contract.py (ABC 7-method enforcement + candidate-only vocab + reference adapter end-to-end + fetcher-seam-only proof). No external network egress: the one live test binds 127.0.0.1 and allowlists it for that test only.
+  - docs/DATA_MODEL.md: added "Source ingestion: safe fetch guard and adapter contract" section.
+- **Tests and exact results:** scripts/test.ps1 exit 0 (pytest 209 passed/10 skipped, 4 config examples valid, Vitest 4 passed, Vite build ok, TESTS PASSED). scripts/check.ps1 -NodeAudit exit 0 (Ruff lint PASS, Ruff format PASS, Pytest 209 passed/10 skipped, Prettier PASS, ESLint PASS, Secret scan PASS, pip-audit no vulnerabilities, npm audit 0 vulnerabilities, ALL CHECKS PASSED). New ingest suites: 62 passed. Dependency manifests unchanged (requirements-sync guard green).
+- **Autonomy/scope:** Implemented Slice 1 ONLY. Did NOT merge, did NOT start Slice 2, did NOT flip any passes flag, added no dependency, added no migration/DB write. One focused commit on this branch + one PR to main.
+- **Commit SHA:** this commit on branch stsyg-stsyg-f004-slice1-fetch-guard (see PR head).
+- **Known issues or risks:** The ingest package is additive and not yet wired into the worker/scheduler/API at runtime (deferred to later F004 slices). LiveFetcher applies a single urllib socket timeout (read_timeout) covering connect+read; connect_timeout is retained in FetchPolicy for transports that support split timeouts. Full DNS-rebinding (TOCTOU) pinning of the validated IP is not implemented; addresses are re-resolved and re-checked per hop.
+- **Recommended next action:** Run a fresh-context Level 2 slice evaluation of Slice 1 (adversarially probe the SSRF/allowlist/redirect/size/timeout guards and the ABC contract) before Slice 2 proceeds. Keep F004 passes:false.
+
+---
