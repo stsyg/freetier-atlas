@@ -378,3 +378,21 @@ Append one entry after every meaningful implementation or evaluation session. Do
 - **Recommended next action:** Accept slice 3 as evaluator-approved, keep F003 `passes:false`, and run the separate F003 full-epic Level 2 close-out evaluation before any feature-ledger status change.
 
 ---
+
+## 2026-07-21 - F003 full-epic Level 2 close-out (evaluator: Copilot CLI Chief)
+
+- **Feature and objective:** F003 (typed configuration, catalogue/evidence model, immutable evidence history, explainable Z0 classification). Full-epic close-out evaluation deciding the feature-ledger status after all three F003 slices merged to main (config #9, model/migration #10, Z0 engine #11).
+- **Work completed:** Fresh-context independent Level 2 evaluation over merged main (HEAD e232129). Loaded HARNESS.md (2026-07-02.1 / 00b135ae447ca6ce) first; ran session startup, init.ps1, and bootstrap-dev.ps1; brought up the live Docker stack (postgres/api/worker/scheduler/web). Independently and adversarially verified all four acceptance steps, not just re-running builder tests.
+- **Files changed:** agent-state/evaluation.json (overwritten with full-epic verdict), agent-state/feature_list.json (F003 passes:true + last_verified_at + verification_evidence), agent-state/progress.md (this entry). No source/test/script/doc changes.
+- **Tests and exact results:**
+  - Step 1 config: app.config.cli validated all 4 examples (exit 0); adversarial syntax/unknown-family/inline-secret/schema/empty bad-YAML each exit 1 with actionable file-scoped errors; mixed batch exit 1 with per-file OK/FAIL.
+  - Step 2 migrations (live Postgres): independent Alembic up->down(0002)->up round trip PASS; integration test_migration_round_trip + no-drift PASS.
+  - Step 3 immutability/provenance (live Postgres): 13/13 adversarial DB checks PASS (offer_version UPDATE/DELETE rejected via trg_offer_version_immutable, append allowed; evidence source/snapshot delete RESTRICTed; dangling-FK evidence rejected); 8/8 integration tests PASS.
+  - Step 4 Z0 truth table: unit 75 passed; adversarial probe PASS incl. 558-combination invariant grid = 0 Z0-on-unknown/contradictory violations; deterministic + explainable.
+  - Regression: scripts/test.ps1 exit 0 (147 passed/10 skipped + web); scripts/check.ps1 -NodeAudit exit 0 (ruff/format/pytest/prettier/eslint/detect-secrets/pip-audit 0/npm audit 0); stack-up -> stack-smoke 12/12 -> stack-down clean.
+- **Evaluator disposition:** PASSED (Level 2, 0 blocking issues). All four acceptance steps independently verified with adversarial probes against a live PostgreSQL stack.
+- **Commit SHA evaluated:** e23212997763bf4e3a2bd9f72e53d475dfc2ec36
+- **Known issues or risks:** The Z0 engine is pure and tested but not yet wired into runtime ingestion/API/persistence (deferred to F004+; does not affect F003 acceptance). Zero-cost labels are engine constants with a unit drift guard against app.models.vocab.ZERO_COST_CLASSES.
+- **Recommended next action:** F003 is now passes:true. Proceed to F004 (source-ingestion) under the standard autonomy boundaries. No PR was opened or merged by this evaluation; branch pushed for review.
+
+---
