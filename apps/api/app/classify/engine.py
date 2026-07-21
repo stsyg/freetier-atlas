@@ -16,12 +16,15 @@ The decision gates, in precedence order, are:
 2. **Z1 (billing exposure).** A required payment card, paid dependencies, or a
    quota whose exhaustion triggers ``automatic_billing`` is a definite billing
    exposure and can never be Z0.
-3. **Z2 (temporary or conditional).** Trials, new-customer credits, time-bounded
+3. **UNKNOWN.** Any unknown material condition (card requirement, paid-dependency
+   status, an ``unknown`` or unrecognised exhaustion behaviour, or the total
+   absence of quota data) blocks Z0. Per the product safety rule an unknown
+   material condition yields ``UNKNOWN`` rather than being guessed into a more
+   specific class, so this gate precedes the Z2 temporary/conditional gate.
+4. **Z2 (temporary or conditional).** Trials, new-customer credits, time-bounded
    availability windows, eligibility-gated programs, or a quota that requires a
    manual paid upgrade to continue are temporary/conditional, not true $0.
-4. **UNKNOWN.** Any remaining unknown material condition (card requirement,
-   paid-dependency status, an ``unknown`` exhaustion behaviour, or the total
-   absence of quota data) blocks Z0.
+   Reached only when every material condition is known.
 5. **Z0 (true $0).** Only when every billing gate is explicitly clear *and*
    every quota exhaustion behaviour is a safe stop-type.
 
@@ -174,23 +177,9 @@ def classify(facts: OfferFacts, *, as_of: date | None = None) -> ClassificationR
             blocking_conditions=tuple(billing),
         )
 
-    # Gate 3: temporary or conditional -> Z2.
-    conditional: list[str] = []
-    if facts.offer_type in TEMPORARY_CONDITIONAL_OFFER_TYPES:
-        conditional.append(
-            f"Offer type '{facts.offer_type}' is temporary or eligibility-conditional."
-        )
-    conditional.extend(_availability_reasons(facts, as_of))
-    if any(b in CONDITIONAL_EXHAUSTION for b in behaviours):
-        conditional.append("A quota requires a manual paid upgrade to continue after exhaustion.")
-    if conditional:
-        return ClassificationResult(
-            zero_cost_class=Z2_TEMPORARY_OR_CONDITIONAL,
-            reasons=tuple(conditional),
-            blocking_conditions=tuple(conditional),
-        )
-
-    # Gate 4: unknown material conditions block Z0 -> UNKNOWN.
+    # Gate 3: any unknown material condition blocks Z0 -> UNKNOWN.
+    # Per the safety rule this precedes the Z2 gate: an unknown condition must
+    # yield UNKNOWN rather than being guessed into a temporary/conditional class.
     unknown: list[str] = []
     if facts.requires_card is None:
         unknown.append("Whether a payment card is required is unknown.")
@@ -211,6 +200,22 @@ def classify(facts: OfferFacts, *, as_of: date | None = None) -> ClassificationR
             zero_cost_class=UNKNOWN,
             reasons=tuple(unknown),
             blocking_conditions=tuple(unknown),
+        )
+
+    # Gate 4: temporary or conditional -> Z2 (every material condition is known).
+    conditional: list[str] = []
+    if facts.offer_type in TEMPORARY_CONDITIONAL_OFFER_TYPES:
+        conditional.append(
+            f"Offer type '{facts.offer_type}' is temporary or eligibility-conditional."
+        )
+    conditional.extend(_availability_reasons(facts, as_of))
+    if any(b in CONDITIONAL_EXHAUSTION for b in behaviours):
+        conditional.append("A quota requires a manual paid upgrade to continue after exhaustion.")
+    if conditional:
+        return ClassificationResult(
+            zero_cost_class=Z2_TEMPORARY_OR_CONDITIONAL,
+            reasons=tuple(conditional),
+            blocking_conditions=tuple(conditional),
         )
 
     # Gate 5: everything explicitly clear and every quota stops safely -> Z0.

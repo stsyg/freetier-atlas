@@ -161,13 +161,17 @@ result from missing data.
    quota that triggers `automatic_billing` on exhaustion is a definite billing
    exposure and can **never** be Z0. A known billing exposure dominates even
    when another field is unknown.
-3. **Z2 — temporary or conditional.** Trials, new-customer credits, bounded or
+3. **UNKNOWN.** Any unknown material condition — `requires_card` or
+   `has_paid_dependencies` is `None`, a quota exhaustion behaviour is `unknown`
+   or unrecognised, or there is no quota data at all — blocks Z0. Per the safety
+   rule an unknown material condition yields `UNKNOWN` rather than being guessed
+   into a more specific class, so this gate **precedes** the Z2 gate: a trial (or
+   any temporary/conditional signal) whose card or quota data is unknown is
+   `UNKNOWN`, not `Z2`.
+4. **Z2 — temporary or conditional.** Trials, new-customer credits, bounded or
    expired availability windows, eligibility-gated programs (student, startup,
    hackathon, open-source), or a quota that requires a manual paid upgrade to
-   continue.
-4. **UNKNOWN.** Any remaining unknown material condition — `requires_card` or
-   `has_paid_dependencies` is `None`, a quota exhaustion behaviour is `unknown`
-   or unrecognised, or there is no quota data at all — blocks Z0.
+   continue. Reached only when every material condition is known.
 5. **Z0 — true $0.** Only when every billing gate is explicitly clear *and*
    every quota exhaustion behaviour is a safe stop-type (`hard_stop`,
    `request_rejected`, `throttled`, `service_sleeps`, `read_only`,

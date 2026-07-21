@@ -1,11 +1,11 @@
 {
   "schema_version": 1,
   "feature_id": "F003",
-  "increment": "slice-2-domain-model-and-migrations",
-  "evaluated_commit": "b93e6a96f6875e060113b953689c2fe1715b502f",
-  "commit_sha_evaluated": "b93e6a96f6875e060113b953689c2fe1715b502f",
+  "increment": "slice-3-z0-classification-engine",
+  "evaluated_commit": "915261ca2a02af6cd7340892bdd98a2df7f8a722",
+  "commit_sha_evaluated": "915261ca2a02af6cd7340892bdd98a2df7f8a722",
   "evaluator": "fresh independent Level 2 evaluator (Copilot CLI Chief)",
-  "evaluated_at": "2026-07-17T22:13:17Z",
+  "evaluated_at": "2026-07-21T04:56:58Z",
   "harness": {
     "version": "2026-07-02.1",
     "content_hash": "00b135ae447ca6ce",
@@ -13,153 +13,205 @@
   },
   "required_evaluation_level": 2,
   "evaluation_level": 2,
-  "disposition": "passed",
-  "blocking_issues": [],
+  "disposition": "failed",
+  "overall_disposition": "failed",
+  "blocking_issues": [
+    {
+      "id": "z0-safety-precedence-unknown-z2",
+      "severity": "blocking",
+      "criterion": "unknown_material_conditions_unknown",
+      "summary": "Unknown material facts are masked by the Z2 gate for temporary/conditional signals.",
+      "details": [
+        "current_contract criterion 3 requires any unknown material condition to yield UNKNOWN and never Z0.",
+        "engine.py evaluates the Z2 temporary/conditional gate before the UNKNOWN gate. As a result, trial/new_customer_credit/bounded availability/manual_upgrade_required can return Z2 even when requires_card/has_paid_dependencies/quota data are unknown.",
+        "Independent adversarial failures: trial_with_unknown_card -> Z2, trial_with_no_quota_data -> Z2, bounded_until_with_unknown_paid_deps -> Z2, manual_upgrade_with_unknown_card -> Z2; all expected UNKNOWN under the contract and evaluator prompt."
+      ],
+      "evidence_command": "inline Python adversarial classifier/ORM probe with PYTHONPATH=apps/api exited 1 and printed 4 safety failures."
+    }
+  ],
   "criteria": [
     {
-      "name": "all_13_declarative_models_shared_metadata",
-      "acceptance_criterion": "All 13 domain entities are defined as SQLAlchemy declarative models on shared metadata with deterministic naming convention.",
+      "name": "pure_deterministic_offline_function",
+      "acceptance_criterion": "classify() is a pure deterministic function (no I/O, no network, no LLM) importable offline; identical inputs always yield an identical ClassificationResult.",
       "passed": true,
       "evidence": [
-        "Read apps/api/app/models/{__init__,base,vocab,domain}.py: Base uses MetaData(naming_convention=...), __init__ exports the domain package, and domain.py defines Provider, Category, Service, Offer, OfferVersion, Quota, RegionAvailability, Source, Snapshot, Evidence, ChangeEvent, ScanRun, ReviewItem.",
-        "Offline regression: tests/unit/test_domain_models.py passed inside scripts/test.ps1 and scripts/check.ps1; metadata table set is exactly 13 tables."
+        "Read apps/api/app/classify/engine.py: classify(facts, *, as_of=None) only consumes OfferFacts/date and returns a frozen ClassificationResult; no file/network/LLM/database imports or I/O calls.",
+        "Independent adversarial check determinism_equal_results PASS: two calls on identical OfferFacts/as_of returned equal ClassificationResult objects.",
+        "Result and input immutability checks PASS: assigning to ClassificationResult.zero_cost_class and OfferFacts.requires_card raised FrozenInstanceError."
       ]
     },
     {
-      "name": "alembic_0003_upgrade_creates_schema",
-      "acceptance_criterion": "Alembic 'upgrade head' applies migration 0003 cleanly against PostgreSQL, creating all 13 tables with FKs, check constraints, and indexes.",
+      "name": "billing_gates_z1",
+      "acceptance_criterion": "Billing gates: requires_card True, has_paid_dependencies True, or any automatic_billing quota is classified Z1_BILLING_EXPOSURE and NEVER Z0, with the specific gate named in blocking_conditions.",
       "passed": true,
       "evidence": [
-        "scripts/stack-up.ps1 exited 0; API container applied migrations and became live at http://localhost:8000/health.",
-        "Live integration test_all_domain_tables_created passed; smoke confirmed provider/service/offer/offer_version/evidence plus trigger; PK/unique indexes and constraints are present in the migration and compare cleanly against metadata."
+        "Read engine.py gate 2: requires_card True, has_paid_dependencies True, or BILLING_EXHAUSTION automatic_billing returns Z1_BILLING_EXPOSURE with billing reasons copied to blocking_conditions.",
+        "Independent adversarial checks PASS: requires_card_dominates_z0 -> Z1_BILLING_EXPOSURE; automatic_billing_quota_is_z1 -> Z1_BILLING_EXPOSURE.",
+        "tests/unit/test_z0_classifier.py includes Z1 cases for card, paid dependencies, automatic_billing, contradictory always_free+card, and known Z1 exposure with other unknown fields; targeted pytest reported 71 passed."
       ]
     },
     {
-      "name": "downgrade_upgrade_round_trip_no_drift",
-      "acceptance_criterion": "Downgrade to 0002 removes every domain table/function/trigger; subsequent upgrade head recreates identical schema with compare_metadata reporting no drift.",
-      "passed": true,
+      "name": "unknown_material_conditions_unknown",
+      "acceptance_criterion": "Safety rule: any material condition that is unknown (requires_card None, has_paid_dependencies None, exhaustion_behaviour unknown, or total absence of quota data) yields UNKNOWN and NEVER Z0.",
+      "passed": false,
       "evidence": [
-        "Live pytest test_migration_round_trip passed.",
-        "Independent adversarial probe: downgrade_0002 remaining_domain_tables=[] trigger_count=0 pass=True; reupgrade_head tables_present=True compare_metadata_diffs=0 pass=True."
+        "Basic independent safety checks PASS for always_free inputs: requires_card=None -> UNKNOWN; has_paid_dependencies=None -> UNKNOWN; exhaustion_behaviour unknown -> UNKNOWN; unrecognised exhaustion -> UNKNOWN; no quota data -> UNKNOWN.",
+        "Blocking adversarial checks FAIL when a Z2 signal is present because engine.py gate 3 runs before gate 4: trial_with_unknown_card returned Z2_TEMPORARY_OR_CONDITIONAL, expected UNKNOWN; trial_with_no_quota_data returned Z2_TEMPORARY_OR_CONDITIONAL, expected UNKNOWN; bounded_until_with_unknown_paid_deps returned Z2_TEMPORARY_OR_CONDITIONAL, expected UNKNOWN; manual_upgrade_with_unknown_card returned Z2_TEMPORARY_OR_CONDITIONAL, expected UNKNOWN.",
+        "This violates current_contract criterion 3 and the evaluator prompt requirement that unknown material conditions must be UNKNOWN, not merely non-Z0."
       ]
     },
     {
-      "name": "offer_version_append_only",
-      "acceptance_criterion": "offer_version is append-only: UPDATE and DELETE are rejected by a database trigger while INSERT of a new version succeeds.",
+      "name": "z0_rule_clear_gates_safe_exhaustion",
+      "acceptance_criterion": "Z0_TRUE_FREE is returned only when all billing gates are explicitly clear and every quota exhaustion behaviour is a safe stop-type; blocking_conditions is empty and reasons explain why it is $0.",
       "passed": true,
       "evidence": [
-        "Live pytest test_offer_version_is_append_only passed, including append INSERT and rejected UPDATE/DELETE.",
-        "Independent adversarial probe: update_rejected sqlstate=23001 pass=True; delete_rejected sqlstate=23001 pass=True."
+        "Read engine.py gate 5: Z0 is reached only after billing, conditional, and unknown gates do not return; reasons include no card, no paid dependencies, safe stop behaviours, and classified Z0_TRUE_FREE.",
+        "Independent adversarial check clean_true_free PASS: always_free, requires_card=False, has_paid_dependencies=False, hard_stop/read_only -> Z0_TRUE_FREE with empty blocking_conditions.",
+        "Parameterized builder truth-table tests cover all nine SAFE_EXHAUSTION values across always_free, recurring_quota, personal_use_free, and other; targeted pytest reported 71 passed."
       ]
     },
     {
-      "name": "evidence_provenance_fk_enforced",
-      "acceptance_criterion": "Evidence requires valid source_id, offer_version_id, and snapshot_id; non-existent provenance references are rejected.",
+      "name": "z2_rule_temporary_conditional",
+      "acceptance_criterion": "Trial, new_customer_credit, bounded/expired availability windows, and eligibility-conditional program offer types are classified Z2_TEMPORARY_OR_CONDITIONAL (assuming no dominating billing exposure).",
       "passed": true,
       "evidence": [
-        "Read Evidence model/migration: source_id, offer_version_id, snapshot_id are NOT NULL foreign keys.",
-        "Live pytest test_evidence_requires_valid_provenance_fks passed; independent adversarial probe evidence_fk_rejected sqlstate=23503 pass=True."
+        "Read engine.py gate 3: TEMPORARY_CONDITIONAL_OFFER_TYPES, any available_until, and manual_upgrade_required quotas return Z2_TEMPORARY_OR_CONDITIONAL with blocking conditions.",
+        "Independent adversarial checks PASS: trial_is_z2, credit_is_z2, bounded_available_until_is_z2 all returned Z2_TEMPORARY_OR_CONDITIONAL when billing gates and unknown facts were clear.",
+        "tests/unit/test_z0_classifier.py also covers startup/student/open-source/hackathon offer types, expired availability, and manual_upgrade_required; targeted pytest reported 71 passed."
       ]
     },
     {
-      "name": "closed_vocabulary_constraints",
-      "acceptance_criterion": "Closed-vocabulary CHECK constraints reject out-of-vocabulary zero_cost_class, offer_type, and exhaustion_behaviour values using exactly docs/DATA_MODEL.md membership.",
+      "name": "z3_rule_self_hosted",
+      "acceptance_criterion": "self_hosted_open_source offers are classified Z3_SELF_HOSTED_BUILDING_BLOCK.",
       "passed": true,
       "evidence": [
-        "Read docs/DATA_MODEL.md and app/models/vocab.py: ZERO_COST_CLASSES has 5 values, OFFER_TYPES 11, EXHAUSTION_BEHAVIOURS 12 with matching membership.",
-        "Offline unit vocabulary tests passed; live pytest test_check_constraints_reject_out_of_vocabulary passed for zero_cost_class, offer_type, and exhaustion_behaviour.",
-        "Independent adversarial probe: zero_cost_check_rejected sqlstate=23514 pass=True."
+        "Read engine.py gate 1: self_hosted_open_source returns Z3_SELF_HOSTED_BUILDING_BLOCK before billing/Z2/UNKNOWN gates.",
+        "Independent adversarial check self_hosted_is_z3 PASS: self_hosted_open_source with otherwise billing-like quota facts still returned Z3_SELF_HOSTED_BUILDING_BLOCK, matching the documented precedence."
       ]
     },
     {
-      "name": "alembic_target_metadata_no_drift",
-      "acceptance_criterion": "migrations/env.py sets target_metadata to domain metadata; compare_metadata reports no operations after upgrade head.",
+      "name": "explainable_result_contract",
+      "acceptance_criterion": "Every ClassificationResult includes an ordered, human-readable reasons list; every non-Z0 result names at least one blocking or downgrading condition.",
       "passed": true,
       "evidence": [
-        "Read migrations/env.py: imports app.models metadata as domain_metadata and sets target_metadata = domain_metadata with include_object=alembic_include_object.",
-        "Live pytest test_no_model_migration_drift passed; independent reupgrade probe reported compare_metadata_diffs=0."
+        "Read engine.py: each return path supplies tuple reasons; non-Z0 Z3/Z1/Z2/UNKNOWN paths also supply blocking_conditions from the deciding reasons.",
+        "Unit truth-table assertions check non-empty reasons/blocking conditions for representative Z0, Z1, Z2, Z3, and UNKNOWN paths; targeted pytest reported 71 passed.",
+        "Independent adversarial checks confirmed Z1/Z2/Z3/UNKNOWN non-Z0 results have class-specific blocking conditions during manual review of printed result paths."
       ]
     },
     {
-      "name": "representative_queries",
-      "acceptance_criterion": "Representative joins Provider -> Service -> Offer -> OfferVersion and OfferVersion -> Evidence -> Source return expected seeded rows.",
+      "name": "orm_adapter_read_only_latest_version",
+      "acceptance_criterion": "classify_offer(orm_offer) reads an Offer plus its Quota rows and returns the same result the pure function would for those facts, performing no writes.",
       "passed": true,
       "evidence": [
-        "Live pytest test_representative_provenance_query passed: seeded provider acme, service widgets, offer_type always_free, version_number 1, source trust_level official were returned through the join."
+        "Read apps/api/app/classify/orm.py: _select_version chooses max(offer.versions, key=version_number); offer_facts_from_orm reads offer booleans/dates and selected.quotas exhaustion_behaviour; classify_offer delegates to classify. No add/flush/commit/delete/execute calls exist.",
+        "Independent transient ORM probe PASS: Offer/OfferVersion/Quota instances were never session-attached; classify_offer selected v2 (version_number=2) and returned Z0; explicit v1 returned Z1 for automatic_billing; offer_facts_from_orm returned latest quota tuple (hard_stop); SQLAlchemy inspect(offer).session remained None after classification."
       ]
     },
     {
-      "name": "stack_smoke_domain_check",
-      "acceptance_criterion": "scripts/stack-smoke.{ps1,sh} pass against live stack with domain-table and immutability-trigger checks; full stack-up/smoke/down cycle succeeds.",
-      "passed": true,
+      "name": "truth_table_suite_comprehensive",
+      "acceptance_criterion": "A comprehensive truth-table unit suite covers each gate, each exhaustion behaviour, missing/contradictory/boundary data, and the no-Z0-on-unknown rule, and all tests pass offline.",
+      "passed": false,
       "evidence": [
-        "Read scripts/stack-smoke.ps1 and scripts/stack-smoke.sh: both include Domain migration applied (0003 tables + immutability trigger).",
-        "scripts/stack-smoke.ps1 passed all 12 checks: API liveness/readiness, app_meta, worker migration, domain migration+trigger, worker/scheduler health, queue done, fresh heartbeats, web health, SPA, web API proxy; final output STACK SMOKE PASSED.",
-        "scripts/stack-down.ps1 exited 0 with STACK DOWN; docker compose ps returned no running services."
+        "Targeted command `.\\.venv\\Scripts\\python.exe -m pytest tests\\unit\\test_z0_classifier.py -q` passed: 71 passed in 0.83s.",
+        "The suite includes vocabulary-drift guards: known_zero_cost_classes() == ZERO_COST_CLASSES, partition tiling of EXHAUSTION_BEHAVIOURS, and referenced offer types in OFFER_TYPES. Engine imports OFFER_TYPES and EXHAUSTION_BEHAVIOURS from app.models.vocab; zero-cost labels are local constants guarded by the test equality check.",
+        "However, independent adversarial checks exposed missing coverage for unknown material conditions combined with Z2 signals (trial, bounded availability, manual_upgrade_required). Because those combinations fail the contract safety rule, the truth-table suite is not sufficiently comprehensive for this acceptance criterion."
       ]
     },
     {
-      "name": "regression_green",
-      "acceptance_criterion": "scripts/test.ps1 and scripts/check.ps1 -NodeAudit pass, including requirements-sync and no new dependency.",
+      "name": "regression_green_live_stack_dependency_hygiene",
+      "acceptance_criterion": "Regression green: scripts/test.ps1, scripts/check.ps1 -NodeAudit including requirements-sync/no new dependency, and full live stack cycle stack-up -> stack-smoke -> stack-down pass.",
       "passed": true,
       "evidence": [
-        "scripts/test.ps1 exited 0: pytest 72 passed, 10 skipped in 2.13s; config validation all 4 valid; Vitest 4 tests passed; Vite build completed; TESTS PASSED.",
-        "scripts/check.ps1 -NodeAudit exited 0: Ruff lint PASS, Ruff format PASS (33 files), Pytest 72 passed/10 skipped, Prettier PASS, ESLint PASS, Secret scan PASS, pip-audit PASS (No known vulnerabilities found), npm audit PASS (0 vulnerabilities), ALL CHECKS PASSED.",
-        "Dependency manifest diff for HEAD^..HEAD was empty for pyproject.toml, requirements files, and package manifests."
+        "scripts/test.ps1 exited 0: pytest collected 153 items, 143 passed and 10 skipped in 4.61s; 4 config examples valid; Vitest 4 tests passed; Vite build succeeded; TESTS PASSED.",
+        "scripts/check.ps1 -NodeAudit exited 0: Ruff lint PASS; Ruff format check PASS (37 files); Pytest 143 passed/10 skipped in 1.86s; Prettier PASS; ESLint PASS; Secret scan PASS; pip-audit PASS (No known vulnerabilities found); npm audit PASS (0 vulnerabilities); ALL CHECKS PASSED.",
+        "Live stack cycle exited 0: stack-up built/started services and API was live; stack-smoke passed all 12 checks and ended STACK SMOKE PASSED; stack-down exited 0 with STACK DOWN; `docker compose ps --services --filter status=running` produced no running services.",
+        "Dependency manifest diff vs origin/main for pyproject.toml, apps/api/requirements.txt, apps/worker/requirements.txt, apps/web/package.json, apps/web/package-lock.json, package.json, package-lock.json, and requirements-dev.txt was empty."
       ]
     },
     {
-      "name": "product_truth_security_scope",
-      "acceptance_criterion": "No unsupported free-tier/zero-cost/Z0 claim, no secrets, no new managed-cloud/heavyweight dependencies, and runtime data population/Z0 engine remain deferred.",
+      "name": "product_truth_no_unsupported_claims",
+      "acceptance_criterion": "No unsupported free-tier/zero-cost/Z0 product claim is introduced; the engine only classifies supplied facts and defaults to UNKNOWN rather than guessing; no real-service free claim is added.",
       "passed": true,
       "evidence": [
-        "Product-truth token scan of added lines found only product name, schema/vocabulary names (zero-cost class/Z0_TRUE_FREE/always_free), tests, and column names such as free_available; no product/service assertion that a real service is free was introduced.",
-        "scripts/check.ps1 Secret scan passed; pip-audit and npm audit passed; dependency manifest diff was empty, confirming no new dependency was added.",
-        "Read current_contract out_of_scope and implementation: no provider adapters, runtime table population, API routes, worker usage, source scanning, or Z0 classification engine were added; Z0 engine remains slice 3/task 005."
+        "Changed files in slice: agent-state/current_contract.json, agent-state/progress.md, apps/api/app/classify/{__init__,engine,orm}.py, docs/DATA_MODEL.md, tests/unit/test_z0_classifier.py.",
+        "Product-truth added-line scan found Z0/free/$0 terminology only in engine/docs/tests/contracts and no real named-provider/service assertion. Provider-name added-line scan for AWS/Azure/Google/Oracle/Cloudflare/Vercel/GitHub returned PROVIDER_NAME_MATCH_COUNT=0.",
+        "No offer data, provider fixture, or catalogue record asserting a real service is free/Z0 was added."
       ]
     },
     {
       "name": "fresh_level2_evaluation_recorded_feature_false",
-      "acceptance_criterion": "Fresh independent Level 2 evaluator records adversarial verdict before status change; F003 remains passes:false.",
+      "acceptance_criterion": "A fresh-context independent Level 2 evaluator records an adversarial verdict before status change; F003 remains passes:false.",
       "passed": true,
       "evidence": [
-        "This fresh evaluator loaded HARNESS.md first (Harness-Version 2026-07-02.1, content-hash 00b135ae447ca6ce), read the contract/ledger/progress/evaluation, inspected implementation, and ran offline, live, and independent adversarial checks.",
-        "agent-state/feature_list.json check before evaluation write: F003 passes=False last_verified_at=None evidence_count=0. This evaluator did not edit feature_list.json.",
-        "agent-state/evaluation.json is overwritten with this Level 2 verdict and agent-state/progress.md is appended; no commit/push/merge performed."
+        "This evaluator loaded C:\\Users\\sergiyt\\.copilot\\agent-state\\HARNESS.md first (Harness-Version 2026-07-02.1, content-hash 00b135ae447ca6ce), then read repo instructions, current_contract, feature_list, progress tail, evaluation, Z0 product docs, CODEX task 005, architecture, and ADRs.",
+        "Feature ledger pre-check: F003 passes=false, last_verified_at=null, verification_evidence=[]. This evaluator did not edit agent-state/feature_list.json.",
+        "agent-state/evaluation.json is overwritten with this failed Level 2 verdict and agent-state/progress.md is appended. No source/tests/scripts/docs edits, commit, push, merge, or branch change were performed."
       ]
     }
   ],
   "command_results": {
-    "git_rev_parse_head": "b93e6a96f6875e060113b953689c2fe1715b502f",
+    "git_rev_parse_head": "915261ca2a02af6cd7340892bdd98a2df7f8a722",
     "scripts_init_ps1": "exit 0; Required repository files ok; Agent-state JSON syntax ok; PowerShell 7.6.3; F000 initialization checks completed.",
-    "scripts_test_ps1": "exit 0; pytest 72 passed, 10 skipped in 2.13s; config examples all 4 valid; Vitest 4 tests passed; Vite build ok; TESTS PASSED.",
-    "scripts_check_ps1_nodeaudit": "exit 0; Ruff lint/format PASS; Pytest 72 passed, 10 skipped in 1.66s; Prettier PASS; ESLint PASS; Secret scan PASS; pip-audit No known vulnerabilities; npm audit 0 vulnerabilities; ALL CHECKS PASSED.",
-    "scripts_stack_up_ps1": "exit 0; compose built/started postgres, api, worker, scheduler, web; API live at http://localhost:8000/health.",
-    "scripts_stack_smoke_ps1": "exit 0; 12/12 checks PASS including Domain migration applied (0003 tables + immutability trigger); STACK SMOKE PASSED.",
-    "live_domain_integration_pytest": "exit 0; tests/integration/test_domain_migration.py -v collected 8 items; 8 passed in 4.27s.",
-    "independent_adversarial_db_probe": "exit 0; update/delete rejected sqlstate=23001; zero_cost CHECK rejected sqlstate=23514; evidence provenance FK rejected sqlstate=23503; downgrade removed all domain tables and trigger; re-upgrade tables present and compare_metadata_diffs=0.",
-    "scripts_stack_down_ps1": "exit 0; STACK DOWN; compose services removed.",
-    "dependency_manifest_diff": "empty for pyproject.toml, apps/api/requirements.txt, apps/worker/requirements.txt, apps/web/package.json, apps/web/package-lock.json, package manifests.",
-    "feature_list_f003": "passes=False last_verified_at=None verification_evidence_count=0."
+    "scripts_test_ps1": "exit 0; pytest 143 passed, 10 skipped in 4.61s; config examples all 4 valid; Vitest 4 tests passed; Vite build ok; TESTS PASSED.",
+    "scripts_check_ps1_nodeaudit": "exit 0; Ruff lint/format PASS; Pytest 143 passed, 10 skipped in 1.86s; Prettier PASS; ESLint PASS; Secret scan PASS; pip-audit no vulnerabilities; npm audit 0 vulnerabilities; ALL CHECKS PASSED.",
+    "classifier_unit_tests": "exit 0; 71 passed in 0.83s.",
+    "independent_adversarial_classifier_probe": "exit 1; 4 blocking failures for unknown material facts masked by Z2 gate.",
+    "scripts_stack_cycle": "exit 0; stack-smoke 12/12 PASS; STACK SMOKE PASSED; stack-down exit 0; no running services after down.",
+    "dependency_manifest_diff": "empty vs origin/main for pyproject.toml, apps/api/requirements.txt, apps/worker/requirements.txt, apps/web/package.json, apps/web/package-lock.json, package.json, package-lock.json, requirements-dev.txt.",
+    "product_truth_scan": "PRODUCT_TRUTH_MATCH_COUNT=118 for terminology; PROVIDER_NAME_MATCH_COUNT=0; no real named service free/Z0 claim introduced.",
+    "feature_list_f003": "passes=false before evaluation; feature_list.json left untouched."
   },
   "commands_run": [
-    "Read C:\\Users\\sergiyt\\.copilot\\agent-state\\HARNESS.md first",
-    "Read AGENTS.md, docs/AGENT_HARNESS.md, docs/CODEX_AUTONOMY_POLICY.md, agent-state/current_contract.json, feature_list.json, evaluation.json, progress.md tail, docs/DATA_MODEL.md, CODEX_TASKS.md task 004, docs/ARCHITECTURE.md, docs/PRODUCT_REQUIREMENTS.md, docs/adr/*.md",
-    "Read apps/api/app/models/{__init__,base,vocab,domain}.py, migrations/env.py, migrations/versions/0003_domain_model.py, tests/unit/test_domain_models.py, tests/integration/test_domain_migration.py, scripts/stack-smoke.{ps1,sh}",
-    "git rev-parse HEAD; git status --short --branch; git log --oneline -20",
-    "pwsh -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\init.ps1",
-    "pwsh -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\test.ps1",
-    "pwsh -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\check.ps1 -NodeAudit",
-    "pwsh -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\stack-up.ps1",
-    "pwsh -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\stack-smoke.ps1",
-    "$env:DATABASE_URL='postgresql+psycopg://atlas:<redacted>@localhost:5432/atlas'; $env:PYTHONPATH='apps/api'; .\\.venv\\Scripts\\python.exe -m pytest tests/integration/test_domain_migration.py -v",
-    "Independent SQLAlchemy/Alembic adversarial probe: trigger UPDATE/DELETE, CHECK, FK, downgrade/upgrade, compare_metadata",
-    "pwsh -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\stack-down.ps1",
-    "git diff HEAD^ HEAD product-truth/dependency scans; feature_list F003 status check"
+    {
+      "command": "Get-Content -Raw C:\\Users\\sergiyt\\.copilot\\agent-state\\HARNESS.md",
+      "result": "exit 0; loaded Harness-Version 2026-07-02.1; expected content-hash 00b135ae447ca6ce cited from harness adapter."
+    },
+    {
+      "command": "Read AGENTS.md, docs/AGENT_HARNESS.md, docs/CODEX_AUTONOMY_POLICY.md; attempted .github/copilot-instructions.md and .github/instructions/*",
+      "result": "AGENTS/docs read; .github/copilot-instructions.md absent; .github/instructions had no files."
+    },
+    {
+      "command": "git status --short --branch; git --no-pager log --oneline -20; git --no-pager log --oneline -5",
+      "result": "branch stsyg-f003-slice3-z0-engine tracking origin/stsyg-f003-slice3-z0-engine; HEAD 915261c feat(classify): explainable Z0 classification engine (F003 slice 3)."
+    },
+    {
+      "command": "pwsh -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\init.ps1",
+      "result": "exit 0; required repository files ok; agent-state JSON syntax ok; PowerShell 7.6.3; F000 initialization checks completed."
+    },
+    {
+      "command": "pwsh -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\test.ps1",
+      "result": "exit 0; pytest 143 passed, 10 skipped in 4.61s; 4 config examples valid; Vitest 4 tests passed; Vite build ok; TESTS PASSED."
+    },
+    {
+      "command": "pwsh -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\check.ps1 -NodeAudit",
+      "result": "exit 0; Ruff lint PASS; Ruff format PASS (37 files); Pytest 143 passed, 10 skipped in 1.86s; Prettier PASS; ESLint PASS; Secret scan PASS; pip-audit no vulnerabilities; npm audit 0 vulnerabilities; ALL CHECKS PASSED."
+    },
+    {
+      "command": ".\\.venv\\Scripts\\python.exe -m pytest tests\\unit\\test_z0_classifier.py -q",
+      "result": "exit 0; 71 passed in 0.83s."
+    },
+    {
+      "command": "inline Python adversarial classifier/ORM probe (PYTHONPATH=apps/api)",
+      "result": "exit 1; 20 PASS checks and 4 FAIL safety checks: trial_with_unknown_card, trial_with_no_quota_data, bounded_until_with_unknown_paid_deps, manual_upgrade_with_unknown_card returned Z2 instead of UNKNOWN."
+    },
+    {
+      "command": "pwsh stack cycle: stack-up -> stack-smoke -> stack-down",
+      "result": "exit 0; stack-up API live; stack-smoke 12/12 PASS and STACK SMOKE PASSED; stack-down STACK DOWN; no running compose services afterward."
+    },
+    {
+      "command": "git diff --name-status/unified=0 origin/main...HEAD -- dependency manifests",
+      "result": "empty; no pyproject.toml, requirements, or package manifest dependency changes vs origin/main."
+    },
+    {
+      "command": "product-truth added-line scans over origin/main...HEAD",
+      "result": "Z0/free/$0 terminology confined to engine/docs/tests/contracts; provider-name scan for AWS/Azure/Google/Oracle/Cloudflare/Vercel/GitHub returned 0 added lines."
+    }
   ],
   "known_issues_or_risks": [
-    "F003 epic is not complete: Z0 classification engine/truth table remains out of scope for slice 3, so F003 must stay passes:false.",
-    "Domain tables are schema-only in this slice; provider adapters, source scans, runtime data population, API routes, and worker consumption are correctly deferred."
+    "The implementation matches the documented five-gate order, but the current_contract/evaluator prompt requires UNKNOWN whenever material data is unknown. Z2-before-UNKNOWN currently masks unknown card/dependency/quota facts for temporary/conditional offers.",
+    "Engine imports OFFER_TYPES and EXHAUSTION_BEHAVIOURS from app.models.vocab; zero-cost class labels are local constants guarded by tests against ZERO_COST_CLASSES rather than imported directly.",
+    "F003 remains passes:false; full-epic close-out still requires separate Level 2 evaluation after slice corrections."
   ],
-  "recommendation": "Accept F003 slice 2 as evaluator-passed. Keep F003 passes:false and proceed to slice 3 (task 005 Z0 classification engine) after review/PR flow."
+  "recommendation": "Reject F003 slice 3 until UNKNOWN material conditions dominate or otherwise explicitly satisfy current_contract criterion 3, and add truth-table tests for unknown+Z2 combinations. Keep F003 passes:false."
 }

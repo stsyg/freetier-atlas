@@ -251,6 +251,57 @@ def test_z2_for_manual_upgrade_required_quota() -> None:
     assert any("manual paid upgrade" in c.lower() for c in result.blocking_conditions)
 
 
+def test_unknown_dominates_trial_with_unknown_card() -> None:
+    # A temporary/conditional offer type must NOT mask an unknown material
+    # condition: the safety rule requires UNKNOWN, not Z2.
+    result = classify(
+        OfferFacts(
+            "trial",
+            requires_card=None,
+            has_paid_dependencies=False,
+            exhaustion_behaviours=("hard_stop",),
+        ),
+        as_of=_TODAY,
+    )
+    assert result.zero_cost_class == UNKNOWN
+    assert result.zero_cost_class != Z0_TRUE_FREE
+
+
+def test_unknown_dominates_trial_with_no_quota_data() -> None:
+    result = classify(
+        OfferFacts("trial", requires_card=False, has_paid_dependencies=False),
+        as_of=_TODAY,
+    )
+    assert result.zero_cost_class == UNKNOWN
+
+
+def test_unknown_dominates_bounded_window_with_unknown_paid_deps() -> None:
+    result = classify(
+        OfferFacts(
+            "always_free",
+            requires_card=False,
+            has_paid_dependencies=None,
+            exhaustion_behaviours=("hard_stop",),
+            available_until=_TODAY + timedelta(days=30),
+        ),
+        as_of=_TODAY,
+    )
+    assert result.zero_cost_class == UNKNOWN
+
+
+def test_unknown_dominates_manual_upgrade_with_unknown_card() -> None:
+    result = classify(
+        OfferFacts(
+            "always_free",
+            requires_card=None,
+            has_paid_dependencies=False,
+            exhaustion_behaviours=("throttled", "manual_upgrade_required"),
+        ),
+        as_of=_TODAY,
+    )
+    assert result.zero_cost_class == UNKNOWN
+
+
 def test_availability_from_only_does_not_force_z2() -> None:
     # A start date with no end date is not a bounded window.
     result = classify(
