@@ -1,48 +1,50 @@
 {
   "schema_version": 1,
   "status": "approved",
-  "feature_id": "F003",
-  "increment": "slice-3-z0-classification-engine",
+  "feature_id": "F004",
+  "increment": "slice-1-safe-fetch-and-adapter-contract",
   "builder": "Copilot CLI (Chief)",
   "evaluator": "fresh independent Level 2 evaluator",
-  "approved_at": "2026-07-21T00:00:00Z",
+  "approved_at": "2026-07-22T00:00:00Z",
   "approval_notes": [
-    "Owner instructed 'take next task' and, when asked to confirm scope, delegated the decision ('work autonomously and make good decisions'). The Chief scoped this as the final F003 slice and is implementing it under the standing autonomy boundaries (may branch/implement/test/commit/push/open PR; may NOT merge, flip passes:true, or add dependencies).",
-    "This is the THIRD and final F003 slice. Slice 1 (configuration system, CODEX task 003 = acceptance step 1) merged as PR #9 (squash 3b7e0b1). Slice 2 (domain model + Alembic migrations, task 004 = acceptance steps 2 and 3) merged as PR #10 (squash 7ec4257). Slice 3 = the Z0 classification engine (task 005 = acceptance step 4).",
-    "F003 stays passes:false after this slice. Flipping F003 passes:true requires a fresh-context FULL-EPIC Level 2 evaluation (config + domain model + Z0 engine together), exactly as F002 was closed out.",
-    "No new runtime dependency: the engine is pure standard-library Python over the vocabularies already defined in apps/api/app/models/vocab.py."
+    "The originating session approved the 6-slice F004 plan and instructed the Chief to build Slice 1 only (safe fetch guard + adapter contract) in interactive mode, then STOP: do not merge, do not start Slice 2, do not flip any passes flag.",
+    "This is the FIRST of six F004 slices. It is the security spine that unblocks every other slice: it is stdlib-only (no dependency approval needed), adds no migration, and directly attacks the highest-risk acceptance concern (step 2 network safety).",
+    "F004 stays passes:false after this slice. Flipping F004 passes:true requires a separate fresh-context FULL-EPIC Level 2 evaluation after all slices land, exactly as F002/F003 were closed out.",
+    "No new runtime dependency: the transport and contract are pure standard-library Python (urllib/http.client, ipaddress, socket, ssl, hashlib, json). The requirements-sync guard must stay green."
   ],
-  "objective": "Introduce the Z0 classification engine: a pure, deterministic function that maps an offer's material facts (offer type, card requirement, paid dependencies, eligibility, availability window, and per-quota exhaustion behaviour) to an explainable zero-cost class (Z0_TRUE_FREE, Z1_BILLING_EXPOSURE, Z2_TEMPORARY_OR_CONDITIONAL, Z3_SELF_HOSTED_BUILDING_BLOCK, or UNKNOWN). Classification must never infer Z0 from missing or contradictory material data, must gate Z0 on the explicit absence of card/purchase/paid-dependency/automatic-billing exposure AND a safe quota-exhaustion behaviour, and must emit a human-readable explanation of the deciding reasons and blocking conditions.",
+  "objective": "Introduce the ingestion security spine and adapter contract: a single hardened, injectable fetch/transport layer that is the only code permitted to touch the network (disabled by default), plus the SourceAdapter ABC that hides all provider-specific logic behind the fixed seven-method contract (discover/fetch/canonicalize/extract/validate/evidence/health). Adapters depend only on the Fetcher seam, emit candidate facts in a pre-publication state only, and produce evidence solely for official sources, so there is no adapter-level path to a verified or published offer.",
   "scope": [
-    "New package apps/api/app/classify/: engine.py (a ClassificationResult dataclass plus the deterministic classify() function and its ordered decision gates), __init__.py exports.",
-    "The engine consumes a small, explicit input structure (offer_type, requires_card: bool|None, has_paid_dependencies: bool|None, eligibility, available_from/until, and the set/list of quota exhaustion_behaviours). Nullable booleans (None) and 'unknown' exhaustion behaviour represent UNKNOWN material conditions.",
-    "Decision rules mirroring docs/PRODUCT_REQUIREMENTS.md and docs/DATA_MODEL.md: (Z1) card required, purchase required, paid dependency, or an automatic_billing exhaustion behaviour => Z1_BILLING_EXPOSURE (never Z0); (Z3) self-hosted offer types (self_hosted_open_source) => Z3_SELF_HOSTED_BUILDING_BLOCK; (Z2) trial / new_customer_credit / time-limited (available_until in the past or a bounded window) / eligibility-conditional (student/startup/hackathon/open-source programs) => Z2_TEMPORARY_OR_CONDITIONAL; (UNKNOWN) any material gate whose value is unknown (requires_card None, has_paid_dependencies None, or any quota exhaustion_behaviour == 'unknown', or no quota data at all) => UNKNOWN; (Z0) only when every billing gate is explicitly clear AND every quota exhaustion behaviour is a SAFE stop-type (hard_stop, request_rejected, throttled, service_sleeps, read_only, deployment_blocked, site_disabled_until_reset, resource_reclaimed, data_deleted) => Z0_TRUE_FREE.",
-    "Explanation output: ClassificationResult carries the assigned class, an ordered list of human-readable reasons, and a list of blocking_conditions (empty for Z0). No numeric confidence is surfaced in this slice.",
-    "A thin, read-only ORM adapter classify_offer(offer) that reads an Offer instance and its related Quota rows and returns a ClassificationResult, performing NO database writes.",
-    "tests/unit/test_z0_classifier.py (offline): a comprehensive truth table exercising each gate, each exhaustion behaviour (safe vs unsafe vs unknown), boundary and contradictory inputs, the no-quota case, and the 'no unknown material condition may yield Z0' rule; plus explanation-content assertions.",
-    "docs: a 'Z0 classification' section (in docs/DATA_MODEL.md or a short docs/Z0_CLASSIFICATION.md) documenting the gates, the safety rule, and the explanation output."
+    "New package apps/api/app/ingest/.",
+    "fetch.py: pure, independently-testable policy functions (screen_url scheme+host allowlist, host_matches_allowlist exact-or-subdomain, is_blocked_address SSRF/private-range/metadata via ipaddress with ipv4-mapped unwrap, validate_content_type MIME prefix match) plus a FetchPolicy carrier and a FetchResult carrier (final_url, status, mime, body bytes, content_hash sha256, fetched_at, redirect_chain). OfflineFetcher default that never opens a socket; SafeFetcher live transport gated behind enable_network=False by default, with an injectable resolver, manual redirect handling that re-screens allowlist+SSRF on every hop, connect/read timeouts, and a streamed max-size cap with early abort. A typed FetchError hierarchy naming each rejection reason.",
+    "base.py: SourceAdapter abc.ABC enforcing the seven contract methods, plus frozen typed carriers SourceDocument, CandidateFacts (validates trust_level and pre-publication verification_state in __post_init__), EvidenceLocation, AdapterHealth; a guard_evidence helper that raises if a non-official source tries to emit evidence.",
+    "vocab.py: closed vocabularies VERIFICATION_STATES, PRE_PUBLICATION_STATES, TRUST_LEVELS (+ TRUST_OFFICIAL and is_official helper) for the in-flight ingestion lifecycle.",
+    "reference.py: one minimal reference structured/JSON adapter (ReferenceJSONAdapter) making the contract concrete; missing fields degrade to warnings, malformed JSON is rejected (never guessed).",
+    "FixtureFetcher test transport (deterministic, offline) that still enforces scheme+host+MIME+size screening; FixtureResponse carrier.",
+    "tests/unit/test_ingest_fetch.py and tests/unit/test_ingest_contract.py covering every Slice 1 acceptance criterion offline."
   ],
   "out_of_scope": [
-    "Provider adapters, source scanning, document fetching, or evidence extraction (task 006+).",
-    "Persisting classifications back to the database, ScanRun orchestration, or recomputing offer.zero_cost_class at runtime.",
-    "Composing Z3 self-hosted building blocks onto verified Z0 hosting infrastructure (task 015).",
-    "Confidence-score calibration and the public confidence labels.",
-    "API routes, worker/scheduler wiring, or UI surfacing beyond the existing /health seam.",
-    "Marking F003 (or any feature) passes:true; adding managed-cloud services or heavyweight dependencies; advancing past this slice."
+    "Alembic migration 0004, candidate/discovery_candidate tables, ScanRun orchestration, and any database persistence (F004 slice 2).",
+    "Change detection, staleness, conflict/review reconciliation (slice 3).",
+    "RSS, HTML, structured-API, and MCP provider adapters (slices 4-5).",
+    "Community-discovery importer and the definitive community-vs-official separation hardening + epic close-out (slice 6).",
+    "Enabling real network egress by default, or any live scan against a real provider.",
+    "Creating any Offer/OfferVersion or publishing anything.",
+    "Marking F004 (or any feature) passes:true; adding managed-cloud services or heavyweight dependencies; advancing past this slice."
   ],
   "acceptance_criteria": [
-    "classify() is a pure deterministic function (no I/O, no network, no LLM) importable offline; identical inputs always yield an identical ClassificationResult.",
-    "Billing gates: an offer with requires_card True, has_paid_dependencies True, or any quota whose exhaustion_behaviour is automatic_billing is classified Z1_BILLING_EXPOSURE and NEVER Z0, with the specific gate named in blocking_conditions.",
-    "Safety rule: any material condition that is unknown (requires_card None, has_paid_dependencies None, an exhaustion_behaviour of 'unknown', or the total absence of quota data) yields UNKNOWN and NEVER Z0.",
-    "Z0 rule: Z0_TRUE_FREE is returned only when all billing gates are explicitly clear (requires_card False, has_paid_dependencies False, no automatic_billing) AND every quota exhaustion behaviour is a safe stop-type; the result's blocking_conditions is empty and reasons explain why it is $0.",
-    "Z2 rule: trial, new_customer_credit, bounded/expired availability windows, and eligibility-conditional program offer types are classified Z2_TEMPORARY_OR_CONDITIONAL (assuming no dominating billing exposure).",
-    "Z3 rule: self_hosted_open_source offers are classified Z3_SELF_HOSTED_BUILDING_BLOCK.",
-    "Every ClassificationResult includes an ordered, human-readable reasons list; every non-Z0 result names at least one blocking or downgrading condition.",
-    "classify_offer(orm_offer) reads an Offer plus its Quota rows and returns the same result the pure function would for those facts, performing no writes.",
-    "A comprehensive truth-table unit suite (tests/unit/test_z0_classifier.py) covers each gate, each exhaustion behaviour, missing/contradictory/boundary data, and the no-Z0-on-unknown rule, and all tests pass offline.",
-    "Regression green: scripts/test.ps1 (pytest offline + config validation + web tests/build) and scripts/check.ps1 -NodeAudit (ruff, format, pytest, prettier, eslint, detect-secrets, pip-audit, npm audit), including the requirements-sync guard (no new dependency); the full live stack cycle stack-up -> stack-smoke -> stack-down still passes.",
-    "No unsupported free-tier/zero-cost/Z0 product claim is introduced: the engine only classifies supplied facts and defaults to UNKNOWN rather than guessing; no offer data asserting a real service is free is added.",
-    "A fresh-context independent Level 2 evaluator records an adversarial verdict in agent-state/evaluation.json (probing missing, contradictory, and boundary data to confirm no unknown material condition yields Z0) before any status change is claimed; F003 remains passes:false (epic close-out is a separate full-epic evaluation)."
+    "A non-allowlisted host is rejected before any connection (DisallowedHostError) and the injected resolver is never called for it.",
+    "A redirect to a disallowed or private/loopback host is rejected mid-chain (the target is re-screened on every hop).",
+    "A non-https URL is rejected (DisallowedSchemeError) under the default scheme allowlist.",
+    "Private, loopback, link-local, ULA, reserved, and the cloud metadata address (169.254.169.254) are rejected by is_blocked_address, including ipv4-mapped IPv6 forms; DNS-rebinding-style resolution to a private address is rejected by SafeFetcher via the injected resolver.",
+    "A slow response aborts within the configured timeout budget (FetchTimeoutError) against an explicitly-allowlisted 127.0.0.1 loopback server.",
+    "An oversize response is aborted once it exceeds max_bytes (ResponseTooLargeError), without buffering the whole body.",
+    "A disallowed MIME type is rejected (DisallowedContentTypeError).",
+    "The default fetcher (OfflineFetcher) raises NetworkDisabledError and opens no socket even when socket.socket is monkeypatched to fail; SafeFetcher with enable_network=False also refuses without I/O.",
+    "The SourceAdapter ABC cannot be instantiated when a subclass omits any of the seven contract methods (TypeError).",
+    "The reference adapter drives all seven methods end to end against a FixtureFetcher + JSON fixture, producing candidate facts in a pre-publication state and evidence for an official source; a community/unknown source produces zero evidence (guard_evidence raises if attempted); malformed JSON is handled as rejected with a warning, never guessed.",
+    "Regression green: scripts/test.ps1 and scripts/check.ps1 -NodeAudit pass offline (ruff, format, pytest, prettier, eslint, detect-secrets, pip-audit, npm audit), including the requirements-sync guard (no new dependency).",
+    "No unsupported free-tier/zero-cost/Z0 product claim is introduced; this slice adds transport + contract code only and asserts no service is free.",
+    "A fresh-context independent Level 2 evaluator records an adversarial verdict in agent-state/evaluation.json before any status change is claimed; F004 remains passes:false (epic close-out is a separate full-epic evaluation)."
   ],
   "verification_plan": {
     "baseline_commands": [
@@ -54,33 +56,31 @@
       "pwsh -File scripts/test.ps1",
       "pwsh -File scripts/check.ps1 -NodeAudit"
     ],
-    "integration_commands": [
-      "pwsh -File scripts/stack-up.ps1",
-      "pwsh -File scripts/stack-smoke.ps1",
-      "pwsh -File scripts/stack-down.ps1"
-    ],
+    "integration_commands": [],
     "end_to_end_steps": [
-      "Run tests/unit/test_z0_classifier.py and confirm the full truth table passes offline.",
+      "Run tests/unit/test_ingest_fetch.py and tests/unit/test_ingest_contract.py and confirm every Slice 1 acceptance criterion passes offline.",
       "Run scripts/test.ps1 and scripts/check.ps1 -NodeAudit and confirm both pass end-to-end (no new dependency; requirements-sync green).",
-      "Bring up the live stack and confirm stack-smoke still passes (the engine adds no runtime coupling), then bring it down.",
       "Confirm detect-secrets is green and no credential appears in code or output."
     ],
     "negative_tests": [
-      "requires_card None => UNKNOWN, not Z0.",
-      "has_paid_dependencies None => UNKNOWN, not Z0.",
-      "a quota with exhaustion_behaviour 'unknown' => UNKNOWN, not Z0.",
-      "no quota data at all => UNKNOWN, not Z0.",
-      "any quota with exhaustion_behaviour 'automatic_billing' => Z1, not Z0.",
-      "requires_card True (even with otherwise-safe quotas) => Z1, not Z0.",
-      "contradictory facts (e.g. always_free offer_type but requires_card True) => the billing gate dominates (Z1)."
+      "Non-allowlisted host => DisallowedHostError before connect; resolver not called.",
+      "Redirect to private/loopback/disallowed host => rejected mid-chain.",
+      "http:// URL => DisallowedSchemeError.",
+      "Host resolving to 127.0.0.1 / 10.0.0.0-8 / 169.254.169.254 / ::ffff:10.0.0.1 => BlockedAddressError.",
+      "Slow loopback server => FetchTimeoutError within budget.",
+      "Oversize loopback body => ResponseTooLargeError.",
+      "text/csv (not allowlisted) => DisallowedContentTypeError.",
+      "OfflineFetcher.fetch with socket.socket patched to raise => still NetworkDisabledError (no socket opened).",
+      "Adapter subclass missing evidence() => TypeError on instantiation.",
+      "Community-source adapter attempting evidence => PermissionError (no evidence path)."
     ]
   },
   "risks": {
-    "data_migration": "None. This slice adds no schema and no migration; it is a pure computation module over the slice-2 vocabularies.",
-    "security_privacy": "No credentials, no I/O. The engine reads only supplied facts. detect-secrets remains green.",
-    "portability": "Pure standard-library Python; no managed-cloud dependency; runs identically on amd64 and arm64.",
-    "zero_cost_safety": "The engine's central invariant is that no unknown or contradictory material condition may yield Z0; it defaults to UNKNOWN. This is the product's core anti-false-claim safeguard and is covered by adversarial truth-table tests.",
-    "regression": "No dependency change, so the requirements-sync guard is unaffected. The engine is additive and imported by nothing at runtime yet, so existing services and tests are unchanged.",
+    "data_migration": "None. This slice adds no schema and no migration; persistence is slice 2.",
+    "security_privacy": "This slice IS the security boundary. Live egress is disabled by default; all tests are offline against fixtures or an explicitly-allowlisted loopback server. No credentials are read or stored; detect-secrets stays green.",
+    "portability": "Pure standard-library Python; no managed-cloud dependency, no Redis; PostgreSQL (unused by this slice) remains the sole mandatory stateful service. Runs identically on amd64 and arm64.",
+    "zero_cost_safety": "Adapters emit candidate facts in a pre-publication state only and produce evidence for official sources exclusively; there is no adapter-level path to a verified or published offer, preserving the no-false-claim guarantee.",
+    "regression": "No dependency change, so the requirements-sync guard is unaffected. The package is additive and imported by nothing at runtime yet, so existing services and tests are unchanged.",
     "supply_chain": "No new dependency (Python or npm) is added by this slice."
   },
   "required_evaluation_level": 2,
@@ -89,7 +89,7 @@
     "reviewer": "owner",
     "disposition": "approved",
     "notes": [
-      "Owner delegated the go/no-go decision to the Chief ('work autonomously and make good decisions') after being presented with the scoped slice-3 plan, acceptance criteria, deferrals, and cost estimate. This slice does not mark F003 passing; it is the final of three F003 slices and requires a fresh-context independent Level 2 evaluation that adversarially probes missing/contradictory/boundary data before its completion is claimed."
+      "The originating session approved the F004 plan and scoped this as Slice 1 only, to be built in interactive mode and then handed back for review + a Level 2 slice evaluation before any further slice. This slice does not mark F004 passing and adds no dependency and no migration."
     ]
   }
 }

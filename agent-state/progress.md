@@ -396,3 +396,19 @@ Append one entry after every meaningful implementation or evaluation session. Do
 - **Recommended next action:** F003 is now passes:true. Proceed to F004 (source-ingestion) under the standard autonomy boundaries. No PR was opened or merged by this evaluation; branch pushed for review.
 
 ---
+
+## 2026-07-21 21:29 UTC — Builder — F004
+
+- **Objective:** Build F004 Slice 1 (safe fetch guard + adapter contract): the ingestion security spine and the SourceAdapter contract, with no persistence, no migration, and no new dependency.
+- **Contract:** `agent-state/current_contract.json` (increment slice-1-safe-fetch-and-adapter-contract).
+- **Work completed:** New package `apps/api/app/ingest/` — `fetch.py` (pure policy functions screen_url/host_matches_allowlist/is_blocked_address/validate_content_type; FetchPolicy + FetchResult carriers; typed FetchError hierarchy; OfflineFetcher default that opens no socket; SafeFetcher live transport disabled by default with injectable resolver, per-hop allowlist+SSRF re-screening, timeouts, streamed size cap; FixtureFetcher offline test transport), `base.py` (SourceAdapter ABC enforcing the seven contract methods + SourceDocument/CandidateFacts/EvidenceLocation/AdapterHealth carriers + guard_evidence official-only rule), `vocab.py` (VERIFICATION_STATES/PRE_PUBLICATION_STATES/TRUST_LEVELS), `reference.py` (ReferenceJSONAdapter), `__init__.py` exports.
+- **Files changed:** apps/api/app/ingest/{__init__,fetch,base,vocab,reference}.py (new); tests/unit/test_ingest_fetch.py, tests/unit/test_ingest_contract.py (new); agent-state/current_contract.json (replaced F003 slice-3 contract with F004 slice-1).
+- **Tests and checks run:** `scripts/test.ps1`; `scripts/check.ps1 -NodeAudit`; targeted `pytest tests/unit/test_ingest_fetch.py tests/unit/test_ingest_contract.py`.
+- **Exact results:** test.ps1 = 196 passed, 10 skipped (integration needs live Postgres); web vitest 4 passed; web build OK; config validation OK. check.ps1 -NodeAudit = ALL CHECKS PASSED (ruff lint, ruff format, pytest 196 passed, prettier, eslint, detect-secrets, pip-audit clean, npm audit 0 vulns; requirements-sync green — no new dependency). Targeted ingest suite = 49 passed.
+- **Evaluator disposition:** pending
+- **Evaluation evidence:** Awaiting a fresh-context independent Level 2 slice evaluation (adapter/transport safety is high-risk). No passes flag flipped.
+- **Commit SHA:** (see PR to main; branch stsyg-f004-source-ingestion-plan)
+- **Known issues or risks:** No persistence yet — candidate/evidence tables + ScanRun orchestration are Slice 2 (migration 0004). Live egress stays disabled by default; loopback timeout/size/redirect tests bind 127.0.0.1 under an explicit per-test allowlist (not external network). Community-vs-official separation is enforced at the adapter contract level (guard_evidence) here; the definitive DB-level hardening lands in Slice 6.
+- **Recommended next action:** Review PR + run the Level 2 slice evaluation. On pass, proceed to Slice 2 (migration 0004 + ScanRun orchestration & candidate/evidence persistence). F004 stays passes:false until the full-epic evaluation after all slices.
+
+---
