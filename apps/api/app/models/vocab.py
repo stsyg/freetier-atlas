@@ -114,6 +114,40 @@ REVIEW_DISPOSITIONS: tuple[str, ...] = (
     "deferred",
 )
 
+# Candidate verification-state lifecycle (F004 source ingestion). This mirrors
+# ``app.ingest.vocab.VERIFICATION_STATES`` (docs/ARCHITECTURE.md -> Verification
+# states) exactly and is the single source of truth for the ``candidate`` table
+# check constraint. A drift-guard unit test asserts the two stay identical.
+VERIFICATION_STATES: tuple[str, ...] = (
+    "detected",
+    "extracting",
+    "candidate",
+    "verified",
+    "verified_with_caveats",
+    "conflict",
+    "stale",
+    "withdrawn",
+    "rejected",
+)
+
+# How a community-derived discovery candidate entered the quarantine table
+# (docs/SOURCE_REUSE_AND_PROVENANCE.md -> Provenance fields: "import method").
+IMPORT_METHODS: tuple[str, ...] = (
+    "manual",
+    "community_import",
+    "automated",
+)
+
+# Official-verification status of a quarantined discovery candidate. A discovery
+# candidate starts ``unverified`` and can only ever become verified through the
+# separate official-evidence pipeline; it is never itself published.
+DISCOVERY_VERIFICATION_STATUSES: tuple[str, ...] = (
+    "unverified",
+    "verifying",
+    "verified",
+    "rejected",
+)
+
 
 def sql_in(values: tuple[str, ...]) -> str:
     """Render a tuple of vocabulary values as a SQL ``IN (...)`` membership list."""

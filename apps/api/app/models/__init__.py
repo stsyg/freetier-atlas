@@ -10,8 +10,10 @@ from __future__ import annotations
 
 from .base import Base, alembic_include_object, domain_table_names
 from .domain import (
+    Candidate,
     Category,
     ChangeEvent,
+    DiscoveryCandidate,
     Evidence,
     Offer,
     OfferVersion,
@@ -32,8 +34,10 @@ __all__ = [
     "metadata",
     "alembic_include_object",
     "domain_table_names",
+    "Candidate",
     "Category",
     "ChangeEvent",
+    "DiscoveryCandidate",
     "Evidence",
     "Offer",
     "OfferVersion",

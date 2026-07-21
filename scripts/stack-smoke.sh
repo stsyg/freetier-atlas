@@ -93,6 +93,16 @@ check_domain_migration() {
   [[ "${trg}" == "1" ]]
 }
 
+check_ingest_migration() {
+  local r link
+  for t in candidate discovery_candidate; do
+    r="$(psql_query "SELECT to_regclass('public.${t}')")"
+    [[ "${r}" == "${t}" ]] || return 1
+  done
+  link="$(psql_query "SELECT count(*) FROM pg_constraint WHERE conname='ck_evidence_evidence_link_target'")"
+  [[ "${link}" == "1" ]]
+}
+
 worker_healthy() { [[ "$(container_health worker)" == "healthy" ]]; }
 scheduler_healthy() { [[ "$(container_health scheduler)" == "healthy" ]]; }
 
@@ -132,6 +142,7 @@ run_check "API readiness (/health/ready = 200, db ok)" check_readiness
 run_check "Migration applied (app_meta table + marker row)" check_migration
 run_check "Worker migration applied (job_queue + service_heartbeat)" check_worker_migration
 run_check "Domain migration applied (0003 tables + immutability trigger)" check_domain_migration
+run_check "Ingest migration applied (0004 candidate + discovery_candidate tables)" check_ingest_migration
 run_check "Worker container healthy" check_worker_healthy
 run_check "Scheduler container healthy" check_scheduler_healthy
 run_check "Queue processed (>=1 job reached done)" check_queue_processed
