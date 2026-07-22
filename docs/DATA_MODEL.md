@@ -36,7 +36,10 @@ Immutable material offer facts.
 
 ### ChangeEvent
 
-Added, modified, withdrawn, or restored; previous/new version, materiality, dates, publication status.
+Added, modified, withdrawn, or restored; links either a previous/new
+`offer_version` (published history) or a previous/new `candidate`
+(pre-publication reconciliation diff); materiality, dates, publication status. A
+`CHECK` requires at least one linkage target so a change event is never orphaned.
 
 ### Source
 
@@ -160,13 +163,39 @@ following the F002 baseline `0001`/`0002`).
   deterministic, so re-scanning identical input yields identical candidate hashes
   and detects zero changes. The migration is reversible (`alembic downgrade
   0003_domain_model`).
+- **Reconciliation (migration `0005_change_event_candidate_link`).** Relaxes
+  `change_event` so the reconciliation pass can record *pre-publication*
+  candidate diffs: adds the optional `previous_candidate_id` / `new_candidate_id`
+  links to `candidate`, makes `offer_id` nullable, and adds the link-target
+  `CHECK` (`ck_change_event_change_link_target`). `app.ingest.reconcile.reconcile_scan(scan_run, source, session)`
+  runs *after* `run_scan` (never wired into it, so scanning still writes zero
+  change events) and operates on candidate content only. It (1) diffs each
+  freshly-scanned candidate against the last-known candidate for the same source
+  + identity and emits a DRAFT `change_event` with a deterministic `change_type`
+  (`added`/`modified`/`withdrawn`/`restored`) and `materiality`
+  (`material`/`non_material`/`unknown` — an unrecognised changed field is
+  `unknown`, never guessed); (2) flags `candidate.verification_state='stale'` when
+  the source's freshest `snapshot.fetched_at` is older than its schedule window
+  (stale data never counts as a fresh verification); and (3) raises a *pending*
+  `review_item` (`evidence_conflict`, `recommended_action`,
+  `admin_disposition='pending'`) when two **official** sources disagree on a
+  *known* material fact of the same identity. There is still **no publication
+  path**: reconciliation never creates or mutates `offer`/`offer_version` (its
+  immutability trigger is untouched), every change event it writes is `draft`,
+  and contradictions are never auto-resolved. Unknown (`None`) values never
+  contradict. The migration is reversible (`alembic downgrade
+  0004_ingest_candidates`).
 - **Tests.** `tests/unit/test_domain_models.py` checks the metadata shape and
   vocabulary membership offline; `tests/integration/test_domain_migration.py`
   (run against a live PostgreSQL) verifies apply, model/migration drift,
   foreign-key and check-constraint enforcement, offer_version immutability,
-  provenance queries, and a downgrade/re-apply round trip. `scripts/stack-smoke`
-  asserts the domain tables and the immutability trigger exist on the running
-  stack.
+  provenance queries, and a downgrade/re-apply round trip.
+  `tests/unit/test_ingest_reconcile.py` covers the pure reconciliation logic
+  (change/materiality/staleness/contradiction) and
+  `tests/integration/test_ingest_reconcile.py` exercises the live end-to-end
+  reconciliation path over unchanged/changed/stale/contradictory fixtures.
+  `scripts/stack-smoke` asserts the domain tables and the immutability trigger
+  exist on the running stack.
 
 ## Z0 classification engine
 

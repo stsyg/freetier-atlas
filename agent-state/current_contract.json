@@ -2,60 +2,59 @@
   "schema_version": 1,
   "status": "approved",
   "feature_id": "F004",
-  "increment": "slice-2-migration-0004-and-scanrun-orchestration",
+  "increment": "slice-3-reconciliation-change-staleness-conflict",
   "builder": "Copilot CLI (Chief)",
   "evaluator": "fresh independent Level 2 evaluator",
-  "approved_at": "2026-07-21T16:20:00Z",
+  "approved_at": "2026-07-22T12:20:00Z",
   "approval_notes": [
-    "Owner-approved F004 plan. Slice 1 (safe fetch guard + SourceAdapter contract in apps/api/app/ingest/) is merged to main (PR #14). This contract governs Slice 2 ONLY.",
-    "Standing autonomy boundaries: may branch/implement/test/commit/push/open ONE PR; may NOT merge, flip any passes flag, add a runtime/npm dependency, start Slice 3, or touch the offer_version immutability trigger.",
-    "F004 stays passes:false after this slice. A fresh-context Level 2 slice evaluation reviews Slice 2 before Slice 3 proceeds."
+    "Owner-approved F004 plan. Slices 1 (safe fetch guard + SourceAdapter contract, PR #14) and 2 (migration 0004 + run_scan orchestration, PR #15) are merged to main. This contract governs Slice 3 ONLY.",
+    "Standing autonomy boundaries: may branch/implement/test/commit/push/open ONE PR; may NOT merge, flip any passes flag, add a runtime/npm dependency, start Slice 4, or touch the offer_version immutability trigger.",
+    "F004 stays passes:false after this slice. A fresh-context Level 2 slice evaluation reviews Slice 3 before Slice 4 proceeds."
   ],
-  "objective": "Add DB persistence and scan orchestration to the ingestion pipeline. Migration 0004 introduces a pre-publication `candidate` table and a `discovery_candidate` community-quarantine table, and relaxes `evidence` so candidate-stage evidence can link Source+Snapshot+Candidate without an offer_version (offer_version_id becomes nullable, a new nullable candidate_id FK is added, and a CHECK requires at least one linkage target; source_id and snapshot_id stay NOT NULL). app/ingest/scan.py adds run_scan(source, fetcher, session) that runs fetch -> canonicalize -> extract -> validate and persists a hashed Snapshot, Candidate rows in a pre-publication state, Evidence for OFFICIAL sources only, DiscoveryCandidate quarantine rows for COMMUNITY sources only, and updates ScanRun counts + Source.health. Content hashing is deterministic so re-scanning identical input yields identical candidate hashes, changes_count=0, and zero ChangeEvent rows.",
+  "objective": "Add reconciliation to the ingestion pipeline as a separate pass (apps/api/app/ingest/reconcile.py) over candidates persisted by run_scan. It diffs a freshly-scanned candidate against the last-known candidate for the same source/identity and emits a DRAFT change_event with a deterministic change_type (added/modified/withdrawn/restored) and materiality (material/non_material/unknown); flags candidates/sources stale when source freshness exceeds the configured schedule/policy window (stale never counts as a fresh verification); and raises a pending review_item (evidence_conflict, recommended_action, admin_disposition='pending') when official sources contradict each other on a known material fact. Nothing is auto-resolved and there is NO publication path: reconciliation never creates or mutates offer/offer_version and the offer_version immutability trigger is untouched. All diff/materiality/staleness/contradiction rules are pure and unit-testable; reconciliation operates on candidate content only.",
   "scope": [
-    "migrations/versions/0004_ingest_candidates.py: create `candidate` and `discovery_candidate`; ALTER `evidence` (add candidate_id FK, make offer_version_id nullable, add CHECK ck_evidence_evidence_link_target). Reversible upgrade/downgrade.",
-    "apps/api/app/models/vocab.py: add VERIFICATION_STATES (mirrors app.ingest.vocab), IMPORT_METHODS, DISCOVERY_VERIFICATION_STATUSES.",
-    "apps/api/app/models/domain.py: add Candidate + DiscoveryCandidate ORM models; update Evidence (nullable offer_version_id, candidate_id FK, CHECK). Export via app/models/__init__.py.",
-    "apps/api/app/ingest/scan.py: run_scan(source, fetcher, session) orchestration + a small adapter registry (build_adapter) keyed by Source.adapter_type (reference JSON adapter for this slice). Deterministic content_hash + candidate_key and change detection.",
-    "apps/api/app/ingest/__init__.py: export run_scan (and build_adapter).",
-    "tests/integration/test_ingest_scan.py (live Postgres) and updates to tests/unit/test_domain_models.py + a vocab drift-guard test.",
-    "scripts/stack-smoke.ps1 + scripts/stack-smoke.sh: assert the 0004 tables exist.",
-    "docs/DATA_MODEL.md: document the candidate/discovery_candidate tables and the evidence candidate-stage linkage."
+    "migrations/versions/0005_change_event_candidate_link.py: ALTER change_event -> add previous_candidate_id + new_candidate_id FKs to candidate (ondelete SET NULL), make offer_id nullable, add CHECK ck_change_event_change_link_target (offer_id OR previous_candidate_id OR new_candidate_id NOT NULL). Reversible upgrade/downgrade. offer_version + its immutability trigger untouched.",
+    "apps/api/app/models/domain.py: update ChangeEvent ORM (offer_id nullable, add previous_candidate_id/new_candidate_id FKs + relationships, add the link-target CHECK).",
+    "apps/api/app/ingest/reconcile.py: pure diff/materiality/staleness/contradiction functions + reconcile_scan(scan_run, source, session, *, now) persistence orchestrator.",
+    "apps/api/app/ingest/__init__.py: export reconcile_scan (and the pure helpers/result types).",
+    "tests/unit/test_ingest_reconcile.py: pure logic over unchanged/changed/stale/contradictory.",
+    "tests/integration/test_ingest_reconcile.py (live Postgres): end-to-end unchanged/changed/stale/contradictory; asserts draft change_event + pending review_item rows and that NO offer_version is created.",
+    "docs/DATA_MODEL.md: document the change_event candidate linkage and the reconciliation pass."
   ],
   "out_of_scope": [
     "Creating or mutating offer/offer_version (no publication path). The offer_version immutability trigger is untouched.",
-    "Real provider adapters, live network scanning, MCP/RSS/HTML transports (Slice 1 fetch seam is reused as-is; no second network path).",
-    "Change-event/offer-history writes, conflict review workflows, admin UI, API routes.",
-    "Residual R1 (DNS-rebinding IP pinning) from Slice 1 — explicitly deferred.",
-    "Any new runtime or npm dependency (requirements-sync guard stays green). Marking F004 passes:true. Advancing to Slice 3."
+    "Auto-resolution or auto-publication of any change_event or review_item.",
+    "Wiring reconciliation into run_scan (kept separate so Slice 2's zero-change_event-on-scan invariant holds).",
+    "Candidate -> service/offer DB matching beyond the minimal content identity needed to diff/compare.",
+    "Residual R1 (DNS-rebinding IP pinning) from Slice 1 - explicitly deferred.",
+    "Any new runtime or npm dependency (requirements-sync guard stays green). Marking F004 passes:true. Advancing to Slice 4."
   ],
   "acceptance_criteria": [
-    "A FixtureFetcher-driven scan of an OFFICIAL source produces a ScanRun with correct documents/candidates/changes/errors counts, a hashed Snapshot, Candidate rows in a pre-publication state, and Evidence rows linked to the Source + Snapshot (+ Candidate).",
-    "Re-scanning identical input yields identical candidate content hashes, changes_count == 0 on the second run, and ZERO ChangeEvent rows (idempotent/reproducible).",
-    "run_scan NEVER creates or mutates offer or offer_version rows, and the offer_version immutability trigger remains installed and intact.",
-    "A COMMUNITY-source scan creates DiscoveryCandidate quarantine rows and unverified Candidate rows and creates NO Evidence and NO offer_version rows.",
-    "Only sources with trust_level == 'official' create evidence rows; community sources never write evidence.",
-    "Migration 0004 is reversible: upgrade -> downgrade -> upgrade leaves no model/migration drift (compare_metadata == []), and the 0001/0002/0003 tables + immutability trigger survive intact.",
-    "stack-smoke asserts the candidate and discovery_candidate tables exist on the running stack.",
+    "Unchanged: reconciling a re-scan of byte-identical candidate content produces NO change_event and NO review_item.",
+    "Changed: a candidate whose material facts changed produces exactly one DRAFT change_event with change_type='modified' and materiality='material'; a brand-new candidate produces change_type='added'.",
+    "Stale: when the source's freshest snapshot age exceeds the schedule/policy window, the affected candidates are flagged verification_state='stale' and are NOT counted as a fresh verification (never 'verified').",
+    "Contradictory: when two official sources present different known values for the same material fact of the same identity, exactly one pending review_item (admin_disposition='pending', evidence_conflict populated, recommended_action set) is raised and nothing is auto-resolved or published.",
+    "reconcile_scan NEVER creates or mutates offer or offer_version rows, and the offer_version immutability trigger remains installed and intact.",
+    "Migration 0005 is reversible: upgrade -> downgrade -> upgrade leaves no model/migration drift (compare_metadata == []); the 0001-0004 tables + immutability trigger survive intact.",
     "Regression green: scripts/test.ps1 and scripts/check.ps1 -NodeAudit pass offline (ruff, format, pytest, prettier, eslint, detect-secrets, pip-audit, npm audit) including the requirements-sync guard (no new dependency).",
-    "A fresh-context independent Level 2 evaluator records an adversarial verdict for Slice 2 before any status change; F004 remains passes:false."
+    "A fresh-context independent Level 2 evaluator records an adversarial verdict for Slice 3 before any status change; F004 remains passes:false."
   ],
   "verification_plan": {
     "baseline_commands": ["git status --short --branch", "git --no-pager log --oneline -5"],
     "unit_commands": ["pwsh -File scripts/test.ps1", "pwsh -File scripts/check.ps1 -NodeAudit"],
     "integration_commands": [
       "pwsh -File scripts/stack-up.ps1 (POSTGRES_PORT=55432 API_PORT=8010 WEB_PORT=8090)",
-      "DATABASE_URL=postgresql+psycopg://atlas:atlas@localhost:55432/atlas pytest tests/integration/test_ingest_scan.py tests/integration/test_domain_migration.py",
+      "DATABASE_URL=******localhost:55432/atlas pytest tests/integration/test_ingest_reconcile.py tests/integration/test_ingest_scan.py tests/integration/test_domain_migration.py",
       "pwsh -File scripts/stack-smoke.ps1",
       "pwsh -File scripts/stack-down.ps1"
     ]
   },
   "risks": {
-    "data_migration": "0004 creates two tables and alters evidence (add nullable candidate_id FK, relax offer_version_id to nullable, add CHECK). Reversible. offer_version and its immutability trigger are untouched. Making offer_version_id nullable does NOT weaken published-evidence provenance: source_id + snapshot_id remain NOT NULL, FKs still enforced when present, and the new CHECK requires a linkage target.",
-    "security_privacy": "Community prose is quarantined in discovery_candidate and never linked to evidence/offer_version; official-only evidence rule enforced in run_scan and tested. No credentials handled; detect-secrets stays green.",
+    "data_migration": "0005 only ALTERs change_event (adds two nullable candidate FKs, relaxes offer_id to nullable, adds a link-target CHECK). Reversible. offer_version and its immutability trigger are untouched. Relaxing offer_id does not weaken published history: existing offer-linked change events keep their offer_id; the CHECK still requires at least one linkage target.",
+    "security_privacy": "Reconciliation reads candidate content only; no credentials, no network. Contradictions raise a review_item for a human; nothing is auto-resolved. detect-secrets stays green.",
     "portability": "Pure standard-library Python + SQLAlchemy/Alembic already in use; no new dependency; amd64/arm64 unaffected.",
-    "zero_cost_safety": "No offer data is published; candidates are pre-publication and never verified; no Z0/free claim is asserted.",
-    "regression": "No dependency change (requirements-sync green). Existing evidence provenance tests still pass (FKs enforced; dangling FK still rejected). One unit test updated to reflect the intentional evidence nullability/linkage change.",
+    "zero_cost_safety": "No offer data is published; change events are DRAFT and candidates are never verified; stale data never counts as a fresh verification; no Z0/free claim is asserted.",
+    "regression": "run_scan is unchanged, so Slice 2's zero-change_event-on-scan invariant still holds. Reconciliation is a distinct, explicitly-invoked pass.",
     "supply_chain": "No new Python or npm dependency."
   },
   "required_evaluation_level": 2,
@@ -63,6 +62,6 @@
     "required": true,
     "reviewer": "owner",
     "disposition": "approved",
-    "notes": ["Owner approved the F004 plan and directed Slice 2 implementation, then stop for a fresh-context Level 2 slice evaluation before Slice 3."]
+    "notes": ["Owner approved the F004 plan and directed Slice 3 implementation, then stop for a fresh-context Level 2 slice evaluation before Slice 4."]
   }
 }
