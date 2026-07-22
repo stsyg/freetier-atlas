@@ -330,17 +330,36 @@ class Evidence(Base):
 
 
 class ChangeEvent(Base):
+    """An observed change to an offer or a pre-publication candidate.
+
+    A change event links a *previous* and a *new* state. Historically (F003) the
+    linked states were published ``offer_version`` rows under an ``offer``. The
+    F004 reconciliation pass (docs/ARCHITECTURE.md -> reconciliation) also emits
+    change events for pre-publication ``candidate`` diffs, so ``offer_id`` is
+    optional and the change may instead link ``previous_candidate_id`` /
+    ``new_candidate_id``. Every change event carries at least one linkage target
+    (a ``CHECK`` enforces this) and every candidate-diff event is
+    ``publication_status='draft'``: reconciliation never publishes and never
+    creates or mutates ``offer_version`` (its immutability trigger is untouched).
+    """
+
     __tablename__ = "change_event"
 
     id: Mapped[int] = _pk()
-    offer_id: Mapped[int] = mapped_column(
-        ForeignKey("offer.id", ondelete="CASCADE"), nullable=False
+    offer_id: Mapped[int | None] = mapped_column(
+        ForeignKey("offer.id", ondelete="CASCADE"), nullable=True
     )
     previous_version_id: Mapped[int | None] = mapped_column(
         ForeignKey("offer_version.id", ondelete="SET NULL"), nullable=True
     )
     new_version_id: Mapped[int | None] = mapped_column(
         ForeignKey("offer_version.id", ondelete="SET NULL"), nullable=True
+    )
+    previous_candidate_id: Mapped[int | None] = mapped_column(
+        ForeignKey("candidate.id", ondelete="SET NULL"), nullable=True
+    )
+    new_candidate_id: Mapped[int | None] = mapped_column(
+        ForeignKey("candidate.id", ondelete="SET NULL"), nullable=True
     )
     change_type: Mapped[str] = mapped_column(Text, nullable=False)
     materiality: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'unknown'"))
@@ -356,6 +375,12 @@ class ChangeEvent(Base):
         CheckConstraint(
             f"publication_status IN {sql_in(PUBLICATION_STATUSES)}",
             name="publication_status_valid",
+        ),
+        CheckConstraint(
+            "offer_id IS NOT NULL "
+            "OR previous_candidate_id IS NOT NULL "
+            "OR new_candidate_id IS NOT NULL",
+            name="change_link_target",
         ),
     )
 
