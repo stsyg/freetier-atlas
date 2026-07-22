@@ -1,0 +1,21 @@
+{
+  "profile": "quota_document",
+  "mime": "text/html",
+  "source_url": "https://example.com/limits",
+  "candidate_count": 1,
+  "candidates": [
+    {
+      "verification_state": "candidate",
+      "expect_valid": true,
+      "facts": {
+        "service": "Workers",
+        "offer_type": "always_free",
+        "requires_card": false,
+        "has_paid_dependencies": false,
+        "quotas": ["cpu_time", "requests"]
+      },
+      "evidence_url": "https://example.com/limits",
+      "evidence_selector": "quota_document row[1]"
+    }
+  ]
+}

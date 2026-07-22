@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>Example Cloud changelog</title>
+    <link>https://example.com/</link>
+    <item>
+      <title>Mystery Service</title>
+      <guid>mystery-1</guid>
+      <description>Details to be announced.</description>
+      <category>service:Mystery Service</category>
+    </item>
+  </channel>
+</rss>

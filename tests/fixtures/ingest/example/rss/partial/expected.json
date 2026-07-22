@@ -1,0 +1,25 @@
+{
+  "mime": "application/rss+xml",
+  "source_url": "https://example.com/feed.xml",
+  "candidate_count": 1,
+  "candidates": [
+    {
+      "verification_state": "candidate",
+      "expect_valid": false,
+      "validate_contains": ["offer_type", "link"],
+      "facts": {
+        "service": "Mystery Service",
+        "offer_type": null,
+        "requires_card": null,
+        "has_paid_dependencies": null,
+        "quotas": [],
+        "summary": "Details to be announced.",
+        "link": null,
+        "guid": "mystery-1",
+        "published": null
+      },
+      "evidence_url": "https://example.com/feed.xml",
+      "evidence_selector": "item[mystery-1]"
+    }
+  ]
+}

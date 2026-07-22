@@ -14,6 +14,15 @@ Adapters produce *candidate* facts only; nothing here publishes or verifies.
 
 from __future__ import annotations
 
+from .adapters import (
+    HTML_EXTRACTION_PROFILES,
+    HtmlColumn,
+    HtmlDocAdapter,
+    HtmlExtractionProfile,
+    RssFeedAdapter,
+    UnknownProfileError,
+    resolve_profile,
+)
 from .base import (
     AdapterHealth,
     CandidateFacts,
@@ -87,6 +96,14 @@ __all__ = (
     "AdapterHealth",
     # reference adapter
     "JsonOfferAdapter",
+    # source adapters
+    "RssFeedAdapter",
+    "HtmlDocAdapter",
+    "HtmlColumn",
+    "HtmlExtractionProfile",
+    "HTML_EXTRACTION_PROFILES",
+    "resolve_profile",
+    "UnknownProfileError",
     # scan orchestration
     "run_scan",
     "build_adapter",
