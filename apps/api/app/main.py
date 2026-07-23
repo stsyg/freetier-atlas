@@ -14,6 +14,7 @@ from fastapi.responses import JSONResponse
 
 from . import __version__
 from .db import check_database
+from .read_api import router as catalogue_router
 from .settings import get_settings
 
 logger = logging.getLogger("freetier_atlas.api")
@@ -23,6 +24,8 @@ app = FastAPI(
     version=__version__,
     summary="Evidence-backed catalogue and adviser API (scaffold).",
 )
+
+app.include_router(catalogue_router)
 
 
 @app.get("/health", tags=["health"])

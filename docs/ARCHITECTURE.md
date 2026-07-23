@@ -100,6 +100,38 @@ version's `material_facts` JSONB. Publication is invoked from the ingest runner
 --publish`); it is off by default. Only official, evidenced data can ever reach
 `offer`/`offer_version`/`quota` — community data stays quarantined.
 
+## Read-only catalogue API
+
+The published catalogue is exposed over HTTP by the read-only catalogue API in
+`apps/api/app/read_api/` (F005 slice 3), mounted under `/catalogue` and proxied
+by the web nginx (`/api/catalogue/...`). It is strictly **read-only**: only
+`GET` endpoints are registered, the injected DB session (`app.db.get_session`)
+never commits (always rolls back), no LLM runs in the request path, and every
+input is an internal identifier (a provider `slug` validated against a strict
+pattern, or an integer offer id) — no endpoint accepts a URL/host or fetches
+anything on the caller's behalf, so there is no SSRF surface. Queries
+(`queries.py`) never touch the `candidate`/`discovery_candidate` tables and only
+surface evidence linked to a published `offer_version`, so community /
+pre-publication data can never leak. Serialization (`service.py`) reads the Z0
+class + human-readable reasons, quotas, completeness/freshness signals, and the
+confidence score back out of the version's `material_facts` JSONB. Per D039 the
+primary confidence field is a plain-language **label** (`high`/`medium`/`low`,
+or `unknown` when the score is absent — never guessed); the raw numeric score
+and signals appear only inside an `advanced` detail block. The endpoints are:
+
+- `GET /catalogue/providers` — providers list (summary + completeness/freshness)
+- `GET /catalogue/providers/{slug}` — one provider with its metadata
+- `GET /catalogue/providers/{slug}/category-states` — published offers grouped by
+  category/service, each with its current Z0 state
+- `GET /catalogue/providers/{slug}/offers` — a provider's published offers
+- `GET /catalogue/offers/{id}` — offer detail: current version, Z0 class +
+  reasons, quotas, confidence label (+ advanced numeric/signals),
+  completeness/freshness
+- `GET /catalogue/offers/{id}/evidence` — official evidence + provenance
+  (source/snapshot) backing the current version + confidence label
+- `GET /catalogue/offers/{id}/history` — append-only version history + published
+  change events
+
 ## LLM routing
 
 1. Deterministic parser/rules
