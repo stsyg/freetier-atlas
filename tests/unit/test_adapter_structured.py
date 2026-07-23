@@ -27,6 +27,7 @@ from app.ingest import (
     SourceDocument,
     StructuredApiAdapter,
 )
+from app.ingest.adapters._json import MAX_JSON_NESTING_DEPTH
 from app.ingest.adapters.structured import (
     JSON_EXTRACTION_PROFILES,
     UnknownJsonProfileError,
@@ -149,7 +150,13 @@ def test_structured_partial_never_guesses_missing_material_facts() -> None:
         b'{"provider": "example", "offers": {"not": "a list"}}',  # records not a list
         b'{"provider": "example"}',  # records path absent
         b"[1, 2, 3]",  # non-mapping root
-        b'{"provider": "example", "offers": ' + b"[" * 3000 + b"]" * 3000 + b"}",  # recursion bomb
+        # Deterministic recursion-bomb guard: nesting deeper than the portable
+        # depth cap is rejected BEFORE json.loads on every platform (not reliant
+        # on RecursionError, whose threshold varies by interpreter/OS).
+        b'{"provider": "example", "offers": '
+        + b"[" * (MAX_JSON_NESTING_DEPTH + 50)
+        + b"]" * (MAX_JSON_NESTING_DEPTH + 50)
+        + b"}",
     ],
 )
 def test_structured_malformed_input_never_crashes_or_guesses(payload: bytes) -> None:

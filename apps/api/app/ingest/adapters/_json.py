@@ -30,6 +30,48 @@ from app.ingest.adapters._common import normspace, to_bool
 
 _LIST_SEPARATORS = (",", ";")
 
+# Maximum JSON container-nesting depth accepted before parsing. Chosen well below
+# any platform's effective ``json`` recursion limit (CPython trips RecursionError
+# somewhere in the low thousands, and that threshold is interpreter- and
+# build-dependent, i.e. NOT portable) and far above any legitimate offer document
+# (which nests only a few levels). Enforcing this cap on the raw text BEFORE
+# ``json.loads`` makes "input nesting too deep" resolve to a rejected candidate
+# deterministically on every platform, instead of depending on whether the
+# decoder happens to raise RecursionError.
+MAX_JSON_NESTING_DEPTH = 100
+
+
+def _exceeds_max_depth(text: str, cap: int = MAX_JSON_NESTING_DEPTH) -> bool:
+    """Return ``True`` if ``text``'s JSON container nesting exceeds ``cap``.
+
+    A single allocation-free pass over the string counts ``{``/``[`` against
+    ``}``/``]`` while skipping brackets inside string literals (honouring
+    backslash escapes). It returns as soon as the cap is exceeded, so a hostile
+    deeply-nested body is rejected in O(cap) work rather than parsed.
+    """
+
+    depth = 0
+    in_string = False
+    escaped = False
+    for ch in text:
+        if in_string:
+            if escaped:
+                escaped = False
+            elif ch == "\\":
+                escaped = True
+            elif ch == '"':
+                in_string = False
+            continue
+        if ch == '"':
+            in_string = True
+        elif ch == "[" or ch == "{":
+            depth += 1
+            if depth > cap:
+                return True
+        elif ch == "]" or ch == "}":
+            depth -= 1
+    return False
+
 
 @dataclass(frozen=True)
 class JsonField:
@@ -92,13 +134,20 @@ def parse_json(text: str) -> tuple[Any, JsonExtractError | None]:
     """Parse ``text`` as JSON, returning ``(value, None)`` or ``(None, error)``.
 
     Never raises. A malformed body becomes a returned :class:`JsonExtractError`
-    so the caller can emit a handled rejected candidate. This includes hostile
-    input that trips the decoder's own limits: a deeply-nested array/object makes
-    :func:`json.loads` raise :class:`RecursionError` (a :class:`RuntimeError`, so
-    *not* caught by the ``ValueError`` arm), which must never escape and abort a
-    scan. A defensive catch-all guarantees the "never raises" contract even if a
-    future decoder raises some other exception type.
+    so the caller can emit a handled rejected candidate.
+
+    Hostile deeply-nested input is rejected **deterministically**: before
+    decoding, :func:`_exceeds_max_depth` scans the raw text and, if container
+    nesting exceeds :data:`MAX_JSON_NESTING_DEPTH`, returns a ``malformed_json``
+    error without calling :func:`json.loads`. This is portable -- it does not
+    rely on the decoder raising :class:`RecursionError`, whose threshold is
+    interpreter/platform-dependent. The ``RecursionError`` and broad catch-all
+    arms below are kept purely as defense-in-depth so the "never raises" contract
+    holds even for input under the cap on a platform with a very low limit.
     """
+
+    if _exceeds_max_depth(text):
+        return None, JsonExtractError("malformed_json", "input nesting too deep")
 
     try:
         return json.loads(text), None

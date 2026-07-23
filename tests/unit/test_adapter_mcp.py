@@ -34,6 +34,7 @@ from app.ingest import (
     OfflineFetcher,
     SourceDocument,
 )
+from app.ingest.adapters._json import MAX_JSON_NESTING_DEPTH
 from app.ingest.adapters.mcp import (
     MCP_PROFILES,
     DisallowedCapabilityError,
@@ -175,7 +176,13 @@ def test_mcp_partial_never_guesses_missing_material_facts() -> None:
         b'{"provider": "example", "results": {"not": "a list"}}',  # not a list
         b'{"provider": "example"}',  # records path absent
         b'"just a string"',  # non-mapping root
-        b'{"provider": "example", "results": ' + b"[" * 3000 + b"]" * 3000 + b"}",  # recursion bomb
+        # Deterministic recursion-bomb guard: nesting deeper than the portable
+        # depth cap is rejected BEFORE json.loads on every platform (not reliant
+        # on RecursionError, whose threshold varies by interpreter/OS).
+        b'{"provider": "example", "results": '
+        + b"[" * (MAX_JSON_NESTING_DEPTH + 50)
+        + b"]" * (MAX_JSON_NESTING_DEPTH + 50)
+        + b"}",
     ],
 )
 def test_mcp_malformed_result_never_crashes_or_guesses(payload: bytes) -> None:
