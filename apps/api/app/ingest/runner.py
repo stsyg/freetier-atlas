@@ -38,7 +38,7 @@ import argparse
 import os
 import sys
 from collections.abc import Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 from sqlalchemy import create_engine, select
@@ -50,7 +50,7 @@ from app.ingest.config_sync import SyncResult, sync_provider
 from app.ingest.fetch import Fetcher, FetchPolicy, FixtureFetcher, OfflineFetcher
 from app.ingest.reconcile import reconcile_scan
 from app.ingest.scan import run_scan
-from app.models.domain import Provider, Source
+from app.models.domain import Provider, ScanRun, Source
 
 _DEFAULT_MIME = "text/html"
 
@@ -69,6 +69,11 @@ class SourceScanOutcome:
     scan_status: str | None = None
     reconcile_added: int = 0
     reconcile_modified: int = 0
+    published: int = 0
+    publish_unchanged: int = 0
+    reviewed: int = 0
+    withheld: int = 0
+    publish_error: str | None = None
     error: str | None = None
 
 
@@ -91,6 +96,14 @@ class RunnerResult:
     @property
     def total_candidates(self) -> int:
         return sum(s.candidates for s in self.sources)
+
+    @property
+    def total_published(self) -> int:
+        return sum(s.published for s in self.sources)
+
+    @property
+    def total_reviewed(self) -> int:
+        return sum(s.reviewed for s in self.sources)
 
 
 def fetch_policy_for(config: ProviderConfig) -> FetchPolicy:
@@ -135,13 +148,23 @@ def run_provider_scans(
     *,
     reconcile: bool = True,
     sync: bool = True,
+    publish: bool = False,
 ) -> RunnerResult:
-    """Sync ``config`` then scan (and optionally reconcile) each enabled source.
+    """Sync ``config`` then scan (and optionally reconcile / publish) each source.
 
     Returns a per-source summary. Each source runs in its own SAVEPOINT so a
     build/scan fault is isolated as a per-source error. The caller owns the
     surrounding transaction (this flushes / uses nested transactions but never
     commits).
+
+    When ``publish`` is true a second phase runs the deterministic publication
+    gate (:func:`app.publish.publisher.publish_scan`) over every scanned source.
+    Publication is deliberately a *separate* phase that runs only after **all**
+    sources have been scanned and reconciled, so cross-source contradictions
+    already exist as pending review items and the gate never auto-publishes a
+    contradicted offer. When ``publish`` is false the runner writes no
+    ``offer`` / ``offer_version`` / ``quota`` rows at all (F004/F005-slice-1
+    behaviour is preserved).
     """
 
     sync_result = sync_provider(session, config) if sync else None
@@ -160,6 +183,8 @@ def run_provider_scans(
     )
 
     result = RunnerResult(provider_slug=config.provider.id, sync=sync_result)
+    # Phase 1: scan + reconcile every source (isolated per-source savepoints).
+    scanned: list[tuple[Source, ScanRun, int]] = []
     for source in sources:
         savepoint = session.begin_nested()
         try:
@@ -191,6 +216,34 @@ def run_provider_scans(
                 reconcile_modified=reconcile_result.modified if reconcile_result else 0,
             )
         )
+        scanned.append((source, scan_run, len(result.sources) - 1))
+
+    # Phase 2: publication gate, only after every source is reconciled.
+    if publish:
+        # Imported lazily to avoid an import cycle (app.publish.publisher imports
+        # reconcile helpers from app.ingest, whose package __init__ imports this
+        # runner module).
+        from app.publish.publisher import publish_scan
+
+        for source, scan_run, index in scanned:
+            savepoint = session.begin_nested()
+            try:
+                publish_result = publish_scan(session, scan_run, source, config.publishing)
+                savepoint.commit()
+            except Exception as exc:  # noqa: BLE001 - isolate one source's publish fault
+                savepoint.rollback()
+                result.sources[index] = replace(
+                    result.sources[index],
+                    publish_error=f"{type(exc).__name__}: {exc}",
+                )
+                continue
+            result.sources[index] = replace(
+                result.sources[index],
+                published=publish_result.published,
+                publish_unchanged=publish_result.unchanged,
+                reviewed=publish_result.reviewed,
+                withheld=publish_result.withheld,
+            )
     return result
 
 
@@ -231,6 +284,17 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         help="Run scans only; skip the reconciliation pass.",
     )
     parser.add_argument(
+        "--publish",
+        action="store_true",
+        help=(
+            "After scanning and reconciling, run the deterministic publication "
+            "gate: high-confidence official offers are published (offer + "
+            "immutable offer_version + quota + classified Z0), uncertain or "
+            "contradictory evidence is held as a pending review item, and "
+            "unofficial/unevidenced data is withheld. Off by default."
+        ),
+    )
+    parser.add_argument(
         "--dry-run",
         action="store_true",
         help="Roll back instead of committing (inspect results without persisting).",
@@ -254,14 +318,30 @@ def _format_result(result: RunnerResult) -> str:
         )
     for outcome in result.sources:
         if outcome.status == "scanned":
-            lines.append(
+            line = (
                 f"  [{outcome.scan_status}] {outcome.slug}: "
                 f"documents={outcome.documents} candidates={outcome.candidates} "
                 f"changes={outcome.changes} errors={outcome.errors}"
             )
+            if outcome.publish_error is not None:
+                line += f" publish-error={outcome.publish_error}"
+            elif (
+                outcome.published
+                or outcome.reviewed
+                or outcome.withheld
+                or outcome.publish_unchanged
+            ):
+                line += (
+                    f" published={outcome.published} unchanged={outcome.publish_unchanged} "
+                    f"reviewed={outcome.reviewed} withheld={outcome.withheld}"
+                )
+            lines.append(line)
         else:
             lines.append(f"  [error] {outcome.slug}: {outcome.error}")
-    lines.append(f"  totals: scanned={result.scanned} failed={result.failed}")
+    lines.append(
+        f"  totals: scanned={result.scanned} failed={result.failed} "
+        f"published={result.total_published} reviewed={result.total_reviewed}"
+    )
     return "\n".join(lines)
 
 
@@ -292,7 +372,11 @@ def main(argv: Sequence[str] | None = None) -> int:
                     continue
                 fetcher = _fetcher_for(model, args.fixtures)
                 result = run_provider_scans(
-                    session, model, fetcher, reconcile=not args.no_reconcile
+                    session,
+                    model,
+                    fetcher,
+                    reconcile=not args.no_reconcile,
+                    publish=args.publish,
                 )
                 print(_format_result(result))
                 if result.failed:

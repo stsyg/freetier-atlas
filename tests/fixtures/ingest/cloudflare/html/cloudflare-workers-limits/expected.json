@@ -20,7 +20,8 @@
         "workers_per_account": "100",
         "cron_triggers_per_account": "5",
         "static_asset_files": "20,000",
-        "static_asset_file_size": "25 MiB"
+        "static_asset_file_size": "25 MiB",
+        "exhaustion_behaviour": "request_rejected"
       },
       "evidence_url": "https://developers.cloudflare.com/workers/platform/limits/",
       "evidence_selector": "cloudflare_workers_limits row[1]"
