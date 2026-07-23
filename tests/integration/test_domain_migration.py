@@ -294,3 +294,67 @@ def test_migration_round_trip(engine: Engine) -> None:
             },
         )
         assert compare_metadata(ctx, metadata) == [], "drift after round trip"
+
+
+def _source_columns(engine: Engine) -> set[str]:
+    return {c["name"] for c in inspect(engine).get_columns("source")}
+
+
+def _source_unique_constraints(engine: Engine) -> set[str]:
+    return {uc["name"] for uc in inspect(engine).get_unique_constraints("source")}
+
+
+def _installed_triggers(engine: Engine) -> set[str]:
+    with engine.connect() as conn:
+        rows = conn.execute(
+            text(
+                "SELECT tgname FROM pg_trigger WHERE tgname IN "
+                "('trg_offer_version_immutable', 'trg_candidate_official_source', "
+                "'trg_evidence_official_candidate')"
+            )
+        ).scalars()
+        return set(rows)
+
+
+@skip_without_db
+def test_source_slug_migration_0007_up_down_up(engine: Engine) -> None:
+    """Migration 0007 is additive + reversible with no drift, and it preserves
+    the offer_version immutability + both 0006 separation triggers across a full
+    up -> down -> up round trip."""
+
+    cfg = _alembic_config()
+    all_triggers = {
+        "trg_offer_version_immutable",
+        "trg_candidate_official_source",
+        "trg_evidence_official_candidate",
+    }
+
+    # At head (fixture upgraded): slug column + unique constraint present.
+    command.upgrade(cfg, "head")
+    assert "slug" in _source_columns(engine)
+    assert "uq_source_slug" in _source_unique_constraints(engine)
+    assert _installed_triggers(engine) == all_triggers
+
+    # Downgrade the single revision: slug + its constraint are removed and
+    # nothing else -- every pre-existing trigger survives.
+    command.downgrade(cfg, "0006_quarantine_separation")
+    assert "slug" not in _source_columns(engine)
+    assert "uq_source_slug" not in _source_unique_constraints(engine)
+    assert _installed_triggers(engine) == all_triggers
+
+    # Re-upgrade: slug + constraint come back and the ORM reports zero drift.
+    command.upgrade(cfg, "head")
+    assert "slug" in _source_columns(engine)
+    assert "uq_source_slug" in _source_unique_constraints(engine)
+    assert _installed_triggers(engine) == all_triggers
+
+    with engine.connect() as conn:
+        ctx = MigrationContext.configure(
+            conn,
+            opts={
+                "target_metadata": metadata,
+                "include_object": alembic_include_object,
+                "compare_type": True,
+            },
+        )
+        assert compare_metadata(ctx, metadata) == [], "drift after 0007 round trip"

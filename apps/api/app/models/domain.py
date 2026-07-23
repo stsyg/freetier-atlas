@@ -251,6 +251,7 @@ class Source(Base):
     provider_id: Mapped[int | None] = mapped_column(
         ForeignKey("provider.id", ondelete="SET NULL"), nullable=True
     )
+    slug: Mapped[str | None] = mapped_column(Text, nullable=True)
     adapter_type: Mapped[str] = mapped_column(Text, nullable=False)
     trust_level: Mapped[str] = mapped_column(Text, nullable=False)
     official: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
@@ -262,6 +263,8 @@ class Source(Base):
     created_at: Mapped[datetime] = _created_at()
 
     snapshots: Mapped[list[Snapshot]] = relationship(back_populates="source")
+
+    __table_args__ = (UniqueConstraint("slug", name="uq_source_slug"),)
 
 
 class Snapshot(Base):

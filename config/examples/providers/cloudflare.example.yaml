@@ -6,12 +6,19 @@ provider:
     - developers.cloudflare.com
 
 sources:
+  - id: cloudflare-workers-limits
+    type: html
+    trust_level: official
+    url: https://developers.cloudflare.com/workers/platform/limits/
+    schedule_ref: official_pages
+    extraction_profile: cloudflare_workers_limits
+
   - id: cloudflare-pages-limits
     type: html
     trust_level: official
     url: https://developers.cloudflare.com/pages/platform/limits/
     schedule_ref: official_pages
-    extraction_profile: quota_document
+    extraction_profile: cloudflare_pages_limits
 
   - id: cloudflare-pages-pricing
     type: html

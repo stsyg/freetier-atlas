@@ -225,6 +225,42 @@ following the F002 baseline `0001`/`0002`).
   or promote one to official, the official pipeline is unregressed, and migration
   0006 round-trips (up→down→up) with no drift and the immutability trigger intact.
   `scripts/stack-smoke` additionally asserts the two separation triggers exist.
+- **Idempotent-sync key (migration `0007_source_slug`).** Adds a nullable
+  `source.slug` column plus a `uq_source_slug` UNIQUE constraint so the
+  declarative-config→database sync (`app.ingest.config_sync.sync_provider`) has a
+  stable upsert key: re-running the sync matches an existing source by its slug
+  (the YAML `source.id`) rather than inserting a duplicate. The column is
+  additive and nullable, so pre-existing or non-config-managed rows are
+  unaffected (PostgreSQL treats NULLs as distinct, so several unsynced sources may
+  coexist). The ORM `Source` model gains the matching `slug` column +
+  `UniqueConstraint`, so `compare_metadata` reports no drift. The migration
+  installs **no** trigger and touches no other object: the offer-version
+  immutability trigger and both 0006 separation triggers are left completely
+  intact, and there is still **no publication path**. It is reversible (`alembic
+  downgrade 0006_quarantine_separation`) — up→down→up restores the column +
+  constraint, leaves all three triggers intact, and produces no drift
+  (`tests/integration/test_domain_migration.py::test_source_slug_migration_0007_up_down_up`).
+  `scripts/stack-smoke` additionally asserts the `source.slug` column and
+  `uq_source_slug` constraint exist on the running stack.
+- **Config→DB sync + scan runner (F005 slice 1).** `app.ingest.config_sync`
+  turns a validated `ProviderConfig` (loaded from
+  `config/examples/providers/<provider>.yaml`) into `provider` + `source` rows,
+  bridging the YAML/DB field-name gaps (`source.type`→`adapter_type`,
+  `source.url`→`endpoint`, `source.extraction_profile`→`parser_profile`,
+  `source.schedule_ref`→`schedule`, `source.id`→`slug`, and deriving `official`
+  from `trust_level`). `app.ingest.runner.run_provider_scans` (and the
+  `python -m app.ingest.runner` CLI) composes `sync_provider` → per-source
+  `run_scan` → `reconcile_scan` behind the offline Fetcher seam, isolating each
+  source in its own `SAVEPOINT` so an un-buildable adapter is a per-source error,
+  not a whole-run abort. It writes only pre-publication rows (`scan_run` /
+  `snapshot` / `candidate` / official `evidence` / `discovery_candidate` / draft
+  `change_event` / `review_item`); it never creates or mutates
+  `offer`/`offer_version`/`quota`, and every official `evidence` row it produces
+  has `offer_version_id IS NULL`. Covered by `tests/unit/test_ingest_config_sync.py`,
+  `tests/unit/test_ingest_runner.py`, `tests/integration/test_ingest_config_sync.py`
+  (creation + re-run idempotency, no duplicate rows), and
+  `tests/integration/test_ingest_runner.py` (deterministic Cloudflare extraction,
+  official evidence with NULL `offer_version_id`, zero offer/offer_version/quota).
 
 ## Z0 classification engine
 
