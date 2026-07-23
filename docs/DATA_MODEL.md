@@ -185,6 +185,27 @@ following the F002 baseline `0001`/`0002`).
   and contradictions are never auto-resolved. Unknown (`None`) values never
   contradict. The migration is reversible (`alembic downgrade
   0004_ingest_candidates`).
+- **Quarantine separation hardening (migration `0006_quarantine_separation`).**
+  Defense-in-depth that makes "community sources can never become verified
+  evidence" an enforced *database* invariant rather than only an application
+  convention. It adds **no** table/column/constraint (so ORM metadata is
+  unchanged and `compare_metadata` reports no drift) and installs two
+  `BEFORE INSERT OR UPDATE` triggers: `trg_candidate_official_source` rejects a
+  `candidate` flagged `official = true` unless its `source.trust_level =
+  'official'` (a community/unverified source can never own an official candidate,
+  and a quarantined candidate can never be *promoted* to official in place); and
+  `trg_evidence_official_candidate` rejects an `evidence` row whose
+  `candidate_id` references a non-official candidate. Together with the pre-existing
+  structural isolation (`discovery_candidate` has no foreign key into `evidence`
+  or `offer_version`) community-sourced discovery cannot cross into the
+  verified/official pipeline at any layer. Both triggers raise with
+  `ERRCODE = 'restrict_violation'` (SQLSTATE class 23 → `IntegrityError`), matching
+  the offer-version immutability convention. The application half lives in
+  `app.ingest.trust` (`is_official_source`, `assert_evidence_permitted`), used by
+  `run_scan`. There is still **no publication path** and the offer-version
+  immutability trigger is untouched. The migration is reversible (`alembic
+  downgrade 0005_change_event_candidate_link`) — up→down→up restores both triggers,
+  leaves the immutability trigger intact, and produces no drift.
 - **Tests.** `tests/unit/test_domain_models.py` checks the metadata shape and
   vocabulary membership offline; `tests/integration/test_domain_migration.py`
   (run against a live PostgreSQL) verifies apply, model/migration drift,
@@ -196,6 +217,14 @@ following the F002 baseline `0001`/`0002`).
   reconciliation path over unchanged/changed/stale/contradictory fixtures.
   `scripts/stack-smoke` asserts the domain tables and the immutability trigger
   exist on the running stack.
+  `tests/unit/test_ingest_trust.py` covers the pure trust-gating rule offline and
+  `tests/integration/test_ingest_separation.py` (live PostgreSQL) proves the
+  quarantine invariant end-to-end: a community scan produces only
+  `discovery_candidate` rows with zero evidence/offer/offer_version, the two 0006
+  triggers reject any raw-SQL attempt to attach evidence to a community candidate
+  or promote one to official, the official pipeline is unregressed, and migration
+  0006 round-trips (up→down→up) with no drift and the immutability trigger intact.
+  `scripts/stack-smoke` additionally asserts the two separation triggers exist.
 
 ## Z0 classification engine
 

@@ -103,6 +103,15 @@ check_ingest_migration() {
   [[ "${link}" == "1" ]]
 }
 
+check_separation_migration() {
+  local trg imm
+  trg="$(psql_query "SELECT count(*) FROM pg_trigger WHERE tgname IN ('trg_candidate_official_source','trg_evidence_official_candidate')")"
+  [[ "${trg}" == "2" ]] || return 1
+  # The 0006 downgrade must never touch the offer_version immutability trigger.
+  imm="$(psql_query "SELECT count(*) FROM pg_trigger WHERE tgname='trg_offer_version_immutable'")"
+  [[ "${imm}" == "1" ]]
+}
+
 worker_healthy() { [[ "$(container_health worker)" == "healthy" ]]; }
 scheduler_healthy() { [[ "$(container_health scheduler)" == "healthy" ]]; }
 
@@ -143,6 +152,7 @@ run_check "Migration applied (app_meta table + marker row)" check_migration
 run_check "Worker migration applied (job_queue + service_heartbeat)" check_worker_migration
 run_check "Domain migration applied (0003 tables + immutability trigger)" check_domain_migration
 run_check "Ingest migration applied (0004 candidate + discovery_candidate tables)" check_ingest_migration
+run_check "Separation migration applied (0006 quarantine triggers)" check_separation_migration
 run_check "Worker container healthy" check_worker_healthy
 run_check "Scheduler container healthy" check_scheduler_healthy
 run_check "Queue processed (>=1 job reached done)" check_queue_processed

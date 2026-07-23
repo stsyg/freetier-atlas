@@ -109,6 +109,14 @@ Invoke-SmokeCheck "Ingest migration applied (0004 candidate + discovery_candidat
     if ([int]$link -ne 1) { throw "evidence link-target check constraint not installed (got '$link')" }
 }
 
+Invoke-SmokeCheck "Separation migration applied (0006 quarantine triggers)" {
+    $trg = Invoke-Psql "SELECT count(*) FROM pg_trigger WHERE tgname IN ('trg_candidate_official_source','trg_evidence_official_candidate')"
+    if ([int]$trg -ne 2) { throw "quarantine separation triggers not installed (expected 2, got '$trg')" }
+    # The 0006 downgrade must never touch the offer_version immutability trigger.
+    $imm = Invoke-Psql "SELECT count(*) FROM pg_trigger WHERE tgname='trg_offer_version_immutable'"
+    if ([int]$imm -ne 1) { throw "offer_version immutability trigger missing (got '$imm')" }
+}
+
 Invoke-SmokeCheck "Worker container healthy" {
     Wait-Until -TimeoutSeconds 90 -Condition { (Get-ContainerHealth "worker") -eq "healthy" }
 }

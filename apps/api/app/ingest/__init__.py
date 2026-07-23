@@ -85,6 +85,12 @@ from .reconcile import (
 )
 from .reference import JsonOfferAdapter
 from .scan import ADAPTER_REGISTRY, UnknownAdapterError, build_adapter, run_scan
+from .trust import (
+    OFFICIAL_TRUST_LEVEL,
+    SeparationError,
+    assert_evidence_permitted,
+    is_official_source,
+)
 from .vocab import VERIFICATION_STATES, is_verification_state
 
 __all__ = (
@@ -141,6 +147,11 @@ __all__ = (
     "build_adapter",
     "ADAPTER_REGISTRY",
     "UnknownAdapterError",
+    # trust / quarantine separation
+    "OFFICIAL_TRUST_LEVEL",
+    "SeparationError",
+    "is_official_source",
+    "assert_evidence_permitted",
     # reconciliation
     "reconcile_scan",
     "ReconcileResult",
