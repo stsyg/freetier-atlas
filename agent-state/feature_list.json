@@ -112,9 +112,15 @@
         "Confirm community sources cannot become verified evidence."
       ],
       "required_evaluation_level": 2,
-      "passes": false,
-      "last_verified_at": null,
-      "verification_evidence": []
+      "passes": true,
+      "last_verified_at": "2026-07-23T16:16:42Z",
+      "verification_evidence": [
+        "AC1 (contract tests every source type): Full offline suite scripts/test.ps1 green (335 passed / 28 skipped); check.ps1 -NodeAudit 8/8 gates green; live integration suite on fresh Postgres 28 passed; independent adversarial adapter probes 45/45 — reference/RSS/HTML/structured-API/MCP each produce candidate-only facts across unchanged/changed/malformed/partial/contradictory.",
+        "AC2 (allowlists, network blocking, limits, timeouts, malformed): Independent SSRF probes confirm non-allowlisted host, cross-host redirect, private-IP, cloud-metadata (169.254.169.254 incl. IPv4-mapped-IPv6 unmasking), non-https, oversize, timeout, and bad-MIME all refused; adapters reach network only via injected Fetcher (grep: no direct HTTP client import); OfflineFetcher default never opens a socket; deterministic JSON nesting-depth cap (100) enforced by pre-parse raw-text scan independent of recursionlimit; MCP capability allowlist enforced both directions with offline client (spy calls=0 when disallowed). Malformed NEVER crashes and NEVER guesses — proven end-to-end via run_scan (errors=1, 0 candidates, 0 evidence, snapshot persisted, status=partial). Residual R1 (DNS-rebinding IP pinning) is a documented accepted out-of-scope deferral (progress.md S1 + current_contract.json), not a blocker.",
+        "AC3 (unchanged/changed/stale/contradictory): Independent reconciliation probes 23/23 — unchanged=no event; material change=DRAFT ChangeEvent; stale=flagged; contradictory across official different-source candidates=pending ReviewItem never auto-resolved; unknown never conflicts; community excluded from contradictions; zero OfferVersion created. run_scan probes 18/18 confirm official source -> hashed Snapshot + pre-publication Candidate + Evidence linked Source/Snapshot/Candidate with offer_version_id NULL; reproducible hashing; idempotent re-scan (0 changes).",
+        "AC4 (community cannot become verified evidence): community source -> DiscoveryCandidate quarantine + non-official candidate + 0 evidence. Independent raw-SQL DB probes 10/10 — DB Trigger A (trg_candidate_official_source) rejects official candidate on community source; Trigger B (trg_evidence_official_candidate) rejects evidence referencing a community candidate; in-place promotion rejected; all raise restrict_violation (SQLSTATE 23001); positive official-path control allowed.",
+        "Global invariants: NO publication path / NO OfferVersion writes anywhere (grep clean; offer_version_id always NULL); trg_offer_version_immutable independently rejects both UPDATE and DELETE on offer_version (23001); official-only evidence; 'unknown is better than guessed' upheld; stdlib-only — no new runtime/npm dependency (manifest diff vs origin/main empty, requirements-sync gate green); all migrations 0001..0006 reversible — independent full downgrade-to-base -> upgrade-to-head round-trip on live DB: 6 revisions apply, all 3 triggers reinstalled, compare_metadata drift == []."
+      ]
     },
     {
       "id": "F005",
