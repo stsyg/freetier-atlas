@@ -112,6 +112,14 @@ check_separation_migration() {
   [[ "${imm}" == "1" ]]
 }
 
+check_source_slug_migration() {
+  local col uc
+  col="$(psql_query "SELECT count(*) FROM information_schema.columns WHERE table_name='source' AND column_name='slug'")"
+  [[ "${col}" == "1" ]] || return 1
+  uc="$(psql_query "SELECT count(*) FROM pg_constraint WHERE conname='uq_source_slug'")"
+  [[ "${uc}" == "1" ]]
+}
+
 worker_healthy() { [[ "$(container_health worker)" == "healthy" ]]; }
 scheduler_healthy() { [[ "$(container_health scheduler)" == "healthy" ]]; }
 
@@ -153,6 +161,7 @@ run_check "Worker migration applied (job_queue + service_heartbeat)" check_worke
 run_check "Domain migration applied (0003 tables + immutability trigger)" check_domain_migration
 run_check "Ingest migration applied (0004 candidate + discovery_candidate tables)" check_ingest_migration
 run_check "Separation migration applied (0006 quarantine triggers)" check_separation_migration
+run_check "Source-slug migration applied (0007 source.slug + uq_source_slug)" check_source_slug_migration
 run_check "Worker container healthy" check_worker_healthy
 run_check "Scheduler container healthy" check_scheduler_healthy
 run_check "Queue processed (>=1 job reached done)" check_queue_processed

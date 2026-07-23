@@ -1,69 +1,73 @@
 {
   "schema_version": 1,
   "status": "approved",
-  "feature_id": "F004",
-  "increment": "slice-6-community-discovery-quarantine-and-separation-hardening",
+  "feature_id": "F005",
+  "increment": "slice-1-cloudflare-official-extraction-config-sync-and-scan-runner",
   "builder": "Copilot CLI (Chief)",
-  "evaluator": "fresh independent full-epic Level 2 evaluator (after merge)",
-  "approved_at": "2026-07-23T13:40:00Z",
+  "evaluator": "fresh independent full-epic Level 2 evaluator (after all slices merge)",
+  "approved_at": "2026-07-27T00:00:00Z",
   "approval_notes": [
-    "Orchestrator-directed F004 Slice 6 - the FINAL implementation slice. Slices 1 (safe fetch guard + SourceAdapter contract, PR #14), 2 (migration 0004 + run_scan orchestration, PR #15), 3 (reconciliation + migration 0005, PR #16), 4 (RSS + HTML adapters, PR #17) and 5 (structured-API + MCP adapters, PR #18) are merged to main. This contract governs Slice 6 ONLY.",
-    "Standing autonomy boundaries: may branch/implement/test/commit/push/open ONE PR; may NOT merge, flip any passes flag, add a runtime/npm dependency, weaken any existing test/fixture/CHECK/trigger, touch the offer_version immutability trigger, or attempt residual R1 (DNS-rebinding IP pinning).",
-    "F004 stays passes:false after this slice. A SEPARATE fresh-context full-epic Level 2 close-out (run AFTER this PR merges) owns the passes:true flip."
+    "Orchestrator-directed F005 Slice 1. Build ONE slice, open ONE PR, do NOT merge, do NOT flip any passes flag. F005 stays passes:false; a separate fresh-context full-epic Level 2 close-out owns the flip after all slices merge.",
+    "Owner-confirmed decisions carried in: Q1 OFFLINE deterministic extraction against captured official Cloudflare FIXTURES (LiveFetcher gated OFF in CI); first target = Cloudflare Workers + Pages free-tier limits on developers.cloudflare.com (REAL Cloudflare free facts, official evidence, NOT the synthetic 'example' provider). Q3 publication confidence lives in OfferVersion.material_facts JSONB in S2, NOT this slice, and NO confidence migration ever. Q4 auto-publish is S2, NOT this slice.",
+    "Standing autonomy boundaries: may branch/implement/test/commit/push/open ONE PR; may NOT merge, flip any passes flag, add a Python/npm dependency, weaken any existing test/fixture/CHECK/trigger, touch trg_offer_version_immutable or the two 0006 separation triggers, or add any publication/OfferVersion path."
   ],
-  "objective": "Harden the community-discovery quarantine into an ENFORCED separation INVARIANT at multiple layers, closing F004 acceptance step 4 ('Confirm community sources cannot become verified evidence'). Community/unverified sources may create ONLY discovery_candidate rows plus non-official Candidate rows; they can NEVER create Evidence, an official Candidate, an Offer, or an OfferVersion. Add defense-in-depth at (a) the application layer (an explicit, centralised, testable trust-gating module used by run_scan with a guard that refuses to attach evidence to a non-official candidate) and (b) the DATABASE layer (a new reversible Alembic migration 0006 installing two PL/pgSQL triggers: candidate.official may be true only when its source is official; evidence.candidate_id may reference only an official candidate). There is no automated promotion-to-published path: quarantined discovery records are reviewable but any promotion would require the separate official-evidence pipeline and explicit human/admin disposition. run_scan/reconcile behaviour for all valid flows is unchanged; the offer_version immutability trigger and every 0001-0005 object are untouched.",
+  "objective": "Deliver a genuinely-working Cloudflare OFFICIAL free-tier extraction vertical slice, end-to-end and offline: (1) deterministic quota/limit extraction from captured official Cloudflare fixtures for Workers + Pages free-tier, reusing the existing SourceAdapter contract + generic HTML table-walking machinery via provider-specific extraction profiles registered as data; (2) an idempotent config->DB sync that turns the Cloudflare provider config into Provider + Source rows, bridging the planner-identified field gaps (type->adapter_type, url->endpoint, extraction_profile->parser_profile, schedule_ref->schedule, YAML source id->Source.slug); (3) a reversible additive migration 0007 adding Source.slug as the stable idempotent-sync key; (4) a scan runner (run_provider_scans) wired as an invocable runtime entrypoint that drives run_scan + reconcile_scan across configured providers using an offline fetcher, producing Candidate + official Evidence only. NO publication path, NO Offer/OfferVersion/Quota writes; evidence.offer_version_id stays NULL. 'unknown is better than guessed' - no number is invented that is not present in the fixture.",
   "scope": [
-    "apps/api/app/ingest/trust.py (new): OFFICIAL_TRUST_LEVEL constant, is_official_source(source), SeparationError(RuntimeError), and assert_evidence_permitted(*, candidate_official, trust_level=None) which raises SeparationError when evidence would be attached to a non-official/quarantined candidate. Pure, import-light (no DB/HTTP).",
-    "apps/api/app/ingest/scan.py: derive is_official via is_official_source(source); add assert_evidence_permitted(candidate_official=candidate.official) as the first line of _persist_evidence (defense-in-depth). No change to run_scan's fetch->canonicalize->extract->validate->persist flow, counts, or the community->discovery_candidate branch.",
-    "apps/api/app/ingest/__init__.py: export SeparationError, is_official_source, assert_evidence_permitted, OFFICIAL_TRUST_LEVEL.",
-    "migrations/versions/0006_quarantine_separation.py (revision 0006_quarantine_separation, down_revision 0005_change_event_candidate_link): install trg_candidate_official_source (BEFORE INSERT OR UPDATE ON candidate: NEW.official true => source.trust_level must be 'official') and trg_evidence_official_candidate (BEFORE INSERT OR UPDATE ON evidence: candidate_id NOT NULL => that candidate.official must be true), both RAISE EXCEPTION ... USING ERRCODE='restrict_violation'. Fully reversible downgrade drops both triggers + functions only. Adds no table/column/constraint (no ORM drift); does not touch trg_offer_version_immutable or any 0001-0005 object.",
-    "tests/unit/test_ingest_trust.py: is_official_source true/false; assert_evidence_permitted passes for official and raises SeparationError for community; scan._persist_evidence guard raises SeparationError when handed a non-official candidate (no DB needed).",
-    "tests/integration/test_ingest_separation.py (live PG): (1) community scan -> only discovery_candidate rows, 0 evidence, 0 official candidates, 0 offer, 0 offer_version; (2) raw INSERT of evidence referencing a community candidate is rejected by Trigger B (IntegrityError); (3) INSERT and UPDATE of a candidate with official=true on a community source is rejected by Trigger A; a community candidate cannot be flipped official; (4) official scan still produces Candidate+Evidence (no regression); (5) migration 0006 up->down->up: both separation triggers present after up, absent after down, trg_offer_version_immutable survives throughout, compare_metadata drift == [].",
-    "scripts/stack-smoke.ps1 + scripts/stack-smoke.sh: add a 'Separation triggers installed (0006)' check asserting trg_candidate_official_source and trg_evidence_official_candidate exist.",
-    "docs/DATA_MODEL.md (+ a one-line note in docs/SOURCE_REUSE_AND_PROVENANCE.md): document the quarantine separation invariant and migration 0006 triggers."
+    "apps/api/app/ingest/adapters/html.py: add two provider-specific HtmlExtractionProfile entries to HTML_EXTRACTION_PROFILES - cloudflare_workers_limits (table id 'workers-free-tier') and cloudflare_pages_limits (table id 'pages-free-tier') - mapping the free-tier columns to fact fields (service, offer_type, requires_card bool, has_paid_dependencies bool, plus per-limit text fields captured verbatim). Provider knowledge lives as data in the registry; no adapter code branches on provider.",
+    "tests/fixtures/ingest/cloudflare/html/workers-limits/{source.html,expected.json} and .../pages-limits/{source.html,expected.json}: captured representative official snapshots carrying REAL Cloudflare free-tier facts, keyed by the official developers.cloudflare.com URLs, with expected CandidateFacts + content-hash-stable extraction.",
+    "apps/api/app/ingest/config_sync.py (new): sync_provider(session, ProviderConfig) upserting one Provider (by slug) and its Sources (by Source.slug), bridging YAML->DB fields; returns a summary of created/updated/unchanged. Idempotent: a second run on the same config creates no duplicates and reports zero changes. Pure ORM; no network, no publication path.",
+    "apps/api/app/ingest/runner.py (new): run_provider_scans(session, config_or_provider, fetcher, *, reconcile=True) that, per enabled source, guards build_adapter+run_scan in try/except (a build/scan fault is recorded as a per-source error, never crashes the run) and optionally runs reconcile_scan; returns a per-source result summary. Plus a `python -m app.ingest.runner` CLI entrypoint: default OfflineFetcher (no egress), optional --fixtures DIR to build a FixtureFetcher from captured fixtures, --database-url/DATABASE_URL for the session. No Offer/OfferVersion/Quota writes.",
+    "migrations/versions/0007_source_slug.py (revision 0007_source_slug, down_revision 0006_quarantine_separation): additive + reversible. Upgrade adds source.slug (Text, nullable) + UniqueConstraint uq_source_slug; downgrade drops the constraint + column only. Touches no other table/column/constraint; does not touch trg_offer_version_immutable, trg_candidate_official_source, or trg_evidence_official_candidate.",
+    "apps/api/app/models/domain.py: add slug mapped_column(Text, nullable=True) + UniqueConstraint('slug', name='uq_source_slug') to Source so compare_metadata drift stays []. No other model change.",
+    "apps/api/app/ingest/__init__.py: export the new Cloudflare profile names/helpers, sync_provider, and run_provider_scans.",
+    "config/examples/providers/cloudflare.example.yaml: repoint cloudflare-pages-limits to extraction_profile cloudflare_pages_limits and add cloudflare-workers-limits (html, official, workers limits URL, cloudflare_workers_limits). Existing rss/mcp/pricing sources left intact.",
+    "tests/unit: test_adapter_html_cloudflare.py (deterministic Cloudflare extraction: identical fixture -> identical CandidateFacts + identical content hash; real facts; unknown-not-guessed on a missing column) and test_ingest_config_sync.py + test_ingest_runner.py (config-sync bridging + idempotency without a DB using a fake/in-memory session where feasible; runner per-source build-failure guard).",
+    "tests/integration/test_ingest_config_sync.py + test_ingest_runner.py (live PG): config->DB sync creates Provider+Sources and is idempotent on re-run (no duplicate rows, zero spurious changes); runner over the Cloudflare config with a FixtureFetcher produces Candidate + official Evidence for Workers+Pages, writes ZERO offer/offer_version/quota, evidence.offer_version_id IS NULL; migration 0007 up->down->up leaves compare_metadata drift == [] with all triggers intact.",
+    "scripts/stack-smoke.ps1 + scripts/stack-smoke.sh: add a 'source.slug present (0007)' check.",
+    "docs: note migration 0007 (Source.slug) in docs/DATA_MODEL.md and the Cloudflare extraction profile + config->DB sync + scan runner in docs/PROVIDER_ADAPTERS.md / docs/SOURCE_REUSE_AND_PROVENANCE.md."
   ],
   "out_of_scope": [
-    "Any change to run_scan/reconcile logic beyond adding is_official_source() and the _persist_evidence guard (Slice 2/3 invariants unchanged).",
-    "Creating or mutating offer/offer_version (no publication path); the offer_version immutability trigger is untouched.",
-    "Any automated promotion of a discovery_candidate to published/verified state; promotion remains a separate official-evidence + human/admin concern, not built here.",
-    "Wiring ingestion into the worker/scheduler/API runtime.",
-    "Residual R1 (DNS-rebinding IP pinning) from Slice 1 - explicitly deferred.",
-    "Any new runtime or npm dependency (requirements-sync guard stays green; PL/pgSQL + stdlib only).",
-    "Marking F004 passes:true (reserved for the separate post-merge full-epic Level 2 close-out)."
+    "Any publication path: creating or mutating offer/offer_version/quota, or auto-publish (S2). evidence.offer_version_id stays NULL; trg_offer_version_immutable untouched.",
+    "Publication confidence storage / any confidence migration (S2 lives in OfferVersion.material_facts JSONB; never a migration).",
+    "LiveFetcher / real network egress in CI (LiveFetcher stays OFF by default; extraction runs against captured fixtures).",
+    "Weakening the community/official separation: the two 0006 triggers and trust gating are untouched; Cloudflare sources are official -> Evidence only.",
+    "Any new Python or npm dependency; no pyproject/requirements*/package.json change (requirements-sync guard stays green; stdlib only).",
+    "Wiring ingestion into the worker/scheduler/API HTTP runtime beyond the runner CLI entrypoint.",
+    "Marking F005 passes:true (reserved for the separate post-merge full-epic Level 2 close-out)."
   ],
   "acceptance_criteria": [
-    "Community quarantine: a community/unverified scan produces ONLY discovery_candidate rows (verification_status='unverified') plus non-official Candidate rows, and ZERO evidence, ZERO official candidates, ZERO offer, ZERO offer_version.",
-    "App-layer separation: run_scan gates evidence creation through an explicit trust check; assert_evidence_permitted refuses to attach evidence to a non-official candidate (unit-proven both directions).",
-    "DB-layer separation, direction 1: evidence.candidate_id may reference only an official candidate; a raw INSERT of evidence for a community (official=false) candidate is rejected by Trigger B at the database.",
-    "DB-layer separation, direction 2: a candidate.official=true is permitted only when its source is official; a raw INSERT or UPDATE that marks a community-source candidate official is rejected by Trigger A. A quarantined community candidate cannot be promoted into the official pipeline from community data alone.",
-    "No regression: an official scan still produces Candidate + Evidence exactly as before; run_scan counts and the reconcile pass are unchanged.",
-    "Migration 0006 is reversible: up->down->up leaves compare_metadata drift == []; both separation triggers exist after up and are gone after down; trg_offer_version_immutable and all 0001-0005 tables/CHECKs/triggers survive throughout.",
-    "No publication path / immutability intact: no offer_version is written and trg_offer_version_immutable is untouched.",
-    "Supply chain: no new Python or npm dependency; requirements-sync guard stays green; stdlib + PL/pgSQL only.",
-    "Regression green: scripts/test.ps1 and scripts/check.ps1 -NodeAudit pass offline (ruff, format, pytest, prettier, eslint, detect-secrets, pip-audit, npm audit) including requirements-sync.",
-    "F004 remains passes:false; a fresh-context independent full-epic Level 2 evaluator (post-merge) owns any status change."
+    "Deterministic official extraction: the Cloudflare Workers and Pages fixtures each extract the expected CandidateFacts with real free-tier values (no invented numbers); re-extracting the byte-identical fixture yields identical CandidateFacts and an identical content hash (idempotent, reproducible). A missing column yields UNKNOWN (None), never a guess.",
+    "Config->DB sync is idempotent: sync_provider on the Cloudflare config creates one Provider and its Sources (fields correctly bridged: type->adapter_type, url->endpoint, extraction_profile->parser_profile, schedule_ref->schedule, YAML id->Source.slug); a second run creates no duplicate rows and reports zero changes (stable on Source.slug).",
+    "Migration 0007 is additive + reversible: source.slug + uq_source_slug exist after up and are gone after down; up->down->up leaves compare_metadata drift == []; trg_offer_version_immutable and the two 0006 separation triggers survive throughout.",
+    "Scan runner works offline and is invocable: run_provider_scans drives run_scan + reconcile_scan across the configured Cloudflare sources with a FixtureFetcher, producing Candidate + official Evidence for Workers+Pages; a per-source build/scan fault is isolated as a per-source error (the run never crashes). A `python -m app.ingest.runner` entrypoint exists (default OfflineFetcher, no egress).",
+    "No publication path: the runner writes ZERO offer, offer_version, and quota rows; every Evidence row has offer_version_id IS NULL; trg_offer_version_immutable is untouched.",
+    "Separation intact: Cloudflare sources are official and produce Evidence; the 0006 separation triggers and trust gating are unchanged; no community source acquires evidence.",
+    "Network seam only: extraction reaches bytes solely through the Fetcher seam (FixtureFetcher/OfflineFetcher offline); no adapter imports urllib/httpx/requests; LiveFetcher stays disabled by default.",
+    "Supply chain: no new Python or npm dependency; requirements-sync guard stays green; stdlib only.",
+    "Regression green: scripts/test.ps1 and scripts/check.ps1 -NodeAudit pass offline (ruff lint+format, pytest, prettier, eslint, detect-secrets, pip-audit, npm audit, requirements-sync).",
+    "F005 remains passes:false; a fresh-context independent full-epic Level 2 evaluator (post all-slices merge) owns any status change."
   ],
   "verification_plan": {
-    "baseline_commands": ["git status --short --branch", "git --no-pager log --oneline -20", "pwsh -File scripts/test.ps1"],
+    "baseline_commands": ["git status --short --branch", "git --no-pager log --oneline -20", "pwsh -File scripts/check.ps1 -NodeAudit"],
     "unit_commands": ["pwsh -File scripts/test.ps1", "pwsh -File scripts/check.ps1 -NodeAudit"],
     "integration_commands": [
-      "Required: Slice 6 adds migration 0006 (DB triggers). Fresh live DB cycle on alternate host ports (POSTGRES_PORT=55432, API_PORT=8010, WEB_PORT=8090): docker compose down --volumes -> up --build (fresh DB applies 0001-0006) -> scripts/stack-smoke.ps1 -> pytest tests/integration/test_ingest_separation.py + test_ingest_scan.py + test_ingest_reconcile.py + test_domain_migration.py -> docker compose down --volumes.",
-      "Prove 0006 reversibility (manual up->down->up AND the round-trip test) with compare_metadata drift == [] and 0001-0005 tables/triggers/CHECKs intact."
+      "Required: Slice 1 adds migration 0007. Fresh live DB cycle on alternate host ports (POSTGRES_PORT=55432, API_PORT=8010, WEB_PORT=8090, DATABASE_URL=postgresql+psycopg://atlas:atlas@localhost:55432/atlas): docker compose down --volumes -> stack-up --build (fresh DB applies 0001-0007) -> scripts/stack-smoke.ps1 -> pytest tests/integration (config_sync + runner + domain_migration + ingest_scan/reconcile/separation) with DATABASE_URL set -> docker compose down --volumes.",
+      "Prove config->DB sync idempotency (re-run => zero changes, no duplicate rows), deterministic extraction (Candidate + official Evidence for Workers+Pages, evidence.offer_version_id NULL, zero offer/offer_version/quota), and migration 0007 up->down->up with compare_metadata drift == [] and all triggers intact."
     ]
   },
   "risks": {
-    "data_migration": "Migration 0006 adds only two BEFORE INSERT/UPDATE triggers (+ their functions); no table/column/constraint change, so ORM metadata is unchanged and compare_metadata drift stays []. Downgrade drops exactly those triggers/functions. offer_version and its immutability trigger are untouched.",
-    "security_privacy": "This slice strengthens the trust boundary: community/quarantined data cannot cross into verified evidence at either the application or the database layer. No new network surface; adapters and the SafeFetcher seam are unchanged.",
-    "portability": "PL/pgSQL triggers use standard ERRCODE 'restrict_violation' (class 23 -> IntegrityError) as the existing immutability trigger does; pure standard-library Python otherwise; amd64/arm64 unaffected.",
-    "zero_cost_safety": "No offer data is published; quarantine remains candidate/discovery only; 'unknown is better than guessed'; no Z0/free claim is asserted. Tests use a synthetic 'example'/'acme' provider, so no unsupported real free-tier claim is introduced.",
-    "regression": "run_scan's valid-flow behaviour and counts are unchanged (the new guard raises only in a should-never-happen case); the candidate trigger checks source trust only when official=true, so the community and official flows and the reconcile UPDATE of verification_state are unaffected.",
-    "supply_chain": "No new Python or npm dependency; requirements-sync guard stays green."
+    "data_migration": "Migration 0007 adds one nullable Text column (source.slug) + one UNIQUE constraint; additive and reversible, downgrade drops exactly those. Nullable + Postgres NULL-distinct uniqueness means pre-existing/unsynced source rows are unaffected. ORM Source gains the matching slug column + UniqueConstraint so compare_metadata drift stays []. No other 0001-0006 object is touched.",
+    "security_privacy": "Extraction is offline against captured fixtures via the Fetcher seam; LiveFetcher stays OFF. No user-controlled URLs (endpoints come from vetted config only). No secrets in fixtures/config/tests. Official Cloudflare sources produce Evidence; separation triggers unchanged.",
+    "portability": "Pure standard-library Python; PL/pgSQL only in the additive migration; no new dependency; amd64/arm64 unaffected.",
+    "zero_cost_safety": "No offer/offer_version/quota is written and no free/Z0 claim is published in this slice; extraction produces pre-publication Candidate + Evidence only. Cloudflare free-tier facts are captured verbatim from official docs with evidence provenance; unknown-is-better-than-guessed enforced (missing column -> None).",
+    "regression": "run_scan/reconcile logic is unchanged; the runner composes the existing functions with a per-source guard. Existing HTML profiles and fixtures are untouched (new profiles are additive registry entries).",
+    "supply_chain": "No new Python or npm dependency; requirements-sync guard stays green; stdlib + PL/pgSQL only."
   },
   "required_evaluation_level": 2,
   "contract_review": {
     "required": true,
     "reviewer": "owner",
     "disposition": "approved",
-    "notes": ["Orchestrator directed Slice 6 (final F004 implementation slice), then STOP for a fresh-context full-epic Level 2 close-out. Do NOT flip passes; do NOT merge; do NOT proceed past this slice."]
+    "notes": ["Orchestrator directed F005 Slice 1, then STOP for a fresh-context full-epic Level 2 evaluation. Do NOT flip passes; do NOT merge; do NOT add a publication path."]
   }
 }

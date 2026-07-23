@@ -117,6 +117,13 @@ Invoke-SmokeCheck "Separation migration applied (0006 quarantine triggers)" {
     if ([int]$imm -ne 1) { throw "offer_version immutability trigger missing (got '$imm')" }
 }
 
+Invoke-SmokeCheck "Source-slug migration applied (0007 source.slug + uq_source_slug)" {
+    $col = Invoke-Psql "SELECT count(*) FROM information_schema.columns WHERE table_name='source' AND column_name='slug'"
+    if ([int]$col -ne 1) { throw "source.slug column not found (got '$col')" }
+    $uc = Invoke-Psql "SELECT count(*) FROM pg_constraint WHERE conname='uq_source_slug'"
+    if ([int]$uc -ne 1) { throw "uq_source_slug unique constraint not installed (got '$uc')" }
+}
+
 Invoke-SmokeCheck "Worker container healthy" {
     Wait-Until -TimeoutSeconds 90 -Condition { (Get-ContainerHealth "worker") -eq "healthy" }
 }

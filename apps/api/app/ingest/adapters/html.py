@@ -116,6 +116,53 @@ HTML_EXTRACTION_PROFILES: dict[str, HtmlExtractionProfile] = {
         },
         required_fields=("service", "offer_type"),
     ),
+    # -- Cloudflare OFFICIAL free-tier profiles (F005) --------------------
+    # Provider-specific selectors expressed purely as data. Each profile reads
+    # one offer-centric row (one Cloudflare product on its free tier) from a
+    # captured official developers.cloudflare.com snapshot. Every per-limit
+    # value is coerced verbatim as ``text`` (never ``list``) so a real quota
+    # such as "100,000/day" is captured exactly rather than being split on its
+    # thousands separator -- honouring "unknown is better than guessed": a
+    # missing column yields ``None`` (UNKNOWN), never a fabricated number.
+    "cloudflare_workers_limits": HtmlExtractionProfile(
+        name="cloudflare_workers_limits",
+        table_id="workers-free-tier",
+        columns={
+            "service": HtmlColumn("service", "text"),
+            "offer type": HtmlColumn("offer_type", "text"),
+            "card required": HtmlColumn("requires_card", "bool"),
+            "paid dependencies": HtmlColumn("has_paid_dependencies", "bool"),
+            "requests per day": HtmlColumn("requests_per_day", "text"),
+            "cpu time": HtmlColumn("cpu_time", "text"),
+            "memory": HtmlColumn("memory", "text"),
+            "subrequests per request": HtmlColumn("subrequests_per_request", "text"),
+            "worker size": HtmlColumn("worker_size", "text"),
+            "workers per account": HtmlColumn("workers_per_account", "text"),
+            "cron triggers per account": HtmlColumn("cron_triggers_per_account", "text"),
+            "static asset files": HtmlColumn("static_asset_files", "text"),
+            "static asset file size": HtmlColumn("static_asset_file_size", "text"),
+        },
+        required_fields=("service", "offer_type"),
+    ),
+    "cloudflare_pages_limits": HtmlExtractionProfile(
+        name="cloudflare_pages_limits",
+        table_id="pages-free-tier",
+        columns={
+            "service": HtmlColumn("service", "text"),
+            "offer type": HtmlColumn("offer_type", "text"),
+            "card required": HtmlColumn("requires_card", "bool"),
+            "paid dependencies": HtmlColumn("has_paid_dependencies", "bool"),
+            "builds per month": HtmlColumn("builds_per_month", "text"),
+            "concurrent builds": HtmlColumn("concurrent_builds", "text"),
+            "custom domains": HtmlColumn("custom_domains", "text"),
+            "files": HtmlColumn("files", "text"),
+            "file size": HtmlColumn("file_size", "text"),
+            "header rules": HtmlColumn("header_rules", "text"),
+            "redirects": HtmlColumn("redirects", "text"),
+            "projects per account": HtmlColumn("projects_per_account", "text"),
+        },
+        required_fields=("service", "offer_type"),
+    ),
 }
 
 

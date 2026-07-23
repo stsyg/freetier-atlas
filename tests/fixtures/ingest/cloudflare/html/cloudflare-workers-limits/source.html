@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <title>Cloudflare Workers — Limits (Free plan)</title>
+    <!--
+      Representative snapshot of the Cloudflare Workers platform limits page,
+      captured from the official documentation for offline, deterministic
+      extraction. Free-plan values only; each figure is reproduced verbatim
+      from developers.cloudflare.com/workers/platform/limits/ ("Account plan
+      limits", Workers Free column). No value is invented.
+    -->
+  </head>
+  <body>
+    <h1>Workers limits</h1>
+    <p>
+      Below are the account plan limits observed on the Cloudflare Workers Free plan. Source:
+      https://developers.cloudflare.com/workers/platform/limits/
+    </p>
+    <table id="workers-free-tier">
+      <thead>
+        <tr>
+          <th>Service</th>
+          <th>Offer type</th>
+          <th>Card required</th>
+          <th>Paid dependencies</th>
+          <th>Requests per day</th>
+          <th>CPU time</th>
+          <th>Memory</th>
+          <th>Subrequests per request</th>
+          <th>Worker size</th>
+          <th>Workers per account</th>
+          <th>Cron Triggers per account</th>
+          <th>Static asset files</th>
+          <th>Static asset file size</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Cloudflare Workers</td>
+          <td>always_free</td>
+          <td>No</td>
+          <td>No</td>
+          <td>100,000/day</td>
+          <td>10 ms</td>
+          <td>128 MB</td>
+          <td>50/request</td>
+          <td>3 MB</td>
+          <td>100</td>
+          <td>5</td>
+          <td>20,000</td>
+          <td>25 MiB</td>
+        </tr>
+      </tbody>
+    </table>
+  </body>
+</html>

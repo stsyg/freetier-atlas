@@ -1,0 +1,28 @@
+{
+  "profile": "cloudflare_pages_limits",
+  "mime": "text/html",
+  "source_url": "https://developers.cloudflare.com/pages/platform/limits/",
+  "candidate_count": 1,
+  "candidates": [
+    {
+      "verification_state": "candidate",
+      "expect_valid": true,
+      "facts": {
+        "service": "Cloudflare Pages",
+        "offer_type": "always_free",
+        "requires_card": false,
+        "has_paid_dependencies": false,
+        "builds_per_month": "500",
+        "concurrent_builds": "1 build at a time",
+        "custom_domains": "100",
+        "files": "20,000",
+        "file_size": "25 MiB",
+        "header_rules": "100",
+        "redirects": "2,100",
+        "projects_per_account": "100"
+      },
+      "evidence_url": "https://developers.cloudflare.com/pages/platform/limits/",
+      "evidence_selector": "cloudflare_pages_limits row[1]"
+    }
+  ]
+}

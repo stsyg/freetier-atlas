@@ -46,6 +46,11 @@ from .base import (
     SourceAdapter,
     SourceDocument,
 )
+from .config_sync import (
+    SourceSyncOutcome,
+    SyncResult,
+    sync_provider,
+)
 from .fetch import (
     BlockedAddressError,
     DisallowedHostError,
@@ -84,6 +89,13 @@ from .reconcile import (
     reconcile_scan,
 )
 from .reference import JsonOfferAdapter
+from .runner import (
+    RunnerResult,
+    SourceScanOutcome,
+    build_fixture_fetcher,
+    fetch_policy_for,
+    run_provider_scans,
+)
 from .scan import ADAPTER_REGISTRY, UnknownAdapterError, build_adapter, run_scan
 from .trust import (
     OFFICIAL_TRUST_LEVEL,
@@ -147,6 +159,16 @@ __all__ = (
     "build_adapter",
     "ADAPTER_REGISTRY",
     "UnknownAdapterError",
+    # config -> DB sync
+    "sync_provider",
+    "SyncResult",
+    "SourceSyncOutcome",
+    # scan runner / runtime entrypoint
+    "run_provider_scans",
+    "RunnerResult",
+    "SourceScanOutcome",
+    "build_fixture_fetcher",
+    "fetch_policy_for",
     # trust / quarantine separation
     "OFFICIAL_TRUST_LEVEL",
     "SeparationError",
