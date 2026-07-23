@@ -47,6 +47,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.ingest.adapters import HtmlDocAdapter, RssFeedAdapter, resolve_profile
 from app.ingest.base import CandidateFacts, SourceAdapter, SourceDocument
 from app.ingest.fetch import Fetcher, FetchError
 from app.ingest.reference import JsonOfferAdapter
@@ -67,6 +68,12 @@ AdapterFactory = Callable[[Source, Fetcher], SourceAdapter]
 ADAPTER_REGISTRY: dict[str, AdapterFactory] = {
     "reference-json": lambda source, fetcher: JsonOfferAdapter(
         fetcher, source_urls=_source_urls(source)
+    ),
+    "rss": lambda source, fetcher: RssFeedAdapter(fetcher, source_urls=_source_urls(source)),
+    "html": lambda source, fetcher: HtmlDocAdapter(
+        fetcher,
+        source_urls=_source_urls(source),
+        profile=resolve_profile(source.parser_profile),
     ),
 }
 

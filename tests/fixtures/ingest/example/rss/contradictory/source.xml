@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>Example Cloud changelog</title>
+    <link>https://example.com/</link>
+    <item>
+      <title>Workers</title>
+      <link>https://example.com/workers</link>
+      <guid>workers-a</guid>
+      <category>service:Workers</category>
+      <category>offer_type:always_free</category>
+    </item>
+    <item>
+      <title>Workers</title>
+      <link>https://example.com/workers-trial</link>
+      <guid>workers-b</guid>
+      <category>service:Workers</category>
+      <category>offer_type:free_trial</category>
+    </item>
+  </channel>
+</rss>

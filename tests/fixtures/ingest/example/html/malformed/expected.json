@@ -1,0 +1,17 @@
+{
+  "profile": "quota_document",
+  "mime": "text/html",
+  "source_url": "https://example.com/limits",
+  "candidate_count": 1,
+  "candidates": [
+    {
+      "verification_state": "rejected",
+      "expect_valid": false,
+      "facts": {
+        "error": "table_not_found"
+      },
+      "evidence_url": "https://example.com/limits",
+      "evidence_selector": null
+    }
+  ]
+}

@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>Example Cloud changelog</title>
+    <link>https://example.com/</link>
+    <description>Synthetic feed for adapter contract tests.</description>
+    <item>
+      <title>Workers</title>
+      <link>https://example.com/workers</link>
+      <guid>workers-1</guid>
+      <pubDate>Tue, 01 Oct 2024 00:00:00 GMT</pubDate>
+      <description>Run code at the edge.</description>
+      <category>service:Workers</category>
+      <category>offer_type:always_free</category>
+      <category>requires_card:false</category>
+      <category>has_paid_dependencies:false</category>
+      <category>quota:requests=hard_stop</category>
+      <category>quota:cpu_time=throttle</category>
+    </item>
+  </channel>
+</rss>

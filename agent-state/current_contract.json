@@ -2,66 +2,64 @@
   "schema_version": 1,
   "status": "approved",
   "feature_id": "F004",
-  "increment": "slice-3-reconciliation-change-staleness-conflict",
+  "increment": "slice-4-rss-and-html-source-adapters-and-fixtures",
   "builder": "Copilot CLI (Chief)",
   "evaluator": "fresh independent Level 2 evaluator",
-  "approved_at": "2026-07-22T12:20:00Z",
+  "approved_at": "2026-07-22T17:05:00Z",
   "approval_notes": [
-    "Owner-approved F004 plan. Slices 1 (safe fetch guard + SourceAdapter contract, PR #14) and 2 (migration 0004 + run_scan orchestration, PR #15) are merged to main. This contract governs Slice 3 ONLY.",
-    "Standing autonomy boundaries: may branch/implement/test/commit/push/open ONE PR; may NOT merge, flip any passes flag, add a runtime/npm dependency, start Slice 4, or touch the offer_version immutability trigger.",
-    "F004 stays passes:false after this slice. A fresh-context Level 2 slice evaluation reviews Slice 3 before Slice 4 proceeds."
+    "Owner-approved F004 plan. Slices 1 (safe fetch guard + SourceAdapter contract, PR #14), 2 (migration 0004 + run_scan orchestration, PR #15) and 3 (reconciliation, PR #16) are merged to main. This contract governs Slice 4 ONLY.",
+    "Standing autonomy boundaries: may branch/implement/test/commit/push/open ONE PR; may NOT merge, flip any passes flag, add a runtime/npm dependency, start Slice 5, or touch the offer_version immutability trigger.",
+    "F004 stays passes:false after this slice. A fresh-context Level 2 slice evaluation reviews Slice 4 before Slice 5 proceeds."
   ],
-  "objective": "Add reconciliation to the ingestion pipeline as a separate pass (apps/api/app/ingest/reconcile.py) over candidates persisted by run_scan. It diffs a freshly-scanned candidate against the last-known candidate for the same source/identity and emits a DRAFT change_event with a deterministic change_type (added/modified/withdrawn/restored) and materiality (material/non_material/unknown); flags candidates/sources stale when source freshness exceeds the configured schedule/policy window (stale never counts as a fresh verification); and raises a pending review_item (evidence_conflict, recommended_action, admin_disposition='pending') when official sources contradict each other on a known material fact. Nothing is auto-resolved and there is NO publication path: reconciliation never creates or mutates offer/offer_version and the offer_version immutability trigger is untouched. All diff/materiality/staleness/contradiction rules are pure and unit-testable; reconciliation operates on candidate content only.",
+  "objective": "Add two new stdlib-only source adapters behind the Slice 1 SourceAdapter contract and the Slice 1 Fetcher seam: an RSS/Atom adapter (xml.etree) and a static-doc/HTML adapter (html.parser) whose provider-specific selectors live in a declarative extraction_profile (quota_document, pricing_document) rather than in code. Each adapter implements all seven contract methods (discover/fetch/canonicalize/extract/validate/evidence/health), produces candidate-only facts with evidence locations, and NEVER guesses a value or raises an uncaught exception. Malformed or partial input yields a handled outcome (a rejected/partial candidate that validate flags, i.e. a captured validation failure surfaced to the ScanRun as errors_count, or UNKNOWN/None facts) - never a crash and never a fabricated value. Both adapters are registered by source.adapter_type in the scan ADAPTER_REGISTRY and reach the network only through the injected SafeFetcher, so a non-allowlisted URL is refused before any connection. Per-type contract fixtures (unchanged/changed/malformed/partial/contradictory) with expected candidate facts + evidence locations back the adapter tests.",
   "scope": [
-    "migrations/versions/0005_change_event_candidate_link.py: ALTER change_event -> add previous_candidate_id + new_candidate_id FKs to candidate (ondelete SET NULL), make offer_id nullable, add CHECK ck_change_event_change_link_target (offer_id OR previous_candidate_id OR new_candidate_id NOT NULL). Reversible upgrade/downgrade. offer_version + its immutability trigger untouched.",
-    "apps/api/app/models/domain.py: update ChangeEvent ORM (offer_id nullable, add previous_candidate_id/new_candidate_id FKs + relationships, add the link-target CHECK).",
-    "apps/api/app/ingest/reconcile.py: pure diff/materiality/staleness/contradiction functions + reconcile_scan(scan_run, source, session, *, now) persistence orchestrator.",
-    "apps/api/app/ingest/__init__.py: export reconcile_scan (and the pure helpers/result types).",
-    "tests/unit/test_ingest_reconcile.py: pure logic over unchanged/changed/stale/contradictory.",
-    "tests/integration/test_ingest_reconcile.py (live Postgres): end-to-end unchanged/changed/stale/contradictory; asserts draft change_event + pending review_item rows and that NO offer_version is created.",
-    "docs/DATA_MODEL.md: document the change_event candidate linkage and the reconciliation pass."
+    "apps/api/app/ingest/adapters/__init__.py: new adapters sub-package exporting RssFeedAdapter and HtmlDocAdapter.",
+    "apps/api/app/ingest/adapters/rss.py: RSS 2.0 + Atom adapter using xml.etree.ElementTree; each feed item/entry -> one candidate; DTD/entity guard (reject DOCTYPE) as XXE/billion-laughs defence-in-depth; ParseError -> rejected candidate; missing identity/link -> partial UNKNOWN facts flagged by validate.",
+    "apps/api/app/ingest/adapters/html.py: static-doc/HTML adapter using html.parser.HTMLParser; a generic table-walking engine driven entirely by a declarative HtmlExtractionProfile (record table selector + column->fact-field map + value coercions); HTML_EXTRACTION_PROFILES registry with quota_document + pricing_document; missing table -> rejected candidate, missing required column/cell -> partial UNKNOWN.",
+    "apps/api/app/ingest/scan.py: register 'rss' and 'html' in ADAPTER_REGISTRY (html resolves source.parser_profile against HTML_EXTRACTION_PROFILES); no other orchestration change.",
+    "apps/api/app/ingest/__init__.py: export the two adapters and the HTML profile registry/type.",
+    "tests/fixtures/ingest/example/rss/{unchanged,changed,malformed,partial,contradictory}/{source.xml,expected.json} and tests/fixtures/ingest/example/html/{...}/{source.html,expected.json}.",
+    "tests/unit/test_adapter_rss.py + tests/unit/test_adapter_html.py: a per-type contract test driving all 7 methods and asserting expected candidate facts + evidence against fixtures; malformed -> handled (no crash, no guess); partial -> partial/UNKNOWN; contradictory -> both candidates extracted unresolved (adapters never reconcile); a non-allowlisted URL is refused via the shared fetcher."
   ],
   "out_of_scope": [
-    "Creating or mutating offer/offer_version (no publication path). The offer_version immutability trigger is untouched.",
-    "Auto-resolution or auto-publication of any change_event or review_item.",
-    "Wiring reconciliation into run_scan (kept separate so Slice 2's zero-change_event-on-scan invariant holds).",
-    "Candidate -> service/offer DB matching beyond the minimal content identity needed to diff/compare.",
+    "Any change to run_scan/reconcile logic beyond adding the two registry entries (Slice 2/3 invariants unchanged).",
+    "Creating or mutating offer/offer_version (no publication path); the offer_version immutability trigger is untouched.",
+    "Wiring adapters into the worker/scheduler/API runtime; DB schema changes / new migration.",
+    "Candidate -> service/offer DB matching; reconciliation/contradiction resolution (that is Slice 3's pure logic, exercised elsewhere).",
     "Residual R1 (DNS-rebinding IP pinning) from Slice 1 - explicitly deferred.",
-    "Any new runtime or npm dependency (requirements-sync guard stays green). Marking F004 passes:true. Advancing to Slice 4."
+    "Any new runtime or npm dependency (requirements-sync guard stays green; stdlib xml.etree + html.parser only). Marking F004 passes:true. Advancing to Slice 5."
   ],
   "acceptance_criteria": [
-    "Unchanged: reconciling a re-scan of byte-identical candidate content produces NO change_event and NO review_item.",
-    "Changed: a candidate whose material facts changed produces exactly one DRAFT change_event with change_type='modified' and materiality='material'; a brand-new candidate produces change_type='added'.",
-    "Stale: when the source's freshest snapshot age exceeds the schedule/policy window, the affected candidates are flagged verification_state='stale' and are NOT counted as a fresh verification (never 'verified').",
-    "Contradictory: when two official sources present different known values for the same material fact of the same identity, exactly one pending review_item (admin_disposition='pending', evidence_conflict populated, recommended_action set) is raised and nothing is auto-resolved or published.",
-    "reconcile_scan NEVER creates or mutates offer or offer_version rows, and the offer_version immutability trigger remains installed and intact.",
-    "Migration 0005 is reversible: upgrade -> downgrade -> upgrade leaves no model/migration drift (compare_metadata == []); the 0001-0004 tables + immutability trigger survive intact.",
+    "Contract-per-type: for each of RSS and HTML, the 7 contract methods run end-to-end through the offline FixtureFetcher and produce the expected candidate-only facts and evidence locations for the unchanged and changed fixtures (changed differs from unchanged in a material fact).",
+    "Malformed-per-type: a malformed source yields a handled outcome (a rejected candidate flagged by validate, i.e. a captured validation failure; errors surfaced, no persisted candidate) with NO fabricated offer value and NO uncaught exception.",
+    "Partial-per-type: a partial source yields candidate facts with UNKNOWN (None) for the missing material fields (never guessed) and validate flags the gap.",
+    "Contradictory-per-type: a source presenting two conflicting values for the same identity's material fact yields both candidates extracted faithfully and unresolved; the adapter performs no reconciliation or auto-resolution.",
+    "Candidate-only: every produced fact has an adapter-assignable verification_state (never 'verified'); adapters import only app.ingest.base + app.ingest.fetch and reach the network solely through the injected Fetcher.",
+    "Safe fetch: a URL whose host is not in the policy allowlist is refused (DisallowedHostError) by the shared fetcher before any connection, exercised per adapter.",
+    "Both adapters are registered in ADAPTER_REGISTRY by adapter_type and build via build_adapter without touching the orchestration body.",
     "Regression green: scripts/test.ps1 and scripts/check.ps1 -NodeAudit pass offline (ruff, format, pytest, prettier, eslint, detect-secrets, pip-audit, npm audit) including the requirements-sync guard (no new dependency).",
-    "A fresh-context independent Level 2 evaluator records an adversarial verdict for Slice 3 before any status change; F004 remains passes:false."
+    "A fresh-context independent Level 2 evaluator records an adversarial verdict for Slice 4 before any status change; F004 remains passes:false."
   ],
   "verification_plan": {
-    "baseline_commands": ["git status --short --branch", "git --no-pager log --oneline -5"],
+    "baseline_commands": ["git status --short --branch", "git --no-pager log --oneline -5", "pwsh -File scripts/test.ps1"],
     "unit_commands": ["pwsh -File scripts/test.ps1", "pwsh -File scripts/check.ps1 -NodeAudit"],
     "integration_commands": [
-      "pwsh -File scripts/stack-up.ps1 (POSTGRES_PORT=55432 API_PORT=8010 WEB_PORT=8090)",
-      "DATABASE_URL=******localhost:55432/atlas pytest tests/integration/test_ingest_reconcile.py tests/integration/test_ingest_scan.py tests/integration/test_domain_migration.py",
-      "pwsh -File scripts/stack-smoke.ps1",
-      "pwsh -File scripts/stack-down.ps1"
+      "Not required: Slice 4 touches no DB path (run_scan body unchanged; only two registry entries added). The existing live-DB integration suites remain the Slice 2/3 evidence."
     ]
   },
   "risks": {
-    "data_migration": "0005 only ALTERs change_event (adds two nullable candidate FKs, relaxes offer_id to nullable, adds a link-target CHECK). Reversible. offer_version and its immutability trigger are untouched. Relaxing offer_id does not weaken published history: existing offer-linked change events keep their offer_id; the CHECK still requires at least one linkage target.",
-    "security_privacy": "Reconciliation reads candidate content only; no credentials, no network. Contradictions raise a review_item for a human; nothing is auto-resolved. detect-secrets stays green.",
-    "portability": "Pure standard-library Python + SQLAlchemy/Alembic already in use; no new dependency; amd64/arm64 unaffected.",
-    "zero_cost_safety": "No offer data is published; change events are DRAFT and candidates are never verified; stale data never counts as a fresh verification; no Z0/free claim is asserted.",
-    "regression": "run_scan is unchanged, so Slice 2's zero-change_event-on-scan invariant still holds. Reconciliation is a distinct, explicitly-invoked pass.",
-    "supply_chain": "No new Python or npm dependency."
+    "data_migration": "None. No migration and no schema change; only additive Python modules plus two ADAPTER_REGISTRY entries. offer_version and its immutability trigger are untouched.",
+    "security_privacy": "Adapters reach the network only through the injected SafeFetcher, so the Slice 1 SSRF/allowlist/scheme/MIME/size/redirect guards apply unchanged; a non-allowlisted host is refused pre-connection. The RSS adapter rejects DOCTYPE/entity declarations (XXE / billion-laughs defence-in-depth) and xml.etree resolves no external entities. Adapters produce candidate-only facts; official-only-evidence and no-publication-path invariants are enforced by run_scan (unchanged).",
+    "portability": "Pure standard-library Python (xml.etree.ElementTree, html.parser); no new dependency; amd64/arm64 unaffected.",
+    "zero_cost_safety": "No offer data is published; adapters emit candidate facts only; malformed/partial never guesses a value ('unknown is better than guessed'); no Z0/free claim is asserted. Fixtures use a synthetic 'example' provider so no unsupported real free-tier claim is introduced.",
+    "regression": "run_scan and reconcile logic are unchanged apart from two additive registry entries, so Slice 2's zero-change_event-on-scan and official-only-evidence invariants and Slice 3's reconciliation still hold.",
+    "supply_chain": "No new Python or npm dependency; requirements-sync guard stays green."
   },
   "required_evaluation_level": 2,
   "contract_review": {
     "required": true,
     "reviewer": "owner",
     "disposition": "approved",
-    "notes": ["Owner approved the F004 plan and directed Slice 3 implementation, then stop for a fresh-context Level 2 slice evaluation before Slice 4."]
+    "notes": ["Owner approved the F004 plan and directed Slice 4 implementation, then stop for a fresh-context Level 2 slice evaluation before Slice 5."]
   }
 }

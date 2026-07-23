@@ -1,0 +1,46 @@
+{
+  "mime": "application/rss+xml",
+  "source_url": "https://example.com/feed.xml",
+  "candidate_count": 2,
+  "contradiction": {
+    "field": "offer_type",
+    "shared": { "service": "Workers" },
+    "values": ["always_free", "free_trial"]
+  },
+  "candidates": [
+    {
+      "verification_state": "candidate",
+      "expect_valid": true,
+      "facts": {
+        "service": "Workers",
+        "offer_type": "always_free",
+        "requires_card": null,
+        "has_paid_dependencies": null,
+        "quotas": [],
+        "summary": null,
+        "link": "https://example.com/workers",
+        "guid": "workers-a",
+        "published": null
+      },
+      "evidence_url": "https://example.com/workers",
+      "evidence_selector": "item[workers-a]"
+    },
+    {
+      "verification_state": "candidate",
+      "expect_valid": true,
+      "facts": {
+        "service": "Workers",
+        "offer_type": "free_trial",
+        "requires_card": null,
+        "has_paid_dependencies": null,
+        "quotas": [],
+        "summary": null,
+        "link": "https://example.com/workers-trial",
+        "guid": "workers-b",
+        "published": null
+      },
+      "evidence_url": "https://example.com/workers-trial",
+      "evidence_selector": "item[workers-b]"
+    }
+  ]
+}
