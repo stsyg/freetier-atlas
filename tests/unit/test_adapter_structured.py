@@ -149,6 +149,7 @@ def test_structured_partial_never_guesses_missing_material_facts() -> None:
         b'{"provider": "example", "offers": {"not": "a list"}}',  # records not a list
         b'{"provider": "example"}',  # records path absent
         b"[1, 2, 3]",  # non-mapping root
+        b'{"provider": "example", "offers": ' + b"[" * 3000 + b"]" * 3000 + b"}",  # recursion bomb
     ],
 )
 def test_structured_malformed_input_never_crashes_or_guesses(payload: bytes) -> None:

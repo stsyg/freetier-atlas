@@ -91,14 +91,25 @@ class JsonExtraction:
 def parse_json(text: str) -> tuple[Any, JsonExtractError | None]:
     """Parse ``text`` as JSON, returning ``(value, None)`` or ``(None, error)``.
 
-    Never raises: a :class:`json.JSONDecodeError` becomes a returned
-    :class:`JsonExtractError` so the caller can emit a handled rejected candidate.
+    Never raises. A malformed body becomes a returned :class:`JsonExtractError`
+    so the caller can emit a handled rejected candidate. This includes hostile
+    input that trips the decoder's own limits: a deeply-nested array/object makes
+    :func:`json.loads` raise :class:`RecursionError` (a :class:`RuntimeError`, so
+    *not* caught by the ``ValueError`` arm), which must never escape and abort a
+    scan. A defensive catch-all guarantees the "never raises" contract even if a
+    future decoder raises some other exception type.
     """
 
     try:
         return json.loads(text), None
+    except RecursionError:
+        # Do NOT call str(exc): we may still be near the recursion limit, so use
+        # a fixed, allocation-free detail rather than risk re-raising.
+        return None, JsonExtractError("malformed_json", "input nesting too deep")
     except (json.JSONDecodeError, ValueError) as exc:
         return None, JsonExtractError("malformed_json", str(exc))
+    except Exception as exc:  # noqa: BLE001 - "never raises" safety net
+        return None, JsonExtractError("malformed_json", type(exc).__name__)
 
 
 def _descend(data: Any, path: Sequence[str]) -> tuple[Any, bool]:

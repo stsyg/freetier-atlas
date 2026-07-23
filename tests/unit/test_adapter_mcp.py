@@ -175,6 +175,7 @@ def test_mcp_partial_never_guesses_missing_material_facts() -> None:
         b'{"provider": "example", "results": {"not": "a list"}}',  # not a list
         b'{"provider": "example"}',  # records path absent
         b'"just a string"',  # non-mapping root
+        b'{"provider": "example", "results": ' + b"[" * 3000 + b"]" * 3000 + b"}",  # recursion bomb
     ],
 )
 def test_mcp_malformed_result_never_crashes_or_guesses(payload: bytes) -> None:

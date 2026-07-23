@@ -217,9 +217,21 @@ def run_scan(source: Source, fetcher: Fetcher, session: Session) -> ScanRun:
         session.add(snapshot)
         session.flush()
 
-        document: SourceDocument = adapter.canonicalize(result)
+        # Defense-in-depth: canonicalize()/extract() are pure adapter logic and
+        # are contracted never to raise on malformed input, but a latent adapter
+        # bug must never abort the whole scan run. Capture any such failure as a
+        # per-document error (mirroring the FetchError arm above) and move on;
+        # the fetched snapshot is already persisted. DB persistence below is
+        # deliberately left OUTSIDE this guard so a real transaction error is not
+        # silently swallowed.
+        try:
+            document: SourceDocument = adapter.canonicalize(result)
+            extracted = list(adapter.extract(document))
+        except Exception:  # noqa: BLE001 - isolate adapter faults to one document
+            errors += 1
+            continue
 
-        for candidate_facts in adapter.extract(document):
+        for candidate_facts in extracted:
             problems = adapter.validate(candidate_facts)
             if problems:
                 errors += 1
