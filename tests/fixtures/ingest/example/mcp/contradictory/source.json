@@ -1,0 +1,13 @@
+{
+  "provider": "example",
+  "results": [
+    {
+      "name": "Queue",
+      "plan": "always_free"
+    },
+    {
+      "name": "Queue",
+      "plan": "free_trial"
+    }
+  ]
+}

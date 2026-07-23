@@ -1,0 +1,12 @@
+{
+  "provider": "example",
+  "results": [
+    {
+      "name": "Queue",
+      "plan": "free_trial",
+      "needs_card": true,
+      "extra_paid": true,
+      "limits": ["messages=hard_stop", "ops=throttle"]
+    }
+  ]
+}

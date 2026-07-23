@@ -8,6 +8,7 @@ adapter boundary (and, for HTML, inside a declarative extraction profile).
 
 from __future__ import annotations
 
+from ._json import JsonExtractionProfile, JsonField
 from .html import (
     HTML_EXTRACTION_PROFILES,
     HtmlColumn,
@@ -16,7 +17,25 @@ from .html import (
     UnknownProfileError,
     resolve_profile,
 )
+from .mcp import (
+    MCP_PROFILES,
+    DisallowedCapabilityError,
+    McpClient,
+    McpDisabledError,
+    McpSourceProfile,
+    McpToolAdapter,
+    McpToolResult,
+    OfflineMcpClient,
+    UnknownMcpProfileError,
+    resolve_mcp_profile,
+)
 from .rss import RssFeedAdapter
+from .structured import (
+    JSON_EXTRACTION_PROFILES,
+    StructuredApiAdapter,
+    UnknownJsonProfileError,
+    resolve_json_profile,
+)
 
 __all__ = (
     "RssFeedAdapter",
@@ -26,4 +45,23 @@ __all__ = (
     "HTML_EXTRACTION_PROFILES",
     "resolve_profile",
     "UnknownProfileError",
+    # structured-API adapter
+    "StructuredApiAdapter",
+    "JSON_EXTRACTION_PROFILES",
+    "resolve_json_profile",
+    "UnknownJsonProfileError",
+    # shared JSON extraction primitives
+    "JsonExtractionProfile",
+    "JsonField",
+    # MCP adapter
+    "McpToolAdapter",
+    "McpClient",
+    "McpToolResult",
+    "OfflineMcpClient",
+    "McpSourceProfile",
+    "MCP_PROFILES",
+    "resolve_mcp_profile",
+    "UnknownMcpProfileError",
+    "DisallowedCapabilityError",
+    "McpDisabledError",
 )

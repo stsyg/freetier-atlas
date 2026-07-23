@@ -2,57 +2,60 @@
   "schema_version": 1,
   "status": "approved",
   "feature_id": "F004",
-  "increment": "slice-4-rss-and-html-source-adapters-and-fixtures",
+  "increment": "slice-5-structured-api-and-mcp-source-adapters-and-fixtures",
   "builder": "Copilot CLI (Chief)",
   "evaluator": "fresh independent Level 2 evaluator",
-  "approved_at": "2026-07-22T17:05:00Z",
+  "approved_at": "2026-07-22T22:15:00Z",
   "approval_notes": [
-    "Owner-approved F004 plan. Slices 1 (safe fetch guard + SourceAdapter contract, PR #14), 2 (migration 0004 + run_scan orchestration, PR #15) and 3 (reconciliation, PR #16) are merged to main. This contract governs Slice 4 ONLY.",
-    "Standing autonomy boundaries: may branch/implement/test/commit/push/open ONE PR; may NOT merge, flip any passes flag, add a runtime/npm dependency, start Slice 5, or touch the offer_version immutability trigger.",
-    "F004 stays passes:false after this slice. A fresh-context Level 2 slice evaluation reviews Slice 4 before Slice 5 proceeds."
+    "Orchestrator-directed F004 Slice 5. Slices 1 (safe fetch guard + SourceAdapter contract, PR #14), 2 (migration 0004 + run_scan orchestration, PR #15), 3 (reconciliation, PR #16) and 4 (RSS + HTML adapters + fixtures, PR #17) are merged to main. This contract governs Slice 5 ONLY.",
+    "Standing autonomy boundaries: may branch/implement/test/commit/push/open ONE PR; may NOT merge, flip any passes flag, add a runtime/npm dependency, start Slice 6, touch the offer_version immutability trigger, or attempt residual R1 (DNS-rebinding IP pinning).",
+    "F004 stays passes:false after this slice. A fresh-context Level 2 slice evaluation reviews Slice 5 before Slice 6 proceeds."
   ],
-  "objective": "Add two new stdlib-only source adapters behind the Slice 1 SourceAdapter contract and the Slice 1 Fetcher seam: an RSS/Atom adapter (xml.etree) and a static-doc/HTML adapter (html.parser) whose provider-specific selectors live in a declarative extraction_profile (quota_document, pricing_document) rather than in code. Each adapter implements all seven contract methods (discover/fetch/canonicalize/extract/validate/evidence/health), produces candidate-only facts with evidence locations, and NEVER guesses a value or raises an uncaught exception. Malformed or partial input yields a handled outcome (a rejected/partial candidate that validate flags, i.e. a captured validation failure surfaced to the ScanRun as errors_count, or UNKNOWN/None facts) - never a crash and never a fabricated value. Both adapters are registered by source.adapter_type in the scan ADAPTER_REGISTRY and reach the network only through the injected SafeFetcher, so a non-allowlisted URL is refused before any connection. Per-type contract fixtures (unchanged/changed/malformed/partial/contradictory) with expected candidate facts + evidence locations back the adapter tests.",
+  "objective": "Add two new stdlib-only source adapters behind the Slice 1 SourceAdapter contract and the Slice 1 Fetcher seam: a structured-API (JSON/REST offer/pricing endpoint) adapter parsing with stdlib json, and an MCP (Model Context Protocol tool source) adapter. Each adapter implements all seven contract methods (discover/fetch/canonicalize/extract/validate/evidence/health), produces candidate-only facts with evidence locations, and NEVER guesses a value or raises an uncaught exception. The structured-API adapter reaches the network only through the injected SafeFetcher. The MCP adapter (a) enforces a strict capability allowlist so only explicitly allowed MCP tools may be invoked and anything else is refused before any invocation, and (b) invokes tools only through an injectable MCP client seam (an injectable Protocol with an offline default, and an offline fake in tests) so tests exercise it with zero real network/process I/O; its source URL is gated by the shared SafeFetcher allowlist policy so a non-allowlisted host is refused pre-invocation. Malformed input yields a handled rejected candidate (facts carry only {error,detail}, no material key) that validate flags - never a crash, never a fabricated value. Partial input yields UNKNOWN (None) material facts flagged by validate. Contradictory input yields both candidates extracted faithfully and unresolved (no reconciliation in the adapter). Both adapters are registered by source.adapter_type in the scan ADAPTER_REGISTRY additively; run_scan/reconcile behaviour is unchanged.",
   "scope": [
-    "apps/api/app/ingest/adapters/__init__.py: new adapters sub-package exporting RssFeedAdapter and HtmlDocAdapter.",
-    "apps/api/app/ingest/adapters/rss.py: RSS 2.0 + Atom adapter using xml.etree.ElementTree; each feed item/entry -> one candidate; DTD/entity guard (reject DOCTYPE) as XXE/billion-laughs defence-in-depth; ParseError -> rejected candidate; missing identity/link -> partial UNKNOWN facts flagged by validate.",
-    "apps/api/app/ingest/adapters/html.py: static-doc/HTML adapter using html.parser.HTMLParser; a generic table-walking engine driven entirely by a declarative HtmlExtractionProfile (record table selector + column->fact-field map + value coercions); HTML_EXTRACTION_PROFILES registry with quota_document + pricing_document; missing table -> rejected candidate, missing required column/cell -> partial UNKNOWN.",
-    "apps/api/app/ingest/scan.py: register 'rss' and 'html' in ADAPTER_REGISTRY (html resolves source.parser_profile against HTML_EXTRACTION_PROFILES); no other orchestration change.",
-    "apps/api/app/ingest/__init__.py: export the two adapters and the HTML profile registry/type.",
-    "tests/fixtures/ingest/example/rss/{unchanged,changed,malformed,partial,contradictory}/{source.xml,expected.json} and tests/fixtures/ingest/example/html/{...}/{source.html,expected.json}.",
-    "tests/unit/test_adapter_rss.py + tests/unit/test_adapter_html.py: a per-type contract test driving all 7 methods and asserting expected candidate facts + evidence against fixtures; malformed -> handled (no crash, no guess); partial -> partial/UNKNOWN; contradictory -> both candidates extracted unresolved (adapters never reconcile); a non-allowlisted URL is refused via the shared fetcher."
+    "apps/api/app/ingest/adapters/_json.py: shared, side-effect-free declarative JSON extraction (JsonField, JsonExtractionProfile, extract_records) reused by both new adapters; text/bool/list coercions via _common.to_bool; a JSON decode error or a records path that is not a list is signalled as a rejected outcome, never raised.",
+    "apps/api/app/ingest/adapters/structured.py: StructuredApiAdapter using stdlib json; each record under the profile's records_path becomes one candidate; JSON_EXTRACTION_PROFILES registry (offer_api + pricing_api) + resolve_json_profile; malformed JSON / missing records list -> rejected candidate; missing required column -> partial UNKNOWN flagged by validate.",
+    "apps/api/app/ingest/adapters/mcp.py: McpClient Protocol + McpToolResult carrier + OfflineMcpClient (safe default that refuses), DisallowedCapabilityError and McpDisabledError (both FetchError subclasses so run_scan handles them), a strict capability allowlist enforced before any client call, McpSourceProfile + MCP_PROFILES registry + resolve_mcp_profile, and McpToolAdapter implementing all seven methods; the MCP server URL is gated by the shared SafeFetcher scheme+host policy before invocation.",
+    "apps/api/app/ingest/scan.py: register 'structured-api' and 'mcp' in ADAPTER_REGISTRY (structured-api and mcp each resolve source.parser_profile against their profile registry; mcp is built with the OfflineMcpClient safe default); no other orchestration change.",
+    "apps/api/app/ingest/adapters/__init__.py and apps/api/app/ingest/__init__.py: export the two adapters, their profile registries/types and the MCP client seam/errors.",
+    "tests/fixtures/ingest/example/structured/{unchanged,changed,malformed,partial,contradictory}/{source.json,expected.json} and tests/fixtures/ingest/example/mcp/{...}/{source.json,expected.json}.",
+    "tests/unit/test_adapter_structured.py + tests/unit/test_adapter_mcp.py: per-type contract tests driving all 7 methods and asserting expected candidate facts + evidence against fixtures; malformed -> handled (no crash, no guess); partial -> partial/UNKNOWN; contradictory -> both candidates unresolved; capability allowlist tested BOTH directions (allowed tool works; disallowed tool refused before any invocation); injected offline client proven to perform no real I/O (socket + client monkeypatched); a non-allowlisted URL refused per adapter via the shared fetcher/policy; build_adapter resolves both types."
   ],
   "out_of_scope": [
     "Any change to run_scan/reconcile logic beyond adding the two registry entries (Slice 2/3 invariants unchanged).",
     "Creating or mutating offer/offer_version (no publication path); the offer_version immutability trigger is untouched.",
     "Wiring adapters into the worker/scheduler/API runtime; DB schema changes / new migration.",
-    "Candidate -> service/offer DB matching; reconciliation/contradiction resolution (that is Slice 3's pure logic, exercised elsewhere).",
+    "Candidate -> service/offer DB matching; reconciliation/contradiction resolution (Slice 3 logic, exercised elsewhere).",
+    "Quarantine of community sources (that is Slice 6).",
     "Residual R1 (DNS-rebinding IP pinning) from Slice 1 - explicitly deferred.",
-    "Any new runtime or npm dependency (requirements-sync guard stays green; stdlib xml.etree + html.parser only). Marking F004 passes:true. Advancing to Slice 5."
+    "Any new runtime or npm dependency (requirements-sync guard stays green; stdlib json only; MCP modelled as an injectable Protocol, no MCP SDK). Marking F004 passes:true. Advancing to Slice 6."
   ],
   "acceptance_criteria": [
-    "Contract-per-type: for each of RSS and HTML, the 7 contract methods run end-to-end through the offline FixtureFetcher and produce the expected candidate-only facts and evidence locations for the unchanged and changed fixtures (changed differs from unchanged in a material fact).",
-    "Malformed-per-type: a malformed source yields a handled outcome (a rejected candidate flagged by validate, i.e. a captured validation failure; errors surfaced, no persisted candidate) with NO fabricated offer value and NO uncaught exception.",
+    "Contract-per-type: for each of structured-api and mcp, the 7 contract methods run end-to-end through the offline seam (FixtureFetcher for structured-api; injected offline MCP client for mcp) and produce the expected candidate-only facts and evidence locations for the unchanged and changed fixtures (changed differs from unchanged in a material fact).",
+    "Malformed-per-type: a malformed source yields a handled outcome (a rejected candidate flagged by validate) with facts carrying ONLY {error,detail}, NO material key, NO fabricated value, and NO uncaught exception.",
     "Partial-per-type: a partial source yields candidate facts with UNKNOWN (None) for the missing material fields (never guessed) and validate flags the gap.",
-    "Contradictory-per-type: a source presenting two conflicting values for the same identity's material fact yields both candidates extracted faithfully and unresolved; the adapter performs no reconciliation or auto-resolution.",
-    "Candidate-only: every produced fact has an adapter-assignable verification_state (never 'verified'); adapters import only app.ingest.base + app.ingest.fetch and reach the network solely through the injected Fetcher.",
-    "Safe fetch: a URL whose host is not in the policy allowlist is refused (DisallowedHostError) by the shared fetcher before any connection, exercised per adapter.",
+    "Contradictory-per-type: a source presenting two conflicting values for the same identity's material fact yields both candidates extracted faithfully and unresolved; the adapter performs no reconciliation.",
+    "Candidate-only: every produced non-rejected fact has an adapter-assignable verification_state (never 'verified'); adapters import only app.ingest.base, app.ingest.fetch and the adapters helpers, and never import an HTTP client / urllib / socket directly.",
+    "MCP capability allowlist enforced in BOTH directions: an allowlisted tool is invoked and yields candidates; a non-allowlisted tool is refused with DisallowedCapabilityError BEFORE the MCP client is ever called (proven by a client fake that fails if invoked).",
+    "MCP injectable offline client performs zero real I/O: a test with socket and the client's transport monkeypatched to raise proves fetch/extract complete without any real network or process I/O.",
+    "Safe fetch: a URL whose host is not in the policy allowlist is refused before any connection/invocation, exercised per adapter (DisallowedHostError).",
     "Both adapters are registered in ADAPTER_REGISTRY by adapter_type and build via build_adapter without touching the orchestration body.",
     "Regression green: scripts/test.ps1 and scripts/check.ps1 -NodeAudit pass offline (ruff, format, pytest, prettier, eslint, detect-secrets, pip-audit, npm audit) including the requirements-sync guard (no new dependency).",
-    "A fresh-context independent Level 2 evaluator records an adversarial verdict for Slice 4 before any status change; F004 remains passes:false."
+    "A fresh-context independent Level 2 evaluator records an adversarial verdict for Slice 5 before any status change; F004 remains passes:false."
   ],
   "verification_plan": {
     "baseline_commands": ["git status --short --branch", "git --no-pager log --oneline -5", "pwsh -File scripts/test.ps1"],
     "unit_commands": ["pwsh -File scripts/test.ps1", "pwsh -File scripts/check.ps1 -NodeAudit"],
     "integration_commands": [
-      "Not required: Slice 4 touches no DB path (run_scan body unchanged; only two registry entries added). The existing live-DB integration suites remain the Slice 2/3 evidence."
+      "Not required: Slice 5 touches no DB path (run_scan body unchanged; only two additive ADAPTER_REGISTRY entries). The live stack is not started. The existing live-DB integration suites remain the Slice 2/3 evidence."
     ]
   },
   "risks": {
     "data_migration": "None. No migration and no schema change; only additive Python modules plus two ADAPTER_REGISTRY entries. offer_version and its immutability trigger are untouched.",
-    "security_privacy": "Adapters reach the network only through the injected SafeFetcher, so the Slice 1 SSRF/allowlist/scheme/MIME/size/redirect guards apply unchanged; a non-allowlisted host is refused pre-connection. The RSS adapter rejects DOCTYPE/entity declarations (XXE / billion-laughs defence-in-depth) and xml.etree resolves no external entities. Adapters produce candidate-only facts; official-only-evidence and no-publication-path invariants are enforced by run_scan (unchanged).",
-    "portability": "Pure standard-library Python (xml.etree.ElementTree, html.parser); no new dependency; amd64/arm64 unaffected.",
+    "security_privacy": "The structured-API adapter reaches the network only through the injected SafeFetcher, so the Slice 1 SSRF/allowlist/scheme/MIME/size/redirect guards apply unchanged. The MCP adapter gates its server URL through the same shared scheme+host policy before any tool invocation and enforces a strict capability allowlist (disallowed tools refused before the client is called); tool invocation goes only through an injectable client seam whose safe default (OfflineMcpClient) refuses. Adapters produce candidate-only facts; official-only-evidence and no-publication-path invariants are enforced by run_scan (unchanged).",
+    "portability": "Pure standard-library Python (json); no new dependency; MCP is an injectable Protocol with no SDK; amd64/arm64 unaffected.",
     "zero_cost_safety": "No offer data is published; adapters emit candidate facts only; malformed/partial never guesses a value ('unknown is better than guessed'); no Z0/free claim is asserted. Fixtures use a synthetic 'example' provider so no unsupported real free-tier claim is introduced.",
-    "regression": "run_scan and reconcile logic are unchanged apart from two additive registry entries, so Slice 2's zero-change_event-on-scan and official-only-evidence invariants and Slice 3's reconciliation still hold.",
+    "regression": "run_scan and reconcile logic are unchanged apart from two additive registry entries; MCP fetch-time refusals subclass FetchError so the existing run_scan error handling applies without modification.",
     "supply_chain": "No new Python or npm dependency; requirements-sync guard stays green."
   },
   "required_evaluation_level": 2,
@@ -60,6 +63,6 @@
     "required": true,
     "reviewer": "owner",
     "disposition": "approved",
-    "notes": ["Owner approved the F004 plan and directed Slice 4 implementation, then stop for a fresh-context Level 2 slice evaluation before Slice 5."]
+    "notes": ["Orchestrator directed Slice 5 implementation, then stop for a fresh-context Level 2 slice evaluation before Slice 6."]
   }
 }

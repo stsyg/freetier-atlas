@@ -47,7 +47,16 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.ingest.adapters import HtmlDocAdapter, RssFeedAdapter, resolve_profile
+from app.ingest.adapters import (
+    HtmlDocAdapter,
+    McpToolAdapter,
+    OfflineMcpClient,
+    RssFeedAdapter,
+    StructuredApiAdapter,
+    resolve_json_profile,
+    resolve_mcp_profile,
+    resolve_profile,
+)
 from app.ingest.base import CandidateFacts, SourceAdapter, SourceDocument
 from app.ingest.fetch import Fetcher, FetchError
 from app.ingest.reference import JsonOfferAdapter
@@ -74,6 +83,17 @@ ADAPTER_REGISTRY: dict[str, AdapterFactory] = {
         fetcher,
         source_urls=_source_urls(source),
         profile=resolve_profile(source.parser_profile),
+    ),
+    "structured-api": lambda source, fetcher: StructuredApiAdapter(
+        fetcher,
+        source_urls=_source_urls(source),
+        profile=resolve_json_profile(source.parser_profile),
+    ),
+    "mcp": lambda source, fetcher: McpToolAdapter(
+        fetcher,
+        client=OfflineMcpClient(),
+        source_urls=_source_urls(source),
+        profile=resolve_mcp_profile(source.parser_profile),
     ),
 }
 

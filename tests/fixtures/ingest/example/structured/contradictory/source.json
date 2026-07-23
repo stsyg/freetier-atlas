@@ -1,0 +1,13 @@
+{
+  "provider": "example",
+  "offers": [
+    {
+      "service": "Compute",
+      "billing": "always_free"
+    },
+    {
+      "service": "Compute",
+      "billing": "free_trial"
+    }
+  ]
+}

@@ -21,3 +21,7 @@ docs/
 agent-state/
 config/
 planning-manifest.json
+
+# Intentionally-malformed JSON ingest fixtures: these MUST stay invalid so the
+# adapter's rejected-candidate path is exercised, so Prettier cannot parse them.
+**/fixtures/ingest/example/*/malformed/source.json

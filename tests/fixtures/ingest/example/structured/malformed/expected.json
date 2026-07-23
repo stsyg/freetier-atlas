@@ -1,0 +1,16 @@
+{
+  "mime": "application/json",
+  "source_url": "https://example.com/api/offers.json",
+  "candidate_count": 1,
+  "candidates": [
+    {
+      "verification_state": "rejected",
+      "expect_valid": false,
+      "facts": {
+        "error": "malformed_json"
+      },
+      "evidence_url": "https://example.com/api/offers.json",
+      "evidence_selector": null
+    }
+  ]
+}

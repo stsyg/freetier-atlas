@@ -1,0 +1,6 @@
+{
+  "provider": "example",
+  "offers": [
+    {
+      "service": "Object Store",
+      "billing": "always_free",

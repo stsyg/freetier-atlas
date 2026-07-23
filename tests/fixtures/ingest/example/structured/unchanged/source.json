@@ -1,0 +1,12 @@
+{
+  "provider": "example",
+  "offers": [
+    {
+      "service": "Object Store",
+      "billing": "always_free",
+      "card_required": false,
+      "paid_addons": false,
+      "quotas": ["storage=hard_stop", "egress=throttle"]
+    }
+  ]
+}

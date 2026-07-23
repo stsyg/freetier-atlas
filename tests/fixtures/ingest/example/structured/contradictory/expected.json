@@ -1,0 +1,38 @@
+{
+  "mime": "application/json",
+  "source_url": "https://example.com/api/offers.json",
+  "candidate_count": 2,
+  "contradiction": {
+    "field": "offer_type",
+    "shared": "Compute",
+    "values": ["always_free", "free_trial"]
+  },
+  "candidates": [
+    {
+      "verification_state": "candidate",
+      "expect_valid": true,
+      "facts": {
+        "service": "Compute",
+        "offer_type": "always_free",
+        "requires_card": null,
+        "has_paid_dependencies": null,
+        "quotas": []
+      },
+      "evidence_url": "https://example.com/api/offers.json",
+      "evidence_selector": "$.offers[0]"
+    },
+    {
+      "verification_state": "candidate",
+      "expect_valid": true,
+      "facts": {
+        "service": "Compute",
+        "offer_type": "free_trial",
+        "requires_card": null,
+        "has_paid_dependencies": null,
+        "quotas": []
+      },
+      "evidence_url": "https://example.com/api/offers.json",
+      "evidence_selector": "$.offers[1]"
+    }
+  ]
+}
