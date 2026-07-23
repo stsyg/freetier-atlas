@@ -1,0 +1,21 @@
+{
+  "mime": "application/json",
+  "source_url": "https://example.com/api/offers.json",
+  "candidate_count": 1,
+  "candidates": [
+    {
+      "verification_state": "candidate",
+      "expect_valid": false,
+      "validate_contains": ["offer_type"],
+      "facts": {
+        "service": "Mystery Service",
+        "offer_type": null,
+        "requires_card": null,
+        "has_paid_dependencies": null,
+        "quotas": []
+      },
+      "evidence_url": "https://example.com/api/offers.json",
+      "evidence_selector": "$.offers[0]"
+    }
+  ]
+}

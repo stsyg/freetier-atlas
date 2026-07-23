@@ -1,0 +1,20 @@
+{
+  "mime": "application/json",
+  "source_url": "https://example.com/api/offers.json",
+  "candidate_count": 1,
+  "candidates": [
+    {
+      "verification_state": "candidate",
+      "expect_valid": true,
+      "facts": {
+        "service": "Object Store",
+        "offer_type": "always_free",
+        "requires_card": false,
+        "has_paid_dependencies": false,
+        "quotas": ["egress=throttle", "storage=hard_stop"]
+      },
+      "evidence_url": "https://example.com/api/offers.json",
+      "evidence_selector": "$.offers[0]"
+    }
+  ]
+}

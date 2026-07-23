@@ -1,0 +1,6 @@
+{
+  "provider": "example",
+  "results": [
+    {
+      "name": "Queue",
+      "plan": "always_free",

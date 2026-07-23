@@ -1,0 +1,21 @@
+{
+  "mime": "application/json",
+  "source_url": "https://mcp.example.com/servers/offers",
+  "candidate_count": 1,
+  "candidates": [
+    {
+      "verification_state": "candidate",
+      "expect_valid": false,
+      "validate_contains": ["offer_type"],
+      "facts": {
+        "service": "Beta Queue",
+        "offer_type": null,
+        "requires_card": null,
+        "has_paid_dependencies": null,
+        "quotas": []
+      },
+      "evidence_url": "https://mcp.example.com/servers/offers",
+      "evidence_selector": "list_free_offers:results[0]"
+    }
+  ]
+}

@@ -1,0 +1,8 @@
+{
+  "provider": "example",
+  "offers": [
+    {
+      "service": "Mystery Service"
+    }
+  ]
+}

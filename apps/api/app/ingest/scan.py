@@ -47,7 +47,16 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.ingest.adapters import HtmlDocAdapter, RssFeedAdapter, resolve_profile
+from app.ingest.adapters import (
+    HtmlDocAdapter,
+    McpToolAdapter,
+    OfflineMcpClient,
+    RssFeedAdapter,
+    StructuredApiAdapter,
+    resolve_json_profile,
+    resolve_mcp_profile,
+    resolve_profile,
+)
 from app.ingest.base import CandidateFacts, SourceAdapter, SourceDocument
 from app.ingest.fetch import Fetcher, FetchError
 from app.ingest.reference import JsonOfferAdapter
@@ -74,6 +83,17 @@ ADAPTER_REGISTRY: dict[str, AdapterFactory] = {
         fetcher,
         source_urls=_source_urls(source),
         profile=resolve_profile(source.parser_profile),
+    ),
+    "structured-api": lambda source, fetcher: StructuredApiAdapter(
+        fetcher,
+        source_urls=_source_urls(source),
+        profile=resolve_json_profile(source.parser_profile),
+    ),
+    "mcp": lambda source, fetcher: McpToolAdapter(
+        fetcher,
+        client=OfflineMcpClient(),
+        source_urls=_source_urls(source),
+        profile=resolve_mcp_profile(source.parser_profile),
     ),
 }
 
@@ -197,9 +217,21 @@ def run_scan(source: Source, fetcher: Fetcher, session: Session) -> ScanRun:
         session.add(snapshot)
         session.flush()
 
-        document: SourceDocument = adapter.canonicalize(result)
+        # Defense-in-depth: canonicalize()/extract() are pure adapter logic and
+        # are contracted never to raise on malformed input, but a latent adapter
+        # bug must never abort the whole scan run. Capture any such failure as a
+        # per-document error (mirroring the FetchError arm above) and move on;
+        # the fetched snapshot is already persisted. DB persistence below is
+        # deliberately left OUTSIDE this guard so a real transaction error is not
+        # silently swallowed.
+        try:
+            document: SourceDocument = adapter.canonicalize(result)
+            extracted = list(adapter.extract(document))
+        except Exception:  # noqa: BLE001 - isolate adapter faults to one document
+            errors += 1
+            continue
 
-        for candidate_facts in adapter.extract(document):
+        for candidate_facts in extracted:
             problems = adapter.validate(candidate_facts)
             if problems:
                 errors += 1

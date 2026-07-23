@@ -291,3 +291,64 @@ def test_invalid_candidate_is_counted_as_error_and_skipped(
     assert scan_run.errors_count == 1
     assert scan_run.status == "partial"
     assert source.health == "degraded"
+
+
+@skip_without_db
+def test_adapter_extract_failure_is_captured_not_fatal(
+    session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A latent adapter bug in extract() must NOT abort the whole scan run.
+
+    Defense-in-depth for the Slice-5 fix: canonicalize()/extract() are guarded in
+    run_scan, so an uncaught exception (here a RecursionError, exactly the class a
+    JSON recursion bomb raises) is captured as a per-document error and the run
+    finishes with status 'partial' rather than propagating out of run_scan.
+    """
+
+    from app.ingest import scan as scan_mod
+
+    source = _make_source(session, trust_level="official")
+    real = scan_mod.build_adapter(source, _fetcher(_TWO_OFFERS))
+
+    class _BoomAdapter:
+        name = "boom"
+
+        def __init__(self, inner: object) -> None:
+            self._inner = inner
+
+        def discover(self):
+            return self._inner.discover()
+
+        def fetch(self, url: str):
+            return self._inner.fetch(url)
+
+        def canonicalize(self, result):
+            return self._inner.canonicalize(result)
+
+        def extract(self, document):
+            raise RecursionError("simulated adapter fault")
+
+        def validate(self, candidate):
+            return []
+
+        def evidence(self, candidate):
+            return ()
+
+        def health(self):
+            return self._inner.health()
+
+    monkeypatch.setattr(scan_mod, "build_adapter", lambda s, f: _BoomAdapter(real))
+
+    # Must not raise -- the fault is captured per-document.
+    scan_run = run_scan(source, _fetcher(_TWO_OFFERS), session)
+
+    assert scan_run.documents_count == 1  # the document was fetched + snapshotted
+    assert scan_run.candidates_count == 0  # extraction faulted -> no candidates
+    assert scan_run.errors_count == 1  # captured as one per-document error
+    assert scan_run.status == "partial"
+
+    # The fetched snapshot is still persisted (fetch succeeded before extract).
+    snapshots = list(
+        session.execute(select(Snapshot).where(Snapshot.source_id == source.id)).scalars()
+    )
+    assert len(snapshots) == 1
