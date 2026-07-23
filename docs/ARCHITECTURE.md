@@ -82,6 +82,24 @@ Automatic publication requires:
 - sufficient confidence
 - source freshness within policy
 
+The gate is implemented in `apps/api/app/publish/` (F005): `revalidate.py`
+deterministically re-derives the material numbers from the persisted facts,
+`confidence.py` scores the signals above (weighted, deterministic) plus
+completeness/freshness, and `gate.py` routes each candidate to **publish**
+(all hard conditions met and confidence at/above the automatic threshold),
+**review** (uncertain or contradictory evidence — a pending `review_item`,
+never auto-published), or **withhold** (unofficial or unevidenced). On publish,
+`publisher.py` upserts the `service`/`offer`, appends an **immutable**
+`offer_version` (classified through the `classify_offer` Z0 bridge before
+insert), writes its `quota` rows, links the official `evidence` to the new
+version, and records a *published* `change_event`. Re-publishing identical
+facts is idempotent (no new version); a material change appends a new version.
+The confidence score and gate/classification reasons are stored inside the
+version's `material_facts` JSONB. Publication is invoked from the ingest runner
+(`run_provider_scans(..., publish=True)` / `python -m app.ingest.runner
+--publish`); it is off by default. Only official, evidenced data can ever reach
+`offer`/`offer_version`/`quota` — community data stays quarantined.
+
 ## LLM routing
 
 1. Deterministic parser/rules

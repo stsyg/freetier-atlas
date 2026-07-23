@@ -7,7 +7,12 @@
       captured from the official documentation for offline, deterministic
       extraction. Free-plan values only; each figure is reproduced verbatim
       from developers.cloudflare.com/workers/platform/limits/ ("Account plan
-      limits", Workers Free column). No value is invented.
+      limits", Workers Free column). No value is invented. The "Exhaustion
+      behaviour" column records what the platform does when the Free-plan daily
+      request limit is exceeded: Cloudflare rejects further requests (HTTP 429 /
+      Error 1027) with no automatic billing -> request_rejected. Source:
+      developers.cloudflare.com/workers/platform/limits/ ("If you exceed ... the
+      request will be rejected") and the Free plan's no-card, no-billing model.
     -->
   </head>
   <body>
@@ -32,6 +37,7 @@
           <th>Cron Triggers per account</th>
           <th>Static asset files</th>
           <th>Static asset file size</th>
+          <th>Exhaustion behaviour</th>
         </tr>
       </thead>
       <tbody>
@@ -49,6 +55,7 @@
           <td>5</td>
           <td>20,000</td>
           <td>25 MiB</td>
+          <td>request_rejected</td>
         </tr>
       </tbody>
     </table>

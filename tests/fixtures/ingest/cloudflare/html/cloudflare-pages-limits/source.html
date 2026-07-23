@@ -8,7 +8,11 @@
       extraction. Free-plan values only; each figure is reproduced verbatim
       from developers.cloudflare.com/pages/platform/limits/ (the "Below are
       limits observed by the Cloudflare Free plan" tables). No value is
-      invented.
+      invented. The "Exhaustion behaviour" column records what the platform does
+      when the Free-plan monthly build cap is exceeded: further builds are
+      blocked until the next reset with no automatic billing ->
+      deployment_blocked. Source: developers.cloudflare.com/pages/platform/limits/
+      ("builds ... will be blocked") and the Free plan's no-card, no-billing model.
     -->
   </head>
   <body>
@@ -32,6 +36,7 @@
           <th>Header rules</th>
           <th>Redirects</th>
           <th>Projects per account</th>
+          <th>Exhaustion behaviour</th>
         </tr>
       </thead>
       <tbody>
@@ -48,6 +53,7 @@
           <td>100</td>
           <td>2,100</td>
           <td>100</td>
+          <td>deployment_blocked</td>
         </tr>
       </tbody>
     </table>

@@ -19,7 +19,8 @@
         "file_size": "25 MiB",
         "header_rules": "100",
         "redirects": "2,100",
-        "projects_per_account": "100"
+        "projects_per_account": "100",
+        "exhaustion_behaviour": "deployment_blocked"
       },
       "evidence_url": "https://developers.cloudflare.com/pages/platform/limits/",
       "evidence_selector": "cloudflare_pages_limits row[1]"
