@@ -46,6 +46,28 @@ Every community-derived candidate records repository, URL, licence, discovery da
 
 No community prose is shown as public evidence.
 
+## Enforcement (two layers)
+
+The rule above is enforced as an invariant, not just a convention:
+
+- **Application layer** — `app.ingest.trust` centralises the trust decision
+  (`is_official_source`) and guards evidence creation
+  (`assert_evidence_permitted`). `app.ingest.scan.run_scan` routes official
+  sources to `Candidate(official=True)` + `Evidence` and community/unverified
+  sources to quarantined `discovery_candidate` rows only — never `Evidence`,
+  `Offer`, or `OfferVersion`.
+- **Database layer** — migration `0006_quarantine_separation` installs two
+  triggers: a `candidate` may be `official` only if its source's `trust_level`
+  is `official` (so a community candidate can never be flagged or *promoted* to
+  official, blocking in-place relabelling), and an `evidence` row may reference
+  only an official candidate. Combined with the structural isolation of
+  `discovery_candidate` (no FK into `evidence`/`offer_version`), community data
+  cannot cross into the verified pipeline even via raw SQL.
+
+There is no automated promotion-to-published path: any promotion requires
+explicit official evidence and human/admin disposition. Unknown is better than
+guessed.
+
 ## URLs
 
 - https://github.com/ripienaar/free-for-dev

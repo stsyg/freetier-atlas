@@ -60,6 +60,7 @@ from app.ingest.adapters import (
 from app.ingest.base import CandidateFacts, SourceAdapter, SourceDocument
 from app.ingest.fetch import Fetcher, FetchError
 from app.ingest.reference import JsonOfferAdapter
+from app.ingest.trust import assert_evidence_permitted, is_official_source
 from app.models.domain import (
     Candidate,
     DiscoveryCandidate,
@@ -188,7 +189,7 @@ def run_scan(source: Source, fetcher: Fetcher, session: Session) -> ScanRun:
     """
 
     adapter = build_adapter(source, fetcher)
-    is_official = source.trust_level == "official"
+    is_official = is_official_source(source)
 
     scan_run = ScanRun(source_id=source.id, status="running")
     session.add(scan_run)
@@ -306,7 +307,16 @@ def _persist_evidence(
     snapshot: Snapshot,
     source: Source,
 ) -> None:
-    """Link Source + Snapshot to a Candidate as official provenance evidence."""
+    """Link Source + Snapshot to a Candidate as official provenance evidence.
+
+    Defense-in-depth: evidence is official-provenance only. Before building any
+    row we assert the candidate is official, so a community/quarantined candidate
+    can never acquire evidence even if a future caller reached this function
+    without going through the ``is_official`` branch in :func:`run_scan`. The
+    database enforces the same invariant independently (migration 0006).
+    """
+
+    assert_evidence_permitted(candidate_official=candidate.official, trust_level=source.trust_level)
 
     for location in adapter.evidence(candidate_facts):
         session.add(
