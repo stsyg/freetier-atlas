@@ -1,0 +1,17 @@
+{
+  "workload_name": "single storage workload",
+  "requirements": [
+    {
+      "category": "object-file-storage",
+      "label": "backups",
+      "demands": [
+        {
+          "metric": "storage",
+          "amount": "5",
+          "unit": "GB",
+          "period": "month"
+        }
+      ]
+    }
+  ]
+}

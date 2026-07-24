@@ -172,6 +172,63 @@ only inside rolled-back integration-test transactions (owner decision Q6); no
 synthetic data is published on a normal stack run. Real cross-provider breadth
 arrives in F008.
 
+### Deterministic adviser core (F006 slice 3)
+
+The adviser (`apps/api/app/adviser/`) turns a **strict, structured workload** into a
+fully deterministic, evidence-backed $0 architecture recommendation. It is a *pure
+function* of the request and the published catalogue: **no LLM sits in the path**
+(the recommendation is produced with all providers disabled — the default — and the
+corpus asserts exactly this), there is no natural-language parsing (that is F007),
+and identical input always yields identical output. The pipeline is:
+
+- `schema.py` — the only accepted input: a bounded (`extra="forbid"`) list of
+  `Requirement`s, each in one of the 14 canonical categories with quantified
+  `Demand`s (exact `Decimal` amounts) and `Constraints`. Every string field rejects
+  URL/host/path markers, so the endpoint exposes no fetchable-URL / SSRF surface.
+  Recommendation priorities are a product-fixed code constant (exactly $0 →
+  portability → low lock-in), never caller input.
+- `select.py` — reads only the **published** offer graph (the `candidate` /
+  `discovery_candidate` quarantine tables are never queried) and partitions offers
+  by zero-cost class. Z0-safety is enforced by re-running the shared `classify_offer`
+  engine and comparing its verdict to the persisted `zero_cost_class`; only when they
+  **agree** is the offer usable. A disagreement or an `UNKNOWN` verdict excludes the
+  offer (fail closed). Only `Z0_TRUE_FREE` offers may enter a guaranteed-$0
+  architecture; `Z3_SELF_HOSTED_BUILDING_BLOCK` is held for the self-hosting
+  fallback; `Z1`/`Z2` are surfaced only in a separate "not $0" section.
+- `quota_math.py` — exact-`Decimal` fit/headroom using the shared `normalize.py`
+  Decimal path. A demand is covered only when a metric-matched, period-compatible
+  quota normalizes into the same dimension with `headroom = quota − demand >= 0`; a
+  boundary of exactly zero headroom fits. Any unknown/unnormalizable unit **fails
+  closed** ("cannot guarantee", never guessed).
+- `portability.py` — a deterministic portability score/label + lock-in label +
+  exit-plan from a service's `deployment_model` and `portability_traits`;
+  unrecognized traits are recorded but never scored ("unknown is better than
+  guessed").
+- `recommend.py` — the orchestrator. When a requirement has a fitting Z0 offer it
+  picks the single best by a **stable total ordering** (most headroom margin →
+  confidence label → portability → provider slug → offer id). When none fits it
+  follows the strict impossible order: **(a) explain the blocking requirement →
+  (b) reduction** (compute the exact reduced demand that fits the best available Z0
+  headroom) **→ (c) recalculation** (re-run selection under the reduced demand) **→
+  (d) self-hosting** (a Z3 building block placed on a Z0 host). `Z1`/`Z2` never enter
+  the recommendation or the impossible order.
+- `explain.py` + `schemas.py` — templated, evidence-backed explanations (quota math,
+  Z0-safety reasons, portability, lock-in, exit-plan, and a whole-architecture "$0
+  proof") assembled from persisted facts + `Evidence`, serialized with every
+  fit-relevant amount as a `Decimal` **string** so no float round-trip can change a
+  decision.
+
+The endpoint is `POST /adviser/recommend` (`router.py`), mounted separately from the
+GET-only `/catalogue`. It is **stateless**: a read-only DB session that never commits,
+nothing persisted or logged, no LLM, no user-controlled URL, no DB writes. A JSON
+eval corpus (`tests/fixtures/adviser/`) pins the deterministic output — satisfiable
+single/multi-requirement architectures, exact quota-math boundaries, unknown-unit
+fail-closed, the full impossible → reduction → recalculation → self-hosting order,
+and Z1/Z2-only-in-the-separate-section — and a corpus runner asserts it with all LLM
+providers disabled. Multi-provider / multi-option behaviour is proven with clearly
+synthetic fixture offers (owner decision Q6), never published on a normal run. No new
+runtime dependency (stdlib `decimal`) and no migration (Alembic head stays 0007).
+
 ### Public web experience (F005 slice 4)
 
 The `apps/web` single-page app renders a public, Cloudflare-focused provider page

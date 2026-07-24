@@ -322,6 +322,21 @@ source of truth. `tests/unit/test_z0_classifier.py` is a comprehensive truth
 table covering every gate, every exhaustion behaviour, boundary/contradictory
 inputs, and the safety invariant.
 
+### Reuse by the deterministic adviser (F006 slice 3)
+
+The adviser (`apps/api/app/adviser/`) is a **read-only** consumer of this data
+model: it adds **no table and no migration** (Alembic head stays 0007) and never
+writes. It reads only the published `Offer` graph (`candidate` /
+`discovery_candidate` are never queried) and re-runs `classify_offer` over each
+offer's persisted facts, cross-checking the engine verdict against the stored
+`zero_cost_class`; only offers where the two **agree** are usable, so the adviser
+reuses the engine as the single Z0 source of truth and never re-derives Z0. Fit
+decisions use exact `Decimal` end to end via the `read_api/normalize.py` Decimal
+path (`normalize_amount_decimal` / `comparable_decimal`), and any unknown/
+unnormalizable unit **fails closed**. `POST /adviser/recommend` runs on a read-only
+session that never commits — the `offer_version` immutability trigger (SQLSTATE
+`23001`) and the 0006 separation triggers are untouched.
+
 ## Source ingestion: safe fetch guard and adapter contract
 
 The ingestion pipeline (`apps/api/app/ingest/`) is built on two foundations

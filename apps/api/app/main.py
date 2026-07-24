@@ -13,6 +13,7 @@ from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 
 from . import __version__
+from .adviser.router import router as adviser_router
 from .db import check_database
 from .read_api import router as catalogue_router
 from .settings import get_settings
@@ -26,6 +27,7 @@ app = FastAPI(
 )
 
 app.include_router(catalogue_router)
+app.include_router(adviser_router)
 
 
 @app.get("/health", tags=["health"])

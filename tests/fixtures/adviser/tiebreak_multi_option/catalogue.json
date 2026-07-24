@@ -1,0 +1,106 @@
+{
+  "providers": [
+    {
+      "id": 1,
+      "slug": "aaa-fixture",
+      "name": "AAA (fixture)",
+      "services": [
+        {
+          "id": 10,
+          "canonical_name": "AAA Store",
+          "category_slug": "object-file-storage",
+          "deployment_model": "managed",
+          "portability_traits": ["s3_compatible"],
+          "offers": [
+            {
+              "id": 800,
+              "offer_type": "recurring_quota",
+              "zero_cost_class": "Z0_TRUE_FREE",
+              "commercial_use_allowed": true,
+              "personal_use_allowed": true,
+              "requires_card": false,
+              "has_paid_dependencies": false,
+              "version": {
+                "version_number": 1,
+                "material_facts": {
+                  "confidence": 0.95,
+                  "gate": {
+                    "automatic_threshold": 0.8,
+                    "uncertain_threshold": 0.5
+                  }
+                },
+                "quotas": [
+                  {
+                    "metric": "storage",
+                    "amount": "10",
+                    "unit": "GB",
+                    "reset_period": "month",
+                    "exhaustion_behaviour": "hard_stop"
+                  }
+                ],
+                "evidence": [
+                  {
+                    "title": "Free tier docs",
+                    "url": "https://example.test/free",
+                    "official": true
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "slug": "bbb-fixture",
+      "name": "BBB (fixture)",
+      "services": [
+        {
+          "id": 20,
+          "canonical_name": "BBB Store",
+          "category_slug": "object-file-storage",
+          "deployment_model": "managed",
+          "portability_traits": ["s3_compatible"],
+          "offers": [
+            {
+              "id": 900,
+              "offer_type": "recurring_quota",
+              "zero_cost_class": "Z0_TRUE_FREE",
+              "commercial_use_allowed": true,
+              "personal_use_allowed": true,
+              "requires_card": false,
+              "has_paid_dependencies": false,
+              "version": {
+                "version_number": 1,
+                "material_facts": {
+                  "confidence": 0.95,
+                  "gate": {
+                    "automatic_threshold": 0.8,
+                    "uncertain_threshold": 0.5
+                  }
+                },
+                "quotas": [
+                  {
+                    "metric": "storage",
+                    "amount": "20",
+                    "unit": "GB",
+                    "reset_period": "month",
+                    "exhaustion_behaviour": "hard_stop"
+                  }
+                ],
+                "evidence": [
+                  {
+                    "title": "Free tier docs",
+                    "url": "https://example.test/free",
+                    "official": true
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

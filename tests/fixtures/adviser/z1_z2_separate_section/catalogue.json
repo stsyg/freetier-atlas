@@ -1,0 +1,157 @@
+{
+  "providers": [
+    {
+      "id": 1,
+      "slug": "acme-fixture",
+      "name": "Acme (fixture)",
+      "services": [
+        {
+          "id": 10,
+          "canonical_name": "Acme Object Store",
+          "category_slug": "object-file-storage",
+          "deployment_model": "managed",
+          "portability_traits": ["s3_compatible"],
+          "offers": [
+            {
+              "id": 500,
+              "offer_type": "recurring_quota",
+              "zero_cost_class": "Z0_TRUE_FREE",
+              "commercial_use_allowed": true,
+              "personal_use_allowed": true,
+              "requires_card": false,
+              "has_paid_dependencies": false,
+              "version": {
+                "version_number": 1,
+                "material_facts": {
+                  "confidence": 0.95,
+                  "gate": {
+                    "automatic_threshold": 0.8,
+                    "uncertain_threshold": 0.5
+                  }
+                },
+                "quotas": [
+                  {
+                    "metric": "storage",
+                    "amount": "10",
+                    "unit": "GB",
+                    "reset_period": "month",
+                    "exhaustion_behaviour": "hard_stop"
+                  }
+                ],
+                "evidence": [
+                  {
+                    "title": "Free tier docs",
+                    "url": "https://example.test/free",
+                    "official": true
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "slug": "bigco-fixture",
+      "name": "BigCo (fixture)",
+      "services": [
+        {
+          "id": 40,
+          "canonical_name": "BigCo Storage",
+          "category_slug": "object-file-storage",
+          "deployment_model": "managed",
+          "portability_traits": ["proprietary_api"],
+          "offers": [
+            {
+              "id": 600,
+              "offer_type": "recurring_quota",
+              "zero_cost_class": "Z1_BILLING_EXPOSURE",
+              "commercial_use_allowed": true,
+              "personal_use_allowed": true,
+              "requires_card": false,
+              "has_paid_dependencies": false,
+              "version": {
+                "version_number": 1,
+                "material_facts": {
+                  "confidence": 0.95,
+                  "gate": {
+                    "automatic_threshold": 0.8,
+                    "uncertain_threshold": 0.5
+                  }
+                },
+                "quotas": [
+                  {
+                    "metric": "storage",
+                    "amount": "100",
+                    "unit": "GB",
+                    "reset_period": "month",
+                    "exhaustion_behaviour": "automatic_billing"
+                  }
+                ],
+                "evidence": [
+                  {
+                    "title": "Free tier docs",
+                    "url": "https://example.test/free",
+                    "official": true
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "slug": "trialco-fixture",
+      "name": "TrialCo (fixture)",
+      "services": [
+        {
+          "id": 50,
+          "canonical_name": "TrialCo Storage",
+          "category_slug": "object-file-storage",
+          "deployment_model": "managed",
+          "portability_traits": ["open_standards"],
+          "offers": [
+            {
+              "id": 700,
+              "offer_type": "trial",
+              "zero_cost_class": "Z2_TEMPORARY_OR_CONDITIONAL",
+              "commercial_use_allowed": true,
+              "personal_use_allowed": true,
+              "requires_card": false,
+              "has_paid_dependencies": false,
+              "version": {
+                "version_number": 1,
+                "material_facts": {
+                  "confidence": 0.95,
+                  "gate": {
+                    "automatic_threshold": 0.8,
+                    "uncertain_threshold": 0.5
+                  }
+                },
+                "quotas": [
+                  {
+                    "metric": "storage",
+                    "amount": "50",
+                    "unit": "GB",
+                    "reset_period": "month",
+                    "exhaustion_behaviour": "hard_stop"
+                  }
+                ],
+                "evidence": [
+                  {
+                    "title": "Free tier docs",
+                    "url": "https://example.test/free",
+                    "official": true
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

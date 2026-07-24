@@ -1,0 +1,106 @@
+{
+  "providers": [
+    {
+      "id": 2,
+      "slug": "globex-fixture",
+      "name": "Globex (fixture)",
+      "services": [
+        {
+          "id": 20,
+          "canonical_name": "Tiny FaaS",
+          "category_slug": "serverless-functions",
+          "deployment_model": "managed",
+          "portability_traits": ["standard_api"],
+          "offers": [
+            {
+              "id": 300,
+              "offer_type": "recurring_quota",
+              "zero_cost_class": "Z0_TRUE_FREE",
+              "commercial_use_allowed": true,
+              "personal_use_allowed": true,
+              "requires_card": false,
+              "has_paid_dependencies": false,
+              "version": {
+                "version_number": 1,
+                "material_facts": {
+                  "confidence": 0.95,
+                  "gate": {
+                    "automatic_threshold": 0.8,
+                    "uncertain_threshold": 0.5
+                  }
+                },
+                "quotas": [
+                  {
+                    "metric": "requests",
+                    "amount": "1000000",
+                    "unit": "requests",
+                    "reset_period": "month",
+                    "exhaustion_behaviour": "hard_stop"
+                  }
+                ],
+                "evidence": [
+                  {
+                    "title": "Free tier docs",
+                    "url": "https://example.test/free",
+                    "official": true
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "slug": "oss-fixture",
+      "name": "OSS Collective (fixture)",
+      "services": [
+        {
+          "id": 30,
+          "canonical_name": "OpenFaaS",
+          "category_slug": "serverless-functions",
+          "deployment_model": "self_hosted",
+          "portability_traits": ["open_source", "container_based", "self_hostable"],
+          "offers": [
+            {
+              "id": 400,
+              "offer_type": "self_hosted_open_source",
+              "zero_cost_class": "Z3_SELF_HOSTED_BUILDING_BLOCK",
+              "commercial_use_allowed": true,
+              "personal_use_allowed": true,
+              "requires_card": false,
+              "has_paid_dependencies": false,
+              "version": {
+                "version_number": 1,
+                "material_facts": {
+                  "confidence": 0.95,
+                  "gate": {
+                    "automatic_threshold": 0.8,
+                    "uncertain_threshold": 0.5
+                  }
+                },
+                "quotas": [
+                  {
+                    "metric": "requests",
+                    "amount": "1000000",
+                    "unit": "requests",
+                    "reset_period": "month",
+                    "exhaustion_behaviour": "hard_stop"
+                  }
+                ],
+                "evidence": [
+                  {
+                    "title": "Free tier docs",
+                    "url": "https://example.test/free",
+                    "official": true
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
