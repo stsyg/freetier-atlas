@@ -200,6 +200,129 @@ export interface OfferHistoryResponse {
   change_events: ChangeEvent[];
 }
 
+// --- Catalogue-wide search (F006) --------------------------------------------
+
+export interface SearchResultItem {
+  offer_id: number;
+  provider_slug: string;
+  provider_name: string;
+  service_id: number;
+  service_name: string;
+  category: CategoryRef | null;
+  offer_type: string;
+  zero_cost_class: string;
+  status: string;
+  confidence_label: string;
+  current_version_number: number | null;
+}
+
+export interface SearchFilters {
+  q: string | null;
+  provider: string | null;
+  category: string | null;
+  zero_cost_class: string | null;
+  offer_type: string | null;
+  commercial_use: boolean | null;
+  status: string | null;
+}
+
+export interface SearchResponse {
+  filters: SearchFilters;
+  page: number;
+  page_size: number;
+  total_results: number;
+  total_pages: number;
+  results: SearchResultItem[];
+}
+
+/**
+ * The filter/query inputs a caller may supply to {@link fetchSearch}.
+ *
+ * Every field is an internal identifier, enum, or bounded keyword — never a URL
+ * or host. Values are appended as query-string parameters onto the FIXED
+ * `/catalogue/search` path, so there is no way to redirect the request.
+ */
+export interface SearchQuery {
+  q?: string | null;
+  provider?: string | null;
+  category?: string | null;
+  zero_cost_class?: string | null;
+  offer_type?: string | null;
+  commercial_use?: boolean | null;
+  status?: string | null;
+  page?: number;
+}
+
+// --- Category coverage matrix (F006) -----------------------------------------
+
+export interface ProviderCoverage {
+  provider_slug: string;
+  provider_name: string;
+  /** `verified_free` | `no_free_tier` | `not_offered` (from the API; never re-derived). */
+  state: string;
+  published_offer_count: number;
+  free_offer_count: number;
+}
+
+export interface CategoryMatrixRow {
+  ordinal: number;
+  slug: string;
+  name: string;
+  providers: ProviderCoverage[];
+}
+
+export interface UncategorizedCoverage {
+  provider_slug: string;
+  provider_name: string;
+  published_offer_count: number;
+  free_offer_count: number;
+}
+
+export interface CategoryMatrixResponse {
+  provider_slugs: string[];
+  categories: CategoryMatrixRow[];
+  uncategorized: UncategorizedCoverage[];
+}
+
+// --- Compare (F006) ----------------------------------------------------------
+
+export interface NormalizedQuota extends Quota {
+  normalized: boolean;
+  canonical_amount: number | null;
+  canonical_unit: string | null;
+  dimension: string | null;
+  normalization_note: string | null;
+}
+
+export interface CompareOffer {
+  offer_id: number;
+  provider_slug: string;
+  provider_name: string;
+  service_id: number;
+  service_name: string;
+  category: CategoryRef | null;
+  offer_type: string;
+  zero_cost_class: string;
+  status: string;
+  requires_card: boolean | null;
+  has_paid_dependencies: boolean | null;
+  commercial_use_allowed: boolean | null;
+  personal_use_allowed: boolean | null;
+  reasons: string[];
+  blocking_conditions: string[];
+  quotas: NormalizedQuota[];
+  confidence_label: string;
+  completeness: number | null;
+  freshness: number | null;
+  evidence_count: number;
+  advanced: ConfidenceAdvanced;
+}
+
+export interface CompareResponse {
+  offer_ids: number[];
+  offers: CompareOffer[];
+}
+
 // --- Fetch helper -------------------------------------------------------------
 
 /**
@@ -280,4 +403,54 @@ export function fetchOfferHistory(
   signal?: AbortSignal,
 ): Promise<OfferHistoryResponse> {
   return getJson<OfferHistoryResponse>(`/catalogue/offers/${offerId}/history`, signal);
+}
+
+/** List every provider (used to populate the provider filter option list). */
+export function fetchProviders(signal?: AbortSignal): Promise<ProviderSummary[]> {
+  return getJson<ProviderSummary[]>("/catalogue/providers", signal);
+}
+
+/**
+ * Run a catalogue-wide search + filter over the published catalogue.
+ *
+ * The request is always a `GET` against the FIXED `/catalogue/search` path; the
+ * caller's inputs are appended as query-string parameters (keyword, internal
+ * slugs, enum filters, page). No value is ever treated as a URL/host or fetched,
+ * so there is no SSRF surface. Empty/absent inputs are simply omitted.
+ */
+export function fetchSearch(query: SearchQuery = {}, signal?: AbortSignal): Promise<SearchResponse> {
+  const params = new URLSearchParams();
+  const add = (key: string, value: string | null | undefined) => {
+    if (value !== null && value !== undefined && value !== "") params.set(key, value);
+  };
+  add("q", query.q);
+  add("provider", query.provider);
+  add("category", query.category);
+  add("zero_cost_class", query.zero_cost_class);
+  add("offer_type", query.offer_type);
+  if (query.commercial_use === true || query.commercial_use === false) {
+    params.set("commercial_use", String(query.commercial_use));
+  }
+  add("status", query.status);
+  if (query.page && query.page > 1) params.set("page", String(query.page));
+
+  const suffix = params.toString();
+  return getJson<SearchResponse>(`/catalogue/search${suffix ? `?${suffix}` : ""}`, signal);
+}
+
+/** Fetch the 14-category coverage matrix crossed with every provider. */
+export function fetchCategoryMatrix(signal?: AbortSignal): Promise<CategoryMatrixResponse> {
+  return getJson<CategoryMatrixResponse>("/catalogue/categories", signal);
+}
+
+/**
+ * Fetch a normalized side-by-side comparison of a bounded set of offers.
+ *
+ * `offerIds` are internal integer identifiers; they are joined into the fixed
+ * `/catalogue/compare?offers=1,2,3` path. Nothing caller-supplied is ever used
+ * as a URL/host.
+ */
+export function fetchCompare(offerIds: number[], signal?: AbortSignal): Promise<CompareResponse> {
+  const ids = offerIds.map((id) => String(id)).join(",");
+  return getJson<CompareResponse>(`/catalogue/compare?offers=${encodeURIComponent(ids)}`, signal);
 }

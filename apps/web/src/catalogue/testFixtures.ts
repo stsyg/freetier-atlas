@@ -1,10 +1,16 @@
 import type {
+  CategoryMatrixResponse,
+  CompareOffer,
+  CompareResponse,
   CategoryStatesResponse,
   OfferDetail,
   OfferEvidenceResponse,
   OfferHistoryResponse,
   OfferSummary,
   ProviderDetail,
+  ProviderSummary,
+  SearchResponse,
+  SearchResultItem,
 } from "../api";
 
 /**
@@ -256,6 +262,354 @@ export const offerHistory2: OfferHistoryResponse = {
   change_events: [],
 };
 
+// --- F006 slice 2: provider-agnostic search / matrix / compare fixtures ------
+//
+// These fixtures deliberately span MULTIPLE synthetic providers (cloudflare plus
+// two invented providers) so the tests prove the catalogue browser renders any
+// provider from the API, not a hard-coded Cloudflare view. The synthetic data is
+// clearly fictional and only ever reached through a mocked `fetch`; it never
+// leaks a real-world free-tier claim.
+
+/** Provider list used to populate the provider filter (GET /catalogue/providers). */
+export const providerList: ProviderSummary[] = [
+  {
+    slug: "cloudflare",
+    name: "Cloudflare",
+    type: "cloud_platform",
+    source_health: "healthy",
+    completeness: 0.92,
+    freshness: 0.8,
+    service_count: 2,
+    published_offer_count: 2,
+  },
+  {
+    slug: "northwind-cloud",
+    name: "Northwind Cloud",
+    type: "cloud_platform",
+    source_health: "healthy",
+    completeness: 0.7,
+    freshness: 0.6,
+    service_count: 1,
+    published_offer_count: 1,
+  },
+  {
+    slug: "acme-serverless",
+    name: "Acme Serverless",
+    type: "cloud_platform",
+    source_health: "degraded",
+    completeness: 0.5,
+    freshness: 0.4,
+    service_count: 2,
+    published_offer_count: 2,
+  },
+];
+
+/** The full synthetic search index; the mock filters/paginates over this. */
+export const searchIndex: SearchResultItem[] = [
+  {
+    offer_id: 1,
+    provider_slug: "cloudflare",
+    provider_name: "Cloudflare",
+    service_id: 1,
+    service_name: "Cloudflare Workers",
+    category: { slug: "serverless-functions", name: "Serverless functions" },
+    offer_type: "always_free",
+    zero_cost_class: "Z0_TRUE_FREE",
+    status: "active",
+    confidence_label: "high",
+    current_version_number: 1,
+  },
+  {
+    offer_id: 2,
+    provider_slug: "cloudflare",
+    provider_name: "Cloudflare",
+    service_id: 2,
+    service_name: "Cloudflare Pages",
+    category: { slug: "containers-app-hosting", name: "Containers & app hosting" },
+    offer_type: "recurring_quota",
+    zero_cost_class: "UNKNOWN",
+    status: "active",
+    confidence_label: "unknown",
+    current_version_number: null,
+  },
+  {
+    offer_id: 3,
+    provider_slug: "northwind-cloud",
+    provider_name: "Northwind Cloud",
+    service_id: 3,
+    service_name: "Northwind Postgres",
+    category: { slug: "relational-databases", name: "Relational databases" },
+    offer_type: "trial",
+    zero_cost_class: "Z2_TEMPORARY_OR_CONDITIONAL",
+    status: "active",
+    confidence_label: "medium",
+    current_version_number: 2,
+  },
+  {
+    offer_id: 4,
+    provider_slug: "acme-serverless",
+    provider_name: "Acme Serverless",
+    service_id: 4,
+    service_name: "Acme Functions",
+    category: { slug: "serverless-functions", name: "Serverless functions" },
+    offer_type: "always_free",
+    zero_cost_class: "Z0_TRUE_FREE",
+    status: "active",
+    confidence_label: "high",
+    current_version_number: 1,
+  },
+  {
+    offer_id: 5,
+    provider_slug: "acme-serverless",
+    provider_name: "Acme Serverless",
+    service_id: 5,
+    service_name: "Acme Object Store",
+    category: { slug: "object-file-storage", name: "Object & file storage" },
+    offer_type: "recurring_quota",
+    zero_cost_class: "Z1_BILLING_EXPOSURE",
+    status: "deprecated",
+    confidence_label: "low",
+    current_version_number: 3,
+  },
+];
+
+/** Fixed page size the mocked search endpoint applies (5 items -> 2 pages). */
+export const SEARCH_PAGE_SIZE = 3;
+
+/** The 14 canonical categories (slug + display name), mirroring taxonomy.py. */
+const CANONICAL_CATEGORIES: { slug: string; name: string }[] = [
+  { slug: "compute-vms", name: "Compute (VMs)" },
+  { slug: "containers-app-hosting", name: "Containers & app hosting" },
+  { slug: "serverless-functions", name: "Serverless functions" },
+  { slug: "relational-databases", name: "Relational databases" },
+  { slug: "nosql-key-value", name: "NoSQL & key-value" },
+  { slug: "object-file-storage", name: "Object & file storage" },
+  { slug: "networking-cdn-dns", name: "Networking, CDN & DNS" },
+  { slug: "queues-messaging-jobs", name: "Queues, messaging & jobs" },
+  { slug: "auth-identity", name: "Auth & identity" },
+  { slug: "cicd-source-control", name: "CI/CD & source control" },
+  { slug: "monitoring-logs-tracing", name: "Monitoring, logs & tracing" },
+  { slug: "ai-inference-embeddings", name: "AI inference & embeddings" },
+  { slug: "email-notifications-comms", name: "Email, notifications & comms" },
+  { slug: "secrets-config-devtools", name: "Secrets, config & devtools" },
+];
+
+/**
+ * Build the coverage matrix from the synthetic search index so the matrix,
+ * search, and compare fixtures stay internally consistent. Coverage `state` is
+ * "verified_free" when a provider has a truly-free offer in the category,
+ * "no_free_tier" when it has published offers but none truly free, and
+ * "not_offered" otherwise.
+ */
+export const categoryMatrix: CategoryMatrixResponse = {
+  provider_slugs: providerList.map((p) => p.slug),
+  categories: CANONICAL_CATEGORIES.map((category, index) => ({
+    ordinal: index + 1,
+    slug: category.slug,
+    name: category.name,
+    providers: providerList.map((p) => {
+      const offers = searchIndex.filter(
+        (o) => o.provider_slug === p.slug && o.category?.slug === category.slug,
+      );
+      const free = offers.filter((o) => o.zero_cost_class === "Z0_TRUE_FREE");
+      const state =
+        offers.length === 0 ? "not_offered" : free.length > 0 ? "verified_free" : "no_free_tier";
+      return {
+        provider_slug: p.slug,
+        provider_name: p.name,
+        state,
+        published_offer_count: offers.length,
+        free_offer_count: free.length,
+      };
+    }),
+  })),
+  uncategorized: [
+    {
+      provider_slug: "northwind-cloud",
+      provider_name: "Northwind Cloud",
+      published_offer_count: 1,
+      free_offer_count: 0,
+    },
+  ],
+};
+
+/** Compare fixtures keyed by offer id (GET /catalogue/compare?offers=...). */
+export const compareOffers: Record<number, CompareOffer> = {
+  1: {
+    offer_id: 1,
+    provider_slug: "cloudflare",
+    provider_name: "Cloudflare",
+    service_id: 1,
+    service_name: "Cloudflare Workers",
+    category: { slug: "serverless-functions", name: "Serverless functions" },
+    offer_type: "always_free",
+    zero_cost_class: "Z0_TRUE_FREE",
+    status: "active",
+    requires_card: false,
+    has_paid_dependencies: false,
+    commercial_use_allowed: true,
+    personal_use_allowed: true,
+    reasons: ["No credit card is required to start."],
+    blocking_conditions: [],
+    quotas: [
+      {
+        metric: "requests_per_day",
+        amount: 100000,
+        unit: "requests",
+        reset_period: "daily",
+        scope: "account",
+        region_scope: null,
+        behaviour: "hard_limit",
+        exhaustion_behaviour: "requests_blocked",
+        retention_policy: null,
+        normalized: true,
+        canonical_amount: 3000000,
+        canonical_unit: "requests_per_month",
+        dimension: "requests",
+        normalization_note: "Daily quota projected to a 30-day month.",
+      },
+    ],
+    confidence_label: "high",
+    completeness: 0.95,
+    freshness: 0.9,
+    evidence_count: 3,
+    advanced: { score: 0.91, signals: { source_trust: 1.0 } },
+  },
+  3: {
+    offer_id: 3,
+    provider_slug: "northwind-cloud",
+    provider_name: "Northwind Cloud",
+    service_id: 3,
+    service_name: "Northwind Postgres",
+    category: { slug: "relational-databases", name: "Relational databases" },
+    offer_type: "trial",
+    zero_cost_class: "Z2_TEMPORARY_OR_CONDITIONAL",
+    status: "active",
+    requires_card: true,
+    has_paid_dependencies: null,
+    commercial_use_allowed: null,
+    personal_use_allowed: true,
+    reasons: ["Free for the first 90 days."],
+    blocking_conditions: ["Converts to a paid plan after the trial."],
+    quotas: [
+      {
+        metric: "storage",
+        amount: 5,
+        unit: "GB",
+        reset_period: null,
+        scope: "project",
+        region_scope: null,
+        behaviour: "hard_limit",
+        exhaustion_behaviour: "writes_blocked",
+        retention_policy: null,
+        normalized: false,
+        canonical_amount: null,
+        canonical_unit: null,
+        dimension: null,
+        normalization_note: null,
+      },
+    ],
+    confidence_label: "medium",
+    completeness: 0.6,
+    freshness: 0.55,
+    evidence_count: 1,
+    advanced: { score: 0.62, signals: null },
+  },
+  4: {
+    offer_id: 4,
+    provider_slug: "acme-serverless",
+    provider_name: "Acme Serverless",
+    service_id: 4,
+    service_name: "Acme Functions",
+    category: { slug: "serverless-functions", name: "Serverless functions" },
+    offer_type: "always_free",
+    zero_cost_class: "Z0_TRUE_FREE",
+    status: "active",
+    requires_card: false,
+    has_paid_dependencies: false,
+    commercial_use_allowed: false,
+    personal_use_allowed: true,
+    reasons: ["Always-free allowance with no card."],
+    blocking_conditions: [],
+    quotas: [],
+    confidence_label: "high",
+    completeness: 0.8,
+    freshness: 0.75,
+    evidence_count: 2,
+    advanced: { score: 0.83, signals: null },
+  },
+};
+
+function buildSearchResponse(url: URL): SearchResponse {
+  const params = url.searchParams;
+  const q = params.get("q");
+  const provider = params.get("provider");
+  const category = params.get("category");
+  const zeroCostClass = params.get("zero_cost_class");
+  const offerType = params.get("offer_type");
+  const commercialParam = params.get("commercial_use");
+  const status = params.get("status");
+  const commercialUse =
+    commercialParam === null ? null : commercialParam === "true";
+  const page = Math.max(1, Number(params.get("page") ?? "1") || 1);
+
+  // Search over the truly-free subset when a keyword is present so the results
+  // reflect the query; every filter below composes with AND semantics.
+  let matches = searchIndex.filter((item) => {
+    if (q && !`${item.service_name} ${item.provider_name}`.toLowerCase().includes(q.toLowerCase())) {
+      return false;
+    }
+    if (provider && item.provider_slug !== provider) return false;
+    if (category && item.category?.slug !== category) return false;
+    if (zeroCostClass && item.zero_cost_class !== zeroCostClass) return false;
+    if (offerType && item.offer_type !== offerType) return false;
+    if (status && item.status !== status) return false;
+    return true;
+  });
+
+  // commercial_use is a synthetic per-offer flag: derive it from the compare
+  // fixture where available, otherwise treat unknown as non-matching when the
+  // caller filters on it (honest, never fabricated).
+  if (commercialUse !== null) {
+    matches = matches.filter((item) => {
+      const detail = compareOffers[item.offer_id];
+      return detail ? detail.commercial_use_allowed === commercialUse : false;
+    });
+  }
+
+  const totalResults = matches.length;
+  const totalPages = Math.max(1, Math.ceil(totalResults / SEARCH_PAGE_SIZE));
+  const start = (page - 1) * SEARCH_PAGE_SIZE;
+  const results = matches.slice(start, start + SEARCH_PAGE_SIZE);
+
+  return {
+    filters: {
+      q: q,
+      provider: provider,
+      category: category,
+      zero_cost_class: zeroCostClass,
+      offer_type: offerType,
+      commercial_use: commercialUse,
+      status: status,
+    },
+    page,
+    page_size: SEARCH_PAGE_SIZE,
+    total_results: totalResults,
+    total_pages: totalPages,
+    results,
+  };
+}
+
+function buildCompareResponse(url: URL): CompareResponse {
+  const raw = url.searchParams.get("offers") ?? "";
+  const ids = raw
+    .split(",")
+    .map((value) => Number(value.trim()))
+    .filter((value) => Number.isFinite(value) && value > 0);
+  const offers = ids.map((id) => compareOffers[id]).filter((offer): offer is CompareOffer => Boolean(offer));
+  return { offer_ids: ids, offers };
+}
+
 /**
  * Build a `fetch` implementation that routes catalogue GET requests to the
  * fixtures above. Longer suffixes (`/evidence`, `/history`) are matched before
@@ -263,21 +617,30 @@ export const offerHistory2: OfferHistoryResponse = {
  */
 export function catalogueFetch(): typeof fetch {
   return (async (input: RequestInfo | URL): Promise<Response> => {
-    const url = String(input);
+    const raw = String(input);
+    const url = new URL(raw, "http://localhost");
+    const path = url.pathname;
     const json = (body: unknown) => Response.json(body);
 
-    if (url.endsWith("/catalogue/providers/cloudflare")) return json(provider);
-    if (url.endsWith("/catalogue/providers/cloudflare/category-states")) {
+    // F006 slice 2 collection endpoints (query strings allowed).
+    if (path.endsWith("/catalogue/search")) return json(buildSearchResponse(url));
+    if (path.endsWith("/catalogue/categories")) return json(categoryMatrix);
+    if (path.endsWith("/catalogue/compare")) return json(buildCompareResponse(url));
+    if (path.endsWith("/catalogue/providers")) return json(providerList);
+
+    // Single-provider (F005) endpoints.
+    if (path.endsWith("/catalogue/providers/cloudflare")) return json(provider);
+    if (path.endsWith("/catalogue/providers/cloudflare/category-states")) {
       return json(categoryStates);
     }
-    if (url.endsWith("/catalogue/providers/cloudflare/offers")) return json(offerSummaries);
+    if (path.endsWith("/catalogue/providers/cloudflare/offers")) return json(offerSummaries);
 
-    if (url.endsWith("/catalogue/offers/1/evidence")) return json(offerEvidence1);
-    if (url.endsWith("/catalogue/offers/2/evidence")) return json(offerEvidence2);
-    if (url.endsWith("/catalogue/offers/1/history")) return json(offerHistory1);
-    if (url.endsWith("/catalogue/offers/2/history")) return json(offerHistory2);
-    if (url.endsWith("/catalogue/offers/1")) return json(offerDetail1);
-    if (url.endsWith("/catalogue/offers/2")) return json(offerDetail2);
+    if (path.endsWith("/catalogue/offers/1/evidence")) return json(offerEvidence1);
+    if (path.endsWith("/catalogue/offers/2/evidence")) return json(offerEvidence2);
+    if (path.endsWith("/catalogue/offers/1/history")) return json(offerHistory1);
+    if (path.endsWith("/catalogue/offers/2/history")) return json(offerHistory2);
+    if (path.endsWith("/catalogue/offers/1")) return json(offerDetail1);
+    if (path.endsWith("/catalogue/offers/2")) return json(offerDetail2);
 
     return new Response("not found", { status: 404 });
   }) as typeof fetch;

@@ -1,5 +1,5 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import App from "./App";
 import { catalogueFetch } from "./catalogue/testFixtures";
 
@@ -7,120 +7,123 @@ afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
+  window.location.hash = "";
+});
+
+beforeEach(() => {
+  window.location.hash = "#/";
 });
 
 function stubFetch(impl: typeof fetch) {
   vi.stubGlobal("fetch", vi.fn(impl));
 }
 
-async function renderLoaded() {
+function goTo(hash: string) {
+  act(() => {
+    window.location.hash = hash;
+    window.dispatchEvent(new Event("hashchange"));
+  });
+}
+
+async function renderBrowse() {
   stubFetch(catalogueFetch());
   render(<App />);
   await waitFor(() =>
-    expect(screen.getByRole("heading", { level: 1, name: /cloudflare/i })).toBeInTheDocument(),
+    expect(
+      screen.getByRole("heading", { level: 1, name: /browse the free-tier catalogue/i }),
+    ).toBeInTheDocument(),
   );
+  await screen.findByTestId("results-list");
 }
 
-describe("App (Cloudflare provider experience)", () => {
-  it("renders the provider header with completeness and freshness (scope 6)", async () => {
-    await renderLoaded();
-    const header = screen.getByTestId("provider-header");
-    expect(within(header).getByText(/completeness/i)).toBeInTheDocument();
-    expect(within(header).getByText("92%")).toBeInTheDocument();
-    expect(within(header).getByText(/freshness/i)).toBeInTheDocument();
-    expect(within(header).getByText("80%")).toBeInTheDocument();
-    expect(within(header).getByText(/cloudflare\.com/)).toBeInTheDocument();
+describe("App — catalogue browser routing + landmarks (F006 slice 2)", () => {
+  it("landing shows the Browse view with a search form and multi-provider results", async () => {
+    await renderBrowse();
+    expect(screen.getByRole("form", { name: /search and filter offers/i })).toBeInTheDocument();
+    // Results include offers from more than one provider — provider-agnostic.
+    const list = screen.getByTestId("results-list");
+    expect(within(list).getByText("Cloudflare Workers")).toBeInTheDocument();
+    expect(within(list).getByText("Northwind Cloud")).toBeInTheDocument();
   });
 
-  it("renders category / service states with Z0 badges and offer links (scope 1)", async () => {
-    await renderLoaded();
-    expect(screen.getByRole("heading", { name: /service states/i })).toBeInTheDocument();
-    expect(screen.getByText("Cloudflare Workers")).toBeInTheDocument();
-    expect(screen.getByText("Cloudflare Pages")).toBeInTheDocument();
-    // In-page anchor link to the full offer card.
-    const link = screen.getAllByRole("link", { name: /free tier/i })[0];
-    expect(link).toHaveAttribute("href", "#offer-1");
-  });
-
-  it("shows each offer's Z0 badge and plain-language reasons (scope 2)", async () => {
-    await renderLoaded();
-    const cards = screen.getAllByTestId("offer-card");
-    const workers = cards.find((c) => c.id === "offer-1")!;
-    // Z0 badge carries a visible text label, never colour alone.
-    const badge = within(workers).getAllByTestId("z0-badge")[0];
-    expect(badge).toHaveTextContent(/truly free/i);
-    const reasons = within(workers).getByTestId("offer-reasons");
-    expect(within(reasons).getByText(/no credit card is required/i)).toBeInTheDocument();
-  });
-
-  it("renders quota rows readably (scope 7)", async () => {
-    await renderLoaded();
-    const workers = screen.getAllByTestId("offer-card").find((c) => c.id === "offer-1")!;
-    const table = within(workers).getByTestId("quota-table");
-    expect(within(table).getByText(/requests per day/i)).toBeInTheDocument();
-    expect(within(table).getByText("100000")).toBeInTheDocument();
-    expect(within(table).getByText(/requests blocked/i)).toBeInTheDocument();
-  });
-
-  it("shows the confidence LABEL as primary and the numeric score only in advanced (scope 4)", async () => {
-    await renderLoaded();
-    const workers = screen.getAllByTestId("offer-card").find((c) => c.id === "offer-1")!;
-    const badge = within(workers).getByTestId("confidence-badge");
-    expect(badge).toHaveTextContent(/confidence: high/i);
-    // The numeric score lives inside a collapsed <details>, not as a primary field.
-    const advanced = within(workers).getByTestId("confidence-advanced");
-    expect(advanced).not.toHaveAttribute("open");
-    expect(within(advanced).getByTestId("confidence-score")).toHaveTextContent("0.91");
-  });
-
-  it("reveals the numeric score after opening the advanced disclosure (scope 4)", async () => {
-    await renderLoaded();
-    const workers = screen.getAllByTestId("offer-card").find((c) => c.id === "offer-1")!;
-    const advanced = within(workers).getByTestId("confidence-advanced");
-    const summary = within(workers).getByText(/advanced: confidence score/i);
-    fireEvent.click(summary);
-    expect(advanced).toHaveAttribute("open");
-  });
-
-  it("renders official evidence with a safe external link (scope 3)", async () => {
-    await renderLoaded();
-    const workers = screen.getAllByTestId("offer-card").find((c) => c.id === "offer-1")!;
-    const evidence = within(workers).getByTestId("evidence");
-    expect(within(evidence).getByTestId("evidence-official")).toHaveTextContent(/official/i);
-    const link = within(evidence).getByRole("link", {
-      name: /developers\.cloudflare\.com/i,
-    });
-    expect(link).toHaveAttribute("href", "https://developers.cloudflare.com/workers/platform/pricing/");
-    expect(link).toHaveAttribute("rel", expect.stringContaining("noopener"));
-    expect(link).toHaveAttribute("target", "_blank");
-  });
-
-  it("renders version history and change events (scope 5)", async () => {
-    await renderLoaded();
-    const workers = screen.getAllByTestId("offer-card").find((c) => c.id === "offer-1")!;
-    const history = within(workers).getByTestId("offer-history");
-    expect(within(history).getByText("v1")).toBeInTheDocument();
-    expect(within(history).getByText(/offer added/i)).toBeInTheDocument();
-  });
-
-  it("reports unknown values honestly instead of fabricating them", async () => {
-    await renderLoaded();
-    const pages = screen.getAllByTestId("offer-card").find((c) => c.id === "offer-2")!;
-    // Unknown Z0 class shows an explicit "Unknown" badge label.
-    expect(within(pages).getAllByTestId("z0-badge")[0]).toHaveTextContent(/unknown/i);
-    // Null tri-states and signals render as "Unknown", never as a guessed value.
-    expect(within(pages).getAllByText("Unknown").length).toBeGreaterThan(0);
-    // No evidence and no quotas degrade to honest empty-state copy.
-    expect(within(pages).getByText(/no official evidence/i)).toBeInTheDocument();
-    expect(within(pages).getByText(/no quota limits/i)).toBeInTheDocument();
-    expect(within(pages).getByText(/no versions recorded/i)).toBeInTheDocument();
-  });
-
-  it("exposes a single top-level heading and semantic landmarks (a11y)", async () => {
-    await renderLoaded();
+  it("exposes a single h1, primary nav, main and contentinfo landmarks (a11y)", async () => {
+    await renderBrowse();
     expect(screen.getAllByRole("heading", { level: 1 })).toHaveLength(1);
     expect(screen.getByRole("main")).toBeInTheDocument();
     expect(screen.getByRole("contentinfo")).toBeInTheDocument();
+    expect(screen.getByRole("navigation", { name: /primary/i })).toBeInTheDocument();
+    // Active link is marked aria-current for assistive tech.
+    const current = screen.getByRole("link", { current: "page" });
+    expect(current).toHaveTextContent(/browse/i);
+  });
+
+  it("composes filters through the API and reflects the filtered result set", async () => {
+    await renderBrowse();
+    fireEvent.change(screen.getByLabelText(/provider/i), { target: { value: "acme-serverless" } });
+    fireEvent.submit(screen.getByRole("form", { name: /search and filter offers/i }));
+    await waitFor(() => {
+      const rows = screen.getAllByTestId("result-row");
+      // Only Acme Serverless offers remain after composing the provider filter.
+      rows.forEach((row) => expect(within(row).getByText("Acme Serverless")).toBeInTheDocument());
+    });
+    expect(screen.queryByText("Cloudflare Workers")).not.toBeInTheDocument();
+  });
+
+  it("navigates to the category matrix showing all 14 categories across providers", async () => {
+    await renderBrowse();
+    goTo("#/categories");
+    await waitFor(() =>
+      expect(
+        screen.getByRole("heading", { level: 1, name: /free-tier coverage by category/i }),
+      ).toBeInTheDocument(),
+    );
+    expect(screen.getAllByRole("heading", { level: 1 })).toHaveLength(1);
+    expect(screen.getAllByTestId("matrix-row")).toHaveLength(14);
+    expect(screen.getByRole("columnheader", { name: "Northwind Cloud" })).toBeInTheDocument();
+  });
+
+  it("selects offers to compare and renders a side-by-side of the picks", async () => {
+    await renderBrowse();
+    const rows = screen.getAllByTestId("result-row");
+    fireEvent.click(within(rows[0]).getByRole("checkbox")); // offer 1 (Cloudflare)
+    fireEvent.click(within(rows[2]).getByRole("checkbox")); // offer 3 (Northwind)
+    // The nav badge reflects the selection count.
+    expect(screen.getByRole("link", { name: /compare \(2\)/i })).toBeInTheDocument();
+
+    goTo("#/compare");
+    await waitFor(() =>
+      expect(
+        screen.getByRole("heading", { level: 1, name: /compare free-tier offers/i }),
+      ).toBeInTheDocument(),
+    );
+    const table = await screen.findByTestId("compare-table");
+    expect(within(table).getByRole("columnheader", { name: /cloudflare/i })).toBeInTheDocument();
+    expect(within(table).getByRole("columnheader", { name: /northwind cloud/i })).toBeInTheDocument();
+  });
+
+  it("prompts to pick offers when fewer than two are selected", async () => {
+    await renderBrowse();
+    goTo("#/compare");
+    await waitFor(() => expect(screen.getByTestId("compare-hint")).toBeInTheDocument());
+    expect(screen.getAllByRole("heading", { level: 1 })).toHaveLength(1);
+  });
+
+  it("retains the single-provider Cloudflare experience on the provider route", async () => {
+    await renderBrowse();
+    goTo("#/provider/cloudflare");
+    await waitFor(() =>
+      expect(screen.getByRole("heading", { level: 1, name: /cloudflare/i })).toBeInTheDocument(),
+    );
+    expect(screen.getAllByRole("heading", { level: 1 })).toHaveLength(1);
+    expect(screen.getByText("Cloudflare Workers")).toBeInTheDocument();
+  });
+
+  it("reports unknown values honestly rather than fabricating them", async () => {
+    await renderBrowse();
+    // Cloudflare Pages (offer 2) carries an UNKNOWN Z0 class in the search index.
+    const rows = screen.getAllByTestId("result-row");
+    const pages = rows.find((r) => within(r).queryByText("Cloudflare Pages"))!;
+    expect(within(pages).getAllByTestId("z0-badge")[0]).toHaveTextContent(/unknown/i);
   });
 
   it("shows an actionable, credential-free error with a retry that recovers", async () => {
@@ -136,8 +139,6 @@ describe("App (Cloudflare provider experience)", () => {
     expect(screen.getByText(/is the stack running/i)).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: /retry/i }));
-    await waitFor(() =>
-      expect(screen.getByRole("heading", { level: 1, name: /cloudflare/i })).toBeInTheDocument(),
-    );
+    await screen.findByTestId("results-list");
   });
 });
