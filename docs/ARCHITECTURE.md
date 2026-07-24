@@ -247,9 +247,43 @@ Consistent with "unknown is better than guessed", any `null`/absent value the AP
 returns is shown honestly as "Unknown". Accessibility is part of done: semantic
 landmarks, a single `<h1>`, an accessible quota table, keyboard-operable
 disclosures, and badges that pair colour with a text label + icon (never
-colour-only). Catalogue-wide search and cross-provider comparison are now served
-by the F006 query API above; surfacing them in the web UI, and the adviser, remain
-deferred to later F006 slices.
+colour-only). This single-provider page is retained at the `#/provider/cloudflare`
+route inside the catalogue browser below.
+
+### Catalogue browser (F006 slice 2)
+
+The `apps/web` app grows from that single provider page into a
+**provider-agnostic catalogue browser** — still consuming only the read API over
+the same-origin `/api` proxy, with no database connection, no writes, and no new
+backend endpoint. It is a small hash-routed SPA (no router dependency) with four
+views: **Browse** (`#/`, keyword search + composable provider/category/
+zero-cost-class/offer-type/commercial-use/status filters over
+`/api/catalogue/search`, with a paged results list), **Categories**
+(`#/categories`, the fourteen-category × provider coverage matrix from
+`/api/catalogue/categories`), **Compare** (`#/compare`, a normalized side-by-side
+of the two or three offers selected in Browse, from
+`/api/catalogue/compare?offers=…`), and the retained Cloudflare provider page.
+The read-only client (`apps/web/src/api.ts`) still issues plain `GET`s against
+fixed `/api/catalogue/...` paths; filter values are appended only as query-string
+parameters (internal slugs, closed enums, keywords, page number) via
+`URLSearchParams`, so there remains no user-controlled URL and no SSRF surface.
+The UI never re-derives a Z0 or confidence rating — the category-matrix coverage
+`state` and every offer's classification come verbatim from the API — the
+confidence **label** stays the primary signal (numeric only inside a closed
+advanced disclosure, per D039), and null fields render honestly as "Unknown"
+(including quotas the API could not normalize, which are shown as reported and
+labelled "normalized: Unknown" rather than converted by a guess). Accessibility
+is asserted by the tests: one `<h1>` per route with ordered headings; `banner`/
+`navigation`/`main`/`contentinfo` landmarks; an `aria-current` active nav link;
+keyboard-operable form controls, checkboxes, and `<details>`; the matrix and
+compare data tables carry a `<caption>` and `scope`d row/column headers; external
+links use `rel="noopener noreferrer"`; and every badge pairs colour with a visible
+label + an `aria-hidden` icon. Because only Cloudflare is really published, the
+provider-agnostic rendering is proven in tests with **clearly synthetic** mocked
+`fetch` responses carrying invented providers (owner decision Q6); the live stack
+only ever shows real published data, so no false real-world free claim is emitted.
+No new dependency is added (owner constraint Q8): interaction tests use
+`fireEvent`. The adviser remains deferred to a later F006 slice.
 
 ## LLM routing
 
