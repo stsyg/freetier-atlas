@@ -18,6 +18,7 @@ the ``"unknown"`` confidence label).
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+from math import ceil
 from statistics import fmean
 
 from app.models.domain import (
@@ -31,26 +32,39 @@ from app.models.domain import (
 
 from . import queries
 from .confidence import confidence_label
+from .normalize import normalize_amount
 from .schemas import (
     CategoryGroup,
+    CategoryMatrixResponse,
+    CategoryMatrixRow,
     CategoryRef,
     CategoryStatesResponse,
     ChangeEventOut,
+    CompareOffer,
+    CompareResponse,
     ConfidenceAdvanced,
     EvidenceOut,
+    NormalizedQuotaOut,
     OfferDetail,
     OfferEvidenceResponse,
     OfferHistoryResponse,
     OfferState,
     OfferSummary,
     OfferVersionOut,
+    ProviderCoverage,
     ProviderDetail,
     ProviderSummary,
     QuotaOut,
+    SearchFilters,
+    SearchResponse,
+    SearchResultItem,
     ServiceState,
     SnapshotOut,
     SourceOut,
+    UncategorizedCoverage,
 )
+from .search import SearchPage, SearchParams
+from .taxonomy import CATEGORY_TAXONOMY, is_canonical_slug
 
 
 def _as_float(value: object) -> float | None:
@@ -403,4 +417,210 @@ def serialize_offer_history(
         offer_id=offer_id,
         versions=[serialize_version(v) for v in versions],
         change_events=[serialize_change_event(e) for e in change_events],
+    )
+
+
+# --------------------------------------------------------------------------- #
+# F006 slice 1 - search                                                       #
+# --------------------------------------------------------------------------- #
+
+#: The zero-cost class that proves a genuinely-free offer (drives the coverage
+#: matrix ``verified_free`` state).
+_FREE_CLASS = "Z0_TRUE_FREE"
+
+
+def _search_result_item(offer: Offer, cat_map: Mapping[int, Category]) -> SearchResultItem:
+    service = offer.service
+    provider = service.provider
+    version = queries.latest_version(offer)
+    return SearchResultItem(
+        offer_id=offer.id,
+        provider_slug=provider.slug,
+        provider_name=provider.name,
+        service_id=service.id,
+        service_name=service.canonical_name,
+        category=_category_ref(service.category_id, cat_map),
+        offer_type=offer.offer_type,
+        zero_cost_class=offer.zero_cost_class,
+        status=offer.status,
+        confidence_label=_label_for(version),
+        current_version_number=version.version_number if version else None,
+    )
+
+
+def serialize_search_response(
+    page: SearchPage, params: SearchParams, cat_map: Mapping[int, Category]
+) -> SearchResponse:
+    """Serialize an executed :class:`SearchPage` into the search response schema."""
+
+    total_pages = ceil(page.total / page.page_size) if page.page_size else 0
+    return SearchResponse(
+        filters=SearchFilters(
+            q=params.q,
+            provider=params.provider,
+            category=params.category,
+            zero_cost_class=params.zero_cost_class,
+            offer_type=params.offer_type,
+            commercial_use=params.commercial_use,
+            status=params.status,
+        ),
+        page=page.page,
+        page_size=page.page_size,
+        total_results=page.total,
+        total_pages=total_pages,
+        results=[_search_result_item(o, cat_map) for o in page.offers],
+    )
+
+
+# --------------------------------------------------------------------------- #
+# F006 slice 1 - category coverage matrix                                     #
+# --------------------------------------------------------------------------- #
+
+
+def _coverage_state(published: int, free: int) -> str:
+    if published == 0:
+        return "not_offered"
+    if free > 0:
+        return "verified_free"
+    return "no_free_tier"
+
+
+def serialize_category_matrix(
+    providers: Sequence[Provider], cat_map: Mapping[int, Category]
+) -> CategoryMatrixResponse:
+    """Cross the canonical 14-category taxonomy with each provider's coverage.
+
+    Coverage is derived strictly from *published* offers. A published service
+    whose category is absent or is not one of the fourteen canonical slugs is not
+    guessed into a category -- it is rolled up honestly into a per-provider
+    ``uncategorized`` tally.
+    """
+
+    ordered_providers = sorted(providers, key=lambda p: p.slug)
+
+    # (provider_slug, canonical_slug|None) -> [published_count, free_count]
+    tally: dict[tuple[str, str | None], list[int]] = {}
+    for provider in ordered_providers:
+        for service in provider.services:
+            category = cat_map.get(service.category_id) if service.category_id else None
+            slug = category.slug if category and is_canonical_slug(category.slug) else None
+            for offer in service.offers:
+                if not queries.is_published(offer):
+                    continue
+                bucket = tally.setdefault((provider.slug, slug), [0, 0])
+                bucket[0] += 1
+                if offer.zero_cost_class == _FREE_CLASS:
+                    bucket[1] += 1
+
+    rows: list[CategoryMatrixRow] = []
+    for taxon in CATEGORY_TAXONOMY:
+        coverages: list[ProviderCoverage] = []
+        for provider in ordered_providers:
+            published, free = tally.get((provider.slug, taxon.slug), [0, 0])
+            coverages.append(
+                ProviderCoverage(
+                    provider_slug=provider.slug,
+                    provider_name=provider.name,
+                    state=_coverage_state(published, free),
+                    published_offer_count=published,
+                    free_offer_count=free,
+                )
+            )
+        rows.append(
+            CategoryMatrixRow(
+                ordinal=taxon.ordinal, slug=taxon.slug, name=taxon.name, providers=coverages
+            )
+        )
+
+    uncategorized: list[UncategorizedCoverage] = []
+    for provider in ordered_providers:
+        published, free = tally.get((provider.slug, None), [0, 0])
+        if published == 0:
+            continue
+        uncategorized.append(
+            UncategorizedCoverage(
+                provider_slug=provider.slug,
+                provider_name=provider.name,
+                published_offer_count=published,
+                free_offer_count=free,
+            )
+        )
+
+    return CategoryMatrixResponse(
+        provider_slugs=[p.slug for p in ordered_providers],
+        categories=rows,
+        uncategorized=uncategorized,
+    )
+
+
+# --------------------------------------------------------------------------- #
+# F006 slice 1 - compare                                                      #
+# --------------------------------------------------------------------------- #
+
+
+def _normalized_quota(quota: object) -> NormalizedQuotaOut:
+    base = serialize_quota(quota)
+    result = normalize_amount(quota.amount, quota.unit)
+    return NormalizedQuotaOut(
+        **base.model_dump(),
+        normalized=result.normalized,
+        canonical_amount=result.canonical_amount,
+        canonical_unit=result.canonical_unit,
+        dimension=result.dimension,
+        normalization_note=result.note,
+    )
+
+
+def _compare_offer(offer: Offer, cat_map: Mapping[int, Category]) -> CompareOffer:
+    service = offer.service
+    provider = service.provider
+    version = queries.latest_version(offer)
+    classification = _classification(version)
+    facts = _facts(version)
+    quotas = version.quotas if version else []
+    evidence_count = len(version.evidence) if version else 0
+
+    return CompareOffer(
+        offer_id=offer.id,
+        provider_slug=provider.slug,
+        provider_name=provider.name,
+        service_id=service.id,
+        service_name=service.canonical_name,
+        category=_category_ref(service.category_id, cat_map),
+        offer_type=offer.offer_type,
+        zero_cost_class=offer.zero_cost_class,
+        status=offer.status,
+        requires_card=offer.requires_card,
+        has_paid_dependencies=offer.has_paid_dependencies,
+        commercial_use_allowed=offer.commercial_use_allowed,
+        personal_use_allowed=offer.personal_use_allowed,
+        reasons=_string_list(classification.get("reasons")),
+        blocking_conditions=_string_list(classification.get("blocking_conditions")),
+        quotas=[_normalized_quota(q) for q in quotas],
+        confidence_label=_label_for(version),
+        completeness=_signal(version, "completeness"),
+        freshness=_signal(version, "freshness"),
+        evidence_count=evidence_count,
+        advanced=ConfidenceAdvanced(
+            score=_as_float(facts.get("confidence")),
+            signals=dict(facts.get("confidence_signals"))
+            if isinstance(facts.get("confidence_signals"), Mapping)
+            else None,
+        ),
+    )
+
+
+def serialize_compare(
+    offer_ids: Sequence[int], offers: Sequence[Offer], cat_map: Mapping[int, Category]
+) -> CompareResponse:
+    """Serialize a bounded set of published offers into a side-by-side comparison.
+
+    ``offers`` is expected to already be resolved + published (the router rejects
+    unknown/unpublished ids with 404) and presented in the caller's requested
+    order; ``offer_ids`` echoes that requested order for the client.
+    """
+
+    return CompareResponse(
+        offer_ids=list(offer_ids),
+        offers=[_compare_offer(o, cat_map) for o in offers],
     )

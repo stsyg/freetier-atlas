@@ -132,6 +132,46 @@ and signals appear only inside an `advanced` detail block. The endpoints are:
 - `GET /catalogue/offers/{id}/history` — append-only version history + published
   change events
 
+### Catalogue query API (F006 slice 1)
+
+The read API is extended (still strictly read-only, GET-only, same no-SSRF /
+published-only / candidate-never-surfaced posture) with three catalogue-wide query
+capabilities. Their query logic lives in `search.py` (deterministic search) and
+`normalize.py` (shared, conservative quota-unit normalization); the canonical
+category taxonomy is a code constant in `taxonomy.py` (no DB seed, no migration —
+Alembic head stays 0007). The endpoints are:
+
+- `GET /catalogue/search?q=&provider=&category=&zero_cost_class=&offer_type=&commercial_use=&status=&page=`
+  — keyword search + composable filters over **published** offers. `q` is
+  length-bounded and matched literally via parameterized `ILIKE` (its `LIKE`
+  wildcards are escaped), so a hostile `q` (URL, SQL-ish, traversal) is neutralized
+  rather than fetched or interpreted; every filter is validated against a closed
+  set (slug pattern / enum vocabularies). Results are deterministically ordered by
+  `(provider slug, service canonical name, offer id)` and paged with a fixed page
+  size (owner decision Q3: in-DB match only; a full-text index is deferred to F008).
+- `GET /catalogue/categories` — the canonical **14-category taxonomy × provider
+  coverage** matrix. Every category is always present; each `(category, provider)`
+  cell carries a closed-set coverage state derived strictly from published offers
+  (`verified_free` when ≥1 published `Z0_TRUE_FREE` offer, `no_free_tier` when
+  published offers exist but none are Z0, `not_offered` otherwise). A published
+  service with no canonical category is not guessed into one — it is surfaced
+  honestly in a per-provider `uncategorized` rollup.
+- `GET /catalogue/compare?offers=1,2,3` — normalized side-by-side of a **bounded**
+  set of published offers (id set validated + size-capped: oversize / non-integer →
+  422, unknown/unpublished id → 404). Each quota amount is conservatively
+  normalized (data sizes → bytes, keeping the SI/IEC decimal-vs-binary distinction;
+  a small set of countable units passes through). Per owner decision Q7 anything
+  that cannot be confidently normalized **fails closed** — it is reported as
+  not-normalized with a note, never a guessed conversion — keeping "unknown is
+  better than guessed" intact. The shared `normalize.py` helper is reused by the
+  Slice 3 adviser.
+
+Only Cloudflare is genuinely published today, so multi-provider search / matrix /
+compare behaviour is proven with **clearly synthetic fixture** providers inserted
+only inside rolled-back integration-test transactions (owner decision Q6); no
+synthetic data is published on a normal stack run. Real cross-provider breadth
+arrives in F008.
+
 ### Public web experience (F005 slice 4)
 
 The `apps/web` single-page app renders a public, Cloudflare-focused provider page
@@ -150,8 +190,9 @@ Consistent with "unknown is better than guessed", any `null`/absent value the AP
 returns is shown honestly as "Unknown". Accessibility is part of done: semantic
 landmarks, a single `<h1>`, an accessible quota table, keyboard-operable
 disclosures, and badges that pair colour with a text label + icon (never
-colour-only). Catalogue-wide search, cross-provider comparison, and the adviser
-are deferred to F006.
+colour-only). Catalogue-wide search and cross-provider comparison are now served
+by the F006 query API above; surfacing them in the web UI, and the adviser, remain
+deferred to later F006 slices.
 
 ## LLM routing
 
