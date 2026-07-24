@@ -1,9 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { AdviserForm } from "./AdviserForm";
+import { AssistedForm } from "./AssistedForm";
 import { RecommendationView } from "./RecommendationView";
 import { mixedRecommendation, satisfiableRecommendation } from "./testFixtures";
-import type { RecommendationRequest } from "../api";
+import type { AssistedRequest, RecommendationRequest } from "../api";
 
 afterEach(() => {
   cleanup();
@@ -184,5 +185,83 @@ describe("RecommendationView — impossible workload flow (F006 slice 4)", () =>
     }
     // Deepest nesting (recalculated component sections) never exceeds h6.
     expect(Math.max(...levels)).toBeLessThanOrEqual(6);
+  });
+});
+
+describe("AssistedForm — natural-language intake + consent (F007 slice 1)", () => {
+  it("emits a plain-text description and, by default, NO consent (deterministic path)", () => {
+    const onSubmit = vi.fn();
+    render(<AssistedForm onSubmit={onSubmit} />);
+
+    fireEvent.change(screen.getByTestId("assisted-description"), {
+      target: { value: "a small api with a postgres database" },
+    });
+    fireEvent.submit(screen.getByRole("form", { name: /describe your workload in plain words/i }));
+
+    expect(onSubmit).toHaveBeenCalledTimes(1);
+    const request = onSubmit.mock.calls[0][0] as AssistedRequest;
+    expect(request.description).toBe("a small api with a postgres database");
+    // No opt-in → consent omitted entirely (external providers stay skipped).
+    expect(request.consent).toBeUndefined();
+  });
+
+  it("blocks submission of an empty description without calling the API", () => {
+    const onSubmit = vi.fn();
+    render(<AssistedForm onSubmit={onSubmit} />);
+    fireEvent.submit(screen.getByRole("form", { name: /describe your workload in plain words/i }));
+    expect(onSubmit).not.toHaveBeenCalled();
+    expect(screen.getByTestId("assisted-error")).toHaveTextContent(/describe your workload/i);
+  });
+
+  it("shows a live character counter bounded by the configured limit", () => {
+    render(<AssistedForm onSubmit={vi.fn()} maxCharacters={50} />);
+    const textarea = screen.getByTestId("assisted-description") as HTMLTextAreaElement;
+    expect(textarea).toHaveAttribute("maxLength", "50");
+    fireEvent.change(textarea, { target: { value: "hello" } });
+    expect(screen.getByTestId("assisted-counter")).toHaveTextContent("45 characters remaining");
+  });
+
+  it("only sends external-processing consent after an explicit, checkbox-gated opt-in", () => {
+    const onSubmit = vi.fn();
+    render(<AssistedForm onSubmit={onSubmit} />);
+    fireEvent.change(screen.getByTestId("assisted-description"), {
+      target: { value: "an api" },
+    });
+
+    // Open the consent dialog; the confirm button is disabled until acknowledged.
+    fireEvent.click(screen.getByRole("button", { name: /enable external ai processing/i }));
+    const modal = screen.getByTestId("consent-modal");
+    expect(modal).toHaveAttribute("role", "dialog");
+    expect(modal).toHaveAttribute("aria-modal", "true");
+    // Warns against secrets/PII and links the provider policy safely.
+    expect(within(modal).getByText(/do not include secrets/i)).toBeInTheDocument();
+    const policy = within(modal).getByRole("link", { name: /provider.*policy/i });
+    expect(policy).toHaveAttribute("rel", "noopener noreferrer");
+    expect(policy).toHaveAttribute("target", "_blank");
+
+    const confirm = screen.getByTestId("consent-confirm");
+    expect(confirm).toBeDisabled();
+    fireEvent.click(screen.getByTestId("consent-checkbox"));
+    expect(confirm).toBeEnabled();
+    fireEvent.click(confirm);
+
+    // Consent state is reflected and the request now carries the explicit opt-in.
+    expect(screen.getByTestId("consent-state")).toHaveTextContent(/enabled for your next request/i);
+    fireEvent.submit(screen.getByRole("form", { name: /describe your workload in plain words/i }));
+    const request = onSubmit.mock.calls[0][0] as AssistedRequest;
+    expect(request.consent).toEqual({ external_processing: true });
+  });
+
+  it("lets the user cancel the consent dialog and stay on the deterministic path", () => {
+    const onSubmit = vi.fn();
+    render(<AssistedForm onSubmit={onSubmit} />);
+    fireEvent.change(screen.getByTestId("assisted-description"), { target: { value: "an api" } });
+    fireEvent.click(screen.getByRole("button", { name: /enable external ai processing/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^cancel$/i }));
+    expect(screen.queryByTestId("consent-modal")).not.toBeInTheDocument();
+
+    fireEvent.submit(screen.getByRole("form", { name: /describe your workload in plain words/i }));
+    const request = onSubmit.mock.calls[0][0] as AssistedRequest;
+    expect(request.consent).toBeUndefined();
   });
 });

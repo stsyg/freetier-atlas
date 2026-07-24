@@ -3,6 +3,7 @@ import type {
   AdviserImpossible,
   AdviserOfferRef,
   DeploymentExport,
+  RecommendationRequest,
   RecommendationResponse,
 } from "../api";
 
@@ -359,5 +360,73 @@ export function adviserFetch(base: typeof fetch): typeof fetch {
       return Response.json(deploymentExportFixture);
     }
     return base(input, init);
+  }) as typeof fetch;
+}
+
+/** A deterministic-parser interpretation echoed by the assisted endpoint. */
+const parsedInterpretation: RecommendationRequest = {
+  workload_name: null,
+  requirements: [
+    {
+      category: "serverless-functions",
+      label: null,
+      demands: [{ metric: "invocations", amount: "50000", unit: "count", period: "day" }],
+    },
+  ],
+};
+
+/**
+ * Build a `fetch` for the assisted (natural-language) adviser flow.
+ *
+ * Mirrors `POST /api/adviser/recommend/assisted` deterministically OFFLINE:
+ *
+ * - a description carrying a URL signal → `422` (as the API rejects it),
+ * - a description containing "gibberish" → an honest `interpreted:false` reply
+ *   (nothing guessed) with a `fallback_reason`,
+ * - anything else → an `interpreted:true` reply whose `recommendation` is the
+ *   SAME deterministic payload the structured endpoint returns.
+ *
+ * In this slice no LLM provider is enabled, so `llm_used` is always `false` and
+ * external processing is never `used` — even when the caller consents. Catalogue
+ * GETs and the structured POST still route through {@link adviserFetch}.
+ */
+export function assistedFetch(base: typeof fetch): typeof fetch {
+  const withStructured = adviserFetch(base);
+  return (async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+    const url = new URL(String(input), "http://localhost");
+    if (url.pathname.endsWith("/adviser/recommend/assisted") && init?.method === "POST") {
+      const body = JSON.parse(String(init.body)) as {
+        description: string;
+        consent?: { external_processing: boolean } | null;
+      };
+      const description = body.description ?? "";
+      const requested = Boolean(body.consent?.external_processing);
+      if (/:\/\/|https?:|www\./i.test(description)) {
+        return new Response("url rejected", { status: 422 });
+      }
+      const interpreted = !description.toLowerCase().includes("gibberish");
+      return Response.json({
+        interpreted,
+        interpretation: interpreted ? parsedInterpretation : null,
+        recommendation: interpreted ? satisfiableRecommendation : null,
+        routing: {
+          llm_used: false,
+          llm_provider: null,
+          tier: interpreted ? "deterministic_parser" : "deterministic_fallback",
+          routing_path: interpreted
+            ? ["deterministic_parser"]
+            : ["deterministic_parser", "deterministic_fallback"],
+          fallback_reason: interpreted ? "deterministic_parser" : "no_provider_enabled",
+        },
+        consent: {
+          external_processing_requested: requested,
+          external_processing_used: false,
+        },
+        notice: interpreted
+          ? "Interpreted your description into structured requirements."
+          : "Couldn't confidently interpret your description. Nothing was guessed.",
+      });
+    }
+    return withStructured(input, init);
   }) as typeof fetch;
 }

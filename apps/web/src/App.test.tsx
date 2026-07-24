@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import App from "./App";
 import { catalogueFetch } from "./catalogue/testFixtures";
-import { adviserFetch } from "./adviser/testFixtures";
+import { adviserFetch, assistedFetch } from "./adviser/testFixtures";
 
 afterEach(() => {
   cleanup();
@@ -274,6 +274,74 @@ describe("App — adviser recommendation experience (F006 slice 4)", () => {
 
     fillFirstDemand();
     fireEvent.submit(screen.getByRole("form", { name: /describe your workload/i }));
+
+    await waitFor(() => expect(screen.getByRole("alert")).toBeInTheDocument());
+    expect(screen.getByText(/rejected by the API/i)).toBeInTheDocument();
+  });
+});
+
+describe("App — assisted natural-language adviser (F007 slice 1)", () => {
+  async function renderAssisted() {
+    stubFetch(assistedFetch(catalogueFetch()));
+    window.location.hash = "#/adviser";
+    render(<App />);
+    await waitFor(() =>
+      expect(
+        screen.getByRole("heading", { level: 1, name: /architecture adviser/i }),
+      ).toBeInTheDocument(),
+    );
+    // Switch from the default structured form to the natural-language tab.
+    fireEvent.click(screen.getByRole("tab", { name: /describe in words/i }));
+  }
+
+  it("switches to the assisted tab and keeps a single h1 with a plain-text input", async () => {
+    await renderAssisted();
+    expect(screen.getAllByRole("heading", { level: 1 })).toHaveLength(1);
+    expect(
+      screen.getByRole("form", { name: /describe your workload in plain words/i }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: /describe in words/i })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+  });
+
+  it("interprets a description and renders the deterministic recommendation + provenance", async () => {
+    await renderAssisted();
+    fireEvent.change(screen.getByTestId("assisted-description"), {
+      target: { value: "a small api with about 50000 invocations a day" },
+    });
+    fireEvent.submit(screen.getByRole("form", { name: /describe your workload in plain words/i }));
+
+    await screen.findByTestId("zero-cost-proof");
+    // Provenance is honest: interpreted deterministically, no LLM, no external use.
+    expect(screen.getByTestId("assisted-llm-used")).toHaveTextContent(/deterministic/i);
+    expect(screen.getByTestId("assisted-fallback-reason")).toHaveTextContent(
+      /deterministic_parser/i,
+    );
+    // The SAME deterministic recommendation renders below.
+    expect(screen.getByText("Northwind Functions")).toBeInTheDocument();
+    expect(screen.getAllByRole("heading", { level: 1 })).toHaveLength(1);
+  });
+
+  it("reports honestly when nothing could be interpreted (never guesses)", async () => {
+    await renderAssisted();
+    fireEvent.change(screen.getByTestId("assisted-description"), {
+      target: { value: "gibberish with no requirements" },
+    });
+    fireEvent.submit(screen.getByRole("form", { name: /describe your workload in plain words/i }));
+
+    await screen.findByTestId("assisted-uninterpreted");
+    expect(screen.getByTestId("assisted-uninterpreted")).toHaveTextContent(/nothing was guessed/i);
+    expect(screen.queryByTestId("zero-cost-proof")).not.toBeInTheDocument();
+  });
+
+  it("surfaces the 422 rejection when the description carries a URL", async () => {
+    await renderAssisted();
+    fireEvent.change(screen.getByTestId("assisted-description"), {
+      target: { value: "fetch data from https://evil.example" },
+    });
+    fireEvent.submit(screen.getByRole("form", { name: /describe your workload in plain words/i }));
 
     await waitFor(() => expect(screen.getByRole("alert")).toBeInTheDocument());
     expect(screen.getByText(/rejected by the API/i)).toBeInTheDocument();

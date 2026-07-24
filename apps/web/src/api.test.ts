@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  fetchAssistedRecommendation,
   fetchCategoryMatrix,
   fetchCategoryStates,
   fetchCompare,
@@ -179,6 +180,49 @@ describe("adviser recommendation client (F006 slice 4)", () => {
   it("reports the status code for other non-2xx adviser responses", async () => {
     stubFetch(async () => new Response("boom", { status: 500 }));
     await expect(fetchRecommendation({ requirements: [] })).rejects.toThrow(/HTTP 500/);
+  });
+});
+
+describe("assisted (natural-language) adviser client (F007 slice 1)", () => {
+  it("POSTs the description + consent as JSON to the fixed assisted path", async () => {
+    const spy = stubFetch(async () => Response.json({ interpreted: false }));
+    const request = { description: "a small api", consent: { external_processing: true } };
+    await fetchAssistedRecommendation(request);
+
+    expect(spy.mock.calls[0][0]).toBe("/api/adviser/recommend/assisted");
+    const init = spy.mock.calls[0][1]!;
+    expect(init.method).toBe("POST");
+    expect(init.headers).toMatchObject({
+      Accept: "application/json",
+      "Content-Type": "application/json",
+    });
+    // The free text is sent verbatim in a structured body — never as a URL/path.
+    expect(JSON.parse(String(init.body))).toEqual(request);
+    expect(init).not.toHaveProperty("credentials");
+  });
+
+  it("omits consent entirely when the user has not opted in", async () => {
+    const spy = stubFetch(async () => Response.json({ interpreted: false }));
+    await fetchAssistedRecommendation({ description: "just a description" });
+    const body = JSON.parse(String(spy.mock.calls[0][1]!.body));
+    expect(body).toEqual({ description: "just a description" });
+    expect(body).not.toHaveProperty("consent");
+  });
+
+  it("maps a 422 (over-limit / URL) to an actionable, credential-free message", async () => {
+    stubFetch(async () => new Response("secret detail", { status: 422 }));
+    await expect(fetchAssistedRecommendation({ description: "x" })).rejects.toThrow(
+      /rejected by the API. Please review the values/i,
+    );
+  });
+
+  it("surfaces a friendly message when the assisted API is unreachable", async () => {
+    stubFetch(async () => {
+      throw new TypeError("network down");
+    });
+    await expect(fetchAssistedRecommendation({ description: "x" })).rejects.toThrow(
+      /unable to reach the api/i,
+    );
   });
 });
 
