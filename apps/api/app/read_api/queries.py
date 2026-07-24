@@ -147,6 +147,45 @@ def category_map(session: Session, category_ids: Sequence[int]) -> dict[int, Cat
     return {c.id: c for c in session.execute(stmt).scalars().unique()}
 
 
+def fetch_offers_by_ids(session: Session, offer_ids: Sequence[int]) -> dict[int, Offer]:
+    """Batch-fetch offers by id for compare, eager-loading the compare graph.
+
+    Returns a ``{id: Offer}`` map (only ids that exist are present). Loads each
+    offer's service -> provider, its versions -> quotas, and its versions ->
+    evidence so the comparison can be serialized without N+1 queries. Publication
+    is decided by the caller via :func:`is_published`; the ``candidate`` /
+    ``discovery_candidate`` tables are never touched.
+    """
+
+    ids = [oid for oid in offer_ids if oid is not None]
+    if not ids:
+        return {}
+    stmt = (
+        select(Offer)
+        .where(Offer.id.in_(ids))
+        .options(
+            selectinload(Offer.service).selectinload(Service.provider),
+            selectinload(Offer.versions).selectinload(OfferVersion.quotas),
+            selectinload(Offer.versions).selectinload(OfferVersion.evidence),
+        )
+    )
+    return {offer.id: offer for offer in session.execute(stmt).scalars().unique()}
+
+
+def category_map_for_providers(
+    session: Session, providers: Sequence[Provider]
+) -> dict[int, Category]:
+    """Resolve every category referenced by ``providers`` services in one query."""
+
+    category_ids = [
+        s.category_id
+        for provider in providers
+        for s in provider.services
+        if s.category_id is not None
+    ]
+    return category_map(session, category_ids)
+
+
 def get_snapshot(session: Session, snapshot_id: int) -> Snapshot | None:
     """Fetch a snapshot by id (used only for provenance display)."""
 
@@ -169,6 +208,8 @@ __all__: Sequence[str] = (
     "fetch_offer_versions",
     "fetch_offer_change_events",
     "category_map",
+    "fetch_offers_by_ids",
+    "category_map_for_providers",
     "get_snapshot",
     "get_source",
 )
