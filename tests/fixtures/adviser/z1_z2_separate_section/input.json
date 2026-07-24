@@ -1,0 +1,16 @@
+{
+  "workload_name": "storage with alternatives",
+  "requirements": [
+    {
+      "category": "object-file-storage",
+      "demands": [
+        {
+          "metric": "storage",
+          "amount": "5",
+          "unit": "GB",
+          "period": "month"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "workload_name": "high-traffic functions",
+  "requirements": [
+    {
+      "category": "serverless-functions",
+      "demands": [
+        {
+          "metric": "requests",
+          "amount": "3000000",
+          "unit": "requests",
+          "period": "month"
+        }
+      ]
+    }
+  ]
+}

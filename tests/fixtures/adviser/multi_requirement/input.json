@@ -1,0 +1,27 @@
+{
+  "workload_name": "web app",
+  "requirements": [
+    {
+      "category": "object-file-storage",
+      "demands": [
+        {
+          "metric": "storage",
+          "amount": "5",
+          "unit": "GB",
+          "period": "month"
+        }
+      ]
+    },
+    {
+      "category": "serverless-functions",
+      "demands": [
+        {
+          "metric": "requests",
+          "amount": "500000",
+          "unit": "requests",
+          "period": "month"
+        }
+      ]
+    }
+  ]
+}

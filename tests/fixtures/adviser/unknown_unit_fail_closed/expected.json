@@ -1,0 +1,48 @@
+{
+  "workload_name": "unknown unit",
+  "priorities": ["exactly_zero_cost", "portability", "low_lock_in"],
+  "fully_zero_cost": false,
+  "zero_cost_proof": [
+    "The workload as requested cannot be guaranteed $0: one or more requirements have no fitting Z0 offer. See the ordered resolution (blocking reason -> reduction -> recalculation -> self-hosting) below."
+  ],
+  "architecture": [],
+  "impossible": [
+    {
+      "requirement_index": 0,
+      "category": "object-file-storage",
+      "label": null,
+      "blocking_reason": "The closest Z0 offer 'Acme Blob Store' (Acme (fixture)) cannot cover: Demanded unit 'blobs' cannot be confidently normalized; cannot guarantee coverage.",
+      "closest": {
+        "provider_slug": "acme-fixture",
+        "provider_name": "Acme (fixture)",
+        "service_name": "Acme Blob Store",
+        "offer_id": 100,
+        "zero_cost_class": "Z0_TRUE_FREE",
+        "confidence_label": "high"
+      },
+      "reductions": [
+        {
+          "metric": "storage",
+          "original_amount": "5",
+          "original_unit": "blobs",
+          "reduced_amount": null,
+          "feasible": false,
+          "reason": "Demand for 'storage' cannot be reduced to fit 'Acme Blob Store' (no comparable, known-unit quota)."
+        }
+      ],
+      "recalculated": null,
+      "self_hosting": [],
+      "steps": [
+        "1. Blocking: The closest Z0 offer 'Acme Blob Store' (Acme (fixture)) cannot cover: Demanded unit 'blobs' cannot be confidently normalized; cannot guarantee coverage.",
+        "2. Reduction:",
+        "   - storage: cannot reduce. Demand for 'storage' cannot be reduced to fit 'Acme Blob Store' (no comparable, known-unit quota).",
+        "3. Recalculation: even after reduction, no Z0 offer covers the demand (fail closed -- not guaranteed $0).",
+        "4. Self-hosting: no published self-hostable (Z3) building block is available in this category."
+      ]
+    }
+  ],
+  "not_free_section": {
+    "label": "These options are NOT $0 and are not part of the recommendation.",
+    "options": []
+  }
+}

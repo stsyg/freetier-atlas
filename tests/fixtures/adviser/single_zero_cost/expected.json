@@ -1,0 +1,100 @@
+{
+  "workload_name": "single storage workload",
+  "priorities": ["exactly_zero_cost", "portability", "low_lock_in"],
+  "fully_zero_cost": true,
+  "zero_cost_proof": [
+    "$0 proof: every component below is classified Z0_TRUE_FREE by the classification engine (no card, no paid dependencies, every quota stops safely on exhaustion), and every demand is covered with non-negative, exact-Decimal headroom at a known unit.",
+    "- Acme Object Store (Acme (fixture)) for 'object-file-storage': Z0_TRUE_FREE; 1 demand(s) covered.",
+    "Because every component is independently $0 and no component introduces a billing dependency, the whole architecture remains $0."
+  ],
+  "architecture": [
+    {
+      "requirement_index": 0,
+      "category": "object-file-storage",
+      "label": "backups",
+      "offer": {
+        "provider_slug": "acme-fixture",
+        "provider_name": "Acme (fixture)",
+        "service_name": "Acme Object Store",
+        "offer_id": 100,
+        "zero_cost_class": "Z0_TRUE_FREE",
+        "confidence_label": "high"
+      },
+      "reduced": false,
+      "demands": [
+        {
+          "metric": "storage",
+          "covered": true,
+          "boundary": false,
+          "demand_amount": "5",
+          "demand_unit": "GB",
+          "demand_period": "month",
+          "matched_metric": "storage",
+          "canonical_unit": "byte",
+          "demand_canonical": "5000000000",
+          "quota_canonical": "10000000000",
+          "headroom": "5000000000",
+          "reason": "Quota provides 10 GB (headroom 5000000000 byte) for demand of 5 GB."
+        }
+      ],
+      "quota_math": [
+        "storage: covered -- Quota provides 10 GB (headroom 5000000000 byte) for demand of 5 GB."
+      ],
+      "z0_safety": [
+        "Zero-cost class Z0_TRUE_FREE confirmed by the classification engine (persisted class 'Z0_TRUE_FREE' agrees).",
+        "No payment card is required.",
+        "The offer has no paid dependencies.",
+        "Every quota exhaustion behaviour is a safe stop (usage halts or degrades without incurring a charge).",
+        "Usage remains $0: classified Z0_TRUE_FREE."
+      ],
+      "portability": {
+        "score": "0.60",
+        "label": "medium",
+        "lock_in_label": "moderate",
+        "deployment_model": "managed",
+        "positive_traits": ["open_standards", "s3_compatible"],
+        "negative_traits": [],
+        "unknown_traits": [],
+        "basis": [
+          "Base portability 0.40 for deployment model 'managed'.",
+          "+0.10 each for portability traits: open_standards, s3_compatible.",
+          "Final portability score 0.60 -> 'medium' portability."
+        ],
+        "exit_plan": [
+          "Managed service: plan an exit by exporting your data and redeploying on an alternative provider; verify the export format before you depend on it.",
+          "S3-compatible: another S3-compatible store can be a drop-in target.",
+          "Retain a periodic backup of your data and configuration so you can rebuild the component elsewhere at any time."
+        ]
+      },
+      "evidence": [
+        {
+          "title": "Free tier docs",
+          "url": "https://example.test/free",
+          "official": true
+        }
+      ],
+      "explanation": [
+        "object-file-storage: Acme Object Store by Acme (fixture) -- Z0 true-free, all demands covered with headroom.",
+        "storage: covered -- Quota provides 10 GB (headroom 5000000000 byte) for demand of 5 GB.",
+        "Zero-cost class Z0_TRUE_FREE confirmed by the classification engine (persisted class 'Z0_TRUE_FREE' agrees).",
+        "No payment card is required.",
+        "The offer has no paid dependencies.",
+        "Every quota exhaustion behaviour is a safe stop (usage halts or degrades without incurring a charge).",
+        "Usage remains $0: classified Z0_TRUE_FREE.",
+        "Portability: medium (score 0.60); lock-in: moderate.",
+        "Base portability 0.40 for deployment model 'managed'.",
+        "+0.10 each for portability traits: open_standards, s3_compatible.",
+        "Final portability score 0.60 -> 'medium' portability.",
+        "Exit plan:",
+        "  - Managed service: plan an exit by exporting your data and redeploying on an alternative provider; verify the export format before you depend on it.",
+        "  - S3-compatible: another S3-compatible store can be a drop-in target.",
+        "  - Retain a periodic backup of your data and configuration so you can rebuild the component elsewhere at any time."
+      ]
+    }
+  ],
+  "impossible": [],
+  "not_free_section": {
+    "label": "These options are NOT $0 and are not part of the recommendation.",
+    "options": []
+  }
+}

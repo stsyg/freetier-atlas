@@ -1,0 +1,149 @@
+{
+  "workload_name": "high-traffic functions",
+  "priorities": ["exactly_zero_cost", "portability", "low_lock_in"],
+  "fully_zero_cost": false,
+  "zero_cost_proof": [
+    "The workload as requested cannot be guaranteed $0: one or more requirements have no fitting Z0 offer. See the ordered resolution (blocking reason -> reduction -> recalculation -> self-hosting) below."
+  ],
+  "architecture": [],
+  "impossible": [
+    {
+      "requirement_index": 0,
+      "category": "serverless-functions",
+      "label": null,
+      "blocking_reason": "The closest Z0 offer 'Tiny FaaS' (Globex (fixture)) cannot cover: Quota provides only 1000000 requests; short by 2000000 count for the demanded 3000000 requests.",
+      "closest": {
+        "provider_slug": "globex-fixture",
+        "provider_name": "Globex (fixture)",
+        "service_name": "Tiny FaaS",
+        "offer_id": 300,
+        "zero_cost_class": "Z0_TRUE_FREE",
+        "confidence_label": "high"
+      },
+      "reductions": [
+        {
+          "metric": "requests",
+          "original_amount": "3000000",
+          "original_unit": "requests",
+          "reduced_amount": "1000000",
+          "feasible": true,
+          "reason": "Reduce 'requests' from 3000000 to 1000000 requests to fit the Tiny FaaS free quota."
+        }
+      ],
+      "recalculated": {
+        "requirement_index": 0,
+        "category": "serverless-functions",
+        "label": null,
+        "offer": {
+          "provider_slug": "globex-fixture",
+          "provider_name": "Globex (fixture)",
+          "service_name": "Tiny FaaS",
+          "offer_id": 300,
+          "zero_cost_class": "Z0_TRUE_FREE",
+          "confidence_label": "high"
+        },
+        "reduced": true,
+        "demands": [
+          {
+            "metric": "requests",
+            "covered": true,
+            "boundary": true,
+            "demand_amount": "1000000",
+            "demand_unit": "requests",
+            "demand_period": "month",
+            "matched_metric": "requests",
+            "canonical_unit": "count",
+            "demand_canonical": "1000000",
+            "quota_canonical": "1000000",
+            "headroom": "0",
+            "reason": "Quota provides 1000000 requests (headroom 0 count) for demand of 1000000 requests."
+          }
+        ],
+        "quota_math": [
+          "requests: covered (exact boundary: zero headroom) -- Quota provides 1000000 requests (headroom 0 count) for demand of 1000000 requests."
+        ],
+        "z0_safety": [
+          "Zero-cost class Z0_TRUE_FREE confirmed by the classification engine (persisted class 'Z0_TRUE_FREE' agrees).",
+          "No payment card is required.",
+          "The offer has no paid dependencies.",
+          "Every quota exhaustion behaviour is a safe stop (usage halts or degrades without incurring a charge).",
+          "Usage remains $0: classified Z0_TRUE_FREE."
+        ],
+        "portability": {
+          "score": "0.50",
+          "label": "medium",
+          "lock_in_label": "moderate",
+          "deployment_model": "managed",
+          "positive_traits": ["standard_api"],
+          "negative_traits": [],
+          "unknown_traits": [],
+          "basis": [
+            "Base portability 0.40 for deployment model 'managed'.",
+            "+0.10 each for portability traits: standard_api.",
+            "Final portability score 0.50 -> 'medium' portability."
+          ],
+          "exit_plan": [
+            "Managed service: plan an exit by exporting your data and redeploying on an alternative provider; verify the export format before you depend on it.",
+            "Retain a periodic backup of your data and configuration so you can rebuild the component elsewhere at any time."
+          ]
+        },
+        "evidence": [
+          {
+            "title": "Free tier docs",
+            "url": "https://example.test/free",
+            "official": true
+          }
+        ],
+        "explanation": [
+          "serverless-functions: Tiny FaaS by Globex (fixture) (under reduced demand) -- Z0 true-free, all demands covered with headroom.",
+          "requests: covered (exact boundary: zero headroom) -- Quota provides 1000000 requests (headroom 0 count) for demand of 1000000 requests.",
+          "Zero-cost class Z0_TRUE_FREE confirmed by the classification engine (persisted class 'Z0_TRUE_FREE' agrees).",
+          "No payment card is required.",
+          "The offer has no paid dependencies.",
+          "Every quota exhaustion behaviour is a safe stop (usage halts or degrades without incurring a charge).",
+          "Usage remains $0: classified Z0_TRUE_FREE.",
+          "Portability: medium (score 0.50); lock-in: moderate.",
+          "Base portability 0.40 for deployment model 'managed'.",
+          "+0.10 each for portability traits: standard_api.",
+          "Final portability score 0.50 -> 'medium' portability.",
+          "Exit plan:",
+          "  - Managed service: plan an exit by exporting your data and redeploying on an alternative provider; verify the export format before you depend on it.",
+          "  - Retain a periodic backup of your data and configuration so you can rebuild the component elsewhere at any time."
+        ]
+      },
+      "self_hosting": [
+        {
+          "building_block": {
+            "provider_slug": "oss-fixture",
+            "provider_name": "OSS Collective (fixture)",
+            "service_name": "OpenFaaS",
+            "offer_id": 400,
+            "zero_cost_class": "Z3_SELF_HOSTED_BUILDING_BLOCK",
+            "confidence_label": "high"
+          },
+          "host": {
+            "provider_slug": "globex-fixture",
+            "provider_name": "Globex (fixture)",
+            "service_name": "Tiny FaaS",
+            "offer_id": 300,
+            "zero_cost_class": "Z0_TRUE_FREE",
+            "confidence_label": "high"
+          },
+          "note": "Run the self-hosted 'OpenFaaS' on the Z0 host 'Tiny FaaS' (Globex (fixture)); the combination stays $0 as long as the host's free quotas are respected."
+        }
+      ],
+      "steps": [
+        "1. Blocking: The closest Z0 offer 'Tiny FaaS' (Globex (fixture)) cannot cover: Quota provides only 1000000 requests; short by 2000000 count for the demanded 3000000 requests.",
+        "2. Reduction:",
+        "   - requests: reduce 3000000 -> 1000000 requests. Reduce 'requests' from 3000000 to 1000000 requests to fit the Tiny FaaS free quota.",
+        "3. Recalculation: under the reduced demand, Tiny FaaS (Globex (fixture)) fits and stays $0.",
+        "4. Self-hosting:",
+        "   - Run the self-hosted 'OpenFaaS' on the Z0 host 'Tiny FaaS' (Globex (fixture)); the combination stays $0 as long as the host's free quotas are respected."
+      ]
+    }
+  ],
+  "not_free_section": {
+    "label": "These options are NOT $0 and are not part of the recommendation.",
+    "options": []
+  }
+}

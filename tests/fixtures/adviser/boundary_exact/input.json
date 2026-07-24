@@ -1,0 +1,16 @@
+{
+  "workload_name": "exact boundary",
+  "requirements": [
+    {
+      "category": "object-file-storage",
+      "demands": [
+        {
+          "metric": "storage",
+          "amount": "10",
+          "unit": "GB",
+          "period": "month"
+        }
+      ]
+    }
+  ]
+}

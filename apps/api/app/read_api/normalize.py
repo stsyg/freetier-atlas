@@ -29,6 +29,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from decimal import Decimal, InvalidOperation
 
 #: Canonical base unit for the data-size dimension.
 BYTE_UNIT = "byte"
@@ -202,10 +203,145 @@ def comparable(a: NormalizedAmount, b: NormalizedAmount) -> bool:
     return a.normalized and b.normalized and a.dimension is not None and a.dimension == b.dimension
 
 
+# --------------------------------------------------------------------------- #
+# Exact-Decimal path (F006 slice 3 adviser).                                  #
+#                                                                             #
+# The Slice 1 float path above stays byte-for-byte the same so the S1 compare #
+# API/tests are untouched. The adviser, however, makes *$0-fit* decisions     #
+# (headroom = quota_amount - demand), and a $0 guarantee must never turn on a #
+# binary-float rounding artefact. This additive path reuses the very same     #
+# unit tables but does all arithmetic in :class:`decimal.Decimal`, so an      #
+# exact-boundary fit (headroom == 0) is decided exactly. It fails closed on   #
+# the unknown in exactly the same way as the float path.                      #
+# --------------------------------------------------------------------------- #
+
+
+@dataclass(frozen=True)
+class NormalizedDecimal:
+    """Exact-Decimal counterpart of :class:`NormalizedAmount`.
+
+    ``normalized`` is the fail-closed flag: when it is ``False`` the canonical
+    fields are ``None`` and ``note`` explains why. Callers must treat a
+    non-normalized value as *unknown* -- never as zero or as comparable. All
+    populated numeric fields are :class:`~decimal.Decimal` so no float ever
+    enters a fit/headroom decision.
+    """
+
+    original_amount: Decimal | None
+    original_unit: str | None
+    normalized: bool
+    canonical_amount: Decimal | None = None
+    canonical_unit: str | None = None
+    dimension: str | None = None
+    note: str | None = None
+
+
+def _coerce_amount_decimal(amount: object) -> Decimal | None:
+    """Coerce a value to an exact :class:`Decimal`, or ``None`` on any doubt.
+
+    ``bool`` is rejected (it is not a quantity). A ``float`` is stringified
+    first so the Decimal captures the intended decimal value rather than the
+    binary-float artefact (``Decimal(str(0.1)) == Decimal('0.1')``). Non-finite
+    values (NaN / Infinity) fail closed.
+    """
+
+    if amount is None or isinstance(amount, bool):
+        return None
+    try:
+        if isinstance(amount, Decimal):
+            value = amount
+        elif isinstance(amount, int):
+            value = Decimal(amount)
+        elif isinstance(amount, float):
+            value = Decimal(str(amount))
+        elif isinstance(amount, str):
+            value = Decimal(amount.strip())
+        else:
+            return None
+    except (InvalidOperation, ValueError):
+        return None
+    if not value.is_finite():
+        return None
+    return value
+
+
+def normalize_amount_decimal(amount: object, unit: str | None) -> NormalizedDecimal:
+    """Exact-Decimal normalization of one ``(amount, unit)`` measurement.
+
+    Mirrors :func:`normalize_amount` (same recognised units, same fail-closed
+    rules) but keeps every value as an exact :class:`~decimal.Decimal`. On
+    success ``normalized`` is ``True`` with ``canonical_amount`` /
+    ``canonical_unit`` / ``dimension`` populated; on any doubt (missing amount,
+    blank unit, unrecognised unit) ``normalized`` is ``False`` with a ``note``
+    and no canonical value -- never a guessed conversion.
+    """
+
+    original_amount = _coerce_amount_decimal(amount)
+    original_unit = _clean_unit(unit)
+
+    if original_amount is None:
+        return NormalizedDecimal(
+            original_amount=None,
+            original_unit=original_unit,
+            normalized=False,
+            note="unknown amount",
+        )
+    if original_unit is None:
+        return NormalizedDecimal(
+            original_amount=original_amount,
+            original_unit=None,
+            normalized=False,
+            note="missing unit; cannot normalize",
+        )
+
+    key = original_unit.lower()
+
+    factor = _DATA_SIZE_TO_BYTES.get(key)
+    if factor is not None:
+        return NormalizedDecimal(
+            original_amount=original_amount,
+            original_unit=original_unit,
+            normalized=True,
+            canonical_amount=original_amount * Decimal(factor),
+            canonical_unit=BYTE_UNIT,
+            dimension=_DIMENSION_DATA,
+        )
+
+    if key in _COUNT_UNITS:
+        return NormalizedDecimal(
+            original_amount=original_amount,
+            original_unit=original_unit,
+            normalized=True,
+            canonical_amount=original_amount,
+            canonical_unit=COUNT_UNIT,
+            dimension=_DIMENSION_COUNT,
+        )
+
+    return NormalizedDecimal(
+        original_amount=original_amount,
+        original_unit=original_unit,
+        normalized=False,
+        note=f"cannot normalize unit '{original_unit}'",
+    )
+
+
+def comparable_decimal(a: NormalizedDecimal, b: NormalizedDecimal) -> bool:
+    """True only when both Decimal values normalized into the *same* dimension.
+
+    Fails closed exactly like :func:`comparable`: if either value did not
+    normalize, or they landed in different dimensions, they are not comparable.
+    """
+
+    return a.normalized and b.normalized and a.dimension is not None and a.dimension == b.dimension
+
+
 __all__: Sequence[str] = (
     "BYTE_UNIT",
     "COUNT_UNIT",
     "NormalizedAmount",
     "normalize_amount",
     "comparable",
+    "NormalizedDecimal",
+    "normalize_amount_decimal",
+    "comparable_decimal",
 )
