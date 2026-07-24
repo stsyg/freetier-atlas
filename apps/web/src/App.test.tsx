@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import App from "./App";
 import { catalogueFetch } from "./catalogue/testFixtures";
+import { adviserFetch } from "./adviser/testFixtures";
 
 afterEach(() => {
   cleanup();
@@ -140,5 +141,94 @@ describe("App — catalogue browser routing + landmarks (F006 slice 2)", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /retry/i }));
     await screen.findByTestId("results-list");
+  });
+});
+
+describe("App — adviser recommendation experience (F006 slice 4)", () => {
+  async function renderAdviser() {
+    stubFetch(adviserFetch(catalogueFetch()));
+    window.location.hash = "#/adviser";
+    render(<App />);
+    await waitFor(() =>
+      expect(
+        screen.getByRole("heading", { level: 1, name: /architecture adviser/i }),
+      ).toBeInTheDocument(),
+    );
+  }
+
+  function fillFirstDemand(overrides?: { category?: string; metric?: string; amount?: string }) {
+    const category = overrides?.category ?? "serverless-functions";
+    fireEvent.change(screen.getByLabelText(/^category$/i), { target: { value: category } });
+    fireEvent.change(screen.getByLabelText(/^metric$/i), {
+      target: { value: overrides?.metric ?? "invocations" },
+    });
+    fireEvent.change(screen.getByLabelText(/^amount$/i), {
+      target: { value: overrides?.amount ?? "1000" },
+    });
+    fireEvent.change(screen.getByLabelText(/^unit$/i), { target: { value: "count" } });
+  }
+
+  it("keeps a single h1 and exposes the structured form (no NL/URL input)", async () => {
+    await renderAdviser();
+    expect(screen.getAllByRole("heading", { level: 1 })).toHaveLength(1);
+    expect(screen.getByRole("form", { name: /describe your workload/i })).toBeInTheDocument();
+    // The active nav link is the Adviser link.
+    expect(screen.getByRole("link", { current: "page" })).toHaveTextContent(/adviser/i);
+    // No free-text "describe your app" textarea exists — structured input only.
+    expect(screen.queryByRole("textbox", { name: /describe.*app|paste.*url/i })).toBeNull();
+  });
+
+  it("submits the structured form and renders a satisfiable $0 recommendation", async () => {
+    await renderAdviser();
+    fireEvent.change(screen.getByLabelText(/workload name/i), {
+      target: { value: "Personal side project" },
+    });
+    fillFirstDemand();
+    fireEvent.submit(screen.getByRole("form", { name: /describe your workload/i }));
+
+    await screen.findByTestId("zero-cost-proof");
+    expect(screen.getByTestId("zero-cost-badge")).toHaveTextContent(/\$0 guaranteed/i);
+    // Provider-agnostic: two distinct providers appear in the architecture.
+    expect(screen.getByText("Northwind Functions")).toBeInTheDocument();
+    expect(screen.getByText("Initech Buckets")).toBeInTheDocument();
+    // Still exactly one h1 after the results render below the form.
+    expect(screen.getAllByRole("heading", { level: 1 })).toHaveLength(1);
+  });
+
+  it("renders the impossible-workload flow with a separated not-$0 section", async () => {
+    await renderAdviser();
+    // Workload name containing "saas" drives the mixed/impossible fixture.
+    fireEvent.change(screen.getByLabelText(/workload name/i), {
+      target: { value: "Growing SaaS" },
+    });
+    fillFirstDemand({ category: "relational-databases", metric: "storage", amount: "100" });
+    fireEvent.submit(screen.getByRole("form", { name: /describe your workload/i }));
+
+    await screen.findByTestId("impossible-step-blocking");
+    expect(screen.getByTestId("impossible-step-reduction")).toBeInTheDocument();
+    expect(screen.getByTestId("impossible-step-recalculation")).toBeInTheDocument();
+    expect(screen.getByTestId("impossible-step-selfhosting")).toBeInTheDocument();
+    // Paid (Z1) option is isolated in the not-$0 section.
+    const notFree = screen.getByTestId("not-free-section");
+    expect(within(notFree).getByText("Acme SQL")).toBeInTheDocument();
+  });
+
+  it("shows an actionable error when the adviser API rejects the request", async () => {
+    stubFetch((async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = new URL(String(input), "http://localhost");
+      if (url.pathname.endsWith("/adviser/recommend")) {
+        return new Response("nope", { status: 422 });
+      }
+      return catalogueFetch()(input, init);
+    }) as typeof fetch);
+    window.location.hash = "#/adviser";
+    render(<App />);
+    await screen.findByRole("heading", { level: 1, name: /architecture adviser/i });
+
+    fillFirstDemand();
+    fireEvent.submit(screen.getByRole("form", { name: /describe your workload/i }));
+
+    await waitFor(() => expect(screen.getByRole("alert")).toBeInTheDocument());
+    expect(screen.getByText(/rejected by the API/i)).toBeInTheDocument();
   });
 });

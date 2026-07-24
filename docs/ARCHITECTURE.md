@@ -285,6 +285,46 @@ only ever shows real published data, so no false real-world free claim is emitte
 No new dependency is added (owner constraint Q8): interaction tests use
 `fireEvent`. The adviser remains deferred to a later F006 slice.
 
+### Adviser web experience (F006 slice 4)
+
+The final F006 slice adds an **architecture adviser page** to the same `apps/web`
+SPA at the new hash route `#/adviser`, consuming the deterministic adviser core
+(F006 slice 3) over the same-origin `/api` proxy. The page presents an editable
+**structured requirements form** (`apps/web/src/adviser/AdviserForm.tsx`): an
+optional workload name plus one or more requirements, each in one of the fourteen
+canonical categories, with repeatable quantified demands (metric + exact amount +
+explicit unit + optional period) and optional constraints (commercial/personal
+use, region, residency). It is deliberately a plain structured form — there is
+**no natural-language input, no LLM, no consent flow, and no export** (all of that
+is deferred to F007). Amounts are kept and emitted as strings so the backend
+receives the exact `Decimal`. Submitting POSTs the typed `RecommendationRequest`
+to `POST /api/adviser/recommend` through a single new fetcher
+(`fetchRecommendation` in `apps/web/src/api.ts`); the request is a fixed
+same-origin path with a structured body (never a user-controlled URL), the call
+is stateless, and it is the only non-`GET` the SPA makes. `RecommendationView`
+(`apps/web/src/adviser/RecommendationView.tsx`) renders the response **verbatim**:
+the whole-architecture `$0` proof; per-component selected offer/provider, exact
+per-demand quota math + headroom in an accessible table, Z0-safety reasons, and
+portability/lock-in/exit-plan; the impossible-workload resolution in the strict
+API order (1. blocking → 2. reduction → 3. recalculation → 4. self-hosting); and,
+clearly separated, a "Not `$0` / paid" section for Z1/Z2 options that are never
+mixed into the `$0` architecture. Fitting components still render even when the
+workload is not fully `$0` (the orchestrator resolves requirements
+independently). The UI never re-derives the Z0 class, confidence, or quota math —
+it displays only what the API returns, the confidence **label** stays primary
+(the numeric portability score sits only inside a closed advanced `<details>`,
+per D039), and any null/absent field renders honestly as "Unknown". Accessibility
+is asserted by the tests: a single `<h1>` for the route with ordered heading
+levels down the deep recommendation tree (never skipping a level, never past
+`h6`); landmarks and an `aria-current` nav link; keyboard-operable form controls
+and disclosures; a `<caption>` + `scope`d headers on the quota-math table;
+`rel="noopener noreferrer"` external evidence links; and every badge pairing
+colour with a visible label + an `aria-hidden` icon. Provider-agnostic rendering
+is proven with **clearly synthetic** multi-provider fixtures that live only in
+`apps/web/src/adviser/testFixtures.ts`; the live stack shows only real published
+Cloudflare data, so no false real-world free claim is emitted. No new npm or
+Python dependency is added and the backend is untouched (Alembic head stays 0007).
+
 ## LLM routing
 
 1. Deterministic parser/rules

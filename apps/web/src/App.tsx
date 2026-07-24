@@ -4,10 +4,13 @@ import {
   fetchCategoryMatrix,
   fetchCompare,
   fetchProviders,
+  fetchRecommendation,
   fetchSearch,
   type CategoryMatrixResponse,
   type CompareResponse,
   type ProviderSummary,
+  type RecommendationRequest,
+  type RecommendationResponse,
   type SearchQuery,
   type SearchResponse,
 } from "./api";
@@ -19,6 +22,8 @@ import { SearchControls } from "./catalogue/SearchControls";
 import { ResultsList } from "./catalogue/ResultsList";
 import { CategoryMatrix } from "./catalogue/CategoryMatrix";
 import { CompareView } from "./catalogue/CompareView";
+import { AdviserForm } from "./adviser/AdviserForm";
+import { RecommendationView } from "./adviser/RecommendationView";
 
 /**
  * FreeTier Atlas — the provider-agnostic catalogue browser (F006 slice 2).
@@ -48,6 +53,7 @@ type Route =
   | { name: "browse" }
   | { name: "categories" }
   | { name: "compare" }
+  | { name: "adviser" }
   | { name: "provider"; slug: string };
 
 function parseHash(hash: string): Route {
@@ -55,6 +61,7 @@ function parseHash(hash: string): Route {
   const [path] = clean.split("?");
   if (path === "categories") return { name: "categories" };
   if (path === "compare") return { name: "compare" };
+  if (path === "adviser") return { name: "adviser" };
   const providerMatch = /^provider\/([a-z0-9][a-z0-9-]{0,63})$/.exec(path);
   if (providerMatch) return { name: "provider", slug: providerMatch[1] };
   return { name: "browse" };
@@ -99,6 +106,7 @@ export default function App() {
         {route.name === "compare" ? (
           <CompareContainer selectedIds={selectedIds} onClear={clearCompare} />
         ) : null}
+        {route.name === "adviser" ? <AdviserView /> : null}
         {route.name === "provider" ? <ProviderPage slug={route.slug} /> : null}
       </main>
       <footer className="footer">
@@ -120,6 +128,7 @@ function SiteHeader({ route, compareCount }: { route: Route; compareCount: numbe
       label: compareCount > 0 ? `Compare (${compareCount})` : "Compare",
       active: route.name === "compare",
     },
+    { href: "#/adviser", label: "Adviser", active: route.name === "adviser" },
     {
       href: "#/provider/cloudflare",
       label: "Cloudflare",
@@ -316,6 +325,75 @@ function CompareContainer({
       ) : null}
       {enough && state.kind === "ok" ? <CompareView data={state.data} /> : null}
     </>
+  );
+}
+
+// --- Adviser view (F006 slice 4) ----------------------------------------------
+
+/**
+ * The architecture adviser page (`#/adviser`).
+ *
+ * The user fills in an editable STRUCTURED requirements form; on submit we POST
+ * it to the deterministic `/api/adviser/recommend` endpoint and render the
+ * recommendation verbatim below the form. This is the ONLY page that writes to
+ * the API, and even that call is stateless — it mutates nothing. There is no
+ * natural-language input, no LLM, no consent flow, and no export here.
+ *
+ * The form stays visible at all times so the user can refine and resubmit; the
+ * page owns the single `<h1>` and the POST state, while {@link RecommendationView}
+ * renders its own `<h2>` region beneath it.
+ */
+function AdviserView() {
+  type AdviserState =
+    | { kind: "idle" }
+    | { kind: "loading" }
+    | { kind: "ok"; data: RecommendationResponse }
+    | { kind: "error"; message: string };
+  const [state, setState] = useState<AdviserState>({ kind: "idle" });
+
+  const submit = useCallback((request: RecommendationRequest) => {
+    const controller = new AbortController();
+    setState({ kind: "loading" });
+    fetchRecommendation(request, controller.signal)
+      .then((data) => setState({ kind: "ok", data }))
+      .catch((error: unknown) => {
+        if (controller.signal.aborted) return;
+        const message = error instanceof Error ? error.message : "Unknown error.";
+        setState({ kind: "error", message });
+      });
+  }, []);
+
+  return (
+    <section aria-labelledby="adviser-heading">
+      <h1 id="adviser-heading" className="page-title">
+        Architecture adviser
+      </h1>
+      <p className="tagline">
+        Describe your workload as structured requirements and get a deterministic, evidence-backed
+        recommendation for a $0 (truly-free) architecture. Every rating comes from official sources;
+        anything we cannot verify is shown as “Unknown”.
+      </p>
+
+      <section className="card" aria-labelledby="adviser-form-heading">
+        <h2 id="adviser-form-heading" className="section-heading">
+          Your workload
+        </h2>
+        <AdviserForm onSubmit={submit} disabled={state.kind === "loading"} />
+      </section>
+
+      {state.kind === "loading" ? (
+        <p className="status status--loading" role="status">
+          Computing your recommendation…
+        </p>
+      ) : null}
+      {state.kind === "error" ? (
+        <div className="status status--error" role="alert">
+          <p>Unable to compute a recommendation: {state.message}</p>
+          <p className="muted">Adjust your requirements above and try again.</p>
+        </div>
+      ) : null}
+      {state.kind === "ok" ? <RecommendationView data={state.data} /> : null}
+    </section>
   );
 }
 

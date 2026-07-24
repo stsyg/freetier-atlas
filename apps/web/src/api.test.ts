@@ -9,6 +9,7 @@ import {
   fetchProvider,
   fetchProviderOffers,
   fetchProviders,
+  fetchRecommendation,
   fetchSearch,
 } from "./api";
 
@@ -129,5 +130,53 @@ describe("catalogue-wide search / matrix / compare client (F006)", () => {
     const url = new URL(String(spy.mock.calls[0][0]), "http://localhost");
     expect(url.pathname).toBe("/api/catalogue/compare");
     expect(url.searchParams.get("offers")).toBe("1,3,4");
+  });
+});
+
+describe("adviser recommendation client (F006 slice 4)", () => {
+  it("POSTs the structured request as JSON to the fixed adviser path", async () => {
+    const spy = stubFetch(async () => Response.json({ fully_zero_cost: true }));
+    const request = {
+      workload_name: "demo",
+      requirements: [
+        {
+          category: "serverless-functions",
+          demands: [{ metric: "invocations", amount: "1000", unit: "count" }],
+        },
+      ],
+    };
+    await fetchRecommendation(request);
+
+    expect(spy.mock.calls[0][0]).toBe("/api/adviser/recommend");
+    const init = spy.mock.calls[0][1]!;
+    expect(init.method).toBe("POST");
+    expect(init.headers).toMatchObject({
+      Accept: "application/json",
+      "Content-Type": "application/json",
+    });
+    // The exact structured body is sent verbatim (amounts stay strings).
+    expect(JSON.parse(String(init.body))).toEqual(request);
+    expect(init).not.toHaveProperty("credentials");
+  });
+
+  it("maps a 422 rejection to an actionable, credential-free message", async () => {
+    stubFetch(async () => new Response("secret detail", { status: 422 }));
+    await expect(
+      fetchRecommendation({ requirements: [] }),
+    ).rejects.toThrow(/rejected by the API. Please review the values/i);
+  });
+
+  it("surfaces a friendly message when the adviser API is unreachable", async () => {
+    stubFetch(async () => {
+      throw new TypeError("network down");
+    });
+    await expect(fetchRecommendation({ requirements: [] })).rejects.toThrow(
+      /unable to reach the api/i,
+    );
+  });
+
+  it("reports the status code for other non-2xx adviser responses", async () => {
+    stubFetch(async () => new Response("boom", { status: 500 }));
+    await expect(fetchRecommendation({ requirements: [] })).rejects.toThrow(/HTTP 500/);
   });
 });
