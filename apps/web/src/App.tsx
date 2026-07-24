@@ -1,23 +1,39 @@
 import { useCallback, useEffect, useState } from "react";
-import { fetchApiHealth, type ApiHealth } from "./api";
 import "./App.css";
+import { loadCatalogue, type CatalogueView } from "./catalogue/load";
+import { ProviderHeader } from "./catalogue/ProviderHeader";
+import { CategoryStates } from "./catalogue/CategoryStates";
+import { OfferCard } from "./catalogue/OfferCard";
 
-type Status =
+/**
+ * The public Cloudflare provider experience (F005 slice 4).
+ *
+ * A single provider-focused page that consumes ONLY the read-only catalogue API
+ * over the same-origin `/api` proxy and renders the real published data:
+ * category/service states, offers with their Z0 rating + plain-language reasons,
+ * quotas, confidence, official evidence, history, and completeness/freshness.
+ *
+ * Catalogue-wide search, cross-provider comparison, and the adviser are
+ * deferred to a later increment (F006).
+ */
+const PROVIDER_SLUG = "cloudflare";
+
+type State =
   | { kind: "loading" }
-  | { kind: "ok"; health: ApiHealth }
+  | { kind: "ok"; view: CatalogueView }
   | { kind: "error"; message: string };
 
 export default function App() {
-  const [status, setStatus] = useState<Status>({ kind: "loading" });
+  const [state, setState] = useState<State>({ kind: "loading" });
 
   const load = useCallback((signal?: AbortSignal) => {
-    setStatus({ kind: "loading" });
-    fetchApiHealth(signal)
-      .then((health) => setStatus({ kind: "ok", health }))
+    setState({ kind: "loading" });
+    loadCatalogue(PROVIDER_SLUG, signal)
+      .then((view) => setState({ kind: "ok", view }))
       .catch((error: unknown) => {
         if (signal?.aborted) return;
         const message = error instanceof Error ? error.message : "Unknown error.";
-        setStatus({ kind: "error", message });
+        setState({ kind: "error", message });
       });
   }, []);
 
@@ -29,66 +45,59 @@ export default function App() {
 
   return (
     <main className="page">
-      <header className="hero">
-        <h1>FreeTier Atlas</h1>
-        <p className="tagline">
-          Evidence-backed catalogue and architecture adviser for cloud and developer service
-          tiers.
-        </p>
-      </header>
-
-      <section className="card" aria-labelledby="api-status-heading">
-        <h2 id="api-status-heading">API status</h2>
-        <ApiStatusPanel status={status} onRetry={() => load()} />
-      </section>
-
+      <CatalogueBody state={state} onRetry={() => load()} />
       <footer className="footer">
-        <p>Application scaffold — F002. Catalogue and adviser features arrive in later increments.</p>
+        <p>
+          Read-only public catalogue. Every rating is derived from official evidence and shown
+          with its confidence and provenance. Values we cannot verify are shown as “Unknown”.
+        </p>
       </footer>
     </main>
   );
 }
 
-function ApiStatusPanel({ status, onRetry }: { status: Status; onRetry: () => void }) {
-  if (status.kind === "loading") {
+function CatalogueBody({ state, onRetry }: { state: State; onRetry: () => void }) {
+  if (state.kind === "loading") {
     return (
-      <p className="status status--loading" role="status">
-        Checking API health…
-      </p>
+      <section className="card" aria-labelledby="loading-heading">
+        <h1 id="loading-heading">FreeTier Atlas</h1>
+        <p className="status status--loading" role="status">
+          Loading the Cloudflare catalogue…
+        </p>
+      </section>
     );
   }
 
-  if (status.kind === "error") {
+  if (state.kind === "error") {
     return (
-      <div className="status status--error" role="alert">
-        <p>API unavailable: {status.message}</p>
-        <button type="button" onClick={onRetry}>
-          Retry
-        </button>
-      </div>
+      <section className="card" aria-labelledby="error-heading">
+        <h1 id="error-heading">FreeTier Atlas</h1>
+        <div className="status status--error" role="alert">
+          <p>Unable to load the catalogue: {state.message}</p>
+          <button type="button" onClick={onRetry}>
+            Retry
+          </button>
+        </div>
+      </section>
     );
   }
 
-  const { health } = status;
+  const { view } = state;
   return (
-    <div className="status status--ok" role="status">
-      <p>
-        <span className="dot" aria-hidden="true" /> API is <strong>{health.status}</strong>
-      </p>
-      <dl className="details">
-        <div>
-          <dt>Service</dt>
-          <dd>{health.service}</dd>
-        </div>
-        <div>
-          <dt>Version</dt>
-          <dd>{health.version}</dd>
-        </div>
-        <div>
-          <dt>Environment</dt>
-          <dd>{health.environment}</dd>
-        </div>
-      </dl>
-    </div>
+    <>
+      <ProviderHeader provider={view.provider} />
+      <CategoryStates data={view.categoryStates} />
+
+      <section aria-labelledby="offers-heading">
+        <h2 id="offers-heading" className="section-heading">
+          Offers
+        </h2>
+        {view.offers.length === 0 ? (
+          <p className="muted">No published offers are available yet.</p>
+        ) : (
+          view.offers.map((bundle) => <OfferCard key={bundle.detail.offer_id} bundle={bundle} />)
+        )}
+      </section>
+    </>
   );
 }

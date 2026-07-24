@@ -2,75 +2,71 @@
   "schema_version": 1,
   "status": "approved",
   "feature_id": "F005",
-  "increment": "slice-3-read-only-catalogue-provider-api",
+  "increment": "slice-4-public-cloudflare-web-experience",
   "builder": "Copilot CLI (Chief)",
   "evaluator": "fresh independent full-epic Level 2 evaluator (after all slices merge)",
   "approved_at": "2026-07-23T00:00:00Z",
   "approval_notes": [
-    "Orchestrator-directed F005 Slice 3. Build ONE slice, open ONE PR, do NOT merge, do NOT flip any passes flag. F005 stays passes:false; a separate fresh-context full-epic Level 2 close-out owns the flip after all slices merge.",
-    "Builds on Slice 1 (merged 405264a: Cloudflare official extraction + config->DB sync + runner + migration 0007) and Slice 2 (merged d377d0a: deterministic gated publication path; Offer/OfferVersion/Quota + Z0 classify + confidence/classification/gate in OfferVersion.material_facts JSONB).",
-    "Standing autonomy boundaries: may branch/implement/test/commit/push/open ONE PR; may NOT merge, flip any passes flag, add a Python/npm dependency, add a migration, weaken any existing test/fixture/CHECK/trigger, touch trg_offer_version_immutable or the two 0006 separation triggers, or add an LLM/network/user-controlled-URL path."
+    "Orchestrator-directed F005 Slice 4 (FINAL F005 slice). Build ONE slice, open ONE PR, do NOT merge, do NOT flip any passes flag. F005 stays passes:false; a separate fresh-context full-epic Level 2 close-out owns the flip after this slice merges.",
+    "Builds on Slice 1 (merged 405264a: Cloudflare official extraction + config->DB sync + runner + migration 0007), Slice 2 (merged d377d0a: deterministic gated publication path), and Slice 3 (merged 1b7fb34: read-only /catalogue HTTP API). This slice CONSUMES the S3 read API over the nginx /api proxy and renders it as a public web experience.",
+    "Owner-confirmed (Q2): a SINGLE Cloudflare-focused provider page. Catalogue-wide search/compare + the adviser are deferred to F006 and are OUT OF SCOPE here.",
+    "Standing autonomy boundaries: may branch/implement/test/commit/push/open ONE PR; may NOT merge, flip any passes flag, add a Python/npm runtime dependency, add a migration, weaken any existing test/fixture/CHECK/trigger, touch trg_offer_version_immutable or the two 0006 separation triggers, add a backend endpoint or backend mutation, access the DB directly from the web, or add an LLM/network/user-controlled-URL path."
   ],
-  "objective": "Expose the PUBLISHED catalogue over HTTP as a READ-ONLY (GET-only) provider/catalogue API so the S4 web experience and API consumers can read it, reflecting the real data the S1 scan + S2 publish produced. Deliver end-to-end and genuinely working (no stubs/fake data/TODO-backed core behavior). Scope items: (1) providers list + provider detail (Cloudflare) with metadata; (2) category/service states for a provider (offers grouped by service/category, each with its current Z0 state); (3) per published offer: its current OfferVersion, the Z0 zero_cost_class + human-readable reasons (from material_facts.classification) + quota rows; (4) the official evidence backing each offer (source + snapshot/provenance + offer_version link) and a plain-language CONFIDENCE LABEL derived from material_facts.confidence (numeric only in an advanced/detail block, never the primary field); (5) OfferVersion history (append-only) + ChangeEvents (added/modified) so the UI can show what changed and when; (6) completeness + freshness signals per offer/provider (reuse what S2 computed in material_facts.confidence_signals / Provider score columns). Reads persisted rows only; deterministic; no LLM; 'unknown is better than guessed'.",
+  "objective": "Deliver a genuinely working PUBLIC web experience (apps/web) that consumes ONLY the S3 read-only catalogue HTTP API over the same-origin /api proxy and renders the real published Cloudflare data end-to-end. A single Cloudflare-focused provider page rendering: (1) category/service states with clear Z0 badges; (2) each published offer's Z0 zero_cost_class as a plain-language badge + the human-readable WHY (material_facts.classification.reasons surfaced by the API) in plain language; (3) the official evidence backing an offer (source + provenance + link to the official page, clearly official-evidence-backed); (4) the plain-language confidence LABEL as the primary signal, with the numeric score/signals only in an advanced/details disclosure (D039); (5) the offer's version history + change events; (6) completeness + freshness signals; (7) the offer's quota rows (amount/unit/reset period/exhaustion behaviour) readably. Honest 'Unknown' when the API returns null/unknown; never fabricated. Accessibility is part of done.",
   "scope": [
-    "apps/api/app/db.py: add a read-only, request-scoped SQLAlchemy Session dependency (get_sessionmaker cached on the lazy engine + a get_session() generator) so FastAPI routes can query without any write path. No engine/settings behaviour change.",
-    "apps/api/app/read_api/__init__.py (new package): export the router + public schema/service symbols.",
-    "apps/api/app/read_api/confidence.py (new): pure numeric->plain-language confidence LABEL mapping (high/medium/low/unknown) using the version's stored gate thresholds (material_facts.gate.automatic_threshold/uncertain_threshold) when present, else documented fixed fallbacks. Never exposes the numeric as the primary field.",
-    "apps/api/app/read_api/schemas.py (new): Pydantic response models (ProviderSummary, ProviderDetail, CategoryState/ServiceState, OfferSummary, OfferDetail with confidence LABEL + nested advanced{score,signals}, QuotaOut, EvidenceOut, OfferVersionOut, ChangeEventOut, CompletenessFreshness). Numeric confidence appears ONLY inside the advanced/detail block per D039.",
-    "apps/api/app/read_api/service.py (new): pure serialization from ORM rows + OfferVersion.material_facts JSONB (classification.reasons, confidence, confidence_signals, gate) into the schemas; honest nulls/'unknown' when a value is absent (never fabricated).",
-    "apps/api/app/read_api/queries.py (new): read-only SQLAlchemy SELECTs (providers, provider by slug, services+offers+latest version for a provider, offer by id + latest version + quotas, official offer_version-linked evidence + source + snapshot, offer_version history + change events, per-provider completeness/freshness aggregation from latest published versions). NEVER selects candidate/discovery_candidate; NEVER writes.",
-    "apps/api/app/read_api/router.py (new): a FastAPI APIRouter with GET-only endpoints under /catalogue: GET /catalogue/providers; GET /catalogue/providers/{provider_slug}; GET /catalogue/providers/{provider_slug}/category-states; GET /catalogue/providers/{provider_slug}/offers; GET /catalogue/offers/{offer_id}; GET /catalogue/offers/{offer_id}/evidence; GET /catalogue/offers/{offer_id}/history. Inputs are internal identifiers only (provider slug, offer id) - no URL/host/endpoint is ever accepted from the caller (no SSRF surface). 404 with a credential-free message for unknown ids.",
-    "apps/api/app/main.py: app.include_router(read_api.router). No other behaviour change; /health* preserved.",
-    "tests/unit/test_read_api.py (new): FastAPI TestClient with the get_session dependency overridden by an in-memory/fake seeded session (offline, no live DB); asserts each endpoint's shape, the confidence LABEL mapping (incl. unknown fallback), read-only (only GET verbs; POST/PUT/PATCH/DELETE -> 405), that community/candidate data is never present in any response, and that numeric confidence appears only in the advanced block.",
-    "tests/integration/test_read_api.py (new, live PG, skipped without DATABASE_URL): run the S1 scan + S2 publish to create a real published Cloudflare offer, then exercise the read query path proving providers list/detail, category states, offer + Z0 class + reasons + quotas, official evidence + confidence label, version history + change events, and completeness/freshness all reflect the published data.",
-    "docs/ARCHITECTURE.md: document the read-only catalogue API (endpoints, read-only + no-SSRF posture, confidence label from material_facts). Append an agent-state/progress.md handoff."
+    "apps/web/src/api.ts: extend the existing minimal client with read-only TS types + GET fetchers for the S3 catalogue endpoints (provider detail, category-states, provider offers, offer detail, offer evidence, offer history). Same-origin /api prefix (nginx proxy / vite dev proxy); credential-free, actionable error messages; AbortSignal support. No hard-coded host, no CORS, no user-supplied URL.",
+    "apps/web/src/catalogue/ (new): presentational React components for the Cloudflare provider page - ProviderHeader (name/type/completeness/freshness/official domains + counts), Z0Badge (Z0 class -> plain-language label paired with a text/icon token, never color-only), ConfidenceLabel (plain-language label as primary; numeric only inside an advanced <details> block), CategoryStates (categories -> services -> offers with Z0 + confidence), OfferCard (Z0 badge + plain-language why/reasons + blocking conditions + quotas table + confidence label + completeness/freshness + advanced disclosure), EvidenceList (official source + provenance + official link), OfferHistory (version list + change events). Semantic HTML, keyboard-navigable, labelled regions, honest 'Unknown' for null values.",
+    "apps/web/src/App.tsx: replace the F002 health-check landing with the Cloudflare provider experience - loads provider detail + category-states + offers, then per offer its detail/evidence/history from the read API, and renders scope items 1-7. Loading, error (with retry), and empty/degraded states are all handled honestly. Keeps the API same-origin via /api.",
+    "apps/web/src/App.css: styling for the provider page + badges (color paired with text; sufficient contrast; responsive). No new dependency; plain CSS only.",
+    "apps/web/src/api.test.ts (new) + apps/web/src/App.test.tsx (updated) + apps/web/src/catalogue/*.test.tsx (new): offline, deterministic vitest + Testing Library tests with mocked fetch covering each scope item (1-7), the confidence LABEL-is-primary / numeric-only-in-advanced rule, honest 'Unknown' rendering when a field is null, basic accessibility assertions (headings/roles/labels, badges are not color-only), and the credential-free error + retry path.",
+    "apps/web/README.md: update to describe the Cloudflare provider experience and the catalogue endpoints it consumes (replacing the 'scaffold only' note for this page).",
+    "docs/ARCHITECTURE.md: document the web experience consuming the read-only catalogue API over /api (read-only, no direct DB, no new backend endpoint). Append an agent-state/progress.md handoff."
   ],
   "out_of_scope": [
-    "Any write/mutation/publish endpoint. Only GET endpoints; no POST/PUT/PATCH/DELETE.",
-    "Any endpoint that accepts a URL/host/endpoint from the caller and fetches it (no SSRF surface); inputs are internal identifiers only.",
-    "Any new Python or npm dependency; no pyproject/requirements*/package.json change (requirements-sync stays green; reuse FastAPI/SQLAlchemy/pydantic).",
-    "Any database migration (read API over existing tables). If a hard blocker requiring a migration is discovered, STOP and report rather than inventing one.",
-    "Flipping F005 passes:true or editing any feature_list.json passes flag (reserved for the post-merge full-epic Level 2 close-out).",
-    "Weakening OfferVersion immutability (trg_offer_version_immutable) or the two 0006 separation triggers; touching publish/classify semantics.",
-    "Exposing community/discovery_candidate or pre-publication candidate data as published catalogue data.",
-    "The S4 web UI itself (React pages/components), the adviser, RSS, admin, and hosting-proof APIs (later slices)."
+    "Any new backend endpoint or backend mutation; any direct database access from the web (the web consumes only the S3 read API over /api).",
+    "Any new Python or npm RUNTIME dependency; no pyproject/requirements*/package.json runtime dependency change (requirements-sync + npm audit stay green; reuse React 19 + the existing vitest/testing-library tooling). If a hard blocker requires a new dependency, STOP and report.",
+    "Any database migration or change to publish/classify/ingest semantics; weakening OfferVersion immutability (trg_offer_version_immutable) or the two 0006 separation triggers.",
+    "Catalogue-wide search / cross-provider compare / the architecture adviser / 'chat with your data' (deferred to F006).",
+    "Any user-controlled URL / fetchable host from the UI (no SSRF surface); the page only calls fixed same-origin /api/catalogue paths with internal identifiers.",
+    "Flipping F005 passes:true or editing any feature_list.json passes flag (reserved for the post-merge full-epic Level 2 close-out)."
   ],
   "acceptance_criteria": [
-    "READ-ONLY: every new endpoint is a GET that only reads; no endpoint writes/mutates/publishes; a non-GET verb on a catalogue path returns 405.",
-    "No SSRF surface: no endpoint accepts a URL/host/endpoint from the caller; inputs are internal identifiers (provider slug, offer id) only.",
-    "Providers: list providers and get one provider (Cloudflare) with its metadata; unknown slug -> 404 with a credential-free message.",
-    "Category/service states: a provider's offers grouped by service/category, each with its current Z0 zero_cost_class.",
-    "Offers + Z0 reasons: for each published offer, its current OfferVersion, the Z0 zero_cost_class + human-readable reasons (from material_facts.classification.reasons), and quota rows.",
-    "Evidence + confidence: the official evidence backing each offer (source + snapshot provenance + offer_version link) and a plain-language confidence LABEL derived from material_facts.confidence; the numeric score appears only in an advanced/detail block, never as the primary field.",
-    "History: the OfferVersion history for an offer (append-only versions) + the ChangeEvents (added/modified) so the UI can show what changed and when.",
-    "Completeness/freshness: completeness + freshness signals per offer (from material_facts.confidence_signals) and per provider (aggregated / Provider score columns) are exposed.",
-    "'unknown is better than guessed': a missing value is represented honestly (null / 'unknown' label); no field is fabricated.",
-    "No community leakage: no response ever contains candidate/discovery_candidate/community data.",
-    "No new dependency, no migration; requirements-sync stays green; immutability + separation triggers intact; publish/classify semantics untouched.",
-    "Regression green: scripts/test.ps1 and scripts/check.ps1 -NodeAudit pass offline (ruff lint+format, pytest, prettier, eslint, detect-secrets, pip-audit, npm audit, requirements-sync).",
+    "READ-ONLY consumption: the web calls only GET /api/catalogue/* endpoints; no write/mutation; no new backend endpoint; no direct DB access from the web.",
+    "Category/service states: the page renders Cloudflare's services grouped by category, each published offer with a clear Z0 badge (color paired with text/icon, never color-only).",
+    "Offers + plain-language why: each published offer shows its Z0 zero_cost_class as a plain-language badge and the human-readable reasons (why it is / isn't Z0), plus blocking conditions when present.",
+    "Evidence: the official evidence backing an offer is shown with source + provenance and a link to the official page, and is clearly marked official-evidence-backed.",
+    "Confidence: the plain-language confidence LABEL is the primary signal; the numeric score/signals appear only inside an advanced/details disclosure (D039).",
+    "History: the offer's version history + change events (what changed and when) are rendered.",
+    "Completeness & freshness: these signals are surfaced per offer and per provider so the user can judge data completeness/freshness.",
+    "Quotas: each offer's quota rows (amount/unit/reset period/exhaustion behaviour) are rendered readably.",
+    "'unknown is better than guessed': a null/unknown value from the API is shown honestly (e.g. 'Unknown'), never fabricated.",
+    "Accessibility: semantic HTML, keyboard navigability, labelled regions/roles, no color-only Z0 signaling, sufficient contrast; basic a11y assertions are covered by tests.",
+    "No new dependency, no migration; requirements-sync + npm audit stay green; immutability + separation triggers intact; publish/classify/ingest semantics untouched; no user-controlled URL.",
+    "Regression green offline: scripts/test.ps1 (pytest + web vitest + web BUILD) and scripts/check.ps1 -NodeAudit (ruff lint+format, pytest, prettier, eslint, detect-secrets, pip-audit, npm audit, requirements-sync) pass.",
+    "Live stack proves the page renders REAL published Cloudflare data end-to-end (category states + Z0 badges, offers with plain-language why, evidence + official link, confidence label with numeric only in advanced, history + change events, completeness/freshness, quotas).",
     "F005 remains passes:false; a fresh-context independent full-epic Level 2 evaluator (post all-slices merge) owns any status change."
   ],
   "verification_plan": {
     "baseline_commands": ["git status --short --branch", "git --no-pager log --oneline -20", "pwsh -File scripts/test.ps1", "pwsh -File scripts/check.ps1 -NodeAudit"],
     "unit_commands": ["pwsh -File scripts/test.ps1", "pwsh -File scripts/check.ps1 -NodeAudit"],
     "integration_commands": [
-      "Fresh live DB cycle on alternate host ports (POSTGRES_PORT=55432, API_PORT=8010, WEB_PORT=8090, DATABASE_URL=postgresql+psycopg://atlas:atlas@localhost:55432/atlas): docker compose down --volumes -> scripts/stack-up.ps1 --build (fresh DB applies 0001-0007) -> run S1 scan + S2 publish (python -m app.ingest.runner --publish against the captured Cloudflare fixtures) -> scripts/stack-smoke.ps1 -> pytest tests/integration/test_read_api.py with DATABASE_URL set -> curl the new endpoints over HTTP (API_PORT=8010) confirming providers list/detail, category states, offer+Z0+reasons+quota, evidence+confidence LABEL, version history+change events, completeness/freshness all reflect the published data; confirm NO write endpoint exists and no endpoint accepts a fetchable URL -> docker compose down --volumes."
+      "Fresh live stack on alternate host ports (POSTGRES_PORT=55432, API_PORT=8010, WEB_PORT=8090, DATABASE_URL=postgresql+psycopg://atlas:atlas@localhost:55432/atlas): docker compose down --volumes -> scripts/stack-up.ps1 --build (fresh DB applies 0001-0007) -> run S1 scan + S2 publish (python -m app.ingest.runner --publish against the captured Cloudflare fixtures) so the DB has published Cloudflare offers -> scripts/stack-smoke.ps1 -> load the web experience over WEB_PORT=8090 and verify it renders the REAL published data end-to-end (Cloudflare category states + Z0 badges, offers with plain-language why, evidence + official link, confidence LABEL with numeric only in advanced, history + change events, completeness/freshness, quotas); capture rendered evidence (served bundle + the /api/catalogue responses the page consumes, and/or a headless render check); confirm honest degradation when a field is unknown -> docker compose down --volumes."
     ]
   },
   "risks": {
-    "data_migration": "None: Slice 3 adds NO migration. It reads existing tables (0001..0007). Migration head stays 0007; compare_metadata drift stays [].",
-    "security_privacy": "Read-only GET surface; no writes; no LLM; no network egress; no user-controlled URLs (inputs are internal identifiers only, so no SSRF surface). No secrets in source/tests/logs. Only published offer/offer_version/official-evidence rows are exposed; community/candidate/discovery_candidate data is never queried.",
-    "portability": "Reuses FastAPI/SQLAlchemy/pydantic already present; no new dependency; amd64/arm64 unaffected.",
-    "zero_cost_safety": "The API reports the Z0 class and reasons exactly as the S2 engine persisted them; it never re-derives or upgrades a class and never fabricates a confidence/label. Unknown/absent values are surfaced as null/'unknown'.",
-    "immutability": "Read-only: no INSERT/UPDATE/DELETE anywhere. trg_offer_version_immutable and the two 0006 separation triggers are untouched.",
-    "regression": "Additive router + a read-only session dependency; /health* and existing behaviour unchanged. The publish=False runner default and all existing tests are preserved.",
-    "supply_chain": "No new Python or npm dependency; requirements-sync stays green; stdlib + already-present deps only."
+    "data_migration": "None: Slice 4 adds NO migration. It is a frontend-only slice consuming the existing read API. Migration head stays 0007.",
+    "security_privacy": "Web consumes only fixed same-origin /api/catalogue GET paths with internal identifiers; no user-controlled URL (no SSRF surface); no direct DB access; no new backend endpoint; no LLM; no secrets. Only published catalogue data (as the S3 API exposes it) is rendered; community/candidate data is never fetched.",
+    "portability": "Reuses React 19 + the existing vite/vitest/testing-library tooling already in apps/web; no new runtime dependency; amd64/arm64 unaffected.",
+    "zero_cost_safety": "The UI renders the Z0 class, reasons, and confidence exactly as the API returns them; it never re-derives or upgrades a class and never fabricates a value. Unknown/absent values render as an honest 'Unknown'.",
+    "immutability": "Frontend-only: no INSERT/UPDATE/DELETE anywhere. trg_offer_version_immutable and the two 0006 separation triggers are untouched.",
+    "regression": "Replaces the F002 health-check landing page (its tests are updated accordingly) and adds new components/tests. The API, worker, scheduler, nginx proxy, and stack are unchanged; /health* and container health endpoints preserved.",
+    "supply_chain": "No new Python or npm runtime dependency; requirements-sync + npm audit stay green; stdlib + already-present deps only."
   },
   "required_evaluation_level": 2,
   "contract_review": {
     "required": true,
     "reviewer": "owner",
     "disposition": "approved",
-    "notes": ["Orchestrator directed F005 Slice 3 (read-only catalogue/provider API), then STOP for a fresh-context full-epic Level 2 evaluation. Do NOT flip passes; do NOT merge; do NOT add a migration or a dependency; read-only GET only; no user-controlled URLs; do NOT weaken immutability/separation; do NOT expose community data."]
+    "notes": ["Orchestrator directed F005 Slice 4 (final slice): the public Cloudflare provider web experience consuming the S3 read API over /api, then STOP for a fresh-context full-epic Level 2 close-out. Do NOT flip passes; do NOT merge; do NOT add a migration or a dependency; consume only the read API (no direct DB, no new backend endpoint); no user-controlled URLs; accessibility is part of done; honest unknowns; do NOT weaken immutability/separation."]
   }
 }

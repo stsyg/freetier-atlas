@@ -132,6 +132,27 @@ and signals appear only inside an `advanced` detail block. The endpoints are:
 - `GET /catalogue/offers/{id}/history` — append-only version history + published
   change events
 
+### Public web experience (F005 slice 4)
+
+The `apps/web` single-page app renders a public, Cloudflare-focused provider page
+that **consumes only this read API** over the same-origin `/api` proxy — it holds
+no database connection, issues no writes, and adds no backend endpoint. Its
+read-only client (`apps/web/src/api.ts`) issues plain `GET`s against fixed
+`/api/catalogue/...` paths built solely from internal identifiers (a provider
+slug, an integer offer id), so there is no user-controlled URL and no SSRF
+surface. The page loads the provider detail, category-states, and offers, then
+each offer's detail/evidence/history, and renders: category/service states with
+zero-cost (Z0) badges; each offer's Z0 class with the plain-language reasons
+behind it; the official evidence + provenance + link; the confidence **label** as
+the primary signal (numeric score/signals only in an `advanced` disclosure, per
+D039); version history + change events; completeness/freshness; and quota rows.
+Consistent with "unknown is better than guessed", any `null`/absent value the API
+returns is shown honestly as "Unknown". Accessibility is part of done: semantic
+landmarks, a single `<h1>`, an accessible quota table, keyboard-operable
+disclosures, and badges that pair colour with a text label + icon (never
+colour-only). Catalogue-wide search, cross-provider comparison, and the adviser
+are deferred to F006.
+
 ## LLM routing
 
 1. Deterministic parser/rules
