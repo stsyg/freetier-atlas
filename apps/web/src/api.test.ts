@@ -3,6 +3,7 @@ import {
   fetchCategoryMatrix,
   fetchCategoryStates,
   fetchCompare,
+  fetchDeploymentExport,
   fetchOffer,
   fetchOfferEvidence,
   fetchOfferHistory,
@@ -178,5 +179,49 @@ describe("adviser recommendation client (F006 slice 4)", () => {
   it("reports the status code for other non-2xx adviser responses", async () => {
     stubFetch(async () => new Response("boom", { status: 500 }));
     await expect(fetchRecommendation({ requirements: [] })).rejects.toThrow(/HTTP 500/);
+  });
+});
+
+describe("deployment export client (F007 slice 3)", () => {
+  it("POSTs the structured request as JSON to the fixed export path", async () => {
+    const spy = stubFetch(async () =>
+      Response.json({ workload_name: "demo", fully_zero_cost: true, files: [], manifest: {} }),
+    );
+    const request = {
+      workload_name: "demo",
+      requirements: [
+        {
+          category: "serverless-functions",
+          demands: [{ metric: "invocations", amount: "1000", unit: "count" }],
+        },
+      ],
+    };
+    await fetchDeploymentExport(request);
+
+    expect(spy.mock.calls[0][0]).toBe("/api/adviser/export");
+    const init = spy.mock.calls[0][1]!;
+    expect(init.method).toBe("POST");
+    expect(init.headers).toMatchObject({
+      Accept: "application/json",
+      "Content-Type": "application/json",
+    });
+    expect(JSON.parse(String(init.body))).toEqual(request);
+    expect(init).not.toHaveProperty("credentials");
+  });
+
+  it("maps a 422 rejection to an actionable, credential-free message", async () => {
+    stubFetch(async () => new Response("secret detail", { status: 422 }));
+    await expect(fetchDeploymentExport({ requirements: [] })).rejects.toThrow(
+      /rejected by the API. Please review the values/i,
+    );
+  });
+
+  it("surfaces a friendly message when the export API is unreachable", async () => {
+    stubFetch(async () => {
+      throw new TypeError("network down");
+    });
+    await expect(fetchDeploymentExport({ requirements: [] })).rejects.toThrow(
+      /unable to reach the api/i,
+    );
   });
 });

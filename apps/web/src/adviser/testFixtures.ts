@@ -2,6 +2,7 @@ import type {
   AdviserComponent,
   AdviserImpossible,
   AdviserOfferRef,
+  DeploymentExport,
   RecommendationResponse,
 } from "../api";
 
@@ -287,6 +288,59 @@ export const mixedRecommendation: RecommendationResponse = {
 };
 
 /**
+ * A synthetic, validated, secret-free deployment export mirroring the shape of
+ * `POST /api/adviser/export`. The `.env.example` carries a PLACEHOLDER only —
+ * never a real secret — so tests can assert the browser-side ZIP is secret-free.
+ */
+export const deploymentExportFixture: DeploymentExport = {
+  workload_name: "Personal side project",
+  fully_zero_cost: true,
+  files: [
+    {
+      path: "docker-compose.yml",
+      content:
+        "services:\n  app:\n    image: nginx:1.27-alpine\n    healthcheck:\n      test: [CMD, true]\n",
+      sha256: "0".repeat(64),
+      size: 84,
+    },
+    {
+      path: ".env.example",
+      content: "APP_PORT=8080\nPOSTGRES_PASSWORD=${POSTGRES_PASSWORD:-REPLACE_ME}\n",
+      sha256: "1".repeat(64),
+      size: 63,
+    },
+    { path: "README.md", content: "# Scaffold\n", sha256: "2".repeat(64), size: 11 },
+    { path: "MANIFEST.json", content: "{}\n", sha256: "3".repeat(64), size: 3 },
+  ],
+  manifest: {
+    schema_version: 1,
+    generator: "freetier-atlas-deployment-export/1",
+    workload_name: "Personal side project",
+    fully_zero_cost: true,
+    platforms: ["linux/amd64", "linux/arm64"],
+    files: [
+      { path: ".env.example", sha256: "1".repeat(64), size: 63 },
+      { path: "README.md", sha256: "2".repeat(64), size: 11 },
+      { path: "docker-compose.yml", sha256: "0".repeat(64), size: 84 },
+    ],
+    total_bytes: 158,
+    file_count: 3,
+    validation: {
+      paths_safe: true,
+      text_only: true,
+      secret_scan_passed: true,
+      compose_parsed: true,
+      healthchecks_present: true,
+      multi_arch: true,
+      within_size_cap: true,
+    },
+    architecture: [],
+    self_hosting_required: [],
+    notes: ["Generated content is validated and secret-free; nothing is persisted server-side."],
+  },
+};
+
+/**
  * Build a `fetch` implementation for the adviser page. Catalogue GETs still route
  * through the provided catalogue fetcher; `POST /api/adviser/recommend` returns
  * the chosen recommendation (satisfiable by default, mixed when the workload name
@@ -300,6 +354,9 @@ export function adviserFetch(base: typeof fetch): typeof fetch {
       const body = JSON.parse(String(init.body)) as { workload_name?: string | null };
       const wantsMixed = (body.workload_name ?? "").toLowerCase().includes("saas");
       return Response.json(wantsMixed ? mixedRecommendation : satisfiableRecommendation);
+    }
+    if (url.pathname.endsWith("/adviser/export") && init?.method === "POST") {
+      return Response.json(deploymentExportFixture);
     }
     return base(input, init);
   }) as typeof fetch;

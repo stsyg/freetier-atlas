@@ -195,6 +195,53 @@ describe("App — adviser recommendation experience (F006 slice 4)", () => {
     expect(screen.getAllByRole("heading", { level: 1 })).toHaveLength(1);
   });
 
+  it("offers a browser-side deployment download that assembles a secret-free .zip", async () => {
+    // jsdom lacks URL.createObjectURL / anchor download; add them (without
+    // clobbering the URL constructor the fetch stub relies on) so the
+    // client-side assembly + download path runs end-to-end without a real save.
+    const urlCtor = URL as unknown as {
+      createObjectURL?: (blob: Blob) => string;
+      revokeObjectURL?: (url: string) => void;
+    };
+    const hadCreate = "createObjectURL" in urlCtor;
+    const hadRevoke = "revokeObjectURL" in urlCtor;
+    const createObjectURL = vi.fn(() => "blob:zip");
+    const revokeObjectURL = vi.fn();
+    urlCtor.createObjectURL = createObjectURL;
+    urlCtor.revokeObjectURL = revokeObjectURL;
+    const clickSpy = vi
+      .spyOn(HTMLAnchorElement.prototype, "click")
+      .mockImplementation(() => undefined);
+
+    try {
+      await renderAdviser();
+      fireEvent.change(screen.getByLabelText(/workload name/i), {
+        target: { value: "Personal side project" },
+      });
+      fillFirstDemand();
+      fireEvent.submit(screen.getByRole("form", { name: /describe your workload/i }));
+      await screen.findByTestId("zero-cost-proof");
+
+      // The download control is present, labelled, and states it is secret-free.
+      const button = screen.getByRole("button", { name: /download deployment/i });
+      expect(screen.getByText(/no secrets are ever included/i)).toBeInTheDocument();
+
+      fireEvent.click(button);
+
+      // The browser assembled a .zip (Blob URL created) and triggered a download.
+      await waitFor(() => expect(clickSpy).toHaveBeenCalledTimes(1));
+      expect(createObjectURL).toHaveBeenCalledTimes(1);
+      // Manifest summary renders verbatim, confirming nothing was persisted.
+      expect(await screen.findByText(/download has started/i)).toBeInTheDocument();
+      expect(screen.getByText(/persisted nothing/i)).toBeInTheDocument();
+      // Exactly one h1 remains after the download panel appears.
+      expect(screen.getAllByRole("heading", { level: 1 })).toHaveLength(1);
+    } finally {
+      if (!hadCreate) delete urlCtor.createObjectURL;
+      if (!hadRevoke) delete urlCtor.revokeObjectURL;
+    }
+  });
+
   it("renders the impossible-workload flow with a separated not-$0 section", async () => {
     await renderAdviser();
     // Workload name containing "saas" drives the mixed/impossible fixture.

@@ -18,10 +18,11 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from ..db import get_session
+from .export import ExportResponse, ExportValidationError, build_export
 from .recommend import recommend
 from .schema import RecommendationRequest
 from .schemas import RecommendationResponse, build_response
@@ -45,6 +46,30 @@ def recommend_architecture(
     pool = gather_candidates(session)
     result = recommend(request, pool)
     return build_response(result)
+
+
+@router.post("/export", response_model=ExportResponse)
+def export_deployment(request: RecommendationRequest, session: SessionDep) -> ExportResponse:
+    """Return the validated, secret-free deployment bundle for a recommendation.
+
+    Recomputes the deterministic recommendation from the structured ``request``
+    and the published catalogue, then generates a deployment bundle (Compose,
+    ``.env.example``, README, manifest) whose **contents** are returned as JSON.
+
+    Security posture: the endpoint is stateless and read-only -- it writes
+    **nothing** to disk or the database (the bundle is produced in-memory and the
+    browser assembles the ``.zip`` client-side). Every generated file is
+    validated fail-closed (safe paths, text-only, secret-free, parseable Compose
+    with healthchecks + multi-arch images, size cap); a validation failure is
+    surfaced as HTTP 422 without echoing any file content.
+    """
+
+    pool = gather_candidates(session)
+    result = recommend(request, pool)
+    try:
+        return build_export(result)
+    except ExportValidationError as exc:
+        raise HTTPException(status_code=422, detail=f"Deployment export rejected: {exc}") from exc
 
 
 __all__ = ["router"]
