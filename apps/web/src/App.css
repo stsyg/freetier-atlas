@@ -1151,6 +1151,29 @@ select:focus-visible {
   padding-left: 1.25rem;
 }
 
+/* Deployment download (F007 slice 3) */
+.deployment-download {
+  margin-top: 1.5rem;
+  padding: 1rem 1.25rem;
+  border: 1px solid #334155;
+  border-radius: 10px;
+  background: #0b1220;
+}
+
+.deployment-download .button--primary {
+  margin-top: 0.5rem;
+}
+
+.deployment-download__manifest {
+  margin-top: 1rem;
+}
+
+.deployment-download__files,
+.deployment-download__checks {
+  margin: 0.5rem 0 0;
+  padding-left: 1.25rem;
+}
+
 .assisted-routing__facts li {
   margin: 0.2rem 0;
 }
@@ -1206,4 +1229,17 @@ select:focus-visible {
   justify-content: flex-end;
   gap: 0.5rem;
   margin-top: 1.25rem;
+}
+
+.deployment-download__files code {
+  font-size: 0.9rem;
+}
+
+.deployment-download details {
+  margin-top: 0.75rem;
+}
+
+.deployment-download summary {
+  cursor: pointer;
+  font-weight: 600;
 }

@@ -229,7 +229,47 @@ providers disabled. Multi-provider / multi-option behaviour is proven with clear
 synthetic fixture offers (owner decision Q6), never published on a normal run. No new
 runtime dependency (stdlib `decimal`) and no migration (Alembic head stays 0007).
 
-### Public web experience (F005 slice 4)
+### Deployment export (browser ZIP + non-persisted manifest) (F007 slice 3)
+
+From a computed recommendation the product can produce a portable, self-hostable
+**deployment scaffold** (a Docker Compose file, a placeholder-only `.env.example`,
+a README, and a generation `MANIFEST.json`). The load-bearing rule
+(docs/SECURITY_PRIVACY_ABUSE.md → "ZIPs: browser only") is that the server
+**validates content but persists nothing** and the **browser assembles the
+`.zip` client-side**.
+
+- `apps/api/app/adviser/export.py` — a **pure** generator + fail-closed
+  validators. `build_export(result)` recomputes nothing on disk: it produces the
+  file *contents* in memory and returns an `ExportResponse` (`files:
+  [{path, content, sha256, size}]` + a `manifest`). It never opens a file for
+  writing and never touches the database. Every generated file is validated
+  before return: **safe fixed paths** (allowlisted names, no traversal, no
+  absolute paths, no backslashes), **text-only** (no NUL/control bytes), a
+  **secret scan** (rejects AWS keys, credential-token prefixes, private-key
+  blocks, and keyword-assigned non-placeholder values — `.env.example` carries
+  placeholders only), a **Compose** that parses as YAML with a non-empty
+  `services` map where **every** service declares a `healthcheck` and uses a
+  **multi-arch** image (linux/amd64 **and** linux/arm64 asserted via
+  `x-freetier-atlas.supported_platforms`), and a **total-size cap**. Any
+  violation raises `ExportValidationError` (→ HTTP 422) and no content is echoed.
+  Output is deterministic (no timestamps; sorted YAML/JSON) so identical input
+  yields a byte-identical bundle.
+- `POST /adviser/export` (`router.py`) reuses the **same** structured
+  `RecommendationRequest` body (already rejecting URL-like input — no SSRF),
+  recomputes the deterministic recommendation, and returns the validated bundle.
+  Like `/adviser/recommend` it is **stateless**: a read-only DB session that
+  never commits, nothing written to disk or DB, no LLM, no user-controlled URL.
+- `apps/web/src/adviser/zip.ts` — a **dependency-free** STORE-method ZIP writer
+  (manual CRC-32, UTF-8 filename flag, fixed DOS date for reproducibility) plus a
+  guarded `downloadZip` trigger. No new npm dependency is added.
+  `apps/web/src/adviser/DeploymentDownload.tsx` fetches the validated contents
+  via `fetchDeploymentExport`, assembles the `.zip` entirely in the browser, and
+  offers it as a download; it renders the manifest (files, sizes, asserted
+  platforms, validation checks) verbatim and states up front that no secrets are
+  included. No new migration (Alembic head stays 0007) and no new backend
+  dependency (stdlib + already-present PyYAML).
+
+
 
 The `apps/web` single-page app renders a public, Cloudflare-focused provider page
 that **consumes only this read API** over the same-origin `/api` proxy — it holds

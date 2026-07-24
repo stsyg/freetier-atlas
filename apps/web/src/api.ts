@@ -478,6 +478,44 @@ export interface RecommendationResponse {
   not_free_section: AdviserNotFreeSection;
 }
 
+/** One validated file in a deployment bundle (contents returned as text). */
+export interface ExportFile {
+  path: string;
+  content: string;
+  sha256: string;
+  size: number;
+}
+
+/** The server-produced generation manifest describing the validated bundle. */
+export interface ExportManifest {
+  schema_version: number;
+  generator: string;
+  workload_name: string | null;
+  fully_zero_cost: boolean;
+  platforms: string[];
+  files: { path: string; sha256: string; size: number }[];
+  total_bytes: number;
+  file_count: number;
+  validation: Record<string, boolean>;
+  architecture: Record<string, unknown>[];
+  self_hosting_required: Record<string, unknown>[];
+  notes: string[];
+}
+
+/**
+ * The deployment export the server returns for a recommendation.
+ *
+ * The contents are produced in-memory and streamed transiently — the server
+ * persists **nothing** to disk or the database; the browser assembles the
+ * `.zip` client-side from `files`.
+ */
+export interface DeploymentExport {
+  workload_name: string | null;
+  fully_zero_cost: boolean;
+  files: ExportFile[];
+  manifest: ExportManifest;
+}
+
 // --- Fetch helper -------------------------------------------------------------
 
 /**
@@ -723,4 +761,21 @@ export function fetchAssistedRecommendation(
   signal?: AbortSignal,
 ): Promise<AssistedRecommendationResponse> {
   return postJson<AssistedRecommendationResponse>("/adviser/recommend/assisted", request, signal);
+}
+
+/**
+ * Ask the server for the validated, secret-free deployment bundle for a
+ * recommendation.
+ *
+ * The same STRUCTURED `request` (never natural language, never a URL) is POSTed
+ * to the FIXED same-origin `/adviser/export` path — no SSRF surface. The server
+ * recomputes the recommendation, generates the deployment files, validates them
+ * fail-closed, and returns their CONTENTS plus a manifest **without persisting
+ * anything**. The browser assembles the `.zip` from `files` client-side.
+ */
+export function fetchDeploymentExport(
+  request: RecommendationRequest,
+  signal?: AbortSignal,
+): Promise<DeploymentExport> {
+  return postJson<DeploymentExport>("/adviser/export", request, signal);
 }

@@ -28,6 +28,7 @@ import { CompareView } from "./catalogue/CompareView";
 import { AdviserForm } from "./adviser/AdviserForm";
 import { AssistedForm } from "./adviser/AssistedForm";
 import { RecommendationView } from "./adviser/RecommendationView";
+import { DeploymentDownload } from "./adviser/DeploymentDownload";
 
 /**
  * FreeTier Atlas — the provider-agnostic catalogue browser (F006 slice 2).
@@ -410,10 +411,12 @@ function StructuredAdviser() {
     | { kind: "ok"; data: RecommendationResponse }
     | { kind: "error"; message: string };
   const [state, setState] = useState<AdviserState>({ kind: "idle" });
+  const [lastRequest, setLastRequest] = useState<RecommendationRequest | null>(null);
 
   const submit = useCallback((request: RecommendationRequest) => {
     const controller = new AbortController();
     setState({ kind: "loading" });
+    setLastRequest(request);
     fetchRecommendation(request, controller.signal)
       .then((data) => setState({ kind: "ok", data }))
       .catch((error: unknown) => {
@@ -443,7 +446,12 @@ function StructuredAdviser() {
           <p className="muted">Adjust your requirements above and try again.</p>
         </div>
       ) : null}
-      {state.kind === "ok" ? <RecommendationView data={state.data} /> : null}
+      {state.kind === "ok" ? (
+        <>
+          <RecommendationView data={state.data} />
+          {lastRequest ? <DeploymentDownload request={lastRequest} /> : null}
+        </>
+      ) : null}
     </>
   );
 }
