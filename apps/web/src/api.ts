@@ -323,6 +323,161 @@ export interface CompareResponse {
   offers: CompareOffer[];
 }
 
+// --- Adviser recommendation (F006 slice 4) -----------------------------------
+//
+// Request/response shapes mirror the backend adviser contract
+// (`apps/api/app/adviser/schema.py` for the request and
+// `apps/api/app/adviser/schemas.py` for the response). The request is a plain
+// STRUCTURED workload — never natural language, never a URL — and the response
+// is the deterministic, evidence-backed recommendation the UI renders verbatim.
+// Every amount that participates in a fit/headroom decision is a string so the
+// exact Decimal survives without a float round-trip; fields that may genuinely
+// be unknown are `... | null` so the UI must render "Unknown" rather than guess.
+
+/** One quantified demand within a requirement (metric + exact amount + unit). */
+export interface AdviserDemand {
+  metric: string;
+  /** Exact amount as a string (preserves the Decimal; e.g. "5", "3000000"). */
+  amount: string;
+  unit: string;
+  period?: string | null;
+}
+
+/** Non-quantitative constraints an offer must satisfy to be recommended. */
+export interface AdviserConstraints {
+  commercial_use?: boolean;
+  personal_use_ok?: boolean;
+  region?: string | null;
+  residency?: string | null;
+}
+
+/** A single component the workload needs, in one canonical category. */
+export interface AdviserRequirement {
+  category: string;
+  capabilities?: string[];
+  demands: AdviserDemand[];
+  constraints?: AdviserConstraints;
+  label?: string | null;
+}
+
+/** The full structured workload — the POST body for the adviser. */
+export interface RecommendationRequest {
+  workload_name?: string | null;
+  requirements: AdviserRequirement[];
+}
+
+/** A reference to the selected offer/provider for a component. */
+export interface AdviserOfferRef {
+  provider_slug: string;
+  provider_name: string;
+  service_name: string;
+  offer_id: number;
+  zero_cost_class: string;
+  confidence_label: string;
+}
+
+export interface AdviserEvidenceRef {
+  title: string | null;
+  url: string | null;
+  official: boolean;
+}
+
+export interface AdviserPortability {
+  /** Deterministic portability score in [0,1] as a string (e.g. "0.60"). */
+  score: string;
+  label: string;
+  lock_in_label: string;
+  deployment_model: string;
+  positive_traits: string[];
+  negative_traits: string[];
+  unknown_traits: string[];
+  basis: string[];
+  exit_plan: string[];
+}
+
+/** Per-demand fit/headroom math for a component (exact, as the API returns). */
+export interface AdviserDemandFit {
+  metric: string;
+  covered: boolean;
+  boundary: boolean;
+  demand_amount: string;
+  demand_unit: string;
+  demand_period: string | null;
+  matched_metric: string | null;
+  canonical_unit: string | null;
+  demand_canonical: string | null;
+  quota_canonical: string | null;
+  headroom: string | null;
+  reason: string;
+}
+
+/** One recommended Z0 component satisfying a requirement (possibly reduced). */
+export interface AdviserComponent {
+  requirement_index: number;
+  category: string;
+  label: string | null;
+  offer: AdviserOfferRef;
+  reduced: boolean;
+  demands: AdviserDemandFit[];
+  quota_math: string[];
+  z0_safety: string[];
+  portability: AdviserPortability;
+  evidence: AdviserEvidenceRef[];
+  explanation: string[];
+}
+
+export interface AdviserReduction {
+  metric: string;
+  original_amount: string;
+  original_unit: string;
+  reduced_amount: string | null;
+  feasible: boolean;
+  reason: string;
+}
+
+export interface AdviserSelfHosting {
+  building_block: AdviserOfferRef;
+  host: AdviserOfferRef | null;
+  note: string;
+}
+
+/** The ordered resolution of a blocking requirement (no fitting Z0 offer). */
+export interface AdviserImpossible {
+  requirement_index: number;
+  category: string;
+  label: string | null;
+  blocking_reason: string;
+  closest: AdviserOfferRef | null;
+  reductions: AdviserReduction[];
+  recalculated: AdviserComponent | null;
+  self_hosting: AdviserSelfHosting[];
+  steps: string[];
+}
+
+export interface AdviserNotFreeOption {
+  requirement_index: number;
+  category: string;
+  offer: AdviserOfferRef;
+  fits: boolean;
+  note: string;
+}
+
+export interface AdviserNotFreeSection {
+  label: string;
+  options: AdviserNotFreeOption[];
+}
+
+/** The complete deterministic recommendation the adviser returns. */
+export interface RecommendationResponse {
+  workload_name: string | null;
+  priorities: string[];
+  fully_zero_cost: boolean;
+  zero_cost_proof: string[];
+  architecture: AdviserComponent[];
+  impossible: AdviserImpossible[];
+  not_free_section: AdviserNotFreeSection;
+}
+
 // --- Fetch helper -------------------------------------------------------------
 
 /**
@@ -354,6 +509,42 @@ async function getJson<T>(path: string, signal?: AbortSignal): Promise<T> {
     return (await response.json()) as T;
   } catch {
     throw new Error("The catalogue API response was not valid JSON.");
+  }
+}
+
+/**
+ * Issue a `POST` of a JSON `body` to `${API_BASE}${path}` and parse the reply.
+ *
+ * `path` is always a FIXED, internally-constructed API path — never a
+ * caller-supplied URL — and `body` is a structured request object (never a
+ * free-text description or a URL), so the request presents no SSRF surface. A
+ * `422` (the API rejected the structured request) is surfaced as an actionable,
+ * credential-free message; the raw server body is never echoed back.
+ */
+async function postJson<T>(path: string, body: unknown, signal?: AbortSignal): Promise<T> {
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE}${path}`, {
+      method: "POST",
+      headers: { Accept: "application/json", "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+      signal,
+    });
+  } catch {
+    throw new Error("Unable to reach the API. Is the stack running?");
+  }
+
+  if (response.status === 422) {
+    throw new Error("The requirements were rejected by the API. Please review the values and retry.");
+  }
+  if (!response.ok) {
+    throw new Error(`The adviser API returned HTTP ${response.status}.`);
+  }
+
+  try {
+    return (await response.json()) as T;
+  } catch {
+    throw new Error("The adviser API response was not valid JSON.");
   }
 }
 
@@ -453,4 +644,21 @@ export function fetchCategoryMatrix(signal?: AbortSignal): Promise<CategoryMatri
 export function fetchCompare(offerIds: number[], signal?: AbortSignal): Promise<CompareResponse> {
   const ids = offerIds.map((id) => String(id)).join(",");
   return getJson<CompareResponse>(`/catalogue/compare?offers=${encodeURIComponent(ids)}`, signal);
+}
+
+/**
+ * Ask the deterministic adviser for a $0 architecture recommendation.
+ *
+ * The `request` is a STRUCTURED workload (never natural language, never a URL);
+ * it is POSTed to the FIXED same-origin `/adviser/recommend` path. Nothing
+ * caller-supplied is ever used as a URL/host, so there is no SSRF surface. The
+ * endpoint is stateless and read-only — this call neither writes nor mutates
+ * anything. The response is rendered verbatim by the UI (which never re-derives
+ * the Z0 class, confidence, or quota math).
+ */
+export function fetchRecommendation(
+  request: RecommendationRequest,
+  signal?: AbortSignal,
+): Promise<RecommendationResponse> {
+  return postJson<RecommendationResponse>("/adviser/recommend", request, signal);
 }
