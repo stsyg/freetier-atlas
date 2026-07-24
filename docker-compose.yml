@@ -33,6 +33,13 @@ services:
     environment:
       DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://atlas:atlas@postgres:5432/atlas} # pragma: allowlist secret
       APP_ENV: ${APP_ENV:-development}
+      # First runtime consumer of the llm-providers config (F007). The example
+      # config ships every provider disabled, so the assisted adviser always
+      # takes the deterministic path; no credential values are mounted (only the
+      # non-secret example file, read-only).
+      LLM_CONFIG_PATH: ${LLM_CONFIG_PATH:-/app/config/llm-providers.yaml}
+    volumes:
+      - ./config/examples/llm-providers.example.yaml:/app/config/llm-providers.yaml:ro
     ports:
       - "${API_PORT:-8000}:8000"
     depends_on:

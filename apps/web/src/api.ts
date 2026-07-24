@@ -662,3 +662,65 @@ export function fetchRecommendation(
 ): Promise<RecommendationResponse> {
   return postJson<RecommendationResponse>("/adviser/recommend", request, signal);
 }
+
+// --- Assisted (natural-language) intake (F007 slice 1) ------------------------
+//
+// Mirrors apps/api/app/adviser/assist_schema.py. The assisted endpoint turns a
+// free-text description into a *candidate* structured request via a routing
+// ladder (deterministic parser -> optional, consent-gated LLM tiers ->
+// deterministic fallback), validates it through the SAME strict schema, and — on
+// success — returns the SAME deterministic recommendation. The UI never
+// re-derives the Z0 class, confidence, or quota math; it renders what the API
+// returns and honestly reports "couldn't interpret" when nothing was parsed.
+
+/** An explicit, per-request consent to external LLM processing (ephemeral). */
+export interface ConsentAssertion {
+  external_processing: boolean;
+}
+
+/** The POST body for the assisted intake endpoint. */
+export interface AssistedRequest {
+  description: string;
+  consent?: ConsentAssertion | null;
+}
+
+/** How the request was routed (interpreter provenance, not a Z0 decision). */
+export interface RoutingInfo {
+  llm_used: boolean;
+  llm_provider: string | null;
+  tier: string;
+  routing_path: string[];
+  fallback_reason: string | null;
+}
+
+/** Echo of the ephemeral consent decision for this request only. */
+export interface ConsentEcho {
+  external_processing_requested: boolean;
+  external_processing_used: boolean;
+}
+
+/** The assisted-intake response: interpretation + deterministic recommendation. */
+export interface AssistedRecommendationResponse {
+  interpreted: boolean;
+  interpretation: RecommendationRequest | null;
+  recommendation: RecommendationResponse | null;
+  routing: RoutingInfo;
+  consent: ConsentEcho;
+  notice: string;
+}
+
+/**
+ * Ask the adviser to interpret a free-text description, then recommend.
+ *
+ * The `request` carries a plain natural-language `description` (never a URL) and
+ * an optional ephemeral `consent` assertion; it is POSTed to the FIXED
+ * same-origin `/adviser/recommend/assisted` path. Nothing caller-supplied is
+ * ever used as a URL/host, so there is no SSRF surface. The description is not
+ * persisted or logged by the API. The response is rendered verbatim by the UI.
+ */
+export function fetchAssistedRecommendation(
+  request: AssistedRequest,
+  signal?: AbortSignal,
+): Promise<AssistedRecommendationResponse> {
+  return postJson<AssistedRecommendationResponse>("/adviser/recommend/assisted", request, signal);
+}

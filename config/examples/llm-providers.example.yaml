@@ -1,3 +1,14 @@
+# Example llm-providers config (validated by app.config; family: llm-providers).
+#
+# All real providers ship `enabled: false` and are opt-in: the adviser only ever
+# registers a provider an operator explicitly enables. With every provider
+# disabled (as here) the assisted endpoint always takes the deterministic path.
+#
+# There is deliberately NO "fake"/echo provider entry here: the deterministic
+# FakeInterpreter (apps/api/app/adviser/llm/fake.py) is a TEST-ONLY vehicle used
+# by CI and the live smoke; it is never configured or reachable in production.
+# External providers (gemini/openai/anthropic) require explicit, ephemeral
+# per-request user consent before any description leaves the service.
 llm:
   mode: hybrid
   public_adviser:

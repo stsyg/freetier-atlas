@@ -28,6 +28,13 @@ class Settings(BaseSettings):
     # Seconds to wait for a readiness database probe before reporting not-ready.
     readiness_timeout_seconds: float = 3.0
 
+    # Path to the declarative ``llm-providers`` YAML (env ``LLM_CONFIG_PATH``).
+    # ``None`` (the default) means no LLM layer is configured: the adviser runs
+    # deterministic-only. Loading is fail-safe -- a missing/invalid file degrades
+    # to deterministic-only rather than crashing the API (see
+    # ``app.adviser.llm.runtime.get_llm_section``).
+    llm_config_path: str | None = None
+
 
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:

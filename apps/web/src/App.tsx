@@ -1,11 +1,14 @@
 import { useCallback, useEffect, useState } from "react";
 import "./App.css";
 import {
+  fetchAssistedRecommendation,
   fetchCategoryMatrix,
   fetchCompare,
   fetchProviders,
   fetchRecommendation,
   fetchSearch,
+  type AssistedRecommendationResponse,
+  type AssistedRequest,
   type CategoryMatrixResponse,
   type CompareResponse,
   type ProviderSummary,
@@ -23,6 +26,7 @@ import { ResultsList } from "./catalogue/ResultsList";
 import { CategoryMatrix } from "./catalogue/CategoryMatrix";
 import { CompareView } from "./catalogue/CompareView";
 import { AdviserForm } from "./adviser/AdviserForm";
+import { AssistedForm } from "./adviser/AssistedForm";
 import { RecommendationView } from "./adviser/RecommendationView";
 
 /**
@@ -344,6 +348,62 @@ function CompareContainer({
  * renders its own `<h2>` region beneath it.
  */
 function AdviserView() {
+  type Mode = "structured" | "assisted";
+  const [mode, setMode] = useState<Mode>("structured");
+
+  return (
+    <section aria-labelledby="adviser-heading">
+      <h1 id="adviser-heading" className="page-title">
+        Architecture adviser
+      </h1>
+      <p className="tagline">
+        Get a deterministic, evidence-backed recommendation for a $0 (truly-free) architecture.
+        Every rating comes from official sources; anything we cannot verify is shown as “Unknown”.
+        The recommendation is always computed by the same deterministic engine — describing your
+        workload in plain words only changes how your requirements are captured.
+      </p>
+
+      <div
+        className="mode-switch"
+        role="tablist"
+        aria-label="How would you like to describe your workload?"
+      >
+        <button
+          type="button"
+          role="tab"
+          id="adviser-mode-structured"
+          aria-selected={mode === "structured"}
+          aria-controls="adviser-mode-panel"
+          className={mode === "structured" ? "mode-switch__tab is-active" : "mode-switch__tab"}
+          onClick={() => setMode("structured")}
+        >
+          Structured form
+        </button>
+        <button
+          type="button"
+          role="tab"
+          id="adviser-mode-assisted"
+          aria-selected={mode === "assisted"}
+          aria-controls="adviser-mode-panel"
+          className={mode === "assisted" ? "mode-switch__tab is-active" : "mode-switch__tab"}
+          onClick={() => setMode("assisted")}
+        >
+          Describe in words
+        </button>
+      </div>
+
+      <div
+        id="adviser-mode-panel"
+        role="tabpanel"
+        aria-labelledby={mode === "structured" ? "adviser-mode-structured" : "adviser-mode-assisted"}
+      >
+        {mode === "structured" ? <StructuredAdviser /> : <AssistedAdviser />}
+      </div>
+    </section>
+  );
+}
+
+function StructuredAdviser() {
   type AdviserState =
     | { kind: "idle" }
     | { kind: "loading" }
@@ -364,16 +424,7 @@ function AdviserView() {
   }, []);
 
   return (
-    <section aria-labelledby="adviser-heading">
-      <h1 id="adviser-heading" className="page-title">
-        Architecture adviser
-      </h1>
-      <p className="tagline">
-        Describe your workload as structured requirements and get a deterministic, evidence-backed
-        recommendation for a $0 (truly-free) architecture. Every rating comes from official sources;
-        anything we cannot verify is shown as “Unknown”.
-      </p>
-
+    <>
       <section className="card" aria-labelledby="adviser-form-heading">
         <h2 id="adviser-form-heading" className="section-heading">
           Your workload
@@ -393,7 +444,102 @@ function AdviserView() {
         </div>
       ) : null}
       {state.kind === "ok" ? <RecommendationView data={state.data} /> : null}
-    </section>
+    </>
+  );
+}
+
+function AssistedAdviser() {
+  type AssistedState =
+    | { kind: "idle" }
+    | { kind: "loading" }
+    | { kind: "ok"; data: AssistedRecommendationResponse }
+    | { kind: "error"; message: string };
+  const [state, setState] = useState<AssistedState>({ kind: "idle" });
+
+  const submit = useCallback((request: AssistedRequest) => {
+    const controller = new AbortController();
+    setState({ kind: "loading" });
+    fetchAssistedRecommendation(request, controller.signal)
+      .then((data) => setState({ kind: "ok", data }))
+      .catch((error: unknown) => {
+        if (controller.signal.aborted) return;
+        const message = error instanceof Error ? error.message : "Unknown error.";
+        setState({ kind: "error", message });
+      });
+  }, []);
+
+  return (
+    <>
+      <section className="card" aria-labelledby="assisted-form-heading">
+        <h2 id="assisted-form-heading" className="section-heading">
+          Describe your workload
+        </h2>
+        <AssistedForm onSubmit={submit} disabled={state.kind === "loading"} />
+      </section>
+
+      {state.kind === "loading" ? (
+        <p className="status status--loading" role="status">
+          Interpreting your description…
+        </p>
+      ) : null}
+      {state.kind === "error" ? (
+        <div className="status status--error" role="alert">
+          <p>Unable to compute a recommendation: {state.message}</p>
+          <p className="muted">Adjust your description above and try again.</p>
+        </div>
+      ) : null}
+      {state.kind === "ok" ? <AssistedResult data={state.data} /> : null}
+    </>
+  );
+}
+
+/** Renders the routing provenance, the interpretation, and the recommendation. */
+function AssistedResult({ data }: { data: AssistedRecommendationResponse }) {
+  const { routing, consent } = data;
+  return (
+    <>
+      <section className="card assisted-routing" aria-labelledby="assisted-routing-heading">
+        <h2 id="assisted-routing-heading" className="section-heading">
+          How this was interpreted
+        </h2>
+        <p data-testid="assisted-notice">{data.notice}</p>
+        <ul className="assisted-routing__facts">
+          <li>
+            Interpreter:{" "}
+            <strong data-testid="assisted-llm-used">
+              {routing.llm_used ? `AI (${routing.llm_provider ?? "external"})` : "deterministic"}
+            </strong>
+          </li>
+          {routing.fallback_reason ? (
+            <li data-testid="assisted-fallback-reason">
+              Reason: <span className="muted">{routing.fallback_reason}</span>
+            </li>
+          ) : null}
+          <li>
+            External AI processing:{" "}
+            <strong>
+              {consent.external_processing_used
+                ? "used (you consented)"
+                : consent.external_processing_requested
+                  ? "requested but not used"
+                  : "not used"}
+            </strong>
+          </li>
+        </ul>
+      </section>
+
+      {data.interpreted && data.recommendation ? (
+        <RecommendationView data={data.recommendation} />
+      ) : (
+        <div className="status status--warn" role="status" data-testid="assisted-uninterpreted">
+          <p>
+            We couldn’t confidently turn your description into structured requirements, so nothing
+            was guessed. Switch to the <strong>Structured form</strong> above to enter your
+            requirements precisely.
+          </p>
+        </div>
+      )}
+    </>
   );
 }
 

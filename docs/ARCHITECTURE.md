@@ -335,6 +335,55 @@ Python dependency is added and the backend is untouched (Alembic head stays 0007
 
 LLMs never receive provider credentials and never publish directly.
 
+### LLM-assisted natural-language intake (F007 slice 1)
+
+`POST /adviser/recommend/assisted` (`apps/api/app/adviser/router.py`) is the first
+runtime consumer of `LlmSection`. It adds a **natural-language front door** to the
+deterministic core without weakening any of its guarantees. The LLM's *only* job is
+to turn a free-text description into a **candidate structured requirements dict**; the
+routing ladder above (`apps/api/app/adviser/llm/routing.py`) resolves it:
+
+1. **Deterministic parser** (`llm/parser.py`) — a conservative, rule-based reader with
+   no LLM and no network. It emits at most one requirement per canonical category and
+   only when a quantified demand appears in the same clause; otherwise it returns
+   `None` (honest → fallback). It never guesses.
+2. **Local model** (`ollama`, tier `LOCAL`) — no consent required.
+3. **Free hosted model** (`gemini`, tier `FREE_HOSTED`) — external, **consent required**.
+4. **Commercial model** (`openai`/`anthropic`, tier `COMMERCIAL`) — external, **consent required**.
+5. **Deterministic fallback** — `interpretation=null`, `fallback_reason` set; the request
+   never hard-fails.
+
+Every candidate — parser- or LLM-produced — is validated through the **same strict**
+`RecommendationRequest` schema (`extra=forbid`, bounds, `_reject_url_like`, exact-Decimal);
+only a valid interpretation is fed to the existing `recommend()`. **Z0 / quota /
+classification are never re-derived in the LLM path**, so a parser success is
+**byte-identical** to `POST /adviser/recommend`. The LLM holds a single narrow
+`interpret` capability (`llm/protocol.py`) — **no credentials, filesystem, shell,
+URL-fetch, admin, or publication access**, and there is no LLM→publication path.
+
+Providers are **disabled by default** and built from validated config
+(`llm/runtime.py`, `LLM_CONFIG_PATH`); config load is **fail-safe** (a missing/invalid
+file degrades to deterministic-only with safe default limits). A configured provider
+`base_url` is checked by the shared egress guard (`llm/guards.py`, reusing
+`app.ingest.fetch`). In CI and the live smoke the **only** adapter exercised is the
+deterministic `FakeInterpreter` (`llm/fake.py`); the four real adapters
+(`llm/adapters.py`) are thin, config-gated stubs that are never invoked by tests.
+
+**Consent** is ephemeral: a per-request `{external_processing: bool}` assertion that is
+**never persisted and never logged**, and re-asked each session. Without it, external
+tiers are skipped (recording `consent_not_granted`) and the request takes the
+local/deterministic path. The description itself is a transient prompt — never logged
+or persisted.
+
+The web SPA adds a **Structured | Describe-in-words** mode switch at `#/adviser`
+(`apps/web/src/adviser/AssistedForm.tsx`): a bounded NL textarea plus a **consent
+modal** (identifies the provider, warns against secrets/PII, explains external
+processing, links the provider policy, and requires an explicit checkbox opt-in). The
+result view shows the routing provenance (`llm_used`, `fallback_reason`, external-use
+echo) and renders the deterministic recommendation through the existing
+`RecommendationView`; when nothing could be interpreted it says so honestly and points
+to the structured form. No migration is added (Alembic head stays **0007**).
+
 ## Deployment profiles
 
 Canonical Docker Compose: `web`, `api`, `worker`, `scheduler`, `postgres`.
