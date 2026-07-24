@@ -1,14 +1,14 @@
 {
   "schema_version": 1,
-  "feature_id": "F004",
+  "feature_id": "F005",
   "increment": "full-epic-close-out",
-  "evaluated_commit": "2c986a91250eccf561567342d0d33c9d85b6ee69",
-  "commit_sha_evaluated": "2c986a91250eccf561567342d0d33c9d85b6ee69",
+  "evaluated_commit": "6f5e1e738168c72edc96cb81cfa668d550f8cd85",
+  "commit_sha_evaluated": "6f5e1e738168c72edc96cb81cfa668d550f8cd85",
   "evaluator": "fresh independent Level 2 evaluator (Copilot CLI Chief)",
-  "evaluated_at": "2026-07-23T16:16:42Z",
+  "evaluated_at": "2026-07-24T02:24:10Z",
   "harness": {
     "version": "2026-07-02.1",
-    "content_hash": "00b135ae447ca6ce",
+    "content_hash": "ab31650465ce46ed",
     "loaded_first": true
   },
   "required_evaluation_level": 2,
@@ -16,84 +16,106 @@
   "disposition": "passed",
   "overall_disposition": "passed",
   "blocking_issues": [],
-  "summary": "Full-epic F004 Level 2 close-out over merged main (slices S1-S6, latest merge 2c986a9). All four acceptance steps plus the cross-feature guardrails independently and adversarially verified against a live PostgreSQL stack on alternate ports. Offline gates (test.ps1 335/28, check.ps1 -NodeAudit 8/8) green; live stack healthy with migrations 0001..0006; stack-smoke 14/14; integration suite 28 passed; 101/101 independent adversarial probes across SSRF/adapters (45), DB immutability+separation (10), run_scan (18), reconciliation (23), and full migration round-trip (5). F004 flipped to passes:true.",
+  "summary": "Full-epic F005 (cloudflare-vertical-slice) Level-2 close-out over merged main (slices S1-S4, HEAD 6f5e1e738168c72edc96cb81cfa668d550f8cd85). All four acceptance steps plus the global invariants independently and adversarially verified against a LIVE PostgreSQL stack on alternate ports (fresh DB, migrations 0001..0007). Offline gates green (test.ps1 425/48, check.ps1 -NodeAudit 8/8); live stack-smoke 15/15; integration suite 48 passed; ~100 independent live checks incl. probe_live.py 6/6 (contradiction->review, offer_version UPDATE+DELETE 23001, community WITHHOLD, both 0006 separation triggers 23001, positive control), read-API guardrail matrix 12/12, migration round-trip base->head drift==[] + 3 triggers, and full Step-4 browse over the nginx /api proxy + web SPA. Dependency-manifest diff across the F005 range is EMPTY. F005 flipped to passes:true.",
   "acceptance_steps": [
     {
       "step": 1,
-      "name": "contract_tests_every_source_type",
-      "acceptance_step": "Run contract tests for every source type.",
+      "name": "cloudflare_scans_deterministic_quota_extraction",
+      "acceptance_step": "Run Cloudflare scans and deterministic quota extraction.",
       "passed": true,
       "evidence": [
-        "scripts/test.ps1 (offline) exit 0: pytest 335 passed / 28 skipped incl. all tests/ exercising ingest adapters and the 7-method SourceAdapter contract.",
-        "Live integration suite on fresh Postgres (DATABASE_URL=localhost:55432) exit 0: 28 passed.",
-        "Independent adapter probes (probe_offline.py) 45/45 PASS: reference (JsonOfferAdapter), RSS, HTML, structured-API, and MCP each produce candidate-only facts across unchanged/changed/malformed/partial/contradictory inputs; adapters reach the network ONLY through the injected Fetcher (grep confirms no direct http client import anywhere in app/ingest).",
-        "run_scan probes (probe_scan.py) 18/18 confirm every registered adapter type (ADAPTER_REGISTRY) is reachable through orchestration."
+        "runner --publish on a FRESH DB extracted official Workers+Pages HTML fixtures -> published=2; raw SQL: 1 provider, 2 services, 2 offers, 2 immutable offer_versions, 17 quotas, official evidence linked to each version (offer_version_id non-null), 2 published 'added' change_events, 0 pending reviews.",
+        "Deterministic extraction is reproducible (stable content_hash); each offer Z0-classified Z0_TRUE_FREE with human-readable reasons via the S2 gated publication path (confidence>=0.90 + all hard conditions).",
+        "The 3 fixture-absent sources (changelog RSS, pages-pricing, docs-mcp) fail-isolate per-source via SAVEPOINT (runner exit 1) and are not defects; workers/pages publish cleanly."
       ]
     },
     {
       "step": 2,
-      "name": "allowlists_blocking_limits_timeouts_malformed",
-      "acceptance_step": "Verify official-domain allowlists, network blocking, limits, timeouts, and malformed-data handling.",
+      "name": "repeat_scans_no_false_changes",
+      "acceptance_step": "Verify repeat scans do not create false changes.",
       "passed": true,
       "evidence": [
-        "Independent SSRF/guard probes against a LiveFetcher(enable_network=True) subclass with a stubbed _resolve: non-allowlisted host (DisallowedHostError), cross-host redirect, private/loopback IP, cloud-metadata 169.254.169.254 (incl. IPv4-mapped-IPv6 ::ffff: unmasking), non-https scheme, oversize body, request timeout, and bad MIME type ALL refused (BlockedAddressError/DisallowedHostError/etc.).",
-        "OfflineFetcher is the default and never opens a socket (NetworkDisabledError); LiveFetcher disabled unless enable_network=True; FixtureFetcher stays offline and still enforces scheme+host+MIME.",
-        "Deterministic JSON nesting-depth cap (MAX_JSON_NESTING_DEPTH=100 in adapters/_json.py) enforced by a pre-parse raw-text scan (_exceeds_max_depth) BEFORE json.loads; proven independent of sys.setrecursionlimit.",
-        "MCP capability allowlist enforced in BOTH directions with an injectable offline client: disallowed capability -> DisallowedCapabilityError with spy client call count == 0 (no real I/O); OfflineMcpClient default refuses live (McpDisabledError); host gate via shared FetchPolicy (DisallowedHostError).",
-        "Malformed data NEVER crashes and NEVER guesses: production adapters return rejected candidates in-adapter; the reference adapter (documented minimal demonstrator) raises on malformed input in isolation but run_scan wraps canonicalize()/extract() in a per-document try/except (scan.py:228-233) — proven end-to-end (probe_scan.py): malformed input -> errors=1, 0 candidates, 0 evidence, snapshot persisted, status=partial, no crash.",
-        "Residual R1 (full DNS-rebinding TOCTOU IP pinning) is a documented, accepted out-of-scope deferral (agent-state/progress.md S1 handoff + current_contract.json out_of_scope); addresses are re-resolved and re-checked per hop. Confirmed recorded, not a blocker."
+        "Immediate re-run: scan-level changes=0 for both sources; provider/source sync unchanged (created=0/updated=0/unchanged=5).",
+        "Publish-level: re-publishing identical facts -> published=0, unchanged=1 per offer; offer/offer_version/change_event counts unchanged at 2/2/2.",
+        "content_hash covers stable material facts only (offer_type, requires_card, has_paid_dependencies, exhaustion_behaviour, quotas), excluding time-varying confidence/freshness -> identical inputs append NO new OfferVersion."
       ]
     },
     {
       "step": 3,
-      "name": "unchanged_changed_stale_contradictory_fixtures",
-      "acceptance_step": "Verify unchanged, changed, stale, and contradictory fixtures.",
+      "name": "changed_and_contradictory_evidence_paths",
+      "acceptance_step": "Exercise changed and contradictory evidence paths.",
       "passed": true,
       "evidence": [
-        "Independent reconciliation probes (probe_reconcile.py) 23/23 PASS: pure classifiers (assess_change/classify_materiality/assess_staleness/find_contradictions) cover unchanged, modified-material, modified-non-material, unknown, added, withdrawn, restored, staleness, and contradiction (unknown-never-conflicts, same-value, same-source, community-excluded); end-to-end reconcile_scan emits a DRAFT ChangeEvent on material change (publication_status='draft' on every event), flags stale, raises a pending ReviewItem (admin_disposition='pending') on contradiction that is NEVER auto-resolved, and creates ZERO OfferVersion.",
-        "run_scan probes 18/18: official source -> hashed Snapshot + pre-publication Candidate + Evidence linked Source/Snapshot/Candidate with offer_version_id NULL; reproducible content hashing; idempotent re-scan yields 0 changes and an identical hash.",
-        "Live integration suite covers the same unchanged/changed/stale/contradictory fixtures (28 passed)."
+        "Material change: edited Workers fixture (requests_per_day 100,000->200,000/day) appended a NEW append-only OfferVersion v2 (v1 100,000 retained immutably) + a PUBLISHED 'modified' change_event (previous_version_id=2, new_version_id=3, materiality material); Pages unchanged.",
+        "Contradiction (probe_live.py, rolled back): two official sources contradicting on a material fact (requires_card) -> a PENDING ReviewItem; publish_candidate returned decision=review, version_created=False, OfferVersion count UNCHANGED (ZERO auto-published), pending ReviewItem still stands (never auto-resolved, never published)."
       ]
     },
     {
       "step": 4,
-      "name": "community_cannot_become_verified_evidence",
-      "acceptance_step": "Confirm community sources cannot become verified evidence.",
+      "name": "browse_public_provider_experience",
+      "acceptance_step": "Browse category states, offers, evidence, confidence, history, completeness, and freshness.",
       "passed": true,
       "evidence": [
-        "run_scan on a community source produces a DiscoveryCandidate quarantine row plus a non-official Candidate (official=False) and ZERO evidence (probe_scan.py).",
-        "Independent raw-SQL DB probes (probe_db.py) 10/10 PASS at the DB layer: Trigger A trg_candidate_official_source rejects an official candidate on a community source; Trigger B trg_evidence_official_candidate rejects evidence referencing a community (non-official) candidate; attempted in-place community->official promotion rejected; all raise restrict_violation (SQLSTATE 23001 -> psycopg IntegrityError); a positive official-path control INSERT is allowed.",
-        "App layer raises SeparationError on the same crossings (tests/ separation suite), so the boundary holds at BOTH app and DB layers.",
-        "Migration 0006 (quarantine separation hardening) is reversible — verified in the full round-trip probe."
+        "Over the nginx /api proxy (port 8090): /catalogue/providers -> Cloudflare completeness 1.0/freshness 1.0/2 published offers; /category-states -> Pages+Workers, both Z0_TRUE_FREE, confidence label 'high', status active.",
+        "/offers/{id} -> offer_type always_free, zero_cost_class Z0_TRUE_FREE, 4 plain-language Z0 reasons, quotas, confidence LABEL primary with numeric score+signals ONLY inside 'advanced' (D039); /evidence -> official=true real Cloudflare URL + content_hash + snapshot provenance linked to offer_version_id; /history -> append-only versions + published 'added' change_events.",
+        "S4 web SPA served (root 200, #root, production bundle 200) with API base const '/api' and 13 /catalogue references -> the page renders the live API data end-to-end."
       ]
     }
   ],
   "rubric_criteria": [
-    {"name": "functional_correctness", "passed": true, "evidence": "All four acceptance steps verified end-to-end against a live stack plus 101/101 independent adversarial probes."},
-    {"name": "data_and_evidence_integrity", "passed": true, "evidence": "offer_version immutability trigger rejects UPDATE and DELETE (23001); evidence is official-only with offer_version_id NULL pre-publication; separation triggers A+B enforce official-only candidates/evidence; all verified adversarially via raw SQL."},
-    {"name": "zero_cost_safety", "passed": true, "evidence": "Ingestion produces candidate-only facts; NO publication path and NO OfferVersion writes anywhere; 'unknown is better than guessed' upheld (malformed -> errors, never a guessed candidate)."},
-    {"name": "security_privacy", "passed": true, "evidence": "Safe-fetch SSRF guard refuses non-allowlisted/redirect/private-IP/metadata/non-https/oversize/timeout/bad-MIME; adapters reach network only via injected Fetcher; MCP capability allowlist enforced both directions offline; detect-secrets/pip-audit/npm-audit green."},
-    {"name": "portability", "passed": true, "evidence": "stdlib-only ingestion; no new runtime/npm dependency (dependency manifest diff vs origin/main empty; requirements-sync gate green)."},
-    {"name": "product_truth_no_unsupported_claims", "passed": true, "evidence": "Ingestion never auto-publishes; community sources are quarantined and can never become verified evidence; no real-service free/Z0 claim introduced."},
-    {"name": "regression_safety", "passed": true, "evidence": "scripts/test.ps1 335/28, scripts/check.ps1 -NodeAudit 8/8, live stack-up/stack-smoke(14/14)/stack-down all green; migrations 0001..0006 reversible with zero drift; F000-F003 baselines unaffected."}
+    {
+      "name": "functional_correctness",
+      "passed": true,
+      "evidence": "All four acceptance steps verified end-to-end on a live stack plus ~100 independent live checks (probe_live 6/6, read-API 12/12, migration round-trip, Step-4 browse + SPA)."
+    },
+    {
+      "name": "data_and_evidence_integrity",
+      "passed": true,
+      "evidence": "offer_version immutability rejects UPDATE and DELETE (23001); append-only versioning with published change_events; official evidence linked to each version; both 0006 separation triggers reject boundary crossings (23001); all verified adversarially via raw SQL."
+    },
+    {
+      "name": "zero_cost_safety",
+      "passed": true,
+      "evidence": "Publication is deterministic, official-evidence-only, no LLM/network in loop; contradiction/uncertainty->REVIEW, unofficial/unevidenced->WITHHOLD; 'unknown is better than guessed' upheld; Z0_TRUE_FREE genuinely official-evidence-backed (product-truth)."
+    },
+    {
+      "name": "security_privacy",
+      "passed": true,
+      "evidence": "Read-API is GET-only (POST/PUT/DELETE->405); hostile slugs rejected (UPPER->422, url-like/traversal->404, unknown->404) so no user-controlled-URL/SSRF surface; detect-secrets/pip-audit/npm-audit green."
+    },
+    {
+      "name": "portability",
+      "passed": true,
+      "evidence": "Dependency-manifest diff across the whole F005 range (dafbd89..6f5e1e7) is EMPTY; requirements-sync gate green; PostgreSQL the only mandatory stateful service."
+    },
+    {
+      "name": "product_truth_no_unsupported_claims",
+      "passed": true,
+      "evidence": "The Cloudflare Z0_TRUE_FREE 'truly free' claim is official-evidence-backed (official Cloudflare evidence URL + snapshot + deterministic reasons); community sources can never publish; no manufactured free claim."
+    },
+    {
+      "name": "regression_safety",
+      "passed": true,
+      "evidence": "test.ps1 425/48, check.ps1 -NodeAudit 8/8, live stack-smoke 15/15, integration suite 48 passed; migrations 0001..0007 reversible with zero drift and all 3 triggers reinstalled; F000-F004 baselines unaffected."
+    }
   ],
   "command_results": {
-    "git_rev_parse_head_evaluated": "2c986a91250eccf561567342d0d33c9d85b6ee69",
-    "git_log_oneline_3": "2c986a9 feat(ingest): F004 slice 6 - quarantine separation hardening (app + DB invariant) (#19); 3f855e5 feat(ingest): structured-API + MCP source adapters + fixtures (F004 slice 5) (#18); edce950 feat(ingest): RSS + HTML source adapters + fixtures (F004 slice 4) (#17).",
-    "diff_vs_origin_main": "agent-state/feature_list.json only (F004 passes/last_verified_at/verification_evidence); no source, test, fixture, or migration changes.",
-    "scripts_test_ps1": "exit 0; pytest 335 passed / 28 skipped; config examples valid; Vitest + Vite build ok; TESTS PASSED.",
-    "scripts_check_ps1_nodeaudit": "exit 0; all 8 gates green (Ruff lint/format, Pytest 335/28, Prettier, ESLint, detect-secrets, pip-audit, npm audit 0 vulnerabilities, requirements-sync).",
-    "scripts_stack_cycle": "exit 0; docker compose down --volumes -> up --build on alt ports (POSTGRES_PORT=55432/API_PORT=8010/WEB_PORT=8090); 5 services healthy; migrations 0001..0006 applied on fresh DB; stack-smoke 14/14 PASS; teardown removed all containers, volume, and network.",
-    "integration_suite_live": "exit 0; 28 passed against fresh live PostgreSQL.",
-    "adversarial_probe_offline": "exit 0; probe_offline.py 45/45 PASS (SSRF guard matrix, adapter behaviour across all input classes, JSON depth cap, MCP allowlist both directions).",
-    "adversarial_probe_db": "exit 0; probe_db.py 10/10 PASS (offer_version UPDATE+DELETE rejected; 3 separation crossings rejected; positive official control allowed; all 3 triggers present).",
-    "adversarial_probe_scan": "exit 0; probe_scan.py 18/18 PASS (official -> Snapshot+Candidate+Evidence offer_version_id NULL; idempotent re-scan; community -> DiscoveryCandidate quarantine + 0 evidence; malformed isolated to errors=1).",
-    "adversarial_probe_reconcile": "exit 0; probe_reconcile.py 23/23 PASS (classification + end-to-end draft ChangeEvent/stale/pending ReviewItem; zero OfferVersion).",
-    "adversarial_probe_migrations": "exit 0; probe_migrations.py 5/5 PASS (6 revisions; full downgrade-to-base drops all domain tables; upgrade-to-head at 0006; all 3 triggers reinstalled; compare_metadata drift == [])."
+    "git_rev_parse_head_evaluated": "6f5e1e738168c72edc96cb81cfa668d550f8cd85",
+    "git_log_oneline_4": "6f5e1e7 feat(web): F005 slice 4 - public Cloudflare provider web experience (#24); 1b7fb34 feat(api): F005 slice 3 - read-only catalogue/provider HTTP API (#23); d377d0a feat(publish): F005 slice 2 - deterministic gated publication path (#22); 405264a F005 slice 1: Cloudflare OFFICIAL free-tier extraction vertical slice (#21).",
+    "diff_vs_origin_main": "agent-state only (feature_list.json F005 passes/last_verified_at/verification_evidence, evaluation.json, progress.md); no source, test, fixture, or migration changes.",
+    "dependency_manifest_diff_f005_range": "EMPTY across dafbd89..6f5e1e7 (git diff --stat on pyproject.toml/requirements*/package.json/package-lock.json shows no change); no new runtime or npm dependency introduced by any F005 slice.",
+    "scripts_test_ps1": "exit 0; pytest 425 passed / 48 skipped; config examples (incl. cloudflare) valid; web Vitest 33/33 in 4 files; Vite build ok; TESTS PASSED.",
+    "scripts_check_ps1_nodeaudit": "exit 0; all 8 gates green (Ruff lint, Ruff format, Pytest 425/48, Prettier, ESLint, detect-secrets, pip-audit no vulnerabilities, npm audit 0).",
+    "scripts_stack_cycle": "exit 0; docker compose down --volumes -> up --build on alt ports (POSTGRES_PORT=55432/API_PORT=8010/WEB_PORT=8090); services healthy; migrations 0001..0007 applied on fresh DB; stack-smoke 15/15 PASS.",
+    "pipeline_drive": "runner --publish run1 published=2 (Workers+Pages) on fresh DB; run2 idempotent published=0/unchanged for both, scan changes=0.",
+    "integration_suite_live": "exit 0; 48 passed (46 + 2 stack-health with ATLAS_STACK_BASE_URL=http://localhost:8010) against live PostgreSQL.",
+    "adversarial_probe_live": "exit 0; probe_live.py 6/6 PASS (Step-3b contradiction->review + ZERO new version; offer_version UPDATE+DELETE 23001; community WITHHOLD; 0006 trigger A + trigger B 23001; positive official control allowed) — all inside a rolled-back transaction leaving the live catalogue untouched.",
+    "read_api_guardrails": "12/12 over the nginx /api proxy: GET collection/detail 200; POST/PUT/DELETE 405; UPPER slug 422; url-like SSRF + path-traversal + unknown 404.",
+    "adversarial_probe_migration_roundtrip": "exit 0; migration_roundtrip.py PASS (downgrade-to-base drops all domain tables; upgrade-to-head recreates them; compare_metadata drift == []; all 3 triggers trg_offer_version_immutable/trg_candidate_official_source/trg_evidence_official_candidate reinstalled)."
   },
   "known_issues_or_risks": [
-    "R1: full DNS-rebinding TOCTOU IP pinning is not implemented (addresses are re-resolved and re-checked per hop but not pinned across connect). Documented and accepted as out-of-scope in progress.md (S1) and current_contract.json; does not affect any F004 acceptance step.",
-    "The reference JsonOfferAdapter is a documented minimal contract demonstrator that raises on malformed input in isolation and relies on run_scan's per-document guard for isolation; the production adapters handle malformed input in-adapter. Verified non-defect: system-level behaviour never crashes and never guesses."
+    "The Cloudflare example config declares 5 sources but only workers-limits and pages-limits ship HTML fixtures; the other 3 (changelog RSS, pages-pricing, docs-mcp) fail-isolate per-source via SAVEPOINT so the runner CLI exits 1 while still committing the successful offers. This is expected offline-fixture behaviour, not a defect, and does not affect any acceptance step.",
+    "candidate rows accumulate per scan (pre-publication artifacts); idempotency is enforced at the OfferVersion/ChangeEvent level (the published surface), which is correct."
   ],
-  "recommendation": "Accept F004 as passing at commit 2c986a91250eccf561567342d0d33c9d85b6ee69. All four acceptance steps and cross-feature guardrails are independently and adversarially verified at the required Level 2; F004.passes set to true. Next priority feature: F005 (cloudflare-vertical-slice)."
+  "recommendation": "Accept F005 as passing at commit 6f5e1e738168c72edc96cb81cfa668d550f8cd85. All four acceptance steps and the global invariants are independently and adversarially verified at the required Level 2 on a live stack; F005.passes set to true. This ledger change is committed on branch stsyg-f005-fullepic-closeout for the orchestrator to open + merge (evaluator does not open or merge the PR)."
 }
