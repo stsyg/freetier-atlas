@@ -182,9 +182,17 @@
         "Exercise negative security and audit scenarios."
       ],
       "required_evaluation_level": 2,
-      "passes": false,
-      "last_verified_at": null,
-      "verification_evidence": []
+      "passes": true,
+      "last_verified_at": "2026-07-27T21:20:30Z",
+      "verification_evidence": [
+        "Full-epic F007 Level-2 close-out over merged main HEAD c6d509116bf60c040ab54efa3ce52fb9c8f6c68b (alembic head 0009_admin_audit); all 4 slices present (S1 LLM-assisted intake+routing+consent+fallback, S2 abuse controls, S3 browser ZIP export, S4 private GitHub-OAuth admin) plus S5a negative-security corpus. Independently re-verified on an ISOLATED live Postgres stack (project ftatlas_f007closeout, alt ports 55432/8010/8090, fresh DB migrations 0001..0009) exercising ALL FOUR acceptance dimensions over BOTH direct :8010 AND nginx /api :8090.",
+        "Offline gates green: scripts/test.ps1 -> pytest 868 passed / 63 skipped, web vitest 103, vite build OK; scripts/check.ps1 -NodeAudit -> 8/8 gates green.",
+        "Step 1 (consent/failure/quota/fallback): live probe 22/22 PASS on both bases - per-request ephemeral consent honoured (external_processing_used=false with empty provider registry), assisted graceful-degrade to deterministic (routing.llm_used=false, tier=deterministic_parser) with recommendation byte-identical to /adviser/recommend, deterministic rate limit 429 with Retry-After at the documented threshold, request dedupe collapses identical bodies, input negatives 405/422. Forced-reason overrides (ai_kill_switch / ai_quota_exhausted / pow_required / circuit_open) reproduced via the offline real-app TestClient (fake adapter) harness tests/unit/test_abuse_endpoints.py 9/9 PASS (Q1 posture: real providers enabled:false, never networked).",
+        "Step 2 (ZIP validated/secret-free/not-persisted): export probe 5/5 PASS both bases with byte-identical bundle SHA256; manifest.validation 7/7 gates true (paths_safe, text_only, secret_scan_passed, compose_parsed, healthchecks_present, multi_arch, within_size_cap); .env.example placeholders only. NOT-persisted proven: worker+scheduler paused, FS file-count and all 25 DB tables snapshotted around 6 exports -> FS unchanged (6614->6614), 23/25 tables unchanged (only abuse counters rate_limit_bucket +6 / request_dedupe +6).",
+        "Step 3 (admin allowlist): admin probe 20/20 PASS both bases via an OFFLINE OAuth mock (never github.com, N1 posture) - allowlisted stsyg accepted (login 302 -> signed admin_session cookie), all 4 admin functions usable (kill-switch toggle, review queue over review_item, source-health, config-diff valid+invalid fail-closed), non-allowlisted mallory rejected 403 not_allowlisted.",
+        "Step 4 (negative-security + audit): admin negative matrix on both bases - unauth 401, tampered/forged cookie 401 invalid_cookie, missing/bad CSRF 403, mismatched state 401, missing code 400. admin_audit no-secret-leak scan across 28 rows -> 0 leak hits (contexts hold only benign metadata; mallory denial audited with reason only, no code/token). Negative-security regression corpus tests/security/ -> 140 passed.",
+        "Global invariants (live): offer_version immutability trigger rejects BOTH UPDATE and DELETE ('rows are immutable (append-only)'); trigger is BEFORE DELETE OR UPDATE; 0006 separation triggers trg_candidate_official_source + trg_evidence_official_candidate present and enabled; hashed-IP-only confirmed (only ip_hash columns exist in rate_limit_bucket + pow_challenge, all 64-hex, no raw/dotted IP anywhere); no LLM-to-publication path (assisted path read-only, wrote nothing to catalogue/publication tables in the not-persisted probe). All invariant probes rolled back; DB left pristine."
+      ]
     },
     {
       "id": "F008",
