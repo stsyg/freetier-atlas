@@ -33,11 +33,13 @@ from alembic.config import Config
 from app.classify.engine import Z0_TRUE_FREE
 from app.config.loader import load_and_validate
 from app.config.models import ProviderConfig, PublishingSection
+from app.ingest.config_sync import categorise_services
 from app.ingest.reconcile import reconcile_scan
 from app.ingest.runner import build_fixture_fetcher, run_provider_scans
 from app.ingest.scan import _content_hash, _json_safe
 from app.models.domain import (
     Candidate,
+    Category,
     ChangeEvent,
     Evidence,
     Offer,
@@ -46,11 +48,14 @@ from app.models.domain import (
     Quota,
     ReviewItem,
     ScanRun,
+    Service,
     Snapshot,
     Source,
 )
 from app.publish.publisher import publish_candidate
-from sqlalchemy import create_engine, func, select, text
+from app.read_api import queries
+from app.read_api import service as read_service
+from sqlalchemy import create_engine, func, select, text, update
 from sqlalchemy.engine import Engine
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -442,3 +447,123 @@ def test_community_candidate_cannot_publish(session: Session) -> None:
     assert outcome.offer_id is None
     offers_after = session.execute(select(func.count()).select_from(Offer)).scalar_one()
     assert offers_after == offers_before
+
+
+# --- (g) category is set on publish WITHOUT disturbing immutability ---------
+
+
+@skip_without_db
+def test_publish_sets_declared_category_on_published_services(session: Session) -> None:
+    """AC3: zero published Cloudflare services are uncategorised."""
+
+    config = _config()
+    assert config.service_categories, "the Cloudflare example must declare service_categories"
+    fetcher = build_fixture_fetcher(config, FIXTURES_DIR)
+    run_provider_scans(session, config, fetcher, publish=True)
+
+    published_service_ids = set(session.execute(select(Offer.service_id)).scalars())
+    assert published_service_ids
+
+    services = list(
+        session.execute(select(Service).where(Service.id.in_(published_service_ids))).scalars()
+    )
+    assert services
+    uncategorised = [s.canonical_name for s in services if s.category_id is None]
+    assert uncategorised == [], f"published services left uncategorised: {uncategorised}"
+
+    slug_by_id = {
+        c.id: c.slug
+        for c in session.execute(
+            select(Category).where(Category.id.in_({s.category_id for s in services}))
+        ).scalars()
+    }
+    resolved = {s.canonical_name: slug_by_id[s.category_id] for s in services}
+    for name, slug in resolved.items():
+        # Declared, never inferred: every resolved category came from the config.
+        assert config.service_categories[name] == slug
+
+
+@skip_without_db
+def test_categorisation_does_not_change_content_hash_or_mint_versions(session: Session) -> None:
+    """AC4: category is not a material fact -- immutability/idempotency hold."""
+
+    config = _config()
+    fetcher = build_fixture_fetcher(config, FIXTURES_DIR)
+    run_provider_scans(session, config, fetcher, publish=True)
+
+    def _snapshot() -> tuple[int, dict[int, str]]:
+        count = session.execute(select(func.count()).select_from(OfferVersion)).scalar_one()
+        hashes = {
+            row.id: row.content_hash
+            for row in session.execute(select(OfferVersion.id, OfferVersion.content_hash)).all()
+        }
+        return count, hashes
+
+    count_before, hashes_before = _snapshot()
+    assert count_before
+
+    # Deliberately strip the categories, then re-apply them via the sync path.
+    session.execute(update(Service).values(category_id=None))
+    session.flush()
+    categorise_services(session, config)
+    session.flush()
+
+    count_after_categorise, hashes_after_categorise = _snapshot()
+    assert count_after_categorise == count_before
+    assert hashes_after_categorise == hashes_before
+
+    # And a full re-publish still mints nothing new.
+    run_provider_scans(session, config, fetcher, publish=True)
+    count_after_republish, hashes_after_republish = _snapshot()
+    assert count_after_republish == count_before
+    assert hashes_after_republish == hashes_before
+
+
+@skip_without_db
+def test_undeclared_service_stays_uncategorised(session: Session) -> None:
+    """Unknown is better than guessed: no category is inferred from a name."""
+
+    provider = _seed_provider(session)
+    source = _seed_source(session, provider, "synthetic-official", official=True)
+    candidate = _seed_candidate(session, source, dict(_HIGH_CONFIDENCE_FACTS))
+
+    outcome = publish_candidate(
+        session,
+        candidate,
+        source,
+        PUBLISHING,
+        service_categories={"Some Other Service": "serverless-functions"},
+    )
+    assert outcome.decision == "publish"
+
+    service = session.execute(
+        select(Service).where(Service.canonical_name == _HIGH_CONFIDENCE_FACTS["service"])
+    ).scalar_one()
+    assert service.category_id is None
+
+
+@skip_without_db
+def test_category_matrix_reports_no_uncategorized_for_the_real_catalogue(
+    session: Session,
+) -> None:
+    """AC3: GET /api/catalogue/categories has an EMPTY uncategorized rollup."""
+
+    config = _config()
+    fetcher = build_fixture_fetcher(config, FIXTURES_DIR)
+    run_provider_scans(session, config, fetcher, publish=True)
+    session.flush()
+
+    providers = queries.fetch_providers(session)
+    matrix = read_service.serialize_category_matrix(
+        providers, queries.category_map_for_providers(session, providers)
+    )
+
+    assert matrix.uncategorized == []
+    assert len(matrix.categories) == 14
+    covered = {
+        c.slug
+        for c in matrix.categories
+        for p in c.providers
+        if p.provider_slug == "cloudflare" and p.published_offer_count
+    }
+    assert covered == set(config.service_categories.values())

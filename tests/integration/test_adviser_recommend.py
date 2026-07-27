@@ -29,6 +29,9 @@ from app.adviser.recommend import recommend
 from app.adviser.schema import RecommendationRequest
 from app.adviser.schemas import build_response
 from app.adviser.select import gather_candidates
+from app.config.loader import load_and_validate
+from app.config.models import ProviderConfig
+from app.ingest.runner import build_fixture_fetcher, run_provider_scans
 from app.models.domain import (
     Category,
     Offer,
@@ -37,7 +40,7 @@ from app.models.domain import (
     Quota,
     Service,
 )
-from sqlalchemy import create_engine, text, update
+from sqlalchemy import create_engine, select, text, update
 from sqlalchemy.engine import Engine
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import Session
@@ -94,12 +97,27 @@ def _facts(zero_cost_class: str) -> dict:
     }
 
 
+def _category(session: Session, slug: str, name: str) -> Category:
+    """Resolve a canonical category, tolerating the 0010 seed already owning it.
+
+    Migration ``0010_category_seed`` seeds all fourteen canonical slugs, so an
+    unconditional INSERT here would violate ``uq_category_slug``.
+    """
+
+    existing = session.execute(select(Category).where(Category.slug == slug)).scalar_one_or_none()
+    if existing is not None:
+        return existing
+    created = Category(slug=slug, name=name)
+    session.add(created)
+    session.flush()
+    return created
+
+
 def _seed(session: Session) -> None:
     """Insert clearly-synthetic categorized offers (rolled back, never published)."""
 
-    storage = Category(slug="object-file-storage", name="Object and file storage")
-    hosting = Category(slug="compute-vms", name="Compute VMs")
-    session.add_all([storage, hosting])
+    storage = _category(session, "object-file-storage", "Object and file storage")
+    hosting = _category(session, "compute-vms", "Compute VMs")
     session.flush()
 
     def _make(
@@ -316,3 +334,99 @@ def test_separation_triggers_present(session: Session) -> None:
     assert "trg_offer_version_immutable" in names
     assert "trg_candidate_official_source" in names
     assert "trg_evidence_official_candidate" in names
+
+
+# --- F008 slice S1: live $0 recommendation against the REAL catalogue --------
+
+CONFIG_PATH = REPO_ROOT / "config" / "examples" / "providers" / "cloudflare.example.yaml"
+FIXTURES_DIR = REPO_ROOT / "tests" / "fixtures" / "ingest" / "cloudflare" / "html"
+
+
+def _publish_real_catalogue(session: Session) -> ProviderConfig:
+    """Ingest + publish the REAL Cloudflare catalogue from offline fixtures.
+
+    No synthetic offers, no live network: the fixture fetcher replays captured
+    official pages through the ordinary scan -> reconcile -> publish path.
+    """
+
+    config = load_and_validate(str(CONFIG_PATH))
+    assert isinstance(config, ProviderConfig)
+    fetcher = build_fixture_fetcher(config, FIXTURES_DIR)
+    run_provider_scans(session, config, fetcher, publish=True)
+    return config
+
+
+@skip_without_db
+def test_live_zero_cost_recommendation_against_real_catalogue(session: Session) -> None:
+    """AC5: a satisfiable $0 recommendation against the real published catalogue.
+
+    Before the 0010 category seed this was impossible: ``category`` was empty and
+    every real published service had ``category_id IS NULL``, so
+    ``_category_matches`` never matched and EVERY requirement blocked for want of
+    a category. This asserts the whole chain now works on real data.
+    """
+
+    config = _publish_real_catalogue(session)
+
+    # The requirement is in a category Cloudflare GENUINELY covers, per the
+    # declared (never inferred) mapping in the provider config.
+    category = config.service_categories["Cloudflare Workers"]
+    assert category == "serverless-functions"
+
+    pool = gather_candidates(session)
+    assert pool.z0, "the real catalogue must yield published Z0 offers"
+
+    request = RecommendationRequest.model_validate(
+        {
+            "workload_name": "real catalogue zero cost",
+            "requirements": [
+                {
+                    "category": category,
+                    # Workers' official free memory limit is 128 MB; 64 MB fits.
+                    "demands": [{"metric": "memory", "amount": "64", "unit": "MB"}],
+                }
+            ],
+        }
+    )
+    body = build_response(recommend(request, pool))
+
+    assert body.fully_zero_cost is True, body.model_dump()
+    assert body.impossible == [], "no requirement may block for want of a category"
+    assert len(body.architecture) == 1
+    component = body.architecture[0]
+    assert component.offer.zero_cost_class == "Z0_TRUE_FREE"
+    assert component.offer.provider_slug == "cloudflare"
+    assert component.offer.service_name == "Cloudflare Workers"
+
+
+@skip_without_db
+def test_uncategorised_real_services_would_block_every_requirement(session: Session) -> None:
+    """The guard itself: strip the categories and the same request goes unsatisfiable.
+
+    This is the regression that F008 S1 closes -- it fails RED if the seed or the
+    categorisation write path is reverted.
+    """
+
+    config = _publish_real_catalogue(session)
+    category = config.service_categories["Cloudflare Workers"]
+    request = RecommendationRequest.model_validate(
+        {
+            "workload_name": "real catalogue zero cost",
+            "requirements": [
+                {
+                    "category": category,
+                    "demands": [{"metric": "memory", "amount": "64", "unit": "MB"}],
+                }
+            ],
+        }
+    )
+
+    assert build_response(recommend(request, gather_candidates(session))).fully_zero_cost is True
+
+    session.execute(update(Service).values(category_id=None))
+    session.flush()
+    session.expire_all()
+
+    degraded = build_response(recommend(request, gather_candidates(session)))
+    assert degraded.fully_zero_cost is False
+    assert degraded.impossible, "an uncategorised catalogue must block the requirement"

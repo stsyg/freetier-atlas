@@ -27,6 +27,8 @@ from pydantic import (
     model_validator,
 )
 
+from app.read_api.taxonomy import canonical_slugs, is_canonical_slug
+
 # An environment-variable *name* reference (e.g. ``GEMINI_API_KEY``). Holds a
 # name only; the real value is supplied by the runtime environment.
 EnvVarName = Annotated[str, StringConstraints(pattern=r"^[A-Z][A-Z0-9_]*$")]
@@ -208,6 +210,40 @@ class ProviderConfig(_Base):
     provider: ProviderSection
     sources: list[Source] = Field(min_length=1)
     publishing: PublishingSection
+
+    #: Declared service -> canonical category mapping (F008 slice S1).
+    #:
+    #: The key is a service's ``canonical_name`` exactly as it appears in the
+    #: extracted candidate facts' ``service`` field (e.g. ``"Cloudflare
+    #: Workers"``); the value is one of the fourteen canonical category slugs in
+    #: ``app.read_api.taxonomy.CATEGORY_TAXONOMY``.
+    #:
+    #: Category is *declared structural metadata*, never an offer fact and never
+    #: inferred: a service that is absent from this map stays uncategorised
+    #: (``service.category_id IS NULL``) and is reported honestly in the
+    #: ``uncategorized`` rollup rather than guessed into a category. Declaring a
+    #: service name that does not exist is deliberately **not** an error -- the
+    #: mapping may legitimately be declared before the service is first
+    #: discovered -- it is simply a no-op at sync time.
+    service_categories: dict[str, str] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def _check_service_categories(self) -> Self:
+        for service_name, slug in self.service_categories.items():
+            if not service_name.strip():
+                raise ValueError(
+                    f"provider {self.provider.id!r}: service_categories contains a blank "
+                    "service name; the key must be the service's canonical_name as it "
+                    "appears in the extracted candidate facts"
+                )
+            if not is_canonical_slug(slug):
+                raise ValueError(
+                    f"provider {self.provider.id!r}: service_categories[{service_name!r}] = "
+                    f"{slug!r} is not one of the fourteen canonical category slugs. "
+                    f"Valid slugs (apps/api/app/read_api/taxonomy.py): "
+                    f"{', '.join(canonical_slugs())}"
+                )
+        return self
 
 
 # Registry of configuration families -> root model.

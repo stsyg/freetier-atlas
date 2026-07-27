@@ -22,8 +22,8 @@ from alembic import command
 from alembic.config import Config
 from app.config.loader import load_and_validate
 from app.config.models import ProviderConfig
-from app.ingest.config_sync import sync_provider
-from app.models.domain import Provider, Source
+from app.ingest.config_sync import categorise_services, sync_provider
+from app.models.domain import Category, OfferVersion, Provider, Service, Source
 from sqlalchemy import create_engine, func, select
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session
@@ -158,3 +158,109 @@ def test_sync_detects_and_applies_a_real_change(session: Session) -> None:
 
     provider = session.execute(select(Provider).where(Provider.slug == "cloudflare")).scalar_one()
     assert provider.name == "Cloudflare, Inc."
+
+
+# --- categorise_services (F008 slice S1) ------------------------------------
+
+
+@skip_without_db
+def test_categorise_services_backfills_and_is_idempotent(session: Session) -> None:
+    """A pre-existing uncategorised service is back-filled, then left alone."""
+
+    config = _config()
+    assert config.service_categories, "the Cloudflare example must declare service_categories"
+    declared_name, declared_slug = sorted(config.service_categories.items())[0]
+
+    # First sync creates the provider; no services exist yet.
+    sync_provider(session, config)
+    provider = session.execute(select(Provider).where(Provider.slug == "cloudflare")).scalar_one()
+
+    # Seed the service UNCATEGORISED, exactly as the pre-F008 catalogue had it.
+    service = Service(
+        provider_id=provider.id,
+        category_id=None,
+        canonical_name=declared_name,
+        deployment_model="managed",
+    )
+    session.add(service)
+    session.flush()
+    assert service.category_id is None
+
+    result = categorise_services(session, config)
+    assert result.updated == 1
+    assert result.changed is True
+
+    session.refresh(service)
+    assert service.category_id is not None
+    category = session.get(Category, service.category_id)
+    assert category.slug == declared_slug
+
+    # Second run reports ZERO changes and mutates nothing.
+    again = categorise_services(session, config)
+    assert again.updated == 0
+    assert again.unchanged == 1
+    assert again.changed is False
+    session.refresh(service)
+    assert service.category_id == category.id
+
+
+@skip_without_db
+def test_categorise_services_reports_undeclared_service_names(session: Session) -> None:
+    """A declared name with no matching service row is a no-op, not an error."""
+
+    config = _config()
+    sync_provider(session, config)
+
+    result = categorise_services(session, config)
+    # No service rows exist at all, so every declared mapping is an unknown service.
+    assert result.updated == 0
+    assert result.unknown_services == len(config.service_categories)
+    assert result.changed is False
+
+
+@skip_without_db
+def test_sync_provider_runs_categorisation(session: Session) -> None:
+    config = _config()
+    sync_provider(session, config)
+    provider = session.execute(select(Provider).where(Provider.slug == "cloudflare")).scalar_one()
+
+    declared_name, declared_slug = sorted(config.service_categories.items())[0]
+    session.add(
+        Service(
+            provider_id=provider.id,
+            category_id=None,
+            canonical_name=declared_name,
+            deployment_model="managed",
+        )
+    )
+    session.flush()
+
+    result = sync_provider(session, config)
+    assert result.categorised == 1
+
+    service = session.execute(
+        select(Service).where(Service.canonical_name == declared_name)
+    ).scalar_one()
+    assert session.get(Category, service.category_id).slug == declared_slug
+
+
+@skip_without_db
+def test_categorise_services_never_writes_offer_rows(session: Session) -> None:
+    config = _config()
+    sync_provider(session, config)
+    provider = session.execute(select(Provider).where(Provider.slug == "cloudflare")).scalar_one()
+    declared_name = sorted(config.service_categories)[0]
+    session.add(
+        Service(
+            provider_id=provider.id,
+            category_id=None,
+            canonical_name=declared_name,
+            deployment_model="managed",
+        )
+    )
+    session.flush()
+
+    before = session.execute(select(func.count()).select_from(OfferVersion)).scalar_one()
+    categorise_services(session, config)
+    after = session.execute(select(func.count()).select_from(OfferVersion)).scalar_one()
+    assert after == before
