@@ -52,6 +52,14 @@ ABUSE_TABLES = {
     "pow_challenge",
 }
 
+#: F007 slice 4 adds the private-admin audit-log table to the *same*
+#: ``Base.metadata`` so the Alembic drift check (compare_metadata) covers it. It
+#: is admin infrastructure, not a domain-catalogue entity, so it is tracked
+#: separately here alongside the abuse-control tables.
+ADMIN_TABLES = {
+    "admin_audit",
+}
+
 
 def _check_constraint_sql(table_name: str, column: str) -> str:
     table = metadata.tables[table_name]
@@ -65,8 +73,8 @@ def test_all_fifteen_domain_tables_present() -> None:
     assert EXPECTED_TABLES <= set(metadata.tables.keys())
     assert len(EXPECTED_TABLES) == 15
     # Strictly bound the full metadata: the 15 domain entities plus exactly the
-    # five S2 abuse-control tables, and nothing else.
-    assert set(metadata.tables.keys()) == EXPECTED_TABLES | ABUSE_TABLES
+    # five S2 abuse-control tables and the one S4 admin-audit table, nothing else.
+    assert set(metadata.tables.keys()) == EXPECTED_TABLES | ABUSE_TABLES | ADMIN_TABLES
 
 
 def test_mappers_configure_cleanly() -> None:

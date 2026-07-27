@@ -42,6 +42,25 @@ services:
       # and signs proof-of-work challenges. The default is a NON-SECRET local
       # development value and MUST be overridden in any deployed environment.
       ABUSE_SECRET: ${ABUSE_SECRET:-dev-abuse-secret-change-me} # pragma: allowlist secret
+      # Private admin surface (F007 slice 4): GitHub-OAuth login restricted to an
+      # allowlist, with a stateless signed session cookie. The signing key is a
+      # NON-SECRET local default and MUST be overridden in any deployed
+      # environment; the OAuth client secret is supplied by the environment only
+      # (never committed) and is empty by default (login denies until set).
+      ADMIN_ENABLED: ${ADMIN_ENABLED:-true}
+      ADMIN_GITHUB_CLIENT_ID: ${ADMIN_GITHUB_CLIENT_ID:-}
+      ADMIN_GITHUB_CLIENT_SECRET: ${ADMIN_GITHUB_CLIENT_SECRET:-} # pragma: allowlist secret
+      ADMIN_COOKIE_SIGNING_KEY: ${ADMIN_COOKIE_SIGNING_KEY:-dev-admin-signing-key-change-me} # pragma: allowlist secret
+      ADMIN_ALLOWLIST: ${ADMIN_ALLOWLIST:-stsyg}
+      ADMIN_BASE_URL: ${ADMIN_BASE_URL:-http://localhost:8080}
+      ADMIN_COOKIE_SECURE: ${ADMIN_COOKIE_SECURE:-true}
+      ADMIN_SESSION_TTL_SECONDS: ${ADMIN_SESSION_TTL_SECONDS:-28800}
+      # OAuth endpoints default to github.com; they are configurable so a
+      # GitHub Enterprise / self-hosted host (or an offline smoke double) can be
+      # targeted without any code change. They are never networked in CI.
+      ADMIN_OAUTH_AUTHORIZE_URL: ${ADMIN_OAUTH_AUTHORIZE_URL:-https://github.com/login/oauth/authorize}
+      ADMIN_OAUTH_TOKEN_URL: ${ADMIN_OAUTH_TOKEN_URL:-https://github.com/login/oauth/access_token} # pragma: allowlist secret
+      ADMIN_OAUTH_USER_URL: ${ADMIN_OAUTH_USER_URL:-https://api.github.com/user}
     volumes:
       - ./config/examples/llm-providers.example.yaml:/app/config/llm-providers.yaml:ro
     ports:
