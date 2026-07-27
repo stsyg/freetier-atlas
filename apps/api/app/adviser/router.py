@@ -28,12 +28,23 @@ Security / determinism posture:
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from sqlalchemy.orm import Session
 
 from ..db import get_session
+from .abuse import (
+    client_ip_hash,
+    enforce_deterministic,
+    evaluate_assisted,
+    load_abuse_config,
+)
+from .abuse.breaker import wrap_registry
+from .abuse.pow import issue_challenge
+from .abuse.service import SCOPE_DETERMINISTIC
+from .abuse.store import get_abuse_store
 from .assist_schema import (
     AssistedRecommendationResponse,
     AssistedRequest,
@@ -52,6 +63,10 @@ router = APIRouter(prefix="/adviser", tags=["adviser"])
 
 SessionDep = Annotated[Session, Depends(get_session)]
 
+#: Headers a client uses to submit a solved proof-of-work challenge.
+_POW_TOKEN_HEADER = "x-pow-token"
+_POW_NONCE_HEADER = "x-pow-nonce"
+
 #: Strong URL signals rejected from the assisted free-text description when the
 #: configured ``reject_urls`` is on. Deliberately narrower than the structured
 #: schema's marker set (which also rejects a bare ``/``) so ordinary natural
@@ -60,21 +75,50 @@ SessionDep = Annotated[Session, Depends(get_session)]
 _URL_SIGNALS: tuple[str, ...] = ("://", "http:", "https:", "www.")
 
 
+def _now() -> datetime:
+    return datetime.now(UTC)
+
+
 def _looks_like_url(text: str) -> bool:
     lowered = text.lower()
     return any(signal in lowered for signal in _URL_SIGNALS)
 
 
+def _enforce_rate_limit(request: Request, body: RecommendationRequest, scope: str) -> None:
+    """Apply per-IP rate limiting to a deterministic endpoint (429 on overage)."""
+
+    config = load_abuse_config()
+    limits = get_limits()
+    decision = enforce_deterministic(
+        get_abuse_store(),
+        config,
+        request,
+        body,
+        scope,
+        limits.deterministic_requests_per_ip_per_day,
+        _now(),
+    )
+    if not decision.allowed:
+        raise HTTPException(
+            status_code=429,
+            detail="Rate limit exceeded; retry later.",
+            headers={"Retry-After": str(decision.retry_after)},
+        )
+
+
 @router.post("/recommend", response_model=RecommendationResponse)
 def recommend_architecture(
-    request: RecommendationRequest, session: SessionDep
+    request: RecommendationRequest, http_request: Request, session: SessionDep
 ) -> RecommendationResponse:
     """Return a deterministic, evidence-backed $0 architecture recommendation.
 
     The recommendation is computed entirely from the structured ``request`` and
-    the published catalogue: no LLM, no persistence, no logging of the body.
+    the published catalogue: no LLM, no persistence, no logging of the body. A
+    per-IP rate limit protects the endpoint; an overage returns HTTP 429 with a
+    ``Retry-After`` header rather than degrading (this is the deterministic path).
     """
 
+    _enforce_rate_limit(http_request, request, SCOPE_DETERMINISTIC)
     pool = gather_candidates(session)
     result = recommend(request, pool)
     return build_response(result)
@@ -82,16 +126,18 @@ def recommend_architecture(
 
 @router.post("/recommend/assisted", response_model=AssistedRecommendationResponse)
 def recommend_assisted(
-    request: AssistedRequest, session: SessionDep
+    request: AssistedRequest, http_request: Request, session: SessionDep
 ) -> AssistedRecommendationResponse:
     """Interpret a free-text description, then run the deterministic adviser.
 
     Runs the routing ladder (deterministic parser -> consent-gated LLM tiers ->
-    deterministic fallback). When a schema-valid interpretation is produced, the
-    existing deterministic :func:`recommend` is run over the published catalogue
-    and returned verbatim. When nothing can be interpreted, a graceful
-    ``interpreted=false`` response is returned with a ``fallback_reason`` -- the
-    request never hard-fails. The description is never logged or persisted.
+    deterministic fallback). The abuse layer gates the *AI* path only: the AI
+    kill switch, an exhausted AI quota, an open provider circuit, a duplicate
+    request, or a required-but-missing proof-of-work all cause a graceful
+    **degrade to the deterministic fallback** (HTTP 200, ``llm_used=false``, with
+    a clear ``fallback_reason``) -- the request never hard-fails for those. Only
+    an absolute anti-hammering ceiling returns 429. The description is never
+    logged or persisted.
     """
 
     limits = get_limits()
@@ -110,13 +156,52 @@ def recommend_assisted(
             detail="URLs are not accepted; describe your project in plain words",
         )
 
+    config = load_abuse_config()
+    store = get_abuse_store()
+    registry = get_registry()
     consent_requested = bool(request.consent and request.consent.external_processing)
+
+    decision = evaluate_assisted(
+        store,
+        config,
+        limits,
+        http_request,
+        request,
+        had_providers=bool(registry),
+        pow_token=http_request.headers.get(_POW_TOKEN_HEADER),
+        pow_nonce=http_request.headers.get(_POW_NONCE_HEADER),
+        now=_now(),
+    )
+    if decision.rate_limited:
+        raise HTTPException(
+            status_code=429,
+            detail="Assisted request ceiling exceeded; retry later.",
+            headers={"Retry-After": str(decision.retry_after)},
+        )
+
+    if decision.allow_ai:
+        active_registry = wrap_registry(registry, store, config)
+    else:
+        # AI is gated (or absent): route deterministically with no provider so
+        # no LLM call is made, then surface the abuse reason when nothing was
+        # interpreted by the deterministic parser.
+        active_registry = ()
+
     outcome = route(
         description,
         limits,
-        get_registry(),
+        active_registry,
         external_processing_consented=consent_requested,
     )
+
+    fallback_reason = outcome.fallback_reason
+    if (
+        decision.forced_reason is not None
+        and bool(registry)
+        and outcome.interpretation is None
+        and not outcome.llm_used
+    ):
+        fallback_reason = decision.forced_reason
 
     recommendation: RecommendationResponse | None = None
     if outcome.interpretation is not None:
@@ -143,7 +228,7 @@ def recommend_assisted(
             llm_provider=outcome.provider,
             tier=outcome.tier,
             routing_path=list(outcome.routing_path),
-            fallback_reason=outcome.fallback_reason,
+            fallback_reason=fallback_reason,
         ),
         consent=ConsentEcho(
             external_processing_requested=consent_requested,
@@ -153,8 +238,41 @@ def recommend_assisted(
     )
 
 
+@router.post("/challenge")
+def issue_pow_challenge(http_request: Request, response: Response) -> dict[str, object]:
+    """Issue a self-hosted proof-of-work challenge for the assisted endpoint.
+
+    The client solves the returned challenge (find a ``nonce`` whose
+    ``sha256(f"{token}:{nonce}")`` has ``difficulty`` leading hex zeros) and
+    submits ``token`` + ``nonce`` via the ``X-PoW-Token`` / ``X-PoW-Nonce``
+    headers on a subsequent assisted request that is beyond the free AI
+    threshold. The challenge is server-signed (stdlib HMAC), single-use, and
+    expires; no external CAPTCHA service is involved.
+    """
+
+    config = load_abuse_config()
+    store = get_abuse_store()
+    ip_hash = client_ip_hash(config, http_request)
+    issued = issue_challenge(store, config, ip_hash, _now())
+    response.headers["Cache-Control"] = "no-store"
+    return {
+        "challenge_id": issued.challenge_id,
+        "token": issued.token,
+        "difficulty": issued.difficulty,
+        "algorithm": issued.algorithm,
+        "expires_at": issued.expires_at.isoformat(),
+        "instructions": (
+            "Find a nonce N such that sha256(f'{token}:{N}') begins with "
+            f"{issued.difficulty} hex zero(s); submit token + nonce via the "
+            "X-PoW-Token and X-PoW-Nonce headers."
+        ),
+    }
+
+
 @router.post("/export", response_model=ExportResponse)
-def export_deployment(request: RecommendationRequest, session: SessionDep) -> ExportResponse:
+def export_deployment(
+    request: RecommendationRequest, http_request: Request, session: SessionDep
+) -> ExportResponse:
     """Return the validated, secret-free deployment bundle for a recommendation.
 
     Recomputes the deterministic recommendation from the structured ``request``
@@ -163,12 +281,14 @@ def export_deployment(request: RecommendationRequest, session: SessionDep) -> Ex
 
     Security posture: the endpoint is stateless and read-only -- it writes
     **nothing** to disk or the database (the bundle is produced in-memory and the
-    browser assembles the ``.zip`` client-side). Every generated file is
+    browser assembles the ``.zip`` client-side). It shares the deterministic
+    per-IP rate limit (429 + ``Retry-After`` on overage). Every generated file is
     validated fail-closed (safe paths, text-only, secret-free, parseable Compose
     with healthchecks + multi-arch images, size cap); a validation failure is
     surfaced as HTTP 422 without echoing any file content.
     """
 
+    _enforce_rate_limit(http_request, request, SCOPE_DETERMINISTIC)
     pool = gather_candidates(session)
     result = recommend(request, pool)
     try:

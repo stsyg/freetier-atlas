@@ -8,6 +8,13 @@ offline unit tests.
 
 from __future__ import annotations
 
+from .abuse import (
+    AbuseFlag,
+    CircuitBreaker,
+    PowChallenge,
+    RateLimitBucket,
+    RequestDedupe,
+)
 from .base import Base, alembic_include_object, domain_table_names
 from .domain import (
     Candidate,
@@ -34,6 +41,11 @@ __all__ = [
     "metadata",
     "alembic_include_object",
     "domain_table_names",
+    "AbuseFlag",
+    "CircuitBreaker",
+    "PowChallenge",
+    "RateLimitBucket",
+    "RequestDedupe",
     "Candidate",
     "Category",
     "ChangeEvent",

@@ -41,6 +41,17 @@ EXPECTED_TABLES = {
     "discovery_candidate",
 }
 
+#: F007 slice 2 adds abuse-control infrastructure tables to the *same*
+#: ``Base.metadata`` so the Alembic drift check (compare_metadata) covers them.
+#: They are not domain-catalogue entities, so they are tracked separately here.
+ABUSE_TABLES = {
+    "rate_limit_bucket",
+    "abuse_flag",
+    "circuit_breaker",
+    "request_dedupe",
+    "pow_challenge",
+}
+
 
 def _check_constraint_sql(table_name: str, column: str) -> str:
     table = metadata.tables[table_name]
@@ -51,8 +62,11 @@ def _check_constraint_sql(table_name: str, column: str) -> str:
 
 
 def test_all_fifteen_domain_tables_present() -> None:
-    assert set(metadata.tables.keys()) == EXPECTED_TABLES
+    assert EXPECTED_TABLES <= set(metadata.tables.keys())
     assert len(EXPECTED_TABLES) == 15
+    # Strictly bound the full metadata: the 15 domain entities plus exactly the
+    # five S2 abuse-control tables, and nothing else.
+    assert set(metadata.tables.keys()) == EXPECTED_TABLES | ABUSE_TABLES
 
 
 def test_mappers_configure_cleanly() -> None:

@@ -38,6 +38,10 @@ services:
       # takes the deterministic path; no credential values are mounted (only the
       # non-secret example file, read-only).
       LLM_CONFIG_PATH: ${LLM_CONFIG_PATH:-/app/config/llm-providers.yaml}
+      # Server secret for the abuse layer (F007 slice 2): keys the HMAC IP hash
+      # and signs proof-of-work challenges. The default is a NON-SECRET local
+      # development value and MUST be overridden in any deployed environment.
+      ABUSE_SECRET: ${ABUSE_SECRET:-dev-abuse-secret-change-me} # pragma: allowlist secret
     volumes:
       - ./config/examples/llm-providers.example.yaml:/app/config/llm-providers.yaml:ro
     ports:

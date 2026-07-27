@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import pytest
+from app.adviser.abuse import InMemoryAbuseStore
 from app.db import get_session
 from app.main import app
 from fastapi.testclient import TestClient
@@ -60,6 +61,10 @@ def _pool():
 def client(monkeypatch):
     # No DB: stub the session dependency and the catalogue read with a synthetic pool.
     monkeypatch.setattr("app.adviser.router.gather_candidates", lambda _session: _pool())
+    # Abuse enforcement needs a store; inject a single in-memory instance so
+    # per-IP counters accumulate across requests within a test (no database).
+    store = InMemoryAbuseStore()
+    monkeypatch.setattr("app.adviser.router.get_abuse_store", lambda: store)
     app.dependency_overrides[get_session] = lambda: None
     try:
         yield TestClient(app)

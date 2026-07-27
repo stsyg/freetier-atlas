@@ -11,6 +11,7 @@ enabled fake provider surfaces llm_used/consent correctly.
 from __future__ import annotations
 
 import pytest
+from app.adviser.abuse import InMemoryAbuseStore
 from app.adviser.llm.fake import FakeInterpreter
 from app.adviser.llm.protocol import ProviderTier
 from app.adviser.llm.routing import RegisteredProvider
@@ -20,6 +21,14 @@ from app.main import app
 from fastapi.testclient import TestClient
 
 from tests.unit.test_adviser_router import _pool
+
+#: Limits granting a small AI budget (and no proof-of-work) so the injected-fake
+#: provider tests can exercise the LLM path under the S2 abuse enforcement. The
+#: default limits ship ``ai_requests_per_ip_per_day=0``, which now correctly
+#: forces the deterministic path.
+_AI_LIMITS = DEFAULT_LIMITS.model_copy(
+    update={"ai_requests_per_ip_per_day": 3, "require_captcha": False}
+)
 
 _CANDIDATE = {
     "requirements": [
@@ -36,6 +45,8 @@ def client(monkeypatch):
     monkeypatch.setattr("app.adviser.router.gather_candidates", lambda _session: _pool())
     monkeypatch.setattr("app.adviser.router.get_limits", lambda: DEFAULT_LIMITS)
     monkeypatch.setattr("app.adviser.router.get_registry", lambda: ())
+    store = InMemoryAbuseStore()
+    monkeypatch.setattr("app.adviser.router.get_abuse_store", lambda: store)
     app.dependency_overrides[get_session] = lambda: None
     try:
         yield TestClient(app)
@@ -126,8 +137,9 @@ def test_enabled_fake_provider_surfaces_llm_used(monkeypatch) -> None:
         "ollama", ProviderTier.LOCAL, FakeInterpreter(candidate=_CANDIDATE), False
     )
     monkeypatch.setattr("app.adviser.router.gather_candidates", lambda _s: _pool())
-    monkeypatch.setattr("app.adviser.router.get_limits", lambda: DEFAULT_LIMITS)
+    monkeypatch.setattr("app.adviser.router.get_limits", lambda: _AI_LIMITS)
     monkeypatch.setattr("app.adviser.router.get_registry", lambda: (fake,))
+    monkeypatch.setattr("app.adviser.router.get_abuse_store", lambda: InMemoryAbuseStore())
     app.dependency_overrides[get_session] = lambda: None
     try:
         c = TestClient(app)
@@ -150,8 +162,9 @@ def test_consent_gated_external_used_with_consent(monkeypatch) -> None:
         "gemini", ProviderTier.FREE_HOSTED, FakeInterpreter(candidate=_CANDIDATE), True
     )
     monkeypatch.setattr("app.adviser.router.gather_candidates", lambda _s: _pool())
-    monkeypatch.setattr("app.adviser.router.get_limits", lambda: DEFAULT_LIMITS)
+    monkeypatch.setattr("app.adviser.router.get_limits", lambda: _AI_LIMITS)
     monkeypatch.setattr("app.adviser.router.get_registry", lambda: (fake,))
+    monkeypatch.setattr("app.adviser.router.get_abuse_store", lambda: InMemoryAbuseStore())
     app.dependency_overrides[get_session] = lambda: None
     try:
         c = TestClient(app)
