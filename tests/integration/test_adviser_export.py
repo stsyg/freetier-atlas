@@ -8,6 +8,7 @@ probe proving no DB row is written by a generation call.
 from __future__ import annotations
 
 import pytest
+from app.adviser.abuse import InMemoryAbuseStore
 from app.adviser.export import ALLOWED_PATHS, scan_secrets
 from app.db import get_session
 from app.main import app
@@ -65,6 +66,8 @@ def _pool():
 @pytest.fixture
 def client(monkeypatch):
     monkeypatch.setattr("app.adviser.router.gather_candidates", lambda _session: _pool())
+    store = InMemoryAbuseStore()
+    monkeypatch.setattr("app.adviser.router.get_abuse_store", lambda: store)
     app.dependency_overrides[get_session] = lambda: None
     try:
         yield TestClient(app)
