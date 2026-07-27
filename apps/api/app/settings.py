@@ -75,6 +75,50 @@ class Settings(BaseSettings):
     # The persisted switch is the admin-togglable source of truth (F007 slice 4).
     ai_kill_switch: bool = False
 
+    # ---- Private GitHub-OAuth admin (F007 slice 4) ---------------------- #
+    # Master switch for the admin surface. When off, the admin router still
+    # mounts but every endpoint returns 404-equivalent "disabled" so the feature
+    # can be dark-launched. Defaults on; a deployment without OAuth credentials
+    # configured is effectively unusable (login denies) but never crashes.
+    admin_enabled: bool = True
+
+    # GitHub OAuth *app* credentials. The client id is not secret; the client
+    # secret MUST come from the environment (``ADMIN_GITHUB_CLIENT_SECRET``) and
+    # is NEVER logged or audited. The empty defaults mean "not configured" --
+    # login then denies rather than attempting a broken exchange.
+    admin_github_client_id: str = ""
+    admin_github_client_secret: str = ""  # pragma: allowlist secret
+
+    # Server secret used ONLY to HMAC-sign the stateless admin session cookie and
+    # the per-session CSRF token (stdlib hmac; no session table, no JWT library).
+    # NON-SECRET local development default; MUST be overridden with a real random
+    # value (env ``ADMIN_COOKIE_SIGNING_KEY``) in any deployed environment.
+    admin_cookie_signing_key: str = (
+        "local-dev-admin-signing-key-not-for-production"  # pragma: allowlist secret
+    )
+
+    # Comma-separated GitHub logins allowed to become admin. A successful GitHub
+    # auth for any login outside this allowlist is REJECTED and audited.
+    admin_allowlist: str = "stsyg"
+
+    # GitHub OAuth endpoints. Overridable so tests / self-hosted GitHub can point
+    # elsewhere; the real values are the public GitHub defaults. Tests inject a
+    # fake OAuth client and never touch these over the network.
+    admin_oauth_authorize_url: str = "https://github.com/login/oauth/authorize"
+    admin_oauth_token_url: str = "https://github.com/login/oauth/access_token"  # noqa: E501 # pragma: allowlist secret
+    admin_oauth_user_url: str = "https://api.github.com/user"
+
+    # Public base URL of the deployed app, used to build the OAuth redirect URI
+    # (``{admin_base_url}/api/admin/callback``). Non-secret local default.
+    admin_base_url: str = "http://localhost:8080"
+
+    # Cookie hardening. ``Secure`` defaults on; a local HTTP smoke can set
+    # ``ADMIN_COOKIE_SECURE=false`` so the browser will send the cookie back.
+    admin_cookie_secure: bool = True
+
+    # Signed-cookie / CSRF-token lifetime, in seconds (default 8 hours).
+    admin_session_ttl_seconds: int = 28_800
+
 
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:

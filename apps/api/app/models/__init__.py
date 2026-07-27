@@ -15,6 +15,7 @@ from .abuse import (
     RateLimitBucket,
     RequestDedupe,
 )
+from .admin import AdminAudit
 from .base import Base, alembic_include_object, domain_table_names
 from .domain import (
     Candidate,
@@ -42,6 +43,7 @@ __all__ = [
     "alembic_include_object",
     "domain_table_names",
     "AbuseFlag",
+    "AdminAudit",
     "CircuitBreaker",
     "PowChallenge",
     "RateLimitBucket",
