@@ -212,5 +212,95 @@
       "Docs-wording follow-up (CAVEAT B): reconcile 'tightest-headroom' prose with the code's 'largest headroom' selection; cosmetic, non-blocking."
     ],
     "recommendation": "Accept F006 as passing at commit 102cd4b1bbc9e5ee6ee85d60b3d7b03e1e6429db. All four acceptance steps and the global invariants are independently and adversarially verified at the required Level 2 on a live stack, with the deterministic-adviser guarantees (LLM-disabled determinism, exact-Decimal fail-closed quota math, classify-engine-reused Z0 safety, strict impossible ordering, Z1 confinement) proven directly. F006.passes set to true. This ledger change is committed on branch stsyg-stsyg-f006-fullepic-closeout for the orchestrator to open + merge (evaluator does not open or merge the PR)."
+  },
+  {
+    "schema_version": 1,
+    "feature_id": "F007",
+    "increment": "full-epic-close-out",
+    "evaluated_commit": "c6d509116bf60c040ab54efa3ce52fb9c8f6c68b",
+    "commit_sha_evaluated": "c6d509116bf60c040ab54efa3ce52fb9c8f6c68b",
+    "evaluator": "fresh independent Level 2 evaluator (Copilot CLI Chief)",
+    "evaluated_at": "2026-07-27T21:20:30Z",
+    "harness": {
+      "version": "2026-07-27.2",
+      "content_hash": "b48da61a779d798a",
+      "loaded_first": true
+    },
+    "required_evaluation_level": 2,
+    "evaluation_level": 2,
+    "disposition": "passed",
+    "overall_disposition": "passed",
+    "blocking_issues": [],
+    "summary": "Full-epic F007 (llm-download-admin) Level-2 close-out over merged main HEAD c6d509116bf60c040ab54efa3ce52fb9c8f6c68b (alembic head 0009_admin_audit). All four F007 slices present (S1 LLM-assisted NL intake + routing ladder + per-request ephemeral consent + deterministic fallback; S2 abuse controls: per-IP hashed-IP-only rate limit, AI kill switch, per-provider circuit breaker, request dedupe, self-hosted proof-of-work; S3 browser ZIP export with fail-closed validators; S4 private GitHub-OAuth admin with stateless stdlib-hmac signed cookie, stsyg allowlist, CSRF, admin_audit) plus S5a negative-security regression corpus. Independently and adversarially re-verified against a LIVE PostgreSQL stack on alternate ports (isolated project ftatlas_f007closeout, fresh DB migrations 0001..0009, alembic head=0009) exercising ALL FOUR acceptance dimensions over BOTH direct :8010 AND the nginx /api proxy :8090. Offline gates green (test.ps1: pytest 868 passed / 63 skipped, web Vitest 103, Vite build ok; check.ps1 -NodeAudit: 8/8). Constraints honoured: Q1 fake adapter only (4 real providers enabled:false, never networked) - forced-reason overrides reproduced via the offline real-app TestClient harness; N1 offline OAuth mock (never github.com); Q6 stateless signed cookie (no admin_session table); Q9 no new dependency/no Redis; migrations linear 0008->0009. F007 flipped to passes:true.",
+    "acceptance_steps": [
+      {
+        "step": 1,
+        "name": "model_consent_failure_quota_exhaustion_deterministic_fallback",
+        "acceptance_step": "Test model consent, failure, quota exhaustion, and deterministic fallback.",
+        "passed": true,
+        "evidence": [
+          "Live step-1 probe 22/22 PASS on BOTH direct :8010 and nginx /api :8090. Per-request ephemeral consent: /adviser/recommend/assisted returns consent.external_processing_used=false even when external processing is requested, because the live provider registry is intentionally empty (Q1).",
+          "Assisted graceful-degrade to deterministic: routing.llm_used=false, routing.tier=deterministic_parser, interpreted=true, and the returned recommendation is BYTE-IDENTICAL to POST /adviser/recommend on the same interpretation; gibberish -> interpreted=false, recommendation=null.",
+          "Failure/abuse behaviour provable over live HTTP: deterministic rate limit returns HTTP 429 with a Retry-After header at the documented per-IP/day threshold (realistic no-spoof proxy path 429s at request #11); request dedupe collapses identical bodies within the window; input negatives GET->405, url-in-description->422, oversized->422.",
+          "Forced-reason overrides (ai_kill_switch, ai_quota_exhausted, pow_required, circuit_open) - which surface only when >=1 provider is enabled - reproduced via the offline real-app TestClient (fake adapter) harness: tests/unit/test_abuse_endpoints.py 9/9 PASS (Q1 posture adjudicated ADEQUATE; reproduced without networking a provider)."
+        ]
+      },
+      {
+        "step": 2,
+        "name": "zip_validated_secret_free_not_persisted",
+        "acceptance_step": "Verify generated ZIPs are validated, secret-free, and not persisted server-side.",
+        "passed": true,
+        "evidence": [
+          "Live step-2 export probe 5/5 PASS on BOTH bases with a BYTE-IDENTICAL bundle SHA256 (fbffe5e6...) across direct and proxy, proving deterministic pure-function generation.",
+          "Validated + secret-free: manifest.validation reports 7/7 gates true (paths_safe, text_only, secret_scan_passed, compose_parsed, healthchecks_present, multi_arch, within_size_cap); the 4 emitted files (docker-compose.yml, .env.example, README.md, MANIFEST.json) contain placeholders only (.env.example APP_PORT=8080, no secrets).",
+          "NOT persisted server-side: worker+scheduler paused to still job-queue churn, then FS file-count (in the api container) and ALL 25 DB tables snapshotted immediately before and after 6 exports (3 direct + 3 proxy, distinct bodies). Result: FS unchanged 6614->6614; 23/25 DB tables unchanged; only abuse counters moved (rate_limit_bucket +6, request_dedupe +6) - i.e. the export path writes nothing to disk or catalogue/state tables. Worker/scheduler unpaused afterward."
+        ]
+      },
+      {
+        "step": 3,
+        "name": "only_allowlisted_github_admin",
+        "acceptance_step": "Verify only the allowlisted GitHub administrator can use admin functions.",
+        "passed": true,
+        "evidence": [
+          "Live step-3 admin probe 20/20 PASS on BOTH direct :8010 and nginx /api :8090, driven through an OFFLINE OAuth mock on host:8099 (never github.com; N1 posture). GET /admin/login -> 302 with a signed admin_oauth_state cookie + redirect to the authorize_url.",
+          "Allowlisted stsyg accepted: /admin/callback exchanges the code via the mock, is_allowlisted -> issues a stateless stdlib-hmac signed admin_session cookie (302 to /admin). All FOUR admin functions usable: kill-switch toggle (GET+POST-with-CSRF), review queue over review_item (GET + POST action), source-health (GET), config-diff (POST valid -> valid:true; invalid YAML -> 200 valid:false + problems, fail-closed).",
+          "Non-allowlisted rejected: mallory (valid GitHub identity via mock, not on the stsyg allowlist) -> 403 not_allowlisted, no admin_session issued, cannot reach any admin function."
+        ]
+      },
+      {
+        "step": 4,
+        "name": "negative_security_and_audit",
+        "acceptance_step": "Exercise negative security and audit scenarios.",
+        "passed": true,
+        "evidence": [
+          "Admin negative-security matrix PASS on BOTH bases: missing cookie -> 401 unauthenticated; tampered/forged signed cookie -> 401 invalid_cookie; missing/bad CSRF token on state-changing POST -> 403; mismatched OAuth state -> 401; missing code -> 400.",
+          "admin_audit no-secret-leak: dumped all 28 audit rows and regex-scanned for credential/token/cookie/code material (acctok-, code-*, ghp_, Bearer, Authorization, admin_session=, signing_key, client_secret, password, any 64-hex) -> 0 LEAK HITS. Contexts hold only benign metadata (method, enabled flag, valid/target); the mallory denial is audited with actor=mallory, reason=not_allowlisted and NO code/token. Audit content matches the exercised probes exactly (login success/not_allowlisted/invalid_state/missing_code; session_view invalid_cookie/unauthenticated; kill_switch success + invalid_csrf denial; config_diff success).",
+          "Negative-security regression corpus tests/security/ independently re-run -> 140 passed (previously verified load-bearing via a mutation probe by the S5a evaluator)."
+        ]
+      }
+    ],
+    "global_invariants": {
+      "offer_version_immutability": "Live raw-SQL UPDATE and DELETE of an inserted offer_version BOTH rejected by trg_offer_version_immutable with 'offer_version rows are immutable (append-only)'; trigger definition is BEFORE DELETE OR UPDATE FOR EACH ROW; probes rolled back (DB pristine).",
+      "separation_triggers_0006": "trg_candidate_official_source and trg_evidence_official_candidate both present and enabled (tgenabled='O').",
+      "hashed_ip_only": "The only IP-bearing columns in the schema are rate_limit_bucket.ip_hash and pow_challenge.ip_hash, all sampled values 64-hex; no raw/dotted IP stored anywhere.",
+      "no_llm_to_publication": "The assisted/LLM path is read-only (interpret + recommend); the not-persisted probe confirmed it writes nothing to catalogue/publication tables - no LLM-to-publication path exists."
+    },
+    "command_results": {
+      "offline_test_ps1": "pytest 868 passed / 63 skipped; web Vitest 103; Vite build OK (exit 0).",
+      "offline_check_ps1_nodeaudit": "8/8 gates green (exit 0).",
+      "offline_forced_reason_tests": "tests/unit/test_abuse_endpoints.py 9/9 PASS.",
+      "offline_security_corpus": "tests/security/ 140 passed.",
+      "live_stack": "isolated project ftatlas_f007closeout, alt ports 55432/8010/8090, fresh DB migrations 0001..0009 (alembic head=0009); stack-smoke 17/17 PASS.",
+      "step1_probe": "22/22 PASS on direct :8010 and nginx /api :8090.",
+      "step2_probe": "5/5 PASS on both bases, byte-identical SHA256; not-persisted FS 6614->6614, 23/25 tables unchanged.",
+      "step3_step4_admin_probe": "20/20 PASS on both bases; audit-leak scan 28 rows / 0 hits."
+    },
+    "attestations": [
+      "Did NOT open or merge any PR (orchestrator does that).",
+      "Changed AGENT-STATE ONLY: agent-state/feature_list.json (F007 three mutable fields), agent-state/evaluation.json (appended this record; F005 + F006 records preserved byte-for-byte), agent-state/progress.md (appended close-out handoff). No source/tests/migrations touched.",
+      "Live stack torn down with down --volumes; stray probe containers removed; OAuth mock stopped; git left clean apart from the committed ledger change.",
+      "Real LLM providers and real GitHub OAuth/CAPTCHA never networked; used the fake adapter + offline OAuth mock per the Q1/N1 posture."
+    ],
+    "recommendation": "Accept F007 as passing at commit c6d509116bf60c040ab54efa3ce52fb9c8f6c68b. All four acceptance steps (model consent/failure/quota-exhaustion/deterministic-fallback; ZIP validated/secret-free/not-persisted; allowlisted-only GitHub admin; negative-security + audit) plus the global invariants are independently and adversarially verified at the required Level 2 over BOTH direct API and nginx bases on a live stack, honouring the documented Q1/N1/Q6/Q9 posture as constraints. F007.passes set to true. This agent-state-only ledger change is committed on branch stsyg-stsyg-f007-fullepic-closeout for the orchestrator to open + merge (evaluator does not open or merge the PR)."
   }
 ]
