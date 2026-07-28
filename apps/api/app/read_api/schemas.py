@@ -292,17 +292,32 @@ class SearchResponse(BaseModel):
 
 
 class ProviderCoverage(BaseModel):
-    """One provider's coverage of a single canonical category.
+    """One provider's coverage of a single canonical category (F008 slice S2).
 
-    ``state`` is a closed, deterministic set derived strictly from published
-    offers: ``verified_free`` (>=1 published Z0_TRUE_FREE offer), ``no_free_tier``
-    (published offers exist but none are Z0_TRUE_FREE), or ``not_offered`` (no
-    published service in that category). Nothing is guessed.
+    Three fields carry the state, and they mean different things:
+
+    * ``declared_state`` -- what a human declared in the provider config, with a
+      rationale and/or provenance. ``None`` when the pair has no declaration.
+    * ``derived_state`` -- what the *published* catalogue supports right now,
+      recomputed on every request and never stored (decision Q11). It is never
+      ``not_offered``: an empty catalogue means "not verified", not "not
+      offered".
+    * ``state`` -- what to display: ``unknown`` when undeclared, ``conflicting``
+      when the declaration and the derivation materially disagree, otherwise the
+      declaration. The other two fields stay visible so nothing is hidden.
+
+    A zero published-offer count therefore never produces ``not_offered``;
+    ``not_offered`` only ever arrives as an explicit, reasoned declaration.
     """
 
     provider_slug: str
     provider_name: str
     state: str
+    declared_state: str | None = None
+    derived_state: str = "unknown"
+    mismatch: bool = False
+    rationale: str | None = None
+    evidence_url: str | None = None
     published_offer_count: int = 0
     free_offer_count: int = 0
 

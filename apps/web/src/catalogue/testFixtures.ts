@@ -396,10 +396,15 @@ const CANONICAL_CATEGORIES: { slug: string; name: string }[] = [
 
 /**
  * Build the coverage matrix from the synthetic search index so the matrix,
- * search, and compare fixtures stay internally consistent. Coverage `state` is
+ * search, and compare fixtures stay internally consistent.
+ *
+ * `derived_state` mirrors what the API computes from published offers:
  * "verified_free" when a provider has a truly-free offer in the category,
- * "no_free_tier" when it has published offers but none truly free, and
- * "not_offered" otherwise.
+ * "offered_no_z0" when it has published offers but none truly free, and
+ * "unknown" otherwise. It is NEVER "not_offered" — an empty catalogue means
+ * nobody has verified the pair, not that the provider declined to offer it.
+ * The declaration is left absent for the no-offer case so the displayed `state`
+ * falls back to "unknown".
  */
 export const categoryMatrix: CategoryMatrixResponse = {
   provider_slugs: providerList.map((p) => p.slug),
@@ -412,12 +417,17 @@ export const categoryMatrix: CategoryMatrixResponse = {
         (o) => o.provider_slug === p.slug && o.category?.slug === category.slug,
       );
       const free = offers.filter((o) => o.zero_cost_class === "Z0_TRUE_FREE");
-      const state =
-        offers.length === 0 ? "not_offered" : free.length > 0 ? "verified_free" : "no_free_tier";
+      const derived =
+        offers.length === 0 ? "unknown" : free.length > 0 ? "verified_free" : "offered_no_z0";
       return {
         provider_slug: p.slug,
         provider_name: p.name,
-        state,
+        state: derived,
+        declared_state: derived === "unknown" ? null : derived,
+        derived_state: derived,
+        mismatch: false,
+        rationale: null,
+        evidence_url: null,
         published_offer_count: offers.length,
         free_offer_count: free.length,
       };
@@ -431,6 +441,118 @@ export const categoryMatrix: CategoryMatrixResponse = {
       free_offer_count: 0,
     },
   ],
+};
+
+/**
+ * A one-row matrix that exercises every one of the seven coverage states plus
+ * the "API returned no entry for this provider" case, so the renderer is pinned
+ * against silently collapsing states together.
+ */
+export const allCoverageStatesMatrix: CategoryMatrixResponse = {
+  provider_slugs: [
+    "p-verified-free",
+    "p-offered-no-z0",
+    "p-incomplete",
+    "p-stale",
+    "p-conflicting",
+    "p-not-offered",
+    "p-unknown",
+    "p-absent",
+  ],
+  categories: [
+    {
+      ordinal: 1,
+      slug: "compute-vms",
+      name: "Compute & VMs",
+      providers: [
+        {
+          provider_slug: "p-verified-free",
+          provider_name: "Verified Free Co",
+          state: "verified_free",
+          declared_state: "verified_free",
+          derived_state: "verified_free",
+          mismatch: false,
+          rationale: null,
+          evidence_url: "https://example.invalid/free",
+          published_offer_count: 2,
+          free_offer_count: 1,
+        },
+        {
+          provider_slug: "p-offered-no-z0",
+          provider_name: "Paid Only Co",
+          state: "offered_no_z0",
+          declared_state: "offered_no_z0",
+          derived_state: "offered_no_z0",
+          mismatch: false,
+          rationale: null,
+          evidence_url: "https://example.invalid/pricing",
+          published_offer_count: 3,
+          free_offer_count: 0,
+        },
+        {
+          provider_slug: "p-incomplete",
+          provider_name: "Incomplete Co",
+          state: "incomplete",
+          declared_state: "incomplete",
+          derived_state: "incomplete",
+          mismatch: false,
+          rationale: null,
+          evidence_url: null,
+          published_offer_count: 1,
+          free_offer_count: 0,
+        },
+        {
+          provider_slug: "p-stale",
+          provider_name: "Stale Co",
+          state: "stale",
+          declared_state: "stale",
+          derived_state: "stale",
+          mismatch: false,
+          rationale: null,
+          evidence_url: null,
+          published_offer_count: 1,
+          free_offer_count: 1,
+        },
+        {
+          provider_slug: "p-conflicting",
+          provider_name: "Conflicting Co",
+          state: "conflicting",
+          declared_state: "unknown",
+          derived_state: "verified_free",
+          mismatch: true,
+          rationale: null,
+          evidence_url: null,
+          published_offer_count: 1,
+          free_offer_count: 1,
+        },
+        {
+          provider_slug: "p-not-offered",
+          provider_name: "Declines Co",
+          state: "not_offered",
+          declared_state: "not_offered",
+          derived_state: "unknown",
+          mismatch: false,
+          rationale: "Declines Co publishes no compute product line.",
+          evidence_url: null,
+          published_offer_count: 0,
+          free_offer_count: 0,
+        },
+        {
+          provider_slug: "p-unknown",
+          provider_name: "Unchecked Co",
+          state: "unknown",
+          declared_state: "unknown",
+          derived_state: "unknown",
+          mismatch: false,
+          rationale: null,
+          evidence_url: null,
+          published_offer_count: 0,
+          free_offer_count: 0,
+        },
+      ],
+    },
+  ],
+  uncategorized: [],
 };
 
 /** Compare fixtures keyed by offer id (GET /catalogue/compare?offers=...). */

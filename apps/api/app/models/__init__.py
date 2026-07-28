@@ -1,6 +1,6 @@
 """FreeTier Atlas domain model package (F003 task 004).
 
-Exposes the declarative :class:`Base` (and its metadata) plus the 13 catalogue /
+Exposes the declarative :class:`Base` (and its metadata) plus the catalogue /
 evidence entities. Importing this package has no side effects and requires no
 database connection, so it is safe to import from Alembic's ``env.py`` and from
 offline unit tests.
@@ -26,6 +26,7 @@ from .domain import (
     Offer,
     OfferVersion,
     Provider,
+    ProviderCategoryCoverage,
     Quota,
     RegionAvailability,
     ReviewItem,
@@ -56,6 +57,7 @@ __all__ = [
     "Offer",
     "OfferVersion",
     "Provider",
+    "ProviderCategoryCoverage",
     "Quota",
     "RegionAvailability",
     "ReviewItem",

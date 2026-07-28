@@ -16,7 +16,7 @@ still rejected.
 from __future__ import annotations
 
 import re
-from typing import Annotated, Literal, Self
+from typing import Annotated, Literal, Self, get_args
 
 from pydantic import (
     BaseModel,
@@ -27,6 +27,7 @@ from pydantic import (
     model_validator,
 )
 
+from app.models.vocab import COVERAGE_STATES, EVIDENCE_BACKED_COVERAGE_STATES
 from app.read_api.taxonomy import canonical_slugs, is_canonical_slug
 
 # An environment-variable *name* reference (e.g. ``GEMINI_API_KEY``). Holds a
@@ -35,6 +36,29 @@ EnvVarName = Annotated[str, StringConstraints(pattern=r"^[A-Z][A-Z0-9_]*$")]
 
 # A lowercase identifier slug (e.g. ``cloudflare-pages-limits``).
 Slug = Annotated[str, StringConstraints(pattern=r"^[a-z0-9][a-z0-9_-]*$")]
+
+# Authoritative provider x category coverage states (F008 slice S2). Kept in
+# lockstep with ``app.models.vocab.COVERAGE_STATES`` -- the same closed set the
+# database CHECK enforces -- by the assertion below.
+CoverageState = Literal[
+    "verified_free",
+    "offered_no_z0",
+    "not_offered",
+    "incomplete",
+    "stale",
+    "conflicting",
+    "unknown",
+]
+
+assert set(get_args(CoverageState)) == set(COVERAGE_STATES), (
+    "CoverageState literal has drifted from app.models.vocab.COVERAGE_STATES"
+)
+
+#: Q9-A floor: a provider file must carry at least this many evidence-backed
+#: ``verified_free`` / ``offered_no_z0`` declarations. A provider whose whole
+#: coverage block is ``unknown`` is not a catalogue entry, it is a placeholder,
+#: and it must be UNLOADABLE rather than quietly shipped as an empty row.
+MIN_EVIDENCE_BACKED_COVERAGE = 3
 
 # Authoritative zero-cost classes (docs/DATA_MODEL.md).
 ZeroCostClass = Literal[
@@ -206,10 +230,39 @@ class PublishingSection(_Base):
         return self
 
 
+class CoverageDeclaration(_Base):
+    """One provider's declared state for one canonical category (F008 slice S2).
+
+    Every provider file must declare all fourteen canonical categories, so the
+    catalogue never has to infer coverage from missing data. The honesty rules
+    below mirror the database CHECK constraints on
+    ``provider_category_coverage`` exactly, so a bad declaration fails at config
+    load rather than at ``INSERT``.
+    """
+
+    state: CoverageState
+    #: Required when ``state`` is ``not_offered``: asserting that a provider does
+    #: not offer a category is a claim, so it must say why.
+    rationale: str | None = None
+    #: Id of a source declared in this same file.
+    source: Slug | None = None
+    evidence_url: str | None = None
+
+    @property
+    def has_provenance(self) -> bool:
+        return bool(self.source) or bool((self.evidence_url or "").strip())
+
+
 class ProviderConfig(_Base):
     provider: ProviderSection
     sources: list[Source] = Field(min_length=1)
     publishing: PublishingSection
+
+    #: Explicit provider x category coverage (F008 slice S2). **Mandatory**, and
+    #: must contain exactly the fourteen canonical slugs: an omission is an
+    #: error rather than an implicit ``unknown``, because the whole point of the
+    #: slice is that every pair carries a deliberate, reviewable declaration.
+    coverage: dict[str, CoverageDeclaration]
 
     #: Declared service -> canonical category mapping (F008 slice S1).
     #:
@@ -243,6 +296,85 @@ class ProviderConfig(_Base):
                     f"Valid slugs (apps/api/app/read_api/taxonomy.py): "
                     f"{', '.join(canonical_slugs())}"
                 )
+        return self
+
+    @model_validator(mode="after")
+    def _check_coverage(self) -> Self:
+        """Exactly the fourteen canonical slugs, each obeying the honesty rules."""
+
+        expected = set(canonical_slugs())
+        declared = set(self.coverage)
+
+        missing = sorted(expected - declared)
+        if missing:
+            raise ValueError(
+                f"provider {self.provider.id!r}: coverage is missing "
+                f"{len(missing)} of the fourteen canonical categories: "
+                f"{', '.join(missing)}. Every provider x category pair needs an "
+                "explicit state (use 'unknown' where nothing has been verified) "
+                "so the catalogue never has to guess."
+            )
+        unknown_slugs = sorted(declared - expected)
+        if unknown_slugs:
+            raise ValueError(
+                f"provider {self.provider.id!r}: coverage declares "
+                f"{len(unknown_slugs)} slug(s) that are not part of the canonical "
+                f"taxonomy: {', '.join(unknown_slugs)}. Valid slugs "
+                f"(apps/api/app/read_api/taxonomy.py): {', '.join(canonical_slugs())}"
+            )
+
+        source_ids = {source.id for source in self.sources}
+        for slug in sorted(declared):
+            entry = self.coverage[slug]
+            if entry.state == "not_offered" and not (entry.rationale or "").strip():
+                raise ValueError(
+                    f"provider {self.provider.id!r}: coverage[{slug!r}] declares "
+                    "'not_offered' without a 'rationale'. Asserting that a provider "
+                    "does not offer a category is a claim and must state why; use "
+                    "'unknown' if it simply has not been checked."
+                )
+            if entry.state in EVIDENCE_BACKED_COVERAGE_STATES and not entry.has_provenance:
+                raise ValueError(
+                    f"provider {self.provider.id!r}: coverage[{slug!r}] declares "
+                    f"{entry.state!r} without provenance. A claim that an offer "
+                    "exists requires a 'source' (declared in this file) or an "
+                    "'evidence_url'."
+                )
+            if entry.source is not None and entry.source not in source_ids:
+                raise ValueError(
+                    f"provider {self.provider.id!r}: coverage[{slug!r}] references "
+                    f"source {entry.source!r}, which is not declared in this file. "
+                    f"Declared sources: {', '.join(sorted(source_ids))}"
+                )
+        return self
+
+    @model_validator(mode="after")
+    def validate_coverage_floor(self) -> Self:
+        """Q9-A: reject a provider file with too little evidence-backed coverage.
+
+        At least :data:`MIN_EVIDENCE_BACKED_COVERAGE` entries must declare
+        ``verified_free`` or ``offered_no_z0`` **and** carry a source or an
+        evidence URL. This makes an all-``unknown`` provider file a hard load
+        failure rather than a warning: a provider nobody has verified anything
+        about must not be able to appear in the catalogue at all.
+        """
+
+        backed = sorted(
+            slug
+            for slug, entry in self.coverage.items()
+            if entry.state in EVIDENCE_BACKED_COVERAGE_STATES and entry.has_provenance
+        )
+        if len(backed) < MIN_EVIDENCE_BACKED_COVERAGE:
+            shortfall = MIN_EVIDENCE_BACKED_COVERAGE - len(backed)
+            found = ", ".join(backed) if backed else "none"
+            raise ValueError(
+                f"provider {self.provider.id!r}: coverage declares only "
+                f"{len(backed)} evidence-backed "
+                f"{'/'.join(EVIDENCE_BACKED_COVERAGE_STATES)} categories "
+                f"(found: {found}); at least {MIN_EVIDENCE_BACKED_COVERAGE} are "
+                f"required -- {shortfall} more needed. A provider with no verified "
+                "coverage is a placeholder, not a catalogue entry."
+            )
         return self
 
 

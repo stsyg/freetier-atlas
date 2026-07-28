@@ -5,11 +5,13 @@ import { ResultsList } from "./ResultsList";
 import { CategoryMatrix } from "./CategoryMatrix";
 import { CompareView } from "./CompareView";
 import {
+  allCoverageStatesMatrix,
   categoryMatrix,
   compareOffers,
   providerList,
   searchIndex,
 } from "./testFixtures";
+import { COVERAGE_MEANINGS, COVERAGE_STATE_ORDER } from "./vocab";
 import type { CompareResponse, SearchResponse } from "../api";
 
 afterEach(() => {
@@ -206,8 +208,91 @@ describe("CategoryMatrix", () => {
     const verified = badges.find((b) => b.getAttribute("data-state") === "verified_free")!;
     expect(verified).toHaveTextContent(/verified free/i);
     expect(within(verified).getByText("✓")).toHaveAttribute("aria-hidden", "true");
-    const notOffered = badges.find((b) => b.getAttribute("data-state") === "not_offered")!;
-    expect(notOffered).toHaveTextContent(/not offered/i);
+    const unknown = badges.find((b) => b.getAttribute("data-state") === "unknown")!;
+    expect(unknown).toHaveTextContent(/unknown/i);
+  });
+
+  it("never renders not_offered for a pair with no published offers", () => {
+    render(<CategoryMatrix data={categoryMatrix} />);
+    const badges = screen.getAllByTestId("coverage-badge");
+    const empty = badges.filter((b) => b.getAttribute("data-derived-state") === "unknown");
+    expect(empty.length).toBeGreaterThan(0);
+    for (const badge of empty) {
+      expect(badge.getAttribute("data-state")).not.toBe("not_offered");
+      expect(badge).not.toHaveTextContent(/not offered/i);
+    }
+  });
+
+  it("renders a distinct badge for every one of the seven coverage states", () => {
+    render(<CategoryMatrix data={allCoverageStatesMatrix} />);
+    const badges = screen.getAllByTestId("coverage-badge");
+    const seen = new Map<string, string>();
+    for (const badge of badges) {
+      seen.set(badge.getAttribute("data-state")!, badge.textContent ?? "");
+    }
+    for (const state of COVERAGE_STATE_ORDER) {
+      expect(seen.has(state)).toBe(true);
+    }
+    // Labels must be distinct so the states are never collapsed visually.
+    expect(new Set(seen.values()).size).toBe(COVERAGE_STATE_ORDER.length);
+  });
+
+  it("distinguishes a declared not_offered from an unverified unknown", () => {
+    render(<CategoryMatrix data={allCoverageStatesMatrix} />);
+    const badges = screen.getAllByTestId("coverage-badge");
+    const declined = badges.find((b) => b.getAttribute("data-state") === "not_offered")!;
+    const unknown = badges.find((b) => b.getAttribute("data-state") === "unknown")!;
+    expect(declined).toHaveTextContent(/not offered/i);
+    expect(unknown).toHaveTextContent(/unknown/i);
+    expect(declined.textContent).not.toBe(unknown.textContent);
+    expect(declined.className).not.toBe(unknown.className);
+    // The declared reason travels with the claim.
+    expect(declined.getAttribute("title")).toMatch(/publishes no compute product line/i);
+  });
+
+  it("falls back to unknown (not not_offered) when the API omits a provider entry", () => {
+    render(<CategoryMatrix data={allCoverageStatesMatrix} />);
+    const row = screen.getAllByTestId("matrix-row")[0];
+    const absent = within(row)
+      .getAllByTestId("coverage-badge")
+      .find((b) => b.getAttribute("data-declared-state") === "");
+    expect(absent).toBeDefined();
+    expect(absent!.getAttribute("data-state")).toBe("unknown");
+  });
+
+  it("surfaces a declared-vs-derived mismatch in the cell", () => {
+    render(<CategoryMatrix data={allCoverageStatesMatrix} />);
+    const conflicting = screen
+      .getAllByTestId("coverage-badge")
+      .find((b) => b.getAttribute("data-mismatch") === "true")!;
+    expect(conflicting.getAttribute("data-state")).toBe("conflicting");
+    expect(conflicting.getAttribute("title")).toMatch(/declared "unknown"/i);
+    expect(conflicting.getAttribute("title")).toMatch(/verified_free/i);
+  });
+
+  it("renders an accessible legend explaining all seven states", () => {
+    render(<CategoryMatrix data={categoryMatrix} />);
+    const legend = screen.getByTestId("coverage-legend");
+    expect(within(legend).getByRole("heading", { name: /what the states mean/i })).toBeInTheDocument();
+    for (const state of COVERAGE_STATE_ORDER) {
+      const item = legend.querySelector(`[data-legend-state="${state}"]`);
+      expect(item).not.toBeNull();
+      expect(item!.textContent).toContain(COVERAGE_MEANINGS[state].label);
+      expect(item!.textContent).toContain(COVERAGE_MEANINGS[state].description);
+    }
+    expect(legend.querySelectorAll("[data-legend-state]")).toHaveLength(7);
+  });
+
+  it("labels every cell for the stacked narrow-viewport layout", () => {
+    render(<CategoryMatrix data={categoryMatrix} />);
+    const row = screen.getAllByTestId("matrix-row")[0];
+    const cells = row.querySelectorAll("td");
+    expect(cells.length).toBeGreaterThan(0);
+    for (const cell of Array.from(cells)) {
+      // The stacked layout renders this via `td::before { content: attr(data-label) }`,
+      // so the provider name stays visible without a horizontal scroll.
+      expect(cell.getAttribute("data-label")).toBeTruthy();
+    }
   });
 
   it("surfaces uncategorized published offers honestly", () => {

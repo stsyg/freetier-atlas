@@ -28,6 +28,7 @@ from pathlib import Path
 import pytest
 from alembic import command
 from alembic.config import Config
+from alembic.script import ScriptDirectory
 from app.models.domain import Provider, Service
 from app.read_api.taxonomy import CATEGORY_TAXONOMY, canonical_slugs
 from sqlalchemy import create_engine, text
@@ -76,12 +77,21 @@ def _alembic_heads(engine: Engine) -> set[str]:
         return set(conn.execute(text("SELECT version_num FROM alembic_version")).scalars())
 
 
+def _applied_revisions() -> set[str]:
+    """Every revision from the base up to the current script head."""
+    script = ScriptDirectory.from_config(_alembic_config())
+    return {rev.revision for rev in script.walk_revisions()}
+
+
 # --- (a) upgrade seeds exactly the canonical fourteen -----------------------
 
 
 @skip_without_db
 def test_upgrade_head_seeds_exactly_the_canonical_categories(engine: Engine) -> None:
-    assert SEED_REVISION in _alembic_heads(engine)
+    # The seed revision need not BE the head (later slices stack on top of it);
+    # what matters is that it has been applied and its effect is intact.
+    assert _applied_revisions() >= {SEED_REVISION}
+    assert len(_alembic_heads(engine)) == 1, "the migration graph must have a single head"
 
     expected = set(canonical_slugs())
     assert len(expected) == 14

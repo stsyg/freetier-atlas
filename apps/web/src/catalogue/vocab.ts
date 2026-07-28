@@ -55,20 +55,78 @@ export const COMMERCIAL_USE_OPTIONS: Option[] = [
  * Coverage-state meaning for the category matrix. The `state` string is produced
  * by the API (never re-derived here); this maps it to a label, a colour tone
  * (paired with the label + an icon, never colour-only), and an icon glyph.
+ *
+ * All seven states in `apps/api/app/models/vocab.py::COVERAGE_STATES` are
+ * mapped. `not_offered` and `unknown` are deliberately distinct: "the provider
+ * does not offer this" is a declared claim with a stated reason, whereas
+ * "unknown" means nobody has checked. Collapsing them would re-introduce exactly
+ * the guess F008 removed.
  */
 export interface CoverageMeaning {
   label: string;
   tone: "free" | "warn" | "info" | "unknown";
   icon: string;
+  /** Plain-language explanation, surfaced in the legend and cell tooltips. */
+  description: string;
 }
 
-const COVERAGE_MEANINGS: Record<string, CoverageMeaning> = {
-  verified_free: { label: "Verified free", tone: "free", icon: "✓" },
-  no_free_tier: { label: "No free tier", tone: "warn", icon: "✕" },
-  not_offered: { label: "Not offered", tone: "unknown", icon: "–" },
+export const COVERAGE_MEANINGS: Record<string, CoverageMeaning> = {
+  verified_free: {
+    label: "Verified free",
+    tone: "free",
+    icon: "✓",
+    description: "An official source backs at least one truly free (Z0) offer here.",
+  },
+  offered_no_z0: {
+    label: "Offered, not free",
+    tone: "warn",
+    icon: "✕",
+    description: "The provider offers this category, but nothing in it is truly free.",
+  },
+  not_offered: {
+    label: "Not offered",
+    tone: "info",
+    icon: "–",
+    description: "The provider states it does not offer this category, with a reason.",
+  },
+  incomplete: {
+    label: "Incomplete",
+    tone: "warn",
+    icon: "◐",
+    description: "Something is published here, but the facts are not complete enough to classify.",
+  },
+  stale: {
+    label: "Stale",
+    tone: "warn",
+    icon: "⏳",
+    description: "The supporting evidence is past its refresh window and needs re-checking.",
+  },
+  conflicting: {
+    label: "Conflicting",
+    tone: "warn",
+    icon: "⚠",
+    description: "Sources or declarations disagree; a human review is pending.",
+  },
+  unknown: {
+    label: "Unknown",
+    tone: "unknown",
+    icon: "?",
+    description: "Nobody has verified this yet. Unknown is not the same as not offered.",
+  },
 };
 
-const COVERAGE_FALLBACK: CoverageMeaning = { label: "Unknown", tone: "unknown", icon: "?" };
+/** The seven states in taxonomy-independent display order (used by the legend). */
+export const COVERAGE_STATE_ORDER: string[] = [
+  "verified_free",
+  "offered_no_z0",
+  "incomplete",
+  "stale",
+  "conflicting",
+  "not_offered",
+  "unknown",
+];
+
+const COVERAGE_FALLBACK: CoverageMeaning = COVERAGE_MEANINGS.unknown;
 
 /** Map a coverage-state code onto its plain-language meaning (honest fallback). */
 export function coverageMeaning(state: string | null | undefined): CoverageMeaning {

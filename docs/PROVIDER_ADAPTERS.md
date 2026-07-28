@@ -98,7 +98,9 @@ A new provider needs:
 
 ### Category coverage declaration (item 4)
 
-Item 4 is **partly implemented**. A provider YAML may now declare `service_categories:`, a mapping
+Item 4 is **complete** as of F008 slice S2. It has two halves.
+
+**(a) Service → category mapping.** A provider YAML declares `service_categories:`, a mapping
 from a service's canonical name (exactly as it appears in the extracted candidate facts' `service`
 field) to one of the fourteen canonical category slugs in `apps/api/app/read_api/taxonomy.py`. An
 unknown slug fails config validation at load with an actionable error naming the provider, the
@@ -113,11 +115,49 @@ The mapping is applied in two places, both idempotent and both slug-keyed:
 
 An undeclared service stays uncategorised (`category_id IS NULL`) and is surfaced honestly in the
 `uncategorized` rollup. A category is **never inferred from a service name** — declare it with a
-rationale or leave it unknown.
+rationale or leave it unknown. The declaration is **withdrawable**: deleting a service's entry from
+`service_categories` reverts `service.category_id` to `NULL` on the next sync rather than leaving
+the old category in place.
 
-What is still missing: an explicit *coverage* declaration (this provider deliberately does not offer
-anything in category X, versus we simply have not ingested it yet). Until that lands, a category
-with no published offers for a provider cannot be distinguished from an un-ingested one.
+**(b) Explicit coverage declaration.** A provider YAML must carry a `coverage:` block keyed by
+category slug. It is **mandatory** and must contain **exactly the fourteen** canonical slugs — a
+missing slug fails validation with the missing slugs listed, an unknown slug fails with the valid
+list. Each entry is:
+
+```yaml
+coverage:
+  serverless-functions:
+    state: verified_free          # one of the seven COVERAGE_STATES
+    source: cloudflare-workers-limits    # a source id declared in the same file
+  compute-vms:
+    state: not_offered
+    rationale: >-                 # required for not_offered
+      Cloudflare publishes no general-purpose VM/IaaS product.
+```
+
+Validation mirrors the DB CHECK constraints, so a bad config fails at load rather than at INSERT:
+`not_offered` requires a non-empty `rationale`; `verified_free` / `offered_no_z0` require a `source`
+or an `evidence_url`; a named `source` must be declared in the same file.
+
+`ProviderConfig.validate_coverage_floor()` additionally enforces an **evidence floor** (decision
+Q9-A): at least **three** entries must be `verified_free` or `offered_no_z0` **and** carry a
+`source` or `evidence_url`. This makes an all-`unknown` provider YAML **unloadable** — a new
+provider slice cannot ship a declaration block that asserts nothing.
+
+`ingest.config_sync.sync_coverage()` upserts the block into `provider_category_coverage` on
+`(provider_id, category_id)`. It is idempotent, convergent (a changed state overwrites) and prunes
+rows for pairs the YAML no longer declares.
+
+Finally, a pair declared `unknown` or `not_offered` while the derivation from published evidence
+says `verified_free` / `offered_no_z0` is a **material contradiction**: it raises a pending
+`review_item` and is asserted against by the reusable helper in `tests/support/coverage.py`
+(`assert_no_coverage_contradictions()` for a DB session, `assert_declarations_match_signals()` for a
+DB-free unit test). **A provider slice that silently declares `unknown` over a real published offer
+fails its own tests.** Call it from your provider's test module.
+
+With coverage declared, a category with no published offers for a provider is no longer ambiguous:
+`not_offered` (deliberate, with a rationale) is now distinguishable from `unknown` (not yet
+ingested), and the read API no longer guesses either.
 
 ### Extraction-profile registration seam (F008 S3)
 

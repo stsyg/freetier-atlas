@@ -67,3 +67,66 @@ service_categories:
   # the taxonomy's application-hosting category and the only honest fit; the
   # taxonomy has no separate static-site/app-platform category.
   Cloudflare Pages: containers-app-hosting
+
+# Explicit provider x category coverage (F008 slice S2).
+#
+# All fourteen canonical categories MUST appear. A pair with no declaration is a
+# config error, not an implicit "unknown": the whole point of the slice is that
+# every provider x category pair carries a deliberate, reviewable state instead
+# of being inferred from missing data.
+#
+# States: verified_free | offered_no_z0 | not_offered | incomplete | stale |
+#         conflicting | unknown
+#
+# Honesty rules (enforced by the config schema AND by database CHECK
+# constraints, so a raw INSERT cannot bypass them):
+#   * not_offered REQUIRES a rationale -- asserting absence is a claim.
+#   * verified_free / offered_no_z0 REQUIRE a `source` (declared above) or an
+#     `evidence_url` -- never publish an unsupported free claim.
+#   * at least three entries must be evidence-backed verified_free /
+#     offered_no_z0 (decision Q9-A), so an all-unknown file cannot load.
+#
+# `unknown` is the honest default. It means "nobody has checked", NOT "the
+# provider does not offer this" -- the latter must be declared explicitly with a
+# rationale.
+coverage:
+  compute-vms:
+    # Cloudflare's platform is edge/serverless; it publishes no general-purpose
+    # virtual-machine product at all, so this is a genuine absence rather than
+    # something unverified.
+    state: not_offered
+    rationale: >-
+      Cloudflare publishes no general-purpose VM/IaaS product; its compute
+      offering is the Workers edge runtime, declared under serverless-functions.
+  containers-app-hosting:
+    # Pages is the application-hosting fit in this taxonomy (see the
+    # service_categories note above); its free tier requires no card.
+    state: verified_free
+    source: cloudflare-pages-limits
+  serverless-functions:
+    state: verified_free
+    source: cloudflare-workers-limits
+  networking-cdn-dns:
+    # The Cloudflare Free plan includes CDN and authoritative DNS with no card.
+    state: verified_free
+    evidence_url: https://www.cloudflare.com/plans/
+  relational-databases:
+    state: unknown
+  nosql-key-value:
+    state: unknown
+  object-file-storage:
+    state: unknown
+  queues-messaging-jobs:
+    state: unknown
+  auth-identity:
+    state: unknown
+  cicd-source-control:
+    state: unknown
+  monitoring-logs-tracing:
+    state: unknown
+  ai-inference-embeddings:
+    state: unknown
+  email-notifications-comms:
+    state: unknown
+  secrets-config-devtools:
+    state: unknown

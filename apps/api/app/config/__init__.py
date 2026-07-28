@@ -12,6 +12,7 @@ from .loader import ConfigError, detect_family, load_and_validate
 from .models import (
     FAMILY_MODELS,
     ApplicationConfig,
+    CoverageDeclaration,
     LlmProvidersConfig,
     ProviderConfig,
     SchedulesConfig,
@@ -20,6 +21,7 @@ from .models import (
 __all__ = [
     "ApplicationConfig",
     "ConfigError",
+    "CoverageDeclaration",
     "FAMILY_MODELS",
     "LlmProvidersConfig",
     "ProviderConfig",

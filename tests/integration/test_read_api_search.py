@@ -33,6 +33,7 @@ from app.models.domain import (
     Offer,
     OfferVersion,
     Provider,
+    ProviderCategoryCoverage,
     Quota,
     Service,
 )
@@ -291,7 +292,8 @@ def test_category_matrix_is_14_and_multi_provider(session: Session) -> None:
 
     providers = queries.fetch_providers(session)
     cat_map = queries.category_map_for_providers(session, providers)
-    matrix = service.serialize_category_matrix(providers, cat_map)
+    context = queries.coverage_signal_context(session, providers)
+    matrix = service.serialize_category_matrix(providers, cat_map, context)
 
     assert len(matrix.categories) == 14
     assert [row.ordinal for row in matrix.categories] == list(range(1, 15))
@@ -299,15 +301,127 @@ def test_category_matrix_is_14_and_multi_provider(session: Session) -> None:
 
     storage_row = next(r for r in matrix.categories if r.slug == "object-file-storage")
     coverage = {c.provider_slug: c for c in storage_row.providers}
-    assert coverage["example-alpha"].state == "verified_free"
+    # alpha has a published Z0 offer here, so the DERIVED state is verified_free.
+    assert coverage["example-alpha"].derived_state == "verified_free"
     assert coverage["example-alpha"].free_offer_count == 1
-    assert coverage["example-beta"].state == "not_offered"
+    # beta has published nothing here. Before F008 S2 that was GUESSED as
+    # "not_offered"; with no declaration on file the honest answer is "unknown".
+    assert coverage["example-beta"].published_offer_count == 0
+    assert coverage["example-beta"].derived_state == "unknown"
+    assert coverage["example-beta"].state == "unknown"
+    assert coverage["example-beta"].state != "not_offered"
+    assert coverage["example-beta"].declared_state is None
 
     serverless_row = next(r for r in matrix.categories if r.slug == "serverless-functions")
     coverage = {c.provider_slug: c for c in serverless_row.providers}
     # example-beta offers a non-free serverless offer.
-    assert coverage["example-beta"].state == "no_free_tier"
+    assert coverage["example-beta"].derived_state == "offered_no_z0"
     assert coverage["example-beta"].free_offer_count == 0
+
+
+@skip_without_db
+def test_category_matrix_never_guesses_not_offered_from_zero_published(
+    session: Session,
+) -> None:
+    """F008 acceptance step 2: absence of offers is never evidence of absence.
+
+    Every undeclared pair -- and there are many, since the synthetic providers
+    declare no coverage at all -- must report ``unknown``. If any of them says
+    ``not_offered`` the guess has been re-introduced.
+    """
+
+    _publish(session)
+    _seed_synthetic(session)
+
+    providers = queries.fetch_providers(session)
+    cat_map = queries.category_map_for_providers(session, providers)
+    context = queries.coverage_signal_context(session, providers)
+    matrix = service.serialize_category_matrix(providers, cat_map, context)
+
+    empty_pairs = [
+        c
+        for row in matrix.categories
+        for c in row.providers
+        if c.published_offer_count == 0 and c.declared_state is None
+    ]
+    assert empty_pairs, "the fixture must contain at least one empty undeclared pair"
+    for c in empty_pairs:
+        assert c.state == "unknown"
+        assert c.derived_state == "unknown"
+        assert c.state != "not_offered"
+
+    # not_offered can only ever be DECLARED, so nothing here may report it.
+    assert not [
+        c for row in matrix.categories for c in row.providers if c.derived_state == "not_offered"
+    ]
+
+
+@skip_without_db
+def test_declared_coverage_is_served_and_a_contradiction_is_flagged(
+    session: Session,
+) -> None:
+    """A declaration is served verbatim; a declaration that denies a published
+    Z0 offer is surfaced as ``conflicting`` rather than silently believed."""
+
+    _publish(session)
+    _seed_synthetic(session)
+
+    providers = queries.fetch_providers(session)
+    alpha = next(p for p in providers if p.slug == "example-alpha")
+    storage_id = session.execute(
+        select(Category.id).where(Category.slug == "object-file-storage")
+    ).scalar_one()
+    compute_id = session.execute(
+        select(Category.id).where(Category.slug == "compute-vms")
+    ).scalar_one()
+
+    session.add_all(
+        [
+            # Honest: alpha declines to offer compute, and says why.
+            ProviderCategoryCoverage(
+                provider_id=alpha.id,
+                category_id=compute_id,
+                state="not_offered",
+                rationale="example-alpha ships no compute product line.",
+            ),
+            # Dishonest: alpha claims ignorance over its own published Z0 offer.
+            ProviderCategoryCoverage(
+                provider_id=alpha.id,
+                category_id=storage_id,
+                state="unknown",
+            ),
+        ]
+    )
+    session.flush()
+
+    cat_map = queries.category_map_for_providers(session, providers)
+    context = queries.coverage_signal_context(session, providers)
+    matrix = service.serialize_category_matrix(providers, cat_map, context)
+
+    compute = next(
+        c
+        for row in matrix.categories
+        if row.slug == "compute-vms"
+        for c in row.providers
+        if c.provider_slug == "example-alpha"
+    )
+    assert compute.declared_state == "not_offered"
+    assert compute.state == "not_offered"
+    assert compute.derived_state == "unknown"
+    assert compute.mismatch is False
+    assert compute.rationale == "example-alpha ships no compute product line."
+
+    storage = next(
+        c
+        for row in matrix.categories
+        if row.slug == "object-file-storage"
+        for c in row.providers
+        if c.provider_slug == "example-alpha"
+    )
+    assert storage.declared_state == "unknown"
+    assert storage.derived_state == "verified_free"
+    assert storage.mismatch is True
+    assert storage.state == "conflicting", "an unknown over a published Z0 offer is a conflict"
 
 
 # --------------------------------------------------------------------------- #

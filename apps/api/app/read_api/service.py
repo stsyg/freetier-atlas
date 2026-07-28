@@ -30,7 +30,7 @@ from app.models.domain import (
     Provider,
 )
 
-from . import queries
+from . import coverage, queries
 from .confidence import confidence_label
 from .normalize import normalize_amount
 from .schemas import (
@@ -477,51 +477,82 @@ def serialize_search_response(
 # --------------------------------------------------------------------------- #
 
 
-def _coverage_state(published: int, free: int) -> str:
-    if published == 0:
-        return "not_offered"
-    if free > 0:
-        return "verified_free"
-    return "no_free_tier"
-
-
 def serialize_category_matrix(
-    providers: Sequence[Provider], cat_map: Mapping[int, Category]
+    providers: Sequence[Provider],
+    cat_map: Mapping[int, Category],
+    context: queries.CoverageSignalContext | None = None,
 ) -> CategoryMatrixResponse:
     """Cross the canonical 14-category taxonomy with each provider's coverage.
 
-    Coverage is derived strictly from *published* offers. A published service
-    whose category is absent or is not one of the fourteen canonical slugs is not
-    guessed into a category -- it is rolled up honestly into a per-provider
+    Every pair reports three things: the human ``declared_state`` (from
+    ``provider_category_coverage``), the ``derived_state`` computed on demand
+    from published offers by :func:`app.read_api.coverage.derive_coverage_state`,
+    and the ``state`` to display.
+
+    There is deliberately **no** inference of ``not_offered``. Until F008 slice
+    S2 this function guessed ``not_offered`` whenever a category had zero
+    published offers, which conflated "we have not verified this" with "the
+    provider does not offer it". A pair with no declaration now reports
+    ``unknown``, and ``not_offered`` can only come from a declaration that states
+    why. A published service whose category is absent or non-canonical is still
+    not guessed into a category -- it is rolled up honestly into a per-provider
     ``uncategorized`` tally.
     """
 
     ordered_providers = sorted(providers, key=lambda p: p.slug)
+    declarations = context.declarations if context is not None else {}
+    conflicted = context.conflicted_services if context is not None else frozenset()
+    stale_versions = context.stale_offer_version_ids if context is not None else frozenset()
 
-    # (provider_slug, canonical_slug|None) -> [published_count, free_count]
+    # (provider_slug, canonical_slug|None) -> tallies + derivation flags
     tally: dict[tuple[str, str | None], list[int]] = {}
+    flags: dict[tuple[str, str | None], list[bool]] = {}
     for provider in ordered_providers:
         for service in provider.services:
             category = cat_map.get(service.category_id) if service.category_id else None
             slug = category.slug if category and is_canonical_slug(category.slug) else None
+            service_conflicted = (provider.slug, service.canonical_name) in conflicted
             for offer in service.offers:
                 if not queries.is_published(offer):
                     continue
-                bucket = tally.setdefault((provider.slug, slug), [0, 0])
+                key = (provider.slug, slug)
+                bucket = tally.setdefault(key, [0, 0, 0])
                 bucket[0] += 1
                 if offer.zero_cost_class == _FREE_CLASS:
                     bucket[1] += 1
+                elif offer.zero_cost_class in (None, coverage.UNCLASSIFIED_ZERO_COST_CLASS):
+                    bucket[2] += 1
+                flag = flags.setdefault(key, [False, False])
+                flag[0] = flag[0] or service_conflicted
+                flag[1] = flag[1] or any(v.id in stale_versions for v in offer.versions)
 
     rows: list[CategoryMatrixRow] = []
     for taxon in CATEGORY_TAXONOMY:
         coverages: list[ProviderCoverage] = []
         for provider in ordered_providers:
-            published, free = tally.get((provider.slug, taxon.slug), [0, 0])
+            key = (provider.slug, taxon.slug)
+            published, free, unclassified = tally.get(key, [0, 0, 0])
+            conflict_flag, stale_flag = flags.get(key, [False, False])
+            signals = coverage.CoverageSignals(
+                published_offer_count=published,
+                free_offer_count=free,
+                unclassified_offer_count=unclassified,
+                has_pending_contradiction=conflict_flag,
+                has_stale_evidence=stale_flag,
+            )
+            derived = coverage.derive_coverage_state(signals)
+            declaration = declarations.get((provider.id, taxon.slug))
+            declared_state = declaration.state if declaration is not None else None
             coverages.append(
                 ProviderCoverage(
                     provider_slug=provider.slug,
                     provider_name=provider.name,
-                    state=_coverage_state(published, free),
+                    state=coverage.effective_state(declared_state, derived),
+                    declared_state=declared_state,
+                    derived_state=derived,
+                    mismatch=coverage.is_material_mismatch(declared_state, derived),
+                    rationale=declaration.rationale if declaration is not None else None,
+                    evidence_url=declaration.evidence_url if declaration is not None else None,
                     published_offer_count=published,
                     free_offer_count=free,
                 )
@@ -534,7 +565,7 @@ def serialize_category_matrix(
 
     uncategorized: list[UncategorizedCoverage] = []
     for provider in ordered_providers:
-        published, free = tally.get((provider.slug, None), [0, 0])
+        published, free, _unclassified = tally.get((provider.slug, None), [0, 0, 0])
         if published == 0:
             continue
         uncategorized.append(
