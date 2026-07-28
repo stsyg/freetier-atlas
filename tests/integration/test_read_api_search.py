@@ -117,6 +117,18 @@ def _facts(score: float, zero_cost_class: str, reasons: list[str]) -> dict:
     }
 
 
+def _category(session: Session, slug: str, name: str) -> Category:
+    """Resolve a canonical category, tolerating the 0010 seed already owning it."""
+
+    existing = session.execute(select(Category).where(Category.slug == slug)).scalar_one_or_none()
+    if existing is not None:
+        return existing
+    created = Category(slug=slug, name=name)
+    session.add(created)
+    session.flush()
+    return created
+
+
 def _seed_synthetic(session: Session) -> dict:
     """Insert two clearly-synthetic providers with categorized published offers.
 
@@ -124,9 +136,8 @@ def _seed_synthetic(session: Session) -> dict:
     transaction; nothing is committed or published.
     """
 
-    storage = Category(slug="object-file-storage", name="Object and file storage")
-    serverless = Category(slug="serverless-functions", name="Serverless functions")
-    session.add_all([storage, serverless])
+    storage = _category(session, "object-file-storage", "Object and file storage")
+    serverless = _category(session, "serverless-functions", "Serverless functions")
     session.flush()
 
     def _make(

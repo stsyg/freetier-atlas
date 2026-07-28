@@ -1,60 +1,88 @@
 {
   "schema_version": 1,
   "status": "approved",
-  "feature_id": "F007",
-  "increment": "slice-5a-negative-security-adversarial-regression-corpus",
+  "feature_id": "F008",
+  "increment": "slice-s1-category-seed-and-service-categorisation",
   "builder": "Copilot CLI (Chief)",
-  "evaluator": "fresh independent Level 2 evaluator (per-slice); a later full-epic Level 2 close-out owns the passes flip",
-  "approved_at": "2026-07-30T00:00:00Z",
-  "base_commit": "ca1ca0e",
+  "evaluator": "fresh independent Level 2 evaluator (per-slice); a later F008 S4 full-epic Level 2 close-out owns the passes flip",
+  "approved_at": "2026-07-27T00:00:00Z",
+  "base_commit": "e9f8cc4",
   "approval_notes": [
-    "Orchestrator-directed F007 Slice 5a: author a PERMANENT, cross-cutting NEGATIVE-SECURITY adversarial regression corpus (committed tests only) that consolidates and EXTENDS the security guarantees of the four already-merged F007 slices (S1 LLM intake, S2 abuse controls, S3 ZIP export, S4 admin) into one durable suite so future changes cannot silently regress them. Maps to F007 acceptance step 4 (negative security + audit) and reinforces steps 1-3. Build ONE slice, open ONE PR, do NOT merge, do NOT flip any passes flag. F007 stays passes:false.",
-    "HARD CONSTRAINTS: NO migration (alembic head stays 0009_admin_audit); NO new runtime OR test dependency (FastAPI TestClient + pytest + existing fakes/mocks only); NO Redis; NO real network (no github.com, no real LLM provider); Q1 (fake adapter only) + N1 (OAuth/CAPTCHA mocked) honoured; no secrets in source/tests/examples (planted-secret fixtures fragment-assembled so detect-secrets stays green on tracked files)."
+    "Orchestrator-directed F008 Slice S1 (Wave 1): make the fourteen canonical categories REAL ROWS (migration 0010_category_seed) and make published services carry a DECLARED category, so the adviser can produce a live satisfiable $0 recommendation against the REAL Cloudflare-only catalogue. Closes the recorded carry-over 'f008-categorise-offers'. Cites resolved decisions Q4-A (taxonomy stays read_api/taxonomy.py::CATEGORY_TAXONOMY, seeded by 0010) and Q6-A (no new dependency).",
+    "Build ONE slice, open ONE PR, do NOT merge, do NOT flip any passes flag. F008 stays passes:false until the S4 close-out.",
+    "HARD CONSTRAINTS: exactly one migration (0010_category_seed on top of 0009_admin_audit); NO new runtime OR test dependency (Q6-A); NO Redis; NO live network in code/tests/CI (Q3-A, OfflineFetcher/FixtureFetcher only); NO credentialed provider APIs (Q5-A); NO secrets anywhere (detect-secrets green AFTER git add); region availability/residency OUT of scope (Q8-A); read_api/taxonomy.py is READ-ONLY source of truth; the coverage: block and the read_api/service.py _coverage_state guess belong to S2 and are NOT touched here.",
+    "A sibling S3 session builds concurrently from the same base; footprints are disjoint and S1 has right of way. S3's files (ingest/runner.py, ingest/adapters/profiles/, tests/support/, scripts/capture_fixture.py, ingest/reconcile.py) are NOT touched."
   ],
-  "objective": "Add a self-contained, fully-offline/deterministic negative-security regression corpus under tests/security/ that asserts the F007 security invariants across all four surfaces, adding coverage for any invariant not already exercised and consolidating/strengthening the partial ones. All tests run via the real FastAPI app (TestClient) or the pure functions with dependency-injected fakes/in-memory stores and monkeypatched router seams - no conftest, no database, no network. The corpus is durable documentation-as-tests: each invariant is asserted so a future regression fails loudly.",
+  "objective": "Seed the fourteen canonical categories as real 'category' rows from apps/api/app/read_api/taxonomy.py::CATEGORY_TAXONOMY (migration 0010_category_seed, idempotent, reversible) and make service->category a DECLARED, validated piece of provider configuration that both the config sync (backfill of existing services) and the publisher (new services at publication time) apply. Category is structural metadata on the mutable 'service' row: it is absent from _stable_material_facts(), so content_hash is unchanged and re-publishing mints no new offer_version. An undeclared service stays category_id IS NULL (honest uncategorised) and is never inferred from its name.",
   "scope": [
-    "tests/security/__init__.py (NEW): package marker/docstring.",
-    "tests/security/test_security_corpus_llm_intake.py (NEW, S1): user-URL/SSRF in description -> 422; malformed/oversized/unknown-field/wrong-type/URL-smuggled LLM output rejected by the strict schema -> deterministic fallback (invalid_interpretation); provider timeout/error -> graceful degrade; a valid LLM interpretation IS used; deterministic fallback is byte-identical to /recommend with providers disabled; NO LLM-to-publication path (spy session records zero add/commit/flush on assisted + structured paths, even on the llm_used=True path); consent is ephemeral (no consent/user-description column on Base.metadata + spy-session no-write with consent=true); prompts/descriptions are NEVER logged (caplog canary); a subprocess import-guard proves the deterministic core imports no LLM adapter.",
-    "tests/security/test_security_corpus_abuse.py (NEW, S2): deterministic overage -> 429 + Retry-After (service + HTTP); ONLY hashed IP persisted end-to-end (scan store rate keys + PoW ip fields are 64-hex, never a dotted-quad/colon; dedupe key is hex not raw body); AI kill switch ON -> assisted degrades to deterministic (200, llm_used=false) WITHOUT hard-fail while /recommend stays 200; per-provider circuit breaker opens after N failures adding ZERO extra provider calls, half-open closes on success and reopens on failure; request dedupe collapses identical requests (service + HTTP fake.calls==1); PoW is server-signed (stdlib hmac), single-use, expiring, ip-bound, constant-time verified, and forged/replayed/expired/downgraded/insufficient-work/malformed tokens are ALL rejected.",
-    "tests/security/test_security_corpus_export.py (NEW, S3): fail-closed validators reject path traversal (absolute / .. / backslash), non-allowlisted paths, invalid YAML, missing/empty healthcheck, missing multi-arch (amd64+arm64) assertion, oversized single file + oversized total, NUL/control bytes, planted secrets (AWS/GitHub/Slack/OpenAI/GCP/PRIVATE KEY/keyword-assigned, all fragment-assembled), missing compose, duplicate path; the produced bundle is secret-free; build_export persists nothing (open spy); the router maps ExportValidationError -> 422.",
-    "tests/security/test_security_corpus_admin.py (NEW, S4): a non-allowlisted GitHub login -> 403 + NO session cookie + audited; UNAUTHENTICATED access to EVERY guarded admin function -> 401 (valid bodies so the body validator never masks the auth check) + audited; a forged/tampered/expired/wrong-key signed cookie -> 401 across EVERY guarded endpoint; missing/invalid CSRF on EVERY mutation -> 403; missing/mismatched/forged OAuth state -> 401 (incl. a matching-but-signature-invalid state); missing code -> 400; a failed OAuth exchange -> 401; a deep no-leak scan across ALL audit rows (success + denied) proves no signing key / client secret / client id / raw OAuth code / access token appears in any row's actor, reason, or context (keys or values)."
+    "migrations/versions/0010_category_seed.py (NEW): revision '0010_category_seed', down_revision '0009_admin_audit'. upgrade() inserts the fourteen category rows (slug, name; description NULL) DERIVED FROM CATEGORY_TAXONOMY with an in-migration assertion that the seeded slug set and count (14) match the constant exactly; idempotent via ON CONFLICT (slug) DO NOTHING against uq_category_slug. downgrade() deletes ONLY those fourteen slugs (never TRUNCATE); service.category_id is ON DELETE SET NULL so downgrade degrades to uncategorised rather than an FK violation.",
+    "apps/api/app/config/models.py: ProviderConfig gains optional 'service_categories: dict[str, str]' mapping a service canonical_name (as it appears in candidate facts' 'service' field) to a canonical category slug, validated against taxonomy.is_canonical_slug with an actionable ValueError at load; Source gains an optional 'category: Slug | None' default for a source covering exactly one category, validated the same way. extra='forbid' retained. The coverage: block is NOT added (S2).",
+    "apps/api/app/ingest/config_sync.py: new categorise_services(session, config) -- idempotent, slug-keyed, sets service.category_id for that provider's existing services from the declared map, returns a CategorisationResult with counts for assertions; called from sync_provider after the source sync. Never writes offer / offer_version / quota. An undeclared or unknown-to-the-DB service is a no-op, never an error.",
+    "apps/api/app/publish/publisher.py: _resolve_service() resolves category_id from an explicitly-threaded declared map (publish_candidate/publish_scan gain an optional service_categories parameter) instead of the hardcoded None; when undeclared the category stays None. No config loading is imported into publisher; _stable_material_facts() and every content_hash input are untouched.",
+    "config/examples/providers/cloudflare.example.yaml: declare service_categories for the two really-published Cloudflare services -- 'Cloudflare Workers' -> serverless-functions and 'Cloudflare Pages' -> containers-app-hosting -- with an inline rationale comment (Q10-A). Anything genuinely unclear is omitted and left unknown.",
+    "docs/DATA_MODEL.md: record the 0010 category seed, the taxonomy-as-source-of-truth rule, and the category-mutability/immutability note. docs/PROVIDER_ADAPTERS.md: onboarding item 4 'Category coverage declaration' is now partly real (service_categories); note that S2 completes it with the explicit provider x category coverage block.",
+    "tests/integration/test_category_seed_migration.py (NEW): upgrade reaches 0010_category_seed with exactly the 14 canonical slugs; a second upgrade is a no-op; downgrade removes exactly those 14 and leaves service rows intact with category_id IS NULL; no ORM drift after the up->down->up round trip.",
+    "tests/unit/test_config_system.py (EXTEND): a valid service_categories map (and a valid per-source category) is accepted; an unknown slug is rejected with an actionable error naming the service/source and the bad slug; an unknown service NAME is accepted (a no-op at sync time, not a config error); the shipped cloudflare example validates and declares both real services.",
+    "tests/integration/test_ingest_config_sync.py (EXTEND): categorise_services backfills a pre-existing uncategorised service, is idempotent (a second run reports zero changes), leaves an undeclared service NULL, and writes no offer/offer_version/quota rows.",
+    "tests/integration/test_publish_pipeline.py (EXTEND): publishing with the declared map sets service.category_id to the declared canonical category; an undeclared service publishes with category_id IS NULL; and the offer_version row count plus every content_hash are IDENTICAL before and after categorisation and after a re-publish.",
+    "tests/integration/test_adviser_recommend.py (EXTEND): a live satisfiable $0 recommendation against the REAL published Cloudflare catalogue (fixture scan + publish, no synthetic providers) for a serverless-functions requirement; and the same request against an uncategorised catalogue blocks -- proving the category is what unblocks it.",
+    "tests/integration/test_adviser_recommend.py and tests/integration/test_read_api_search.py seed helpers: resolve the canonical Category rows that 0010 now seeds instead of INSERTing duplicates (they would otherwise violate uq_category_slug). Behaviour-preserving adjustment forced by this slice."
   ],
   "out_of_scope": [
-    "Any migration or schema change (alembic head stays 0009_admin_audit).",
-    "Any new runtime or test dependency; any Redis; any real github.com or real LLM-provider network.",
-    "Refactoring or behaviour changes to the S1-S4 source beyond a MINIMAL, prominently-called-out hardening fix landed ALONGSIDE its own regression test IF a genuine security gap is found (none was found; this slice is tests-only).",
-    "Editing feature_list.json (F007 passes stays false), evaluation.json, or any other feature's records; flipping any passes flag; merging the PR."
+    "Editing apps/api/app/read_api/taxonomy.py (READ-ONLY source of truth) or inventing any category.",
+    "_stable_material_facts() or anything feeding content_hash; offer_version / quota write paths; the adviser engine; the web app.",
+    "read_api/service.py::_coverage_state (the zero-published-count 'not_offered' guess) and the provider YAML coverage: block plus migration 0011 -- these are S2.",
+    "Any other provider YAML; any new provider; region availability and data residency (Q8-A).",
+    "S3's files: ingest/runner.py, ingest/adapters/profiles/, tests/support/, scripts/capture_fixture.py, ingest/reconcile.py.",
+    "Editing agent-state/feature_list.json (F008 passes stays false) or agent-state/evaluation.json; flipping any passes flag; merging the PR."
   ],
   "acceptance_criteria": [
-    "1. S1 (LLM/intake): the corpus asserts no LLM-to-publication path, user-URL/SSRF rejection (422), strict-schema fail-closed to deterministic fallback on malformed/oversized/unknown-field output, ephemeral+never-persisted consent, never-logged prompts/descriptions, byte-identical deterministic fallback, and a no-LLM-import guard on the deterministic core.",
-    "2. S2 (abuse): the corpus asserts deterministic overage -> 429 + Retry-After, hashed-IP-only persistence, kill-switch graceful degrade with /recommend still up, breaker open/zero-extra-calls/half-open close+reopen, dedupe collapse, and PoW server-signed/single-use/expiring/ip-bound/constant-time with forged/replayed/expired/downgraded/insufficient/malformed all rejected.",
-    "3. S3 (export): the corpus asserts fail-closed rejection of traversal/non-allowlist/invalid-YAML/missing-or-empty-healthcheck/missing-multi-arch/oversized/NUL-control/planted-secret/missing-compose/duplicate-path, a secret-free output, and build_export persisting nothing.",
-    "4. S4 (admin): the corpus asserts non-allowlisted -> 403 no session + audited, unauthenticated -> 401 on every function + audited, forged/tampered/expired/wrong-key cookie -> 401 on every endpoint, missing/invalid CSRF -> 403 on every mutation, missing/mismatched/forged/signature-invalid state -> 401, missing code -> 400, failed exchange -> 401, and a no-leak scan of every audit row (success + denied).",
-    "5. Offline gates green: scripts/test.ps1 exit 0 (pytest incl. all new security tests + web vitest 103 + vite build) with the pytest total exceeding the prior 728 passed / 63 skipped by the added tests; scripts/check.ps1 -NodeAudit exit 0 (all 8 gates, detect-secrets green on tracked files re-run AFTER git add).",
-    "6. HARD CONSTRAINTS held: no migration (alembic head 0009_admin_audit), no new runtime/test dependency, no Redis, no real network, no secrets committed (planted fixtures fragment-assembled), existing behaviour unchanged (tests-only).",
-    "7. F007 remains passes:false; a fresh-context independent Level 2 evaluator owns any status change. Did NOT merge; did NOT flip passes; did NOT touch feature_list.json / evaluation.json."
+    "1. alembic upgrade head reaches 0010_category_seed and creates exactly 14 category rows whose slugs equal taxonomy.canonical_slugs(); a second upgrade is a no-op; downgrade removes exactly those 14 and leaves service rows intact with category_id IS NULL.",
+    "2. A provider YAML with an unknown category slug fails config validation with an actionable error naming the offending service/source and slug.",
+    "3. After sync_provider + Cloudflare fixture scan + publish, ZERO published Cloudflare services are uncategorised, and GET /api/catalogue/categories returns an EMPTY uncategorized list.",
+    "4. IMMUTABILITY/IDEMPOTENCY: the offer_version row count and every content_hash are IDENTICAL before and after categorisation and after a re-publish; trg_offer_version_immutable still rejects a direct UPDATE.",
+    "5. POST /api/adviser/recommend returns a SATISFIABLE $0 recommendation against the real (Cloudflare-only) catalogue for a requirement in a category Cloudflare genuinely covers; no requirement blocks purely for want of a category.",
+    "6. UNKNOWN IS BETTER THAN GUESSED: a plausible but undeclared service name stays category_id IS NULL and appears in the uncategorized rollup -- no code path infers a category from a service name.",
+    "7. Alembic head is exactly 0010_category_seed; scripts/test.ps1 exit 0 (pytest >= 868 passed / 63 skipped baseline plus the additions; web vitest 103; vite build) and scripts/check.ps1 -NodeAudit exit 0 (all 8 gates, re-run AFTER git add).",
+    "8. F008 remains passes:false; feature_list.json and evaluation.json untouched; PR opened and NOT merged."
   ],
   "verification_plan": {
-    "baseline_commands": ["git status --short --branch", "git --no-pager log --oneline -20", "pwsh -File scripts/test.ps1", "pwsh -File scripts/check.ps1 -NodeAudit"],
-    "unit_commands": ["pwsh -File scripts/test.ps1", "pwsh -File scripts/check.ps1 -NodeAudit"],
+    "baseline_commands": [
+      "git status --short --branch",
+      "git --no-pager log --oneline -20",
+      "pwsh -File scripts/init.ps1",
+      "pwsh -File scripts/bootstrap-dev.ps1",
+      "pwsh -File scripts/test.ps1",
+      "pwsh -File scripts/check.ps1 -NodeAudit"
+    ],
+    "unit_commands": [
+      "pwsh -File scripts/test.ps1",
+      "pwsh -File scripts/check.ps1 -NodeAudit"
+    ],
     "integration_commands": [
-      "None required: the corpus is fully offline (TestClient + pure functions + in-memory stores + DI fakes + monkeypatched seams); no live stack, no database, and no network are needed. The already-merged S1-S4 slices retain their own live evidence."
+      "docker compose -p ftatlas_f008_s1 up -d postgres  (POSTGRES_PORT=55432, DATABASE_URL exported host-side ONLY)",
+      "alembic upgrade head; alembic downgrade 0009_admin_audit; alembic upgrade head",
+      "python -m pytest tests/integration -q  (with DATABASE_URL set: the previously-skipped integration tests plus the new ones actually run)",
+      "real HTTP POST /api/adviser/recommend against the running API for the live satisfiable $0 proof",
+      "docker compose -p ftatlas_f008_s1 down --volumes"
     ]
   },
   "risks": {
-    "data_migration": "None: no migration, no schema change; alembic head stays 0009_admin_audit.",
-    "security_privacy": "This slice STRENGTHENS the security posture by pinning the F007 negative-security invariants as durable regression tests (SSRF/URL rejection, fail-closed schema/export validators, hashed-IP-only, kill-switch/breaker/dedupe/PoW, admin authn+CSRF+OAuth-state, audit no-leak). Planted-secret test fixtures are assembled from fragments at runtime so no contiguous credential literal is committed and detect-secrets stays green on tracked files.",
-    "portability": "No new runtime or test dependency and no Redis: the corpus uses only pytest + FastAPI TestClient + the Python stdlib + the repo's existing fakes/in-memory stores. amd64/arm64 unaffected.",
-    "zero_cost_safety": "The corpus asserts (does not weaken) the guarantees that keep the subsystem safe: no LLM-to-publication path, deterministic byte-identical fallback, fail-closed export, and admin gating - reinforcing Z0-safety rather than touching classification/quota logic.",
-    "immutability": "Additive test-only change; no source, model, migration, or config touched (tests-only). Existing immutability/separation guarantees are unaffected.",
-    "regression": "Purely additive tests under a new tests/security/ package; the full suite grows from 728 to 868 passed (+140) with 63 skipped unchanged and web vitest still 103 - no existing test weakened or removed.",
-    "supply_chain": "No new npm or Python dependency; pip-audit + npm audit (--omit=dev, 0 vulns) + detect-secrets stay green."
+    "data_migration": "0010 is a data-only seed of 14 rows keyed on the UNIQUE category.slug, applied with ON CONFLICT DO NOTHING so a re-run is a no-op. downgrade deletes exactly those fourteen slugs (never TRUNCATE) and, because service.category_id is ON DELETE SET NULL, leaves service rows intact and merely uncategorised -- no orphans, no FK violation. The seeded slug set and count are asserted against CATEGORY_TAXONOMY inside the migration, so the seed can never drift from the product taxonomy.",
+    "security_privacy": "No new endpoint, no authentication surface, no user input path, no secret. Category is non-sensitive structural metadata declared in a non-secret example YAML.",
+    "portability": "No new runtime or test dependency and no Redis (Q6-A); PostgreSQL stays the only mandatory stateful service. The migration uses plain SQLAlchemy Core inserts. amd64/arm64 unaffected.",
+    "zero_cost_safety": "Category is NOT an offer fact and never affects Z0 classification, quotas, or the publication gate. It is declared configuration, never inferred: an undeclared service stays uncategorised and is honestly reported in the uncategorized rollup rather than guessed into a category. No free claim is created or strengthened by this slice.",
+    "immutability": "service.category_id is a mutable column on 'service'; trg_offer_version_immutable guards offer_version only; and category is absent from _stable_material_facts(), so content_hash is unchanged and re-publishing after categorisation mints NO new offer_version. This is asserted directly (offer_version count + every content_hash identical before/after) rather than assumed.",
+    "regression": "The only behaviour change to existing code paths is that a published service may now carry a declared category instead of always NULL, plus two integration seed helpers that must now resolve rather than re-insert the canonical Category rows 0010 seeds. The whole existing suite is re-run; the previously-skipped integration tests are additionally run for real against an isolated PostgreSQL.",
+    "supply_chain": "No new npm or Python dependency; pip-audit, npm audit and detect-secrets stay green."
   },
   "required_evaluation_level": 2,
   "contract_review": {
     "required": true,
     "reviewer": "owner",
     "disposition": "approved",
-    "notes": ["Orchestrator directed F007 Slice 5a: a permanent, cross-cutting, fully-offline negative-security adversarial regression corpus under tests/security/ consolidating + extending the security invariants of the four merged F007 slices. Tests-only (no genuine source gap found). Hard constraints: no migration (head 0009), no new runtime/test dependency, no Redis, no real network, no secrets committed. F007 passes stays false; do NOT merge; do NOT flip passes; then STOP for a fresh-context Level 2 evaluation."]
+    "notes": [
+      "Orchestrator directed F008 Slice S1 (Wave 1): migration 0010_category_seed + declared service->category metadata so the adviser can produce a live satisfiable $0 recommendation against the real Cloudflare catalogue, closing the carry-over 'f008-categorise-offers'. Decisions Q4-A and Q6-A. Hard constraints: exactly one migration (head 0010_category_seed), no new dependency, no live network, no credentialed APIs, no secrets, taxonomy.py read-only, coverage:/_coverage_state deferred to S2. F008 passes stays false; do NOT merge; do NOT flip passes; then STOP for a fresh-context Level 2 evaluation."
+    ]
   }
 }

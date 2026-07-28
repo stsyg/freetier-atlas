@@ -57,6 +57,7 @@ from app.ingest.reconcile import (
 from app.ingest.scan import _content_hash
 from app.models.domain import (
     Candidate,
+    Category,
     ChangeEvent,
     Evidence,
     Offer,
@@ -210,7 +211,29 @@ def _build_conditions(
 # --- Persistence helpers ----------------------------------------------------
 
 
-def _resolve_service(session: Session, *, provider_id: int, canonical_name: str) -> Service:
+def _category_id_for(session: Session, category_slug: str | None) -> int | None:
+    """Resolve a *declared* canonical category slug to its seeded ``category.id``.
+
+    Returns ``None`` when nothing was declared, or when the slug has no seeded
+    row (a pre-``0010_category_seed`` database): the service then stays honestly
+    uncategorised. A category is never inferred from a service name.
+    """
+
+    if not category_slug:
+        return None
+    return session.execute(
+        select(Category.id).where(Category.slug == category_slug)
+    ).scalar_one_or_none()
+
+
+def _resolve_service(
+    session: Session,
+    *,
+    provider_id: int,
+    canonical_name: str,
+    category_slug: str | None = None,
+) -> Service:
+    category_id = _category_id_for(session, category_slug)
     existing = session.execute(
         select(Service).where(
             Service.provider_id == provider_id,
@@ -218,10 +241,17 @@ def _resolve_service(session: Session, *, provider_id: int, canonical_name: str)
         )
     ).scalar_one_or_none()
     if existing is not None:
+        # Backfill a declared category onto an already-known service. Category
+        # lives on the mutable ``service`` row and is absent from
+        # ``_stable_material_facts()``, so this cannot change a ``content_hash``
+        # or mint an ``offer_version``.
+        if category_id is not None and existing.category_id != category_id:
+            existing.category_id = category_id
+            session.flush()
         return existing
     service = Service(
         provider_id=provider_id,
-        category_id=None,
+        category_id=category_id,
         canonical_name=canonical_name,
         deployment_model="managed",
     )
@@ -307,13 +337,16 @@ def _do_publish(
     decision: GateDecision,
     evidence_rows: Sequence[Evidence],
     now: datetime,
+    service_categories: Mapping[str, str] | None = None,
 ) -> PublishOutcome:
     """Perform the gated publish: upsert offer, append version, classify, record."""
 
+    canonical_name = str(facts["service"])
     service = _resolve_service(
         session,
         provider_id=source.provider_id,
-        canonical_name=str(facts["service"]),
+        canonical_name=canonical_name,
+        category_slug=(service_categories or {}).get(canonical_name),
     )
     offer = _resolve_offer(session, service_id=service.id, facts=facts, now=now)
 
@@ -470,11 +503,19 @@ def publish_candidate(
     *,
     scan_run_id: int | None = None,
     now: datetime | None = None,
+    service_categories: Mapping[str, str] | None = None,
 ) -> PublishOutcome:
     """Re-validate, gate, and (if permitted) publish a single candidate.
 
     Pure-deterministic decision; the caller owns the transaction (this flushes,
     never commits). Returns a :class:`PublishOutcome` describing the route taken.
+
+    ``service_categories`` is the provider config's **declared** service ->
+    canonical category slug mapping (``ProviderConfig.service_categories``),
+    threaded in explicitly so this module never imports config loading. A
+    service absent from the mapping stays uncategorised; a category is never
+    inferred from a service name. Category is not a material fact, so it never
+    affects the gate, the classification, or the ``content_hash``.
     """
 
     now = now or datetime.now(UTC)
@@ -508,6 +549,7 @@ def publish_candidate(
             decision=decision,
             evidence_rows=evidence_rows,
             now=now,
+            service_categories=service_categories,
         )
     if decision.decision == gate_mod.REVIEW:
         return _raise_review(
@@ -532,12 +574,15 @@ def publish_scan(
     publishing: PublishingSection,
     *,
     now: datetime | None = None,
+    service_categories: Mapping[str, str] | None = None,
 ) -> PublishResult:
     """Run the publication gate over every candidate produced by ``scan_run``.
 
     Iterates *all* of the scan's candidates (in id order for determinism); the
     gate itself withholds any unofficial / unevidenced candidate, so community
-    data can never be published. The caller owns the transaction.
+    data can never be published. ``service_categories`` is the provider config's
+    declared service -> canonical category mapping (see
+    :func:`publish_candidate`). The caller owns the transaction.
     """
 
     now = now or datetime.now(UTC)
@@ -555,6 +600,7 @@ def publish_scan(
             publishing,
             scan_run_id=scan_run.id,
             now=now,
+            service_categories=service_categories,
         )
         result.outcomes.append(outcome)
     return result

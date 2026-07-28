@@ -46,3 +46,24 @@ publishing:
   uncertain_threshold: 0.70
   require_official_source: true
   require_deterministic_numeric_validation: true
+
+# Declared service -> canonical category mapping (F008 slice S1).
+#
+# The key is the service's canonical_name exactly as it appears in the extracted
+# candidate facts' `service` field; the value must be one of the fourteen
+# canonical slugs in apps/api/app/read_api/taxonomy.py (decision D025).
+#
+# This is DECLARED metadata with a stated rationale, never inferred. A service
+# that is not listed here stays uncategorised (service.category_id IS NULL) and
+# is reported honestly in the `uncategorized` rollup -- unknown is better than
+# guessed. Cloudflare offers many more services than the two below; they are
+# deliberately absent until an official source actually publishes them.
+service_categories:
+  # Workers runs user code per request with no server to manage: the textbook
+  # "Serverless functions" category.
+  Cloudflare Workers: serverless-functions
+  # Pages hosts a deployed web application (build + deploy + custom domains).
+  # It is not a container runtime, but "Containers and application hosting" is
+  # the taxonomy's application-hosting category and the only honest fit; the
+  # taxonomy has no separate static-site/app-platform category.
+  Cloudflare Pages: containers-app-hosting

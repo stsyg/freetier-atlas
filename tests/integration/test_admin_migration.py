@@ -63,20 +63,26 @@ def test_admin_audit_migration_0009_up_down_up(engine: Engine) -> None:
 
     cfg = _alembic_config()
 
-    # At head (fixture upgraded): the table exists and the head is 0009.
+    # At head (fixture upgraded) the admin_audit table exists. The head revision
+    # itself moves on as later migrations land (0010 seeds the category
+    # taxonomy), so this asserts the 0009 STEP round-trips, not the head id.
     command.upgrade(cfg, "head")
     assert "admin_audit" in inspect(engine).get_table_names()
-    assert _current_revision(engine) == "0009_admin_audit"
+    head_revision = _current_revision(engine)
 
-    # Downgrade one revision: admin_audit is dropped and the head falls to 0008.
+    # Downgrade past 0009: admin_audit is dropped and the head falls to 0008.
     command.downgrade(cfg, "0008_adviser_abuse_controls")
     assert "admin_audit" not in inspect(engine).get_table_names()
     assert _current_revision(engine) == "0008_adviser_abuse_controls"
 
-    # Re-upgrade: table returns, head is 0009 again, and the ORM reports no drift.
-    command.upgrade(cfg, "head")
+    # Step forward onto 0009 exactly, then on to head again.
+    command.upgrade(cfg, "0009_admin_audit")
     assert "admin_audit" in inspect(engine).get_table_names()
     assert _current_revision(engine) == "0009_admin_audit"
+
+    command.upgrade(cfg, "head")
+    assert "admin_audit" in inspect(engine).get_table_names()
+    assert _current_revision(engine) == head_revision
 
     with engine.connect() as conn:
         ctx = MigrationContext.configure(
