@@ -146,7 +146,7 @@ provider slice cannot ship a declaration block that asserts nothing.
 
 `ingest.config_sync.sync_coverage()` upserts the block into `provider_category_coverage` on
 `(provider_id, category_id)`. It is idempotent, convergent (a changed state overwrites) and prunes
-rows for pairs the YAML no longer declares — but only in a run where every reference resolved. An
+rows for pairs the YAML no longer declares — but only in a run where every category reference resolved. An
 unresolvable **`source`** reference keeps its pair registered as declared and leaves the stored row
 untouched. An unresolvable **category** slug (drift such as a rename, which the FK's cascade does not
 cover because the category row still exists) makes withdrawal unattributable, so the prune is

@@ -82,7 +82,7 @@ different mechanisms because they fail differently:
   cannot attribute.
 
 Both conditions surface in the `unknown_source` / `unknown_category` outcome counts. Only a pair the
-YAML genuinely stops declaring, in a run where every reference resolved, is pruned. The conservative
+YAML genuinely stops declaring, in a run where every category reference resolved, is pruned. The conservative
 error is retaining a row that could have been withdrawn, which is the correct side to err on.
 
 The Q9-A evidence floor is enforced **twice** — once at config load

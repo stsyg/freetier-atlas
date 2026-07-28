@@ -561,8 +561,10 @@ def _backed_ids(rows: dict[str, ProviderCategoryCoverage]) -> set[int]:
 
 
 @skip_without_db
+@pytest.mark.parametrize("evidence_backed", [True, False], ids=["backed", "not-backed"])
 def test_an_unresolvable_category_reference_does_not_withdraw_the_declaration(
     session: Session,
+    evidence_backed: bool,
 ) -> None:
     """F-1: the SAME rule on the category axis, which the first fix missed.
 
@@ -577,6 +579,13 @@ def test_an_unresolvable_category_reference_does_not_withdraw_the_declaration(
     Registering an id here is impossible (not having one *is* this branch), so
     the fix is attribution: withdrawal must be positively proven, and an
     unresolved category reference makes that impossible for the whole run.
+
+    Parametrised over an evidence-backed and a NON-backed slug on purpose. The
+    cheapest wrong fix protects only the rows the Q9-A floor complains about and
+    keeps pruning ordinary declared ones; a backed-only test stays green under
+    it. **A declaration is a declaration** -- evidence-backing decides whether
+    the floor cares, not whether the row may be withdrawn -- so both axes are
+    pinned here.
     """
 
     config = _config()
@@ -588,15 +597,21 @@ def test_an_unresolvable_category_reference_does_not_withdraw_the_declaration(
     backed_before = _backed_ids(before)
     assert len(backed_before) == MIN_EVIDENCE_BACKED_COVERAGE
 
-    # Rename one EVIDENCE-BACKED category slug directly in the database. The
-    # category row survives, so the FK does not cascade -- this is drift, not
-    # deletion, and it is exactly what the old comment assumed away.
-    target = sorted(
+    # Rename one category slug directly in the database. The category row
+    # survives, so the FK does not cascade -- this is drift, not deletion, and
+    # it is exactly what the old comment assumed away.
+    candidates = sorted(
         slug
         for slug, row in before.items()
-        if row.state in EVIDENCE_BACKED_COVERAGE_STATES
-        and (row.source_id is not None or (row.evidence_url or "").strip())
-    )[0]
+        if bool(
+            row.state in EVIDENCE_BACKED_COVERAGE_STATES
+            and (row.source_id is not None or (row.evidence_url or "").strip())
+        )
+        is evidence_backed
+    )
+    assert candidates, "fixture must offer both a backed and a non-backed category"
+    target = candidates[0]
+    target_id = before[target].id
     category = session.execute(select(Category).where(Category.slug == target)).scalar_one()
     category.slug = f"renamed-{target}"
     session.flush()
@@ -613,6 +628,9 @@ def test_an_unresolvable_category_reference_does_not_withdraw_the_declaration(
     after = _coverage_rows(session, provider.id)
     assert len(after) == 14, "a still-declared pair must survive a failed category resolution"
     assert _backed_ids(after) == backed_before, "the Q9-A floor must not be eroded by drift"
+    assert target_id in {row.id for row in after.values()}, (
+        "the row whose category slug drifted must survive regardless of evidence backing"
+    )
 
 
 @skip_without_db
