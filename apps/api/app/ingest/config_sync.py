@@ -174,7 +174,11 @@ class CoverageDeclarationOutcome:
     #: "updated"          -- an existing declaration converged to the new YAML
     #: "unchanged"        -- byte-identical to what is stored (idempotent re-run)
     #: "withdrawn"        -- a stored row the YAML no longer declares was removed
-    #: "unknown_category" -- the category row is not seeded (pre-0010 DB); no-op
+    #: "unknown_category" -- the declared slug matches no category row (pre-0010
+    #:                       DB, or taxonomy drift such as a RENAMED slug). No
+    #:                       row is written, and because the pair cannot be
+    #:                       attributed to a category id the prune is suppressed
+    #:                       for the whole run so no still-declared row is lost.
     #: "unknown_source"   -- the referenced source row does not exist yet. The
     #:                       declaration is PRESERVED (any stored row is left
     #:                       untouched); a reference this sync cannot resolve is
@@ -190,6 +194,12 @@ class CoverageSyncResult:
 
     provider_slug: str
     outcomes: list[CoverageDeclarationOutcome] = field(default_factory=list)
+    prune_suppressed: bool = False
+    """True when an unresolved category reference made withdrawal unattributable.
+
+    The prune is skipped wholesale for that run rather than deleting rows it
+    cannot positively prove were withdrawn.
+    """
 
     def _count(self, action: str) -> int:
         return sum(1 for o in self.outcomes if o.action == action)
@@ -223,6 +233,17 @@ class CoverageSyncResult:
         """Category slugs whose declared ``source`` this run could not resolve."""
 
         return sorted(o.category_slug for o in self.outcomes if o.action == "unknown_source")
+
+    @property
+    def unresolved_categories(self) -> list[str]:
+        """Declared category slugs this run could not resolve to a ``category`` row.
+
+        Non-empty means withdrawal cannot be positively attributed this run, so
+        :func:`sync_coverage` suppresses its prune entirely -- see the guard
+        there for why an unattributable row must be kept rather than deleted.
+        """
+
+        return sorted(o.category_slug for o in self.outcomes if o.action == "unknown_category")
 
     @property
     def declared(self) -> int:
@@ -266,6 +287,12 @@ def _assert_persisted_coverage_floor(
     ``checked=False`` skips the assertion for the one documented case where it
     would be meaningless: a database with no canonical taxonomy at all (pre-0010),
     where :func:`sync_coverage` writes nothing and there is nothing to erode.
+    That is the **only** skip. In particular zero persisted rows is *not* a skip
+    but the maximal erosion: ``ProviderConfig.coverage`` is mandatory and must
+    carry exactly the fourteen canonical slugs, so a legitimately zero-row
+    provider cannot exist and zero rows always means total failure. An earlier
+    revision returned early on ``not rows``, which made 20% erosion raise while
+    100% erosion stayed silent -- the exact inversion of what a floor is for.
     """
 
     if not checked:
@@ -278,8 +305,6 @@ def _assert_persisted_coverage_floor(
             )
         ).scalars()
     )
-    if not rows:
-        return
 
     slug_by_id = {row.id: row.slug for row in session.execute(select(Category)).scalars()}
     backed = sorted(
@@ -291,10 +316,12 @@ def _assert_persisted_coverage_floor(
     if len(backed) >= MIN_EVIDENCE_BACKED_COVERAGE:
         return
 
-    unresolved = result.unresolved_sources
-    cause = (
-        f" Unresolved source references this run: {', '.join(unresolved)}." if unresolved else ""
-    )
+    causes = []
+    if result.unresolved_sources:
+        causes.append(f"unresolved source references: {', '.join(result.unresolved_sources)}")
+    if result.unresolved_categories:
+        causes.append(f"unresolved category references: {', '.join(result.unresolved_categories)}")
+    cause = f" Contributing this run -- {'; '.join(causes)}." if causes else ""
     raise CoverageFloorError(
         f"provider {provider.slug!r}: after sync only {len(backed)} of the "
         f"{len(rows)} persisted coverage rows are evidence-backed "
@@ -477,11 +504,15 @@ def sync_coverage(session: Session, config: ProviderConfig) -> CoverageSyncResul
     schema requires all fourteen canonical categories, so in practice withdrawal
     only fires for rows written by an older schema or by hand.
 
-    A **reference this sync cannot resolve is not a withdrawal.** If a declared
-    ``source`` id has no matching ``source`` row yet (a partially synced
-    database), the pair is still registered as declared and any stored row is
-    left exactly as it stands; the condition is reported as an
-    ``unknown_source`` outcome rather than silently pruning an evidence-backed
+    A **reference this sync cannot resolve is not a withdrawal**, on either axis.
+    If a declared ``source`` id has no matching ``source`` row yet (a partially
+    synced database), the pair is still registered as declared and any stored row
+    is left exactly as it stands. If a declared *category* slug does not resolve
+    -- taxonomy drift, typically a renamed slug, where the FK does **not** cascade
+    because the category row still exists -- then withdrawal cannot be attributed
+    at all, so the prune is suppressed wholesale for that run
+    (``prune_suppressed``). Both conditions are reported as ``unknown_source`` /
+    ``unknown_category`` outcomes rather than silently pruning an evidence-backed
     declaration.
 
     Finally the **persisted** rows are re-read and held to the same Q9-A
@@ -535,10 +566,16 @@ def sync_coverage(session: Session, config: ProviderConfig) -> CoverageSyncResul
         entry = declared[slug]
         category_id = category_ids.get(slug)
         if category_id is None:
-            # Pre-0010 database: the taxonomy row this declaration keys on does
-            # not exist, so there is nothing to upsert onto. There can be no
-            # stored row for it either (``category_id`` is a FK with ON DELETE
-            # CASCADE), so this branch cannot orphan or prune anything.
+            # This declaration names a category slug the database does not have:
+            # a pre-0010 database, or -- the case that matters -- taxonomy drift
+            # such as a RENAMED slug. A rename is *not* covered by the FK's ON
+            # DELETE CASCADE: the category row still exists under its new slug,
+            # so the stored coverage row survives, keyed on a category_id this
+            # sync can no longer name. That makes it indistinguishable from a
+            # genuinely withdrawn pair, which is why the prune below is
+            # suppressed entirely whenever this branch fires. Registering an id
+            # here is impossible -- not having one is the definition of this
+            # branch -- so attribution, not registration, is the fix.
             result.outcomes.append(
                 CoverageDeclarationOutcome(slug, "unknown_category", entry.state)
             )
@@ -607,16 +644,28 @@ def sync_coverage(session: Session, config: ProviderConfig) -> CoverageSyncResul
             )
         )
 
-    for category_id, row in existing_rows.items():
-        if category_id in declared_category_ids:
-            continue
-        coverage_id, state = row.id, row.state
-        session.delete(row)
-        result.outcomes.append(
-            CoverageDeclarationOutcome(
-                category_slugs.get(category_id, ""), "withdrawn", state, coverage_id
+    # Withdrawal must be positively proven. A row is pruned because the config
+    # stopped declaring its pair -- which is only inferable when every
+    # declaration resolved to a category id. If any did not, the row that
+    # declaration refers to is keyed on an id this sync cannot name, so it is
+    # indistinguishable from a genuinely withdrawn pair and pruning would delete
+    # a still-declared row (the renamed-slug case: the FK does not cascade
+    # because the category still exists). Erring toward keeping an unattributable
+    # row matches "a resolution failure is not a withdrawal"; the outcomes keep
+    # the condition observable and the floor check below still runs.
+    if result.unresolved_categories:
+        result.prune_suppressed = True
+    else:
+        for category_id, row in existing_rows.items():
+            if category_id in declared_category_ids:
+                continue
+            coverage_id, state = row.id, row.state
+            session.delete(row)
+            result.outcomes.append(
+                CoverageDeclarationOutcome(
+                    category_slugs.get(category_id, ""), "withdrawn", state, coverage_id
+                )
             )
-        )
 
     session.flush()
     _assert_persisted_coverage_floor(session, provider, result, checked=bool(category_ids))

@@ -545,6 +545,123 @@ def test_an_unresolvable_source_reference_does_not_withdraw_the_declaration(
         assert cell.declared_state != "unknown", slug
 
 
+def _backed_ids(rows: dict[str, ProviderCategoryCoverage]) -> set[int]:
+    """Coverage row ids that count toward the Q9-A floor.
+
+    Keyed on the row id rather than the category slug so the comparison survives
+    a slug rename -- which is precisely the drift under test.
+    """
+
+    return {
+        row.id
+        for row in rows.values()
+        if row.state in EVIDENCE_BACKED_COVERAGE_STATES
+        and (row.source_id is not None or (row.evidence_url or "").strip())
+    }
+
+
+@skip_without_db
+def test_an_unresolvable_category_reference_does_not_withdraw_the_declaration(
+    session: Session,
+) -> None:
+    """F-1: the SAME rule on the category axis, which the first fix missed.
+
+    The original comment justified skipping this branch on the grounds that
+    ``category_id`` is a FK with ``ON DELETE CASCADE``, so no stored row could
+    exist. That premise holds for a *deleted* category and fails for a
+    **renamed** one: the category row still exists under its new slug, nothing
+    cascades, and the coverage row survives keyed on an id this sync can no
+    longer name -- so the prune deleted it. The evaluator renamed one
+    evidence-backed slug and got 14 -> 13 rows, backed 3 -> 2.
+
+    Registering an id here is impossible (not having one *is* this branch), so
+    the fix is attribution: withdrawal must be positively proven, and an
+    unresolved category reference makes that impossible for the whole run.
+    """
+
+    config = _config()
+    sync_provider(session, config)
+    provider = session.execute(select(Provider).where(Provider.slug == "cloudflare")).scalar_one()
+
+    before = _coverage_rows(session, provider.id)
+    assert len(before) == 14
+    backed_before = _backed_ids(before)
+    assert len(backed_before) == MIN_EVIDENCE_BACKED_COVERAGE
+
+    # Rename one EVIDENCE-BACKED category slug directly in the database. The
+    # category row survives, so the FK does not cascade -- this is drift, not
+    # deletion, and it is exactly what the old comment assumed away.
+    target = sorted(
+        slug
+        for slug, row in before.items()
+        if row.state in EVIDENCE_BACKED_COVERAGE_STATES
+        and (row.source_id is not None or (row.evidence_url or "").strip())
+    )[0]
+    category = session.execute(select(Category).where(Category.slug == target)).scalar_one()
+    category.slug = f"renamed-{target}"
+    session.flush()
+
+    result = sync_coverage(session, config)
+
+    # The condition stays observable...
+    assert result.unknown_categories == 1
+    assert result.unresolved_categories == [target]
+    # ...and the prune is suppressed rather than deleting what it cannot attribute.
+    assert result.prune_suppressed is True
+    assert result.withdrawn == 0, "an unresolvable category reference must never prune a row"
+
+    after = _coverage_rows(session, provider.id)
+    assert len(after) == 14, "a still-declared pair must survive a failed category resolution"
+    assert _backed_ids(after) == backed_before, "the Q9-A floor must not be eroded by drift"
+
+
+@skip_without_db
+def test_the_floor_catches_total_erosion_and_not_only_partial_erosion(
+    session: Session,
+) -> None:
+    """F-2: zero persisted rows is the MAXIMAL erosion, never a reason to skip.
+
+    An earlier revision returned early on ``not rows``, so 20% erosion raised
+    while 100% erosion stayed silent -- the exact inversion of what a floor is
+    for. ``ProviderConfig.coverage`` is mandatory and must carry exactly the
+    fourteen canonical slugs, so a legitimately zero-row provider cannot exist:
+    zero rows always means total failure.
+
+    Reached here by onboarding a provider against a fully-migrated database
+    whose taxonomy has drifted wholesale, so no declaration resolves and no row
+    is ever written. Nothing pre-exists to preserve, so unlike the partial case
+    there is no surviving row to fall back on.
+    """
+
+    config = _config()
+    for category in session.execute(select(Category)).scalars():
+        category.slug = f"drifted-{category.slug}"
+    session.flush()
+    # The taxonomy is present -- this is drift on a migrated DB, not a pre-0010
+    # database -- so the floor check is emphatically in scope.
+    assert session.execute(select(func.count()).select_from(Category)).scalar_one() == 14
+
+    savepoint = session.begin_nested()
+    with pytest.raises(CoverageFloorError) as excinfo:
+        sync_provider(session, config)
+
+    message = str(excinfo.value)
+    assert "cloudflare" in message
+    assert "0 of the 0 persisted coverage rows" in message, (
+        "total erosion must be reported as such, not swallowed by an early return"
+    )
+    assert "unresolved category references" in message
+
+    savepoint.rollback()
+    remaining = session.execute(
+        select(func.count())
+        .select_from(ProviderCategoryCoverage)
+        .join(Provider, Provider.id == ProviderCategoryCoverage.provider_id)
+        .where(Provider.slug == "cloudflare")
+    ).scalar_one()
+    assert remaining == 0
+
+
 @skip_without_db
 def test_sync_coverage_aborts_when_the_persisted_rows_fall_below_the_q9a_floor(
     session: Session,

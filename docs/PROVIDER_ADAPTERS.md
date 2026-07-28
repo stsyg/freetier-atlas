@@ -146,14 +146,19 @@ provider slice cannot ship a declaration block that asserts nothing.
 
 `ingest.config_sync.sync_coverage()` upserts the block into `provider_category_coverage` on
 `(provider_id, category_id)`. It is idempotent, convergent (a changed state overwrites) and prunes
-rows for pairs the YAML no longer declares. A pair whose `source` or category slug cannot be
-resolved is **not** pruned — a resolution failure is not a withdrawal, so the existing row survives
-and the condition surfaces in the `unknown_source` / `unknown_category` outcome counts.
+rows for pairs the YAML no longer declares — but only in a run where every reference resolved. An
+unresolvable **`source`** reference keeps its pair registered as declared and leaves the stored row
+untouched. An unresolvable **category** slug (drift such as a rename, which the FK's cascade does not
+cover because the category row still exists) makes withdrawal unattributable, so the prune is
+suppressed for the whole run. Either way a resolution failure is never treated as a withdrawal, and
+both surface in the `unknown_source` / `unknown_category` outcome counts.
 
 The evidence floor is re-checked **after** the sync against the rows actually persisted, so it is a
 database invariant rather than only a config-load one. If fewer than three persisted rows are
-evidence-backed, `sync_coverage()` raises `CoverageFloorError` and the caller's transaction is
-aborted, so declared coverage can never be silently eroded by DB drift or a failed reference.
+evidence-backed, `sync_coverage()` raises `CoverageFloorError`; zero rows is the maximal erosion, not
+an exemption. The shortfall does not commit because the exception propagates out of the caller's
+transaction and every current caller lets it — a property of the callers rather than of
+`sync_coverage` itself, which a provider-unit savepoint is tracked to make structural.
 
 Finally, a pair declared `unknown` or `not_offered` while the derivation from published evidence
 says `verified_free` / `offered_no_z0` is a **material contradiction**: it raises a pending
