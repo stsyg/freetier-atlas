@@ -450,19 +450,37 @@ def _change_event_exists_for_new_candidate(session: Session, *, candidate_id: in
     return session.execute(stmt).scalars().first() is not None
 
 
-def _withdrawal_exists_for_prior_candidate(session: Session, *, candidate_id: int) -> bool:
-    """True if a ``withdrawn`` event already names ``candidate_id`` as its prior side.
+def _withdrawal_exists_for_identity(
+    session: Session, *, source_id: int, candidate_key: str, since_scan_run_id: int
+) -> bool:
+    """True if this identity has already been withdrawn from ``since_scan_run_id`` on.
 
     The companion guard for the withdrawal arm, which has no new-side candidate
-    to key on.
+    to key on. It is keyed on the **identity** (``source_id`` + ``candidate_key``)
+    rather than on a candidate row id, because a single scan may legitimately
+    persist several rows for one identity -- an official document that lists the
+    same ``(service, offer_type)`` twice with differing quota detail is an
+    ordinary provider-document shape, and nothing constrains
+    ``(scan_run_id, candidate_key)`` to be unique. A row-keyed guard would let a
+    re-invocation withdraw the identity a second time via a *different* prior
+    row, doubling the change history for one real-world event.
+
+    Scoping the lookup to withdrawals whose prior candidate comes from
+    ``since_scan_run_id`` or later keeps a genuine re-withdrawal reachable: after
+    a withdraw -> restore -> withdraw cycle the earlier withdrawal belongs to an
+    older scan, so it does not mask the new one.
     """
 
+    prior = aliased(Candidate)
     stmt = (
         select(ChangeEvent.id)
+        .join(prior, prior.id == ChangeEvent.previous_candidate_id)
         .where(
-            ChangeEvent.previous_candidate_id == candidate_id,
             ChangeEvent.new_candidate_id.is_(None),
             ChangeEvent.change_type == "withdrawn",
+            prior.source_id == source_id,
+            prior.candidate_key == candidate_key,
+            prior.scan_run_id >= since_scan_run_id,
         )
         .limit(1)
     )
@@ -495,16 +513,33 @@ def reconcile_scan(
     ``offer`` / ``offer_version``. The caller owns the transaction; this flushes
     but does not commit.
 
-    **Idempotent for a given scan run.** Re-invoking this for a scan run that has
-    already been reconciled records no additional change events: a candidate can
-    be the new side of at most one change event, and a prior candidate can be
-    withdrawn at most once (Q7-A carry-over).
+    **Idempotent for a given scan run** (Q7-A carry-over). Re-invoking this for a
+    scan run that has already been reconciled records no additional change
+    events, because two guards hold:
+
+    * a candidate **row** can be the new side of at most one change event; and
+    * an **identity** (``source_id`` + ``candidate_key``) is withdrawn at most
+      once per prior scan run -- keyed on the identity rather than on a row,
+      since one scan may persist several rows for the same identity.
+
+    The guarantee is per identity, not per row, and it does not forbid a later
+    genuine re-withdrawal: after a withdraw -> restore -> withdraw cycle the
+    second withdrawal is recorded, because the earlier one belongs to an older
+    prior scan.
+
+    Row iteration is ordered by ``Candidate.id`` throughout, so the outcome does
+    not depend on the physical order Postgres returns rows in.
     """
 
     now = now or datetime.now(UTC)
 
+    # Ordered by id so the loop below is deterministic regardless of the heap
+    # order Postgres happens to return (an ordinary row UPDATE relocates a tuple
+    # and silently flips an unordered scan).
     current = list(
-        session.execute(select(Candidate).where(Candidate.scan_run_id == scan_run.id)).scalars()
+        session.execute(
+            select(Candidate).where(Candidate.scan_run_id == scan_run.id).order_by(Candidate.id)
+        ).scalars()
     )
 
     added = modified = withdrawn = restored = stale_count = review_count = 0
@@ -560,7 +595,9 @@ def reconcile_scan(
     if prior_scan_id is not None:
         prior_rows = list(
             session.execute(
-                select(Candidate).where(Candidate.scan_run_id == prior_scan_id)
+                select(Candidate)
+                .where(Candidate.scan_run_id == prior_scan_id)
+                .order_by(Candidate.id)
             ).scalars()
         )
         seen_keys: set[str] = set()
@@ -570,11 +607,15 @@ def reconcile_scan(
                 continue
             seen_keys.add(key)
             # Idempotency guard (Q7-A): the withdrawal arm has no new-side
-            # candidate, so it is keyed on the prior candidate instead. This is
-            # the authoritative check -- it blocks a re-invocation for the same
-            # scan run while still allowing a genuine re-withdrawal after a
-            # restore (a different prior candidate row).
-            if _withdrawal_exists_for_prior_candidate(session, candidate_id=prior_candidate.id):
+            # candidate, so it is keyed on the identity. See
+            # _withdrawal_exists_for_identity for why a row-keyed guard is not
+            # sufficient here.
+            if _withdrawal_exists_for_identity(
+                session,
+                source_id=source.id,
+                candidate_key=key,
+                since_scan_run_id=prior_scan_id,
+            ):
                 continue
             session.add(
                 ChangeEvent(

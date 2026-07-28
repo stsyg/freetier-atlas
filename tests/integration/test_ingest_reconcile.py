@@ -54,9 +54,9 @@ from app.models.domain import (
     Source,
 )
 from app.publish.publisher import publish_scan
-from sqlalchemy import create_engine, func, select
+from sqlalchemy import create_engine, func, select, text
 from sqlalchemy.engine import Engine
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, aliased
 
 pytestmark = pytest.mark.integration
 
@@ -80,7 +80,9 @@ skip_without_db = pytest.mark.skipif(
 )
 
 
-def _document(*, requires_card: bool, extra_service: bool = False) -> dict:
+def _document(
+    *, requires_card: bool, extra_service: bool = False, duplicate_extra: bool = False
+) -> dict:
     offers = [
         {
             "service": "Widgets",
@@ -100,6 +102,19 @@ def _document(*, requires_card: bool, extra_service: bool = False) -> dict:
                 "quotas": [{"metric": "builds", "exhaustion_behaviour": "throttled"}],
             }
         )
+        if duplicate_extra:
+            # The same (service, offer_type) identity listed a second time with
+            # different quota detail -- an ordinary official-document shape, and
+            # one that yields two candidate rows sharing a candidate_key.
+            offers.append(
+                {
+                    "service": "Gadgets",
+                    "offer_type": "trial",
+                    "requires_card": True,
+                    "has_paid_dependencies": False,
+                    "quotas": [{"metric": "bandwidth", "exhaustion_behaviour": "hard_stop"}],
+                }
+            )
     return {"provider": "example", "offers": offers}
 
 
@@ -366,6 +381,170 @@ def test_reconciling_a_withdrawal_twice_records_the_change_once(session: Session
         session.execute(select(ChangeEvent).where(ChangeEvent.change_type == "withdrawn")).scalars()
     )
     assert len(withdrawals) == 1
+
+
+def _duplicate_rows(session: Session, scan_run_id: int) -> list[Candidate]:
+    rows = list(
+        session.execute(
+            select(Candidate).where(Candidate.scan_run_id == scan_run_id).order_by(Candidate.id)
+        ).scalars()
+    )
+    keys = [row.candidate_key for row in rows]
+    return [row for row in rows if keys.count(row.candidate_key) > 1]
+
+
+def _relocate_candidate_tuple(session: Session, candidate_id: int) -> None:
+    """Force Postgres to rewrite a candidate row, moving it in the heap.
+
+    A no-op UPDATE still writes a new tuple version at the end of the heap, so a
+    sequential scan afterwards returns the rows in a different physical order.
+    That is what turns an unordered ``select(Candidate)`` into a nondeterministic
+    one.
+    """
+
+    session.execute(
+        text("UPDATE candidate SET provider = provider || '' WHERE id = :candidate_id"),
+        {"candidate_id": candidate_id},
+    )
+    session.expire_all()
+
+
+def _heap_order(session: Session, scan_run_id: int) -> list[int]:
+    return [
+        row_id
+        for (row_id,) in session.execute(
+            text("SELECT id FROM candidate WHERE scan_run_id = :scan_run_id"),
+            {"scan_run_id": scan_run_id},
+        ).all()
+    ]
+
+
+@skip_without_db
+def test_an_identity_listed_twice_in_one_scan_is_withdrawn_exactly_once(session: Session) -> None:
+    """One real-world withdrawal is one change event, even with duplicate rows.
+
+    Nothing constrains ``(scan_run_id, candidate_key)`` to be unique, and
+    ``run_scan`` legitimately persists one row per listing. A withdrawal guard
+    keyed on the candidate *row* rather than on the identity lets a re-invocation
+    withdraw the same identity a second time through the other row -- doubling
+    the change history for a single real event. Reproduced end to end: the heap
+    order is perturbed between the two reconciliations exactly as an ordinary row
+    UPDATE would.
+    """
+
+    source = _make_source(session, endpoint=ENDPOINT_A)
+
+    first = run_scan(
+        source,
+        _fetcher(
+            ENDPOINT_A,
+            _document(requires_card=False, extra_service=True, duplicate_extra=True),
+        ),
+        session,
+    )
+    reconcile_scan(first, source, session)
+
+    duplicates = _duplicate_rows(session, first.id)
+    assert len(duplicates) == 2, "expected two candidate rows sharing one candidate_key"
+    duplicate_key = duplicates[0].candidate_key
+
+    # Gadgets vanishes from the document entirely.
+    second = run_scan(source, _fetcher(ENDPOINT_A, _document(requires_card=False)), session)
+    assert reconcile_scan(second, source, session).withdrawn == 1
+
+    _relocate_candidate_tuple(session, duplicates[0].id)
+
+    assert reconcile_scan(second, source, session).withdrawn == 0
+
+    prior = aliased(Candidate)
+    withdrawals = list(
+        session.execute(
+            select(ChangeEvent)
+            .join(prior, prior.id == ChangeEvent.previous_candidate_id)
+            .where(
+                ChangeEvent.change_type == "withdrawn",
+                prior.candidate_key == duplicate_key,
+            )
+        ).scalars()
+    )
+    assert len(withdrawals) == 1, (
+        "one identity withdrawn once must be one change event, not one per duplicate row: "
+        f"{[(w.id, w.previous_candidate_id) for w in withdrawals]}"
+    )
+
+
+@skip_without_db
+def test_the_withdrawal_loop_is_ordered_by_candidate_id(session: Session) -> None:
+    """Which prior row a withdrawal cites must not depend on Postgres heap order."""
+
+    source = _make_source(session, endpoint=ENDPOINT_A)
+
+    first = run_scan(
+        source,
+        _fetcher(
+            ENDPOINT_A,
+            _document(requires_card=False, extra_service=True, duplicate_extra=True),
+        ),
+        session,
+    )
+    reconcile_scan(first, source, session)
+
+    duplicates = _duplicate_rows(session, first.id)
+    assert len(duplicates) == 2
+    lowest_id = min(row.id for row in duplicates)
+
+    # Perturb the heap so an unordered scan would visit the *other* row first.
+    _relocate_candidate_tuple(session, lowest_id)
+    assert _heap_order(session, first.id)[-1] == lowest_id, (
+        "expected the updated tuple to be relocated to the end of the heap"
+    )
+
+    second = run_scan(source, _fetcher(ENDPOINT_A, _document(requires_card=False)), session)
+    assert reconcile_scan(second, source, session).withdrawn == 1
+
+    withdrawal = session.execute(
+        select(ChangeEvent).where(ChangeEvent.change_type == "withdrawn")
+    ).scalar_one()
+    assert withdrawal.previous_candidate_id == lowest_id
+
+
+@skip_without_db
+def test_a_reappearance_in_an_unreconciled_scan_can_be_withdrawn_again(session: Session) -> None:
+    """A genuine second withdrawal is recorded even across an unreconciled scan.
+
+    ``run_provider_scans(..., reconcile=False)`` makes "scan without reconcile" a
+    first-class mode, so a candidate can reappear in a scan that is never
+    reconciled and then vanish again. That is two real withdrawals. This is a
+    deliberate improvement on the previous behaviour, which keyed the guard on
+    the identity's *last* change type and therefore silently swallowed the second
+    withdrawal; the assertion below pins the improvement so it cannot regress or
+    drift back by accident.
+    """
+
+    source = _make_source(session, endpoint=ENDPOINT_A)
+    present = _document(requires_card=False, extra_service=True)
+    absent = _document(requires_card=False)
+
+    scan_a = run_scan(source, _fetcher(ENDPOINT_A, present), session)
+    reconcile_scan(scan_a, source, session)
+
+    scan_b = run_scan(source, _fetcher(ENDPOINT_A, absent), session)
+    assert reconcile_scan(scan_b, source, session).withdrawn == 1
+
+    # Scanned, deliberately not reconciled.
+    run_scan(source, _fetcher(ENDPOINT_A, present), session)
+
+    scan_d = run_scan(source, _fetcher(ENDPOINT_A, absent), session)
+    assert reconcile_scan(scan_d, source, session).withdrawn == 1
+
+    withdrawals = list(
+        session.execute(select(ChangeEvent).where(ChangeEvent.change_type == "withdrawn")).scalars()
+    )
+    assert len(withdrawals) == 2
+    assert len({w.previous_candidate_id for w in withdrawals}) == 2
+
+    # ...and re-invoking the last reconciliation still adds nothing.
+    assert reconcile_scan(scan_d, source, session).withdrawn == 0
 
 
 # --- Q7-A carry-over (b): the 'unknown' materiality path, end to end --------
