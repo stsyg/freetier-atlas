@@ -1,60 +1,91 @@
 {
   "schema_version": 1,
   "status": "approved",
-  "feature_id": "F007",
-  "increment": "slice-5a-negative-security-adversarial-regression-corpus",
+  "feature_id": "F008",
+  "increment": "s3-multi-format-fixture-harness-and-case-corpus-generalisation",
   "builder": "Copilot CLI (Chief)",
-  "evaluator": "fresh independent Level 2 evaluator (per-slice); a later full-epic Level 2 close-out owns the passes flip",
-  "approved_at": "2026-07-30T00:00:00Z",
-  "base_commit": "ca1ca0e",
+  "evaluator": "fresh independent Level 2 evaluator (per-slice); the S4 close-out owns the F008 passes flip",
+  "approved_at": "2026-07-27T00:00:00Z",
+  "base_commit": "e9f8cc4",
   "approval_notes": [
-    "Orchestrator-directed F007 Slice 5a: author a PERMANENT, cross-cutting NEGATIVE-SECURITY adversarial regression corpus (committed tests only) that consolidates and EXTENDS the security guarantees of the four already-merged F007 slices (S1 LLM intake, S2 abuse controls, S3 ZIP export, S4 admin) into one durable suite so future changes cannot silently regress them. Maps to F007 acceptance step 4 (negative security + audit) and reinforces steps 1-3. Build ONE slice, open ONE PR, do NOT merge, do NOT flip any passes flag. F007 stays passes:false.",
-    "HARD CONSTRAINTS: NO migration (alembic head stays 0009_admin_audit); NO new runtime OR test dependency (FastAPI TestClient + pytest + existing fakes/mocks only); NO Redis; NO real network (no github.com, no real LLM provider); Q1 (fake adapter only) + N1 (OAuth/CAPTCHA mocked) honoured; no secrets in source/tests/examples (planted-secret fixtures fragment-assembled so detect-secrets stays green on tracked files)."
+    "Orchestrator-directed F008 Slice S3 (Wave 1, concurrent with S1): build the multi-format fixture harness and generalise the case corpus so the six Wave-3 provider slices add ONLY DATA and can run CONCURRENTLY, and so the changed/stale/withdrawn/contradictory cases (F008 acceptance step 3) are deterministically drivable OFFLINE. Cites resolved decisions Q2-A (owner-run capture, minimal official excerpts, capture.json provenance sidecar, CI validates presence+hash NEVER freshness), Q3-A (no live network in code/tests/CI; LiveFetcher only in the owner-run capture script), Q7-A (fold the reconcile idempotency guard + the unknown-materiality e2e in here; DEFER DNS-rebinding hardening).",
+    "S1 HAS RIGHT OF WAY: a sibling session is concurrently building S1 (category seed, migration 0010) from the same base. Footprints are disjoint. On any merge conflict THIS slice rebases onto S1, never the reverse. S1's files are untouched here: migrations/, apps/api/app/config/models.py, apps/api/app/ingest/config_sync.py, apps/api/app/publish/publisher.py, config/examples/providers/cloudflare.example.yaml.",
+    "HARD CONSTRAINTS: NO migration (alembic head stays exactly what main has - 0009_admin_audit at branch time, or 0010 if S1 merges first); NO new runtime OR test dependency (stdlib + what is installed, Q6-A); NO Redis (PostgreSQL stays the only mandatory stateful service); NO live network in code/tests/CI (Q3-A); NO credentialed provider APIs (Q5-A); NO secrets anywhere including fixtures (detect-secrets green AFTER git add); NO DNS-rebinding hardening in fetch.py (explicitly DEFERRED per Q7-A)."
   ],
-  "objective": "Add a self-contained, fully-offline/deterministic negative-security regression corpus under tests/security/ that asserts the F007 security invariants across all four surfaces, adding coverage for any invariant not already exercised and consolidating/strengthening the partial ones. All tests run via the real FastAPI app (TestClient) or the pure functions with dependency-injected fakes/in-memory stores and monkeypatched router seams - no conftest, no database, no network. The corpus is durable documentation-as-tests: each invariant is asserted so a future regression fails loudly.",
+  "objective": "Make it possible for six later provider slices (Wave 3: GitHub, Vercel, GCP, Azure, Oracle, AWS - all six running CONCURRENTLY) to add ONLY DATA, and make the changed/stale/withdrawn/contradictory cases deterministically drivable offline. Concretely: (a) generalise build_fixture_fetcher() to resolve HTML, JSON and RSS/XML fixtures with the CORRECT MIME chosen from the source type/extension, never a guess; (b) introduce a per-provider profile REGISTRATION SEAM so adding a provider profile requires NO edit to any shared dict - this is the single deliverable that makes Wave 3 six-way parallelism safe; (c) ship a shared parametrised fixture harness (tests/support/fixtures.py) with the seven-case vocabulary plus TIME-INJECTED drive_withdrawn/drive_stale helpers exercised end-to-end on REAL ORM rows; (d) ship the owner-run-only scripts/capture_fixture.py with a capture.json provenance sidecar plus an integrity (never freshness) test; (e) land both Q7-A carry-overs (reconcile idempotency guard + unknown-materiality e2e) with their own regression tests.",
   "scope": [
-    "tests/security/__init__.py (NEW): package marker/docstring.",
-    "tests/security/test_security_corpus_llm_intake.py (NEW, S1): user-URL/SSRF in description -> 422; malformed/oversized/unknown-field/wrong-type/URL-smuggled LLM output rejected by the strict schema -> deterministic fallback (invalid_interpretation); provider timeout/error -> graceful degrade; a valid LLM interpretation IS used; deterministic fallback is byte-identical to /recommend with providers disabled; NO LLM-to-publication path (spy session records zero add/commit/flush on assisted + structured paths, even on the llm_used=True path); consent is ephemeral (no consent/user-description column on Base.metadata + spy-session no-write with consent=true); prompts/descriptions are NEVER logged (caplog canary); a subprocess import-guard proves the deterministic core imports no LLM adapter.",
-    "tests/security/test_security_corpus_abuse.py (NEW, S2): deterministic overage -> 429 + Retry-After (service + HTTP); ONLY hashed IP persisted end-to-end (scan store rate keys + PoW ip fields are 64-hex, never a dotted-quad/colon; dedupe key is hex not raw body); AI kill switch ON -> assisted degrades to deterministic (200, llm_used=false) WITHOUT hard-fail while /recommend stays 200; per-provider circuit breaker opens after N failures adding ZERO extra provider calls, half-open closes on success and reopens on failure; request dedupe collapses identical requests (service + HTTP fake.calls==1); PoW is server-signed (stdlib hmac), single-use, expiring, ip-bound, constant-time verified, and forged/replayed/expired/downgraded/insufficient-work/malformed tokens are ALL rejected.",
-    "tests/security/test_security_corpus_export.py (NEW, S3): fail-closed validators reject path traversal (absolute / .. / backslash), non-allowlisted paths, invalid YAML, missing/empty healthcheck, missing multi-arch (amd64+arm64) assertion, oversized single file + oversized total, NUL/control bytes, planted secrets (AWS/GitHub/Slack/OpenAI/GCP/PRIVATE KEY/keyword-assigned, all fragment-assembled), missing compose, duplicate path; the produced bundle is secret-free; build_export persists nothing (open spy); the router maps ExportValidationError -> 422.",
-    "tests/security/test_security_corpus_admin.py (NEW, S4): a non-allowlisted GitHub login -> 403 + NO session cookie + audited; UNAUTHENTICATED access to EVERY guarded admin function -> 401 (valid bodies so the body validator never masks the auth check) + audited; a forged/tampered/expired/wrong-key signed cookie -> 401 across EVERY guarded endpoint; missing/invalid CSRF on EVERY mutation -> 403; missing/mismatched/forged OAuth state -> 401 (incl. a matching-but-signature-invalid state); missing code -> 400; a failed OAuth exchange -> 401; a deep no-leak scan across ALL audit rows (success + denied) proves no signing key / client secret / client id / raw OAuth code / access token appears in any row's actor, reason, or context (keys or values)."
+    "apps/api/app/ingest/runner.py: generalise build_fixture_fetcher() to resolve source.html|json|xml AND flat <id>.<ext>, selecting the MIME from the source's type/extension (text/html, application/json, application/rss+xml, application/xml). Unresolvable => NOT registered (graceful per-source not-found), never a guessed MIME and never a network reach. Document the --fixtures-root convention: a provider's directory is tests/fixtures/ingest/<provider>/<adapter>/.",
+    "apps/api/app/ingest/adapters/profiles/__init__.py (NEW): the profile REGISTRATION SEAM. Per-provider modules register their own profiles into the HTML / structured(JSON) / MCP registries via a register_* API and module discovery, so six concurrent slices never edit one shared dict.",
+    "apps/api/app/ingest/adapters/profiles/cloudflare.py (NEW): the existing cloudflare_workers_limits / cloudflare_pages_limits profiles moved behind the registry. BEHAVIOUR-NEUTRAL refactor: existing Cloudflare tests pass UNCHANGED and the Cloudflare content_hash is byte-identical.",
+    "tests/support/fixtures.py (NEW): shared parametrised harness. Given (provider, adapter, case) it loads source.* + expected.json, runs the adapter through a FixtureFetcher, and asserts facts + evidence locations + a stable content_hash. Case vocabulary: unchanged | changed | partial | malformed | contradictory | withdrawn | stale. Helpers drive_withdrawn(...) (scan A then scan B with the offer row ABSENT => change_event.change_type == 'withdrawn', materiality 'material') and drive_stale(...) (FROZEN CLOCK beyond the source's schedule window => assess_staleness().stale is True, the publication gate WITHHOLDS, a review item is raised). Both TIME-INJECTED, never sleep()-based.",
+    "scripts/capture_fixture.py (NEW, OWNER-RUN ONLY, never invoked by tests or CI): uses LiveFetcher with the provider's official-domain allowlist; writes source.<ext> plus a capture.json sidecar {url, fetched_at, http_status, sha256_original, sha256_stored, trim_method, robots_allowed, tos_note, captured_by}; prints a warning that only MINIMAL OFFICIAL EXCERPTS may be committed (Q2-A copyright posture).",
+    "tests/fixtures/ingest/README.md (NEW): attribution + the minimal-excerpt rule + the capture.json schema + the directory convention.",
+    "apps/api/app/ingest/reconcile.py (Q7-A carry-over a): idempotency guard so a new_candidate_id that already has a change_event does not get a duplicate (defends against same-scan_run re-invocation). Same guard for the withdrawn arm keyed on previous_candidate_id.",
+    "tests/unit/test_fixture_harness.py (NEW); tests/unit/test_capture_sidecar.py (NEW, integrity only - sidecar present + sha256_stored matches the bytes on disk, NEVER freshness); tests/unit/test_no_live_fetcher_in_tests.py (NEW): AST-based - no test constructs LiveFetcher except the sanctioned loopback-only fetcher unit test, and scripts/capture_fixture.py is the only module constructing it outside fetch.py.",
+    "tests/integration/test_ingest_withdrawn.py (NEW) and tests/integration/test_ingest_stale.py (NEW): withdrawn + stale end-to-end on REAL ORM rows with an injected clock, deterministic on repeat runs.",
+    "tests/integration/test_ingest_reconcile.py (EXTEND): the Q7-A idempotency-guard regression and the unknown-materiality e2e (an unrecognised changed field) driven through scan -> reconcile -> gate on REAL rows.",
+    "tests/unit/test_ingest_runner.py (EXTEND): multi-format MIME resolution + graceful unresolvable.",
+    "docs/TEST_STRATEGY.md (case vocabulary + the two new F008 cases) and docs/PROVIDER_ADAPTERS.md (fixture layout + capture workflow + the registration seam).",
+    "agent-state/current_contract.json (this file) and an APPEND-ONLY handoff at the end of agent-state/progress.md."
   ],
   "out_of_scope": [
-    "Any migration or schema change (alembic head stays 0009_admin_audit).",
-    "Any new runtime or test dependency; any Redis; any real github.com or real LLM-provider network.",
-    "Refactoring or behaviour changes to the S1-S4 source beyond a MINIMAL, prominently-called-out hardening fix landed ALONGSIDE its own regression test IF a genuine security gap is found (none was found; this slice is tests-only).",
-    "Editing feature_list.json (F007 passes stays false), evaluation.json, or any other feature's records; flipping any passes flag; merging the PR."
+    "Any migration or schema change. This slice adds NO migration; the alembic head must be UNCHANGED by this work.",
+    "fetch.py policy logic - explicitly NO DNS-rebinding hardening (DEFERRED per Q7-A).",
+    "The config schema (apps/api/app/config/models.py) - S1 and S2 own it; apps/api/app/ingest/config_sync.py, apps/api/app/publish/publisher.py, migrations/, config/examples/providers/cloudflare.example.yaml - all S1's files.",
+    "The adviser, the web app, and any provider YAML.",
+    "Region availability / data residency (Q8-A, out of F008 scope).",
+    "Any new runtime or test dependency; any Redis; any live network; any credentialed provider API; any secret in any committed file.",
+    "Editing agent-state/feature_list.json (F008 stays passes:false) or agent-state/evaluation.json; flipping any passes flag; merging the PR."
   ],
   "acceptance_criteria": [
-    "1. S1 (LLM/intake): the corpus asserts no LLM-to-publication path, user-URL/SSRF rejection (422), strict-schema fail-closed to deterministic fallback on malformed/oversized/unknown-field output, ephemeral+never-persisted consent, never-logged prompts/descriptions, byte-identical deterministic fallback, and a no-LLM-import guard on the deterministic core.",
-    "2. S2 (abuse): the corpus asserts deterministic overage -> 429 + Retry-After, hashed-IP-only persistence, kill-switch graceful degrade with /recommend still up, breaker open/zero-extra-calls/half-open close+reopen, dedupe collapse, and PoW server-signed/single-use/expiring/ip-bound/constant-time with forged/replayed/expired/downgraded/insufficient/malformed all rejected.",
-    "3. S3 (export): the corpus asserts fail-closed rejection of traversal/non-allowlist/invalid-YAML/missing-or-empty-healthcheck/missing-multi-arch/oversized/NUL-control/planted-secret/missing-compose/duplicate-path, a secret-free output, and build_export persisting nothing.",
-    "4. S4 (admin): the corpus asserts non-allowlisted -> 403 no session + audited, unauthenticated -> 401 on every function + audited, forged/tampered/expired/wrong-key cookie -> 401 on every endpoint, missing/invalid CSRF -> 403 on every mutation, missing/mismatched/forged/signature-invalid state -> 401, missing code -> 400, failed exchange -> 401, and a no-leak scan of every audit row (success + denied).",
-    "5. Offline gates green: scripts/test.ps1 exit 0 (pytest incl. all new security tests + web vitest 103 + vite build) with the pytest total exceeding the prior 728 passed / 63 skipped by the added tests; scripts/check.ps1 -NodeAudit exit 0 (all 8 gates, detect-secrets green on tracked files re-run AFTER git add).",
-    "6. HARD CONSTRAINTS held: no migration (alembic head 0009_admin_audit), no new runtime/test dependency, no Redis, no real network, no secrets committed (planted fixtures fragment-assembled), existing behaviour unchanged (tests-only).",
-    "7. F007 remains passes:false; a fresh-context independent Level 2 evaluator owns any status change. Did NOT merge; did NOT flip passes; did NOT touch feature_list.json / evaluation.json."
+    "1. The runner serves HTML, JSON and RSS fixtures with the correct MIME, chosen from the source type/extension and never guessed; an unresolvable fixture is simply not registered (graceful per-source not-found, no network). The existing Cloudflare HTML path is behaviourally unchanged - the SAME content_hash.",
+    "2. The profile registration seam works: HTML_EXTRACTION_PROFILES is populated from profiles/cloudflare.py, and adding a provider profile requires NO edit to any shared dict (proven by a test that registers a throwaway second provider profile module without touching a shared file).",
+    "3. withdrawn and stale are exercised end-to-end against REAL ORM rows with an INJECTED clock, deterministically - same result on repeat runs, no wall-clock dependence, no sleep().",
+    "4. The capture.json schema is documented; the integrity test (sidecar present for every committed provider fixture; sha256_stored matches the bytes on disk) is green; there is NO freshness assertion anywhere in the tree.",
+    "5. No test constructs LiveFetcher (except the sanctioned pre-existing loopback-only fetcher unit test, which performs zero external egress); CI performs zero socket operations; LiveFetcher is constructed outside fetch.py ONLY by scripts/capture_fixture.py.",
+    "6. Both Q7-A carry-overs landed with their own regression tests: (a) the reconcile idempotency guard (no duplicate change_event for a new_candidate_id that already has one) and (b) an end-to-end unknown-materiality path (an unrecognised changed field) through scan -> reconcile -> gate on REAL rows.",
+    "7. The alembic head is UNCHANGED by this slice; offline gates green: pwsh -File scripts/test.ps1 exit 0 (pytest >= the 868 passed / 63 skipped baseline plus the additions; web vitest 103; vite build) and pwsh -File scripts/check.ps1 -NodeAudit exit 0 (all 8 gates, detect-secrets re-run AFTER git add). Tree clean.",
+    "8. Mutation-probe resistance: reverting build_fixture_fetcher to HTML-only turns the JSON/RSS tests RED, and neutering the reconcile idempotency guard turns its regression test RED.",
+    "9. F008 remains passes:false; feature_list.json and evaluation.json untouched. Did NOT merge; did NOT flip any passes flag."
   ],
   "verification_plan": {
-    "baseline_commands": ["git status --short --branch", "git --no-pager log --oneline -20", "pwsh -File scripts/test.ps1", "pwsh -File scripts/check.ps1 -NodeAudit"],
-    "unit_commands": ["pwsh -File scripts/test.ps1", "pwsh -File scripts/check.ps1 -NodeAudit"],
+    "baseline_commands": [
+      "git status --short --branch",
+      "git --no-pager log --oneline -20",
+      "pwsh -File scripts/bootstrap-dev.ps1",
+      "pwsh -File scripts/test.ps1",
+      "pwsh -File scripts/check.ps1 -NodeAudit"
+    ],
+    "unit_commands": [
+      "pwsh -File scripts/test.ps1",
+      "pwsh -File scripts/check.ps1 -NodeAudit",
+      ".venv/Scripts/python.exe -m pytest tests/unit/test_fixture_harness.py tests/unit/test_capture_sidecar.py tests/unit/test_no_live_fetcher_in_tests.py tests/unit/test_ingest_runner.py tests/unit/test_adapter_html_cloudflare.py -q"
+    ],
     "integration_commands": [
-      "None required: the corpus is fully offline (TestClient + pure functions + in-memory stores + DI fakes + monkeypatched seams); no live stack, no database, and no network are needed. The already-merged S1-S4 slices retain their own live evidence."
+      "docker compose -p ftatlas_f008_s3 up -d (POSTGRES_PORT=55434 API_PORT=8012 WEB_PORT=8092; DATABASE_URL host-side only, NEVER exported into compose)",
+      "$env:DATABASE_URL='postgresql+psycopg://...@localhost:55434/...'; .venv/Scripts/python.exe -m pytest tests/integration/test_ingest_withdrawn.py tests/integration/test_ingest_stale.py tests/integration/test_ingest_reconcile.py tests/integration/test_ingest_runner.py -q",
+      "re-run the withdrawn/stale suites TWICE and once under a shifted clock to prove determinism",
+      "alembic current / heads before and after to prove the head is UNCHANGED",
+      "docker compose -p ftatlas_f008_s3 down --volumes"
     ]
   },
   "risks": {
-    "data_migration": "None: no migration, no schema change; alembic head stays 0009_admin_audit.",
-    "security_privacy": "This slice STRENGTHENS the security posture by pinning the F007 negative-security invariants as durable regression tests (SSRF/URL rejection, fail-closed schema/export validators, hashed-IP-only, kill-switch/breaker/dedupe/PoW, admin authn+CSRF+OAuth-state, audit no-leak). Planted-secret test fixtures are assembled from fragments at runtime so no contiguous credential literal is committed and detect-secrets stays green on tracked files.",
-    "portability": "No new runtime or test dependency and no Redis: the corpus uses only pytest + FastAPI TestClient + the Python stdlib + the repo's existing fakes/in-memory stores. amd64/arm64 unaffected.",
-    "zero_cost_safety": "The corpus asserts (does not weaken) the guarantees that keep the subsystem safe: no LLM-to-publication path, deterministic byte-identical fallback, fail-closed export, and admin gating - reinforcing Z0-safety rather than touching classification/quota logic.",
-    "immutability": "Additive test-only change; no source, model, migration, or config touched (tests-only). Existing immutability/separation guarantees are unaffected.",
-    "regression": "Purely additive tests under a new tests/security/ package; the full suite grows from 728 to 868 passed (+140) with 63 skipped unchanged and web vitest still 103 - no existing test weakened or removed.",
-    "supply_chain": "No new npm or Python dependency; pip-audit + npm audit (--omit=dev, 0 vulns) + detect-secrets stay green."
+    "data_migration": "None: this slice adds NO migration and touches no model or schema. The alembic head is asserted UNCHANGED before and after.",
+    "security_privacy": "The offline posture is STRENGTHENED, not weakened: an AST-based regression test pins that no test constructs LiveFetcher (bar the sanctioned loopback-only fetcher unit test) and that scripts/capture_fixture.py is the only construction site outside fetch.py. The capture script is owner-run only, never invoked by tests or CI, and enforces the provider official-domain allowlist through the existing FetchPolicy. NO DNS-rebinding hardening is attempted here (deferred, Q7-A). No secrets in any fixture; detect-secrets re-run after git add.",
+    "portability": "No new runtime or test dependency (Q6-A): stdlib + the already-installed toolchain only. No Redis; PostgreSQL stays the only mandatory stateful service. amd64/arm64 unaffected.",
+    "zero_cost_safety": "Untouched: this slice supplies DATA and a HARNESS, not new classification machinery. The Z0 rules, the publication gate and 'unknown is better than guessed' are asserted (the unresolvable-fixture path refuses to guess a MIME) rather than relaxed. Community-vs-official separation is unchanged.",
+    "immutability": "offer_version remains immutable/append-only: nothing here writes offer/offer_version. The Cloudflare refactor is behaviour-neutral and the content_hash is asserted identical, so no spurious version is minted.",
+    "regression": "The Cloudflare profile move is the main regression surface; it is mitigated by keeping the existing Cloudflare tests UNCHANGED and asserting an identical content_hash. The reconcile idempotency guard is additive and only suppresses a DUPLICATE event for an already-evented candidate; its regression test is written to go RED if the guard is removed.",
+    "supply_chain": "No new npm or Python dependency; pip-audit + npm audit + detect-secrets stay green. Any package install would go through the Microsoft feed proxies (pip https://packagefeedproxy.microsoft.io/pypi/simple; NuGet https://packagefeedproxy.microsoft.io/nuget/v3/index.json) - none is needed.",
+    "concurrency": "S1 is building concurrently and HAS RIGHT OF WAY. Footprints are disjoint by construction; on any conflict this slice rebases onto S1. Live-run isolation uses POSTGRES_PORT=55434 API_PORT=8012 WEB_PORT=8092 and compose project -p ftatlas_f008_s3 so it cannot collide with S1's 55432/8010/8090."
   },
   "required_evaluation_level": 2,
   "contract_review": {
     "required": true,
     "reviewer": "owner",
     "disposition": "approved",
-    "notes": ["Orchestrator directed F007 Slice 5a: a permanent, cross-cutting, fully-offline negative-security adversarial regression corpus under tests/security/ consolidating + extending the security invariants of the four merged F007 slices. Tests-only (no genuine source gap found). Hard constraints: no migration (head 0009), no new runtime/test dependency, no Redis, no real network, no secrets committed. F007 passes stays false; do NOT merge; do NOT flip passes; then STOP for a fresh-context Level 2 evaluation."]
+    "notes": [
+      "Orchestrator directed F008 Slice S3: multi-format fixture harness + case-corpus generalisation, NO migration. The profile-registration seam is the most important deliverable - the evaluator's decisive conflict-surface probe adds a throwaway second provider profile module and confirms it registers WITHOUT editing any shared file; if that fails, the slice FAILS. Hard constraints: no migration (head unchanged), no new runtime/test dependency, no Redis, no live network / zero sockets in tests, no credentialed provider APIs, no secrets, no DNS-rebinding hardening (deferred Q7-A). F008 passes stays false; do NOT merge; do NOT flip passes; then STOP for a fresh-context Level 2 evaluation."
+    ]
   }
 }

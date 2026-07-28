@@ -8,7 +8,10 @@ First vertical slice. Use official Cloudflare MCP servers, documentation, change
 extraction targets the official Workers and Pages free-tier limits pages on
 `developers.cloudflare.com`. Two declarative HTML extraction profiles —
 `cloudflare_workers_limits` and `cloudflare_pages_limits` — live as *data* in
-`app.ingest.adapters.html.HTML_EXTRACTION_PROFILES`; the generic
+`app.ingest.adapters.profiles.cloudflare` (registered into
+`app.ingest.adapters.html.HTML_EXTRACTION_PROFILES` through the seam described
+under [Provider onboarding requirements](#extraction-profile-registration-seam-f008-s3));
+the generic
 `HtmlDocAdapter` (reached only through the Fetcher seam) walks the profile's
 selected table and maps header labels to fact fields. Each profile reads one
 offer-centric row per product (`service`, `offer_type=always_free`,
@@ -92,6 +95,78 @@ A new provider needs:
 8. Health checks
 9. Documentation
 10. Tests
+
+### Extraction-profile registration seam (F008 S3)
+
+Provider-specific extraction knowledge is **data**, and each provider owns one
+module: `app/ingest/adapters/profiles/<provider>.py`. That module registers its
+profiles through the package seam and is the **only** file a provider slice adds:
+
+```python
+from ..html import HtmlColumn, HtmlExtractionProfile
+from . import register_html_profile
+
+MY_PROVIDER_LIMITS = register_html_profile(
+    HtmlExtractionProfile(
+        name="myprovider_limits",          # unique across all providers
+        table_id="myprovider-free-tier",
+        columns={"service": HtmlColumn("service", "text"), ...},
+    )
+)
+```
+
+`register_json_profile` and `register_mcp_profile` are the structured-API and MCP
+equivalents. `app.ingest.adapters` calls `load_provider_profiles()` at import
+time, which imports every module in the package via `pkgutil`, so **dropping the
+file in is the whole integration step**: no shared registry dict is edited, no
+`__init__` list is appended to, and no other provider's file is touched. That is
+what makes several provider slices safe to build concurrently — their footprints
+are disjoint by construction.
+
+Registration is additive only. A duplicate profile name raises
+`ProfileConflictError` rather than silently shadowing the existing profile;
+re-registering the identical object is a harmless no-op. Convention for names:
+`<provider>_<document>`.
+
+`app/ingest/adapters/html.py` keeps only the generic, provider-agnostic shapes
+(`quota_document`, `pricing_document`). `profiles/cloudflare.py` is the template
+to copy.
+
+### Fixture layout and capture workflow
+
+```
+tests/fixtures/ingest/<provider>/<adapter>/<case>/
+    source.html | source.json | source.xml
+    expected.json
+    capture.json
+```
+
+`--fixtures` (the runner's `--fixtures-root`) points at one
+`tests/fixtures/ingest/<provider>/<adapter>` directory. `build_fixture_fetcher`
+resolves `<source id>/source.<ext>` first, then a flat `<source id>.<ext>`, and
+serves it with the MIME implied by the source's **declared** `type` —
+`html` → `text/html`, `rss` → `application/rss+xml`, `reference-json` /
+`structured-api` → `application/json`. The content type is never sniffed from the
+bytes and never defaulted; an unresolvable or ambiguous fixture is simply not
+registered, so the fetch is a graceful not-found rather than a guess or a network
+reach.
+
+Capture is **owner-run only**, never invoked by tests or CI:
+
+```
+python scripts/capture_fixture.py config/examples/providers/<provider>.example.yaml \
+    --source <source id> \
+    --out tests/fixtures/ingest/<provider>/<adapter>/<case> \
+    --robots-allowed yes --tos-note "checked <date>" --yes-i-am-the-owner
+```
+
+It fetches through `LiveFetcher` with the provider's own official-domain
+allowlist and writes `source.<ext>` plus a `capture.json` provenance sidecar
+(`url`, `fetched_at`, `http_status`, `sha256_original`, `sha256_stored`,
+`trim_method`, `robots_allowed`, `tos_note`, `captured_by`). Commit **minimal
+official excerpts only**, with attribution in `tests/fixtures/ingest/README.md` —
+not bulk mirrored pages. CI validates the sidecar's presence and hash, and
+deliberately never asserts freshness.
 
 ## Reliability hierarchy
 

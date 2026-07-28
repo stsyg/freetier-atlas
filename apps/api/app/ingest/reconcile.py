@@ -434,6 +434,41 @@ def _freshest_fetched_at(session: Session, *, source_id: int) -> datetime | None
     ).scalar_one_or_none()
 
 
+def _change_event_exists_for_new_candidate(session: Session, *, candidate_id: int) -> bool:
+    """True if a change event already records ``candidate_id`` as its new side.
+
+    Idempotency guard (F004 carry-over, folded in by F008 S3 per Q7-A). One
+    candidate row is one observation of one identity in one scan run, so it can
+    legitimately be the *new* side of at most one change event. Re-invoking
+    :func:`reconcile_scan` for the same ``scan_run`` -- a retry, a re-run of the
+    runner over an already-reconciled scan, or a caller that reconciles twice
+    inside one transaction -- must therefore be a no-op rather than doubling the
+    change history and inflating every downstream count.
+    """
+
+    stmt = select(ChangeEvent.id).where(ChangeEvent.new_candidate_id == candidate_id).limit(1)
+    return session.execute(stmt).scalars().first() is not None
+
+
+def _withdrawal_exists_for_prior_candidate(session: Session, *, candidate_id: int) -> bool:
+    """True if a ``withdrawn`` event already names ``candidate_id`` as its prior side.
+
+    The companion guard for the withdrawal arm, which has no new-side candidate
+    to key on.
+    """
+
+    stmt = (
+        select(ChangeEvent.id)
+        .where(
+            ChangeEvent.previous_candidate_id == candidate_id,
+            ChangeEvent.new_candidate_id.is_(None),
+            ChangeEvent.change_type == "withdrawn",
+        )
+        .limit(1)
+    )
+    return session.execute(stmt).scalars().first() is not None
+
+
 def _pending_conflict_exists(session: Session, *, identity_key: str) -> bool:
     stmt = (
         select(ReviewItem.id)
@@ -459,6 +494,11 @@ def reconcile_scan(
     items for cross-source official contradictions. Never creates or mutates
     ``offer`` / ``offer_version``. The caller owns the transaction; this flushes
     but does not commit.
+
+    **Idempotent for a given scan run.** Re-invoking this for a scan run that has
+    already been reconciled records no additional change events: a candidate can
+    be the new side of at most one change event, and a prior candidate can be
+    withdrawn at most once (Q7-A carry-over).
     """
 
     now = now or datetime.now(UTC)
@@ -497,6 +537,10 @@ def reconcile_scan(
         )
         if assessment.change_type is None:
             continue
+        # Idempotency guard (Q7-A): this candidate already has a change event, so
+        # a re-invocation for the same scan run must not duplicate it.
+        if _change_event_exists_for_new_candidate(session, candidate_id=candidate.id):
+            continue
         session.add(
             ChangeEvent(
                 offer_id=None,
@@ -525,7 +569,12 @@ def reconcile_scan(
             if key in current_keys or key in seen_keys:
                 continue
             seen_keys.add(key)
-            if _latest_change_type(session, source_id=source.id, candidate_key=key) == "withdrawn":
+            # Idempotency guard (Q7-A): the withdrawal arm has no new-side
+            # candidate, so it is keyed on the prior candidate instead. This is
+            # the authoritative check -- it blocks a re-invocation for the same
+            # scan run while still allowing a genuine re-withdrawal after a
+            # restore (a different prior candidate row).
+            if _withdrawal_exists_for_prior_candidate(session, candidate_id=prior_candidate.id):
                 continue
             session.add(
                 ChangeEvent(

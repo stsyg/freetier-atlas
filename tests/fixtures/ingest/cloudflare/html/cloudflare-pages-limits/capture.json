@@ -1,0 +1,11 @@
+{
+  "captured_by": "F005 builder (retro-fitted sidecar, F008 S3)",
+  "fetched_at": null,
+  "http_status": null,
+  "robots_allowed": null,
+  "sha256_original": null,
+  "sha256_stored": "08df2988334346a48f7cd76c5b8750cfa48279d9b31d0a4161e7c158ec179178",
+  "tos_note": "Official Cloudflare developer documentation. Minimal excerpt committed for offline extraction testing, attributed in tests/fixtures/ingest/README.md.",
+  "trim_method": "manual-excerpt: the official Pages free-tier limits table only. Sidecar retro-fitted in F008 S3; the F005 capture did not record fetched_at, http_status, the untrimmed sha256, or a robots.txt outcome, so those stay null rather than being guessed.",
+  "url": "https://developers.cloudflare.com/pages/platform/limits/"
+}
