@@ -146,7 +146,14 @@ provider slice cannot ship a declaration block that asserts nothing.
 
 `ingest.config_sync.sync_coverage()` upserts the block into `provider_category_coverage` on
 `(provider_id, category_id)`. It is idempotent, convergent (a changed state overwrites) and prunes
-rows for pairs the YAML no longer declares.
+rows for pairs the YAML no longer declares. A pair whose `source` or category slug cannot be
+resolved is **not** pruned — a resolution failure is not a withdrawal, so the existing row survives
+and the condition surfaces in the `unknown_source` / `unknown_category` outcome counts.
+
+The evidence floor is re-checked **after** the sync against the rows actually persisted, so it is a
+database invariant rather than only a config-load one. If fewer than three persisted rows are
+evidence-backed, `sync_coverage()` raises `CoverageFloorError` and the caller's transaction is
+aborted, so declared coverage can never be silently eroded by DB drift or a failed reference.
 
 Finally, a pair declared `unknown` or `not_offered` while the derivation from published evidence
 says `verified_free` / `offered_no_z0` is a **material contradiction**: it raises a pending

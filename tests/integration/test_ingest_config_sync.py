@@ -21,8 +21,17 @@ import pytest
 from alembic import command
 from alembic.config import Config
 from app.config.loader import load_and_validate
-from app.config.models import CoverageDeclaration, ProviderConfig
-from app.ingest.config_sync import categorise_services, sync_coverage, sync_provider
+from app.config.models import (
+    MIN_EVIDENCE_BACKED_COVERAGE,
+    CoverageDeclaration,
+    ProviderConfig,
+)
+from app.ingest.config_sync import (
+    CoverageFloorError,
+    categorise_services,
+    sync_coverage,
+    sync_provider,
+)
 from app.models.domain import (
     Category,
     OfferVersion,
@@ -31,7 +40,9 @@ from app.models.domain import (
     Service,
     Source,
 )
-from app.models.vocab import COVERAGE_STATES
+from app.models.vocab import COVERAGE_STATES, EVIDENCE_BACKED_COVERAGE_STATES
+from app.read_api import queries
+from app.read_api import service as read_service
 from app.read_api.taxonomy import canonical_slugs
 from sqlalchemy import create_engine, func, select
 from sqlalchemy.engine import Engine
@@ -417,11 +428,20 @@ def test_a_changed_declaration_overwrites_the_stored_row(session: Session) -> No
     assert stored.state == "verified_free"
     assert stored.source_id is not None or stored.evidence_url
 
-    # The maintainers retract the free claim: verified_free -> unknown.
+    # The maintainers retract the free claim: verified_free -> unknown. A real
+    # config cannot drop below the Q9-A floor while doing so (the loader would
+    # reject it, and sync_coverage now enforces the same floor against the
+    # persisted rows), so the retraction is paired with a newly evidenced
+    # category exactly as a maintainer would have to write it.
+    replacement = next(slug for slug, d in config.coverage.items() if d.state == "unknown")
     config.coverage[target] = CoverageDeclaration(state="unknown")
+    config.coverage[replacement] = CoverageDeclaration(
+        state="verified_free",
+        evidence_url="https://developers.cloudflare.com/r2/pricing/",
+    )
     result = sync_coverage(session, config)
 
-    assert result.updated == 1
+    assert result.updated == 2
     assert result.changed is True
 
     reloaded = _coverage_rows(session, provider.id)[target]
@@ -451,6 +471,142 @@ def test_a_row_the_config_no_longer_declares_is_withdrawn(session: Session) -> N
     rows = _coverage_rows(session, provider.id)
     assert dropped not in rows, "an undeclared row must not linger as an invisible claim"
     assert len(rows) == 13
+
+
+@skip_without_db
+def test_an_unresolvable_source_reference_does_not_withdraw_the_declaration(
+    session: Session,
+) -> None:
+    """OBSERVATION A: a reference this sync cannot resolve is NOT a withdrawal.
+
+    The Level-2 evaluator's live reproduction. ``sync_coverage`` used to
+    ``continue`` past an unresolvable ``source`` **without** registering the pair
+    as declared, so the prune loop treated it as no-longer-declared and DELETED
+    the row. Renaming the two referenced source slugs took Cloudflare from 14
+    rows to 12 and dropped its evidence-backed count from 3 (exactly the Q9-A
+    floor) to 1, with no error raised anywhere.
+    """
+
+    config = _config()
+    sync_provider(session, config)
+    provider = session.execute(select(Provider).where(Provider.slug == "cloudflare")).scalar_one()
+
+    before = _coverage_rows(session, provider.id)
+    assert len(before) == 14
+
+    affected = sorted(slug for slug, entry in config.coverage.items() if entry.source)
+    assert len(affected) >= 2, "the reproduction needs at least two source-backed declarations"
+    referenced = {config.coverage[slug].source for slug in affected}
+    expected = {slug: (before[slug].state, before[slug].source_id) for slug in affected}
+    assert all(source_id is not None for _, source_id in expected.values())
+
+    # The reproduction: rename the referenced source slugs directly in the
+    # database so the declared references no longer resolve.
+    renamed = 0
+    for source in session.execute(
+        select(Source).where(Source.provider_id == provider.id)
+    ).scalars():
+        if source.slug in referenced:
+            source.slug = f"renamed-{source.slug}"
+            renamed += 1
+    session.flush()
+    assert renamed == len(referenced)
+
+    result = sync_coverage(session, config)
+
+    # The condition stays observable...
+    assert result.unknown_sources == len(affected)
+    assert result.unresolved_sources == affected
+    # ...but it is emphatically not a withdrawal.
+    assert result.withdrawn == 0, "an unresolvable reference must never prune a declared row"
+
+    after = _coverage_rows(session, provider.id)
+    assert len(after) == 14, "a still-declared pair must survive a failed reference resolution"
+    for slug in affected:
+        assert slug in after
+        assert (after[slug].state, after[slug].source_id) == expected[slug], (
+            f"{slug} must keep its declared state and provenance untouched"
+        )
+
+    # And the public matrix still reports them as declared rather than regressing
+    # to 'unknown' -- the user-visible symptom the evaluator observed.
+    listed = queries.fetch_providers(session)
+    matrix = read_service.serialize_category_matrix(
+        listed,
+        queries.category_map_for_providers(session, listed),
+        queries.coverage_signal_context(session, listed),
+    )
+    cells = {
+        (row.slug, cell.provider_slug): cell for row in matrix.categories for cell in row.providers
+    }
+    for slug in affected:
+        cell = cells[(slug, "cloudflare")]
+        assert cell.declared_state == expected[slug][0], slug
+        assert cell.declared_state != "unknown", slug
+
+
+@skip_without_db
+def test_sync_coverage_aborts_when_the_persisted_rows_fall_below_the_q9a_floor(
+    session: Session,
+) -> None:
+    """Q9-A is a DATABASE invariant, not only a config-load one.
+
+    ``validate_coverage_floor()`` proves the *file* declares at least three
+    evidence-backed categories. That says nothing about what actually lands in
+    the database. Onboarding a provider against a partially synced database (its
+    ``source`` rows not written yet) persists the declarations whose provenance
+    is an ``evidence_url`` but silently skips the ones that cite a ``source`` --
+    leaving the provider below the floor with every surviving row still
+    individually legal. That must abort, not commit quietly.
+    """
+
+    config = _config()
+    # A partially synced database: the provider is being written, its sources
+    # are not there yet, so every source-backed declaration is unresolvable.
+    config.sources = []
+
+    savepoint = session.begin_nested()
+    with pytest.raises(CoverageFloorError) as excinfo:
+        sync_provider(session, config)
+
+    message = str(excinfo.value)
+    assert "cloudflare" in message
+    assert str(MIN_EVIDENCE_BACKED_COVERAGE) in message
+    for slug in sorted(slug for slug, entry in config.coverage.items() if entry.source):
+        assert slug in message, "the message must name the unresolved references"
+
+    # The erosion is rolled back with the caller's transaction: nothing commits.
+    savepoint.rollback()
+    remaining = session.execute(
+        select(func.count())
+        .select_from(ProviderCategoryCoverage)
+        .join(Provider, Provider.id == ProviderCategoryCoverage.provider_id)
+        .where(Provider.slug == "cloudflare")
+    ).scalar_one()
+    assert remaining == 0
+
+
+@skip_without_db
+def test_the_persisted_floor_check_is_silent_on_the_healthy_path(session: Session) -> None:
+    """The new invariant must not fire on a normal sync or an idempotent re-run."""
+
+    config = _config()
+    first = sync_provider(session, config)
+    assert first.coverage.created == 14
+
+    provider = session.execute(select(Provider).where(Provider.slug == "cloudflare")).scalar_one()
+    rows = _coverage_rows(session, provider.id)
+    backed = [
+        slug
+        for slug, row in rows.items()
+        if row.state in EVIDENCE_BACKED_COVERAGE_STATES
+        and (row.source_id is not None or (row.evidence_url or "").strip())
+    ]
+    assert len(backed) >= MIN_EVIDENCE_BACKED_COVERAGE
+
+    second = sync_provider(session, config)
+    assert second.coverage.unchanged == 14
+    assert second.coverage.changed is False
 
 
 @skip_without_db

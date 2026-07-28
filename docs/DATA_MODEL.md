@@ -69,6 +69,19 @@ content actually changes) and deletes rows for pairs the provider YAML no longer
 converges on the declared truth rather than retaining a stale row. The same principle now applies to
 `service_categories`: withdrawing a service's declaration reverts `service.category_id` to `NULL`.
 
+**A resolution failure is not a withdrawal.** If a declared pair references a `source` slug or a
+category slug the sync cannot resolve, the pair still counts as declared: the existing row is left
+**intact** and the condition is reported through the `unknown_source` / `unknown_category` outcome
+counts. Only a pair the YAML genuinely stops declaring is pruned. Pruning on an unresolvable
+reference would silently erode evidence-backed coverage with no error.
+
+The Q9-A evidence floor is enforced **twice** — once at config load
+(`ProviderConfig.validate_coverage_floor()`) and once after every sync against the rows actually
+persisted. `sync_coverage()` re-reads the provider's stored rows and raises `CoverageFloorError` if
+fewer than three are evidence-backed `verified_free` / `offered_no_z0`, aborting the caller's
+transaction so a shortfall is never committed. The floor is therefore a **database** invariant, not
+only a config-load one.
+
 ### Offer
 
 Service, offer type, Z class, status, eligibility, commercial/personal conditions, card requirement, paid dependencies, dates, visibility, first-seen and last-verified timestamps.
