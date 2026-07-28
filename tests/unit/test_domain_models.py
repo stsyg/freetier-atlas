@@ -1,6 +1,6 @@
 """Offline unit tests for the domain model (no database required).
 
-These assert the *shape* of the SQLAlchemy metadata: that all 15 entities are
+These assert the *shape* of the SQLAlchemy metadata: that all 16 entities are
 present, that the closed-vocabulary check constraints carry exactly the
 membership documented in ``docs/DATA_MODEL.md``, that Evidence carries its
 provenance foreign keys, and that the ORM mappers configure cleanly. The live
@@ -26,6 +26,7 @@ from sqlalchemy.orm import configure_mappers
 EXPECTED_TABLES = {
     "provider",
     "category",
+    "provider_category_coverage",
     "service",
     "offer",
     "offer_version",
@@ -69,10 +70,10 @@ def _check_constraint_sql(table_name: str, column: str) -> str:
     raise AssertionError(f"check constraint on {table_name}.{column} not found")
 
 
-def test_all_fifteen_domain_tables_present() -> None:
+def test_all_sixteen_domain_tables_present() -> None:
     assert EXPECTED_TABLES <= set(metadata.tables.keys())
-    assert len(EXPECTED_TABLES) == 15
-    # Strictly bound the full metadata: the 15 domain entities plus exactly the
+    assert len(EXPECTED_TABLES) == 16
+    # Strictly bound the full metadata: the 16 domain entities plus exactly the
     # five S2 abuse-control tables and the one S4 admin-audit table, nothing else.
     assert set(metadata.tables.keys()) == EXPECTED_TABLES | ABUSE_TABLES | ADMIN_TABLES
 

@@ -14,7 +14,8 @@ import pytest
 from app.config import ConfigError, load_and_validate
 from app.config.cli import main as cli_main
 from app.config.loader import detect_family
-from app.config.models import FAMILY_MODELS
+from app.config.models import FAMILY_MODELS, MIN_EVIDENCE_BACKED_COVERAGE
+from app.read_api.taxonomy import canonical_slugs
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 EXAMPLES = REPO_ROOT / "config" / "examples"
@@ -193,7 +194,56 @@ publishing:
 # --- service_categories (F008 slice S1) -------------------------------------
 
 
-def _provider_yaml(service_categories_block: str) -> str:
+def _coverage_block(
+    *,
+    states: dict[str, str] | None = None,
+    provenance: dict[str, str] | None = None,
+    rationales: dict[str, str] | None = None,
+    omit: set[str] | None = None,
+    extra: dict[str, str] | None = None,
+) -> str:
+    """Render a `coverage:` block.
+
+    Defaults to a minimal *valid* block: three evidence-backed entries (the Q9-A
+    floor) and eleven honest ``unknown``s. Every keyword narrows or breaks it so
+    a test can pin exactly one failure mode.
+    """
+
+    if states is None:
+        states = {
+            "serverless-functions": "verified_free",
+            "containers-app-hosting": "verified_free",
+            "networking-cdn-dns": "offered_no_z0",
+        }
+    provenance = (
+        provenance
+        if provenance is not None
+        else {
+            "serverless-functions": "source: cloudflare-changelog",
+            "containers-app-hosting": "source: cloudflare-changelog",
+            "networking-cdn-dns": "evidence_url: https://www.cloudflare.com/plans/",
+        }
+    )
+    rationales = rationales or {}
+    omit = omit or set()
+
+    lines = ["coverage:"]
+    for slug in canonical_slugs():
+        if slug in omit:
+            continue
+        lines.append(f"  {slug}:")
+        lines.append(f"    state: {states.get(slug, 'unknown')}")
+        if slug in provenance:
+            lines.append(f"    {provenance[slug]}")
+        if slug in rationales:
+            lines.append(f"    rationale: {rationales[slug]}")
+    for slug, state in (extra or {}).items():
+        lines.append(f"  {slug}:")
+        lines.append(f"    state: {state}")
+    return "\n".join(lines) + "\n"
+
+
+def _provider_yaml(service_categories_block: str, coverage_block: str | None = None) -> str:
     return (
         """
 provider:
@@ -212,6 +262,7 @@ publishing:
   require_official_source: true
   require_deterministic_numeric_validation: true
 """
+        + (coverage_block if coverage_block is not None else _coverage_block())
         + service_categories_block
     )
 
@@ -290,6 +341,177 @@ def test_service_categories_unknown_service_name_is_accepted(tmp_path: Path) -> 
     )
     model = load_and_validate(path)
     assert model.service_categories == {"Totally Unshipped Service": "ai-inference-embeddings"}
+
+
+# --- coverage (F008 slice S2) ------------------------------------------------
+
+
+def _load_coverage(tmp_path: Path, coverage_block: str) -> object:
+    path = _write(tmp_path, "provider.yaml", _provider_yaml("", coverage_block))
+    return load_and_validate(path)
+
+
+def _coverage_problems(tmp_path: Path, coverage_block: str) -> str:
+    path = _write(tmp_path, "provider.yaml", _provider_yaml("", coverage_block))
+    with pytest.raises(ConfigError) as excinfo:
+        load_and_validate(path)
+    return "\n".join(excinfo.value.problems)
+
+
+def test_coverage_happy_path_declares_all_fourteen(tmp_path: Path) -> None:
+    model = _load_coverage(tmp_path, _coverage_block())
+    assert set(model.coverage) == set(canonical_slugs())
+    assert len(model.coverage) == 14
+    assert model.coverage["serverless-functions"].state == "verified_free"
+    assert model.coverage["relational-databases"].state == "unknown"
+
+
+def test_coverage_is_mandatory(tmp_path: Path) -> None:
+    """A provider file with no coverage block at all must not load."""
+
+    path = _write(tmp_path, "provider.yaml", _provider_yaml("", ""))
+    with pytest.raises(ConfigError) as excinfo:
+        load_and_validate(path)
+    assert "coverage" in "\n".join(excinfo.value.problems)
+
+
+def test_coverage_rejects_missing_slug(tmp_path: Path) -> None:
+    problems = _coverage_problems(
+        tmp_path, _coverage_block(omit={"object-file-storage", "auth-identity"})
+    )
+    # Actionable: names exactly which slugs are missing.
+    assert "object-file-storage" in problems
+    assert "auth-identity" in problems
+    assert "missing" in problems
+
+
+def test_coverage_rejects_unknown_slug(tmp_path: Path) -> None:
+    problems = _coverage_problems(tmp_path, _coverage_block(extra={"quantum-computers": "unknown"}))
+    assert "quantum-computers" in problems
+    assert "serverless-functions" in problems  # points at the valid set
+
+
+def test_coverage_rejects_not_offered_without_rationale(tmp_path: Path) -> None:
+    block = _coverage_block(
+        states={
+            "serverless-functions": "verified_free",
+            "containers-app-hosting": "verified_free",
+            "networking-cdn-dns": "offered_no_z0",
+            "compute-vms": "not_offered",
+        }
+    )
+    problems = _coverage_problems(tmp_path, block)
+    assert "compute-vms" in problems
+    assert "rationale" in problems
+
+
+def test_coverage_accepts_not_offered_with_rationale(tmp_path: Path) -> None:
+    block = _coverage_block(
+        states={
+            "serverless-functions": "verified_free",
+            "containers-app-hosting": "verified_free",
+            "networking-cdn-dns": "offered_no_z0",
+            "compute-vms": "not_offered",
+        },
+        rationales={"compute-vms": "Cloudflare publishes no general-purpose VM product."},
+    )
+    model = _load_coverage(tmp_path, block)
+    assert model.coverage["compute-vms"].state == "not_offered"
+
+
+def test_coverage_rejects_verified_free_without_provenance(tmp_path: Path) -> None:
+    block = _coverage_block(
+        provenance={
+            "containers-app-hosting": "source: cloudflare-changelog",
+            "networking-cdn-dns": "evidence_url: https://www.cloudflare.com/plans/",
+        }
+    )
+    problems = _coverage_problems(tmp_path, block)
+    assert "serverless-functions" in problems
+    assert "evidence_url" in problems or "source" in problems
+
+
+def test_coverage_rejects_undeclared_source_reference(tmp_path: Path) -> None:
+    block = _coverage_block(
+        provenance={
+            "serverless-functions": "source: some-other-providers-source",
+            "containers-app-hosting": "source: cloudflare-changelog",
+            "networking-cdn-dns": "evidence_url: https://www.cloudflare.com/plans/",
+        }
+    )
+    problems = _coverage_problems(tmp_path, block)
+    assert "some-other-providers-source" in problems
+
+
+# --- Q9-A evidence floor -----------------------------------------------------
+
+
+def test_coverage_floor_rejects_all_unknown_block(tmp_path: Path) -> None:
+    """Fourteen honest 'unknown's is a placeholder, not a catalogue entry.
+
+    This must be a HARD load failure, not a warning: a provider nobody has
+    verified anything about must be unable to reach the catalogue at all.
+    """
+
+    problems = _coverage_problems(tmp_path, _coverage_block(states={}, provenance={}))
+    assert "at least 3" in problems
+    assert "only 0" in problems
+
+
+def test_coverage_floor_rejects_two_evidence_backed_entries(tmp_path: Path) -> None:
+    block = _coverage_block(
+        states={
+            "serverless-functions": "verified_free",
+            "containers-app-hosting": "verified_free",
+        },
+        provenance={
+            "serverless-functions": "source: cloudflare-changelog",
+            "containers-app-hosting": "source: cloudflare-changelog",
+        },
+    )
+    problems = _coverage_problems(tmp_path, block)
+    assert "only 2" in problems
+    assert "1 more needed" in problems
+
+
+def test_coverage_floor_passes_with_three_evidence_backed_entries(tmp_path: Path) -> None:
+    model = _load_coverage(tmp_path, _coverage_block())
+    backed = [
+        slug
+        for slug, entry in model.coverage.items()
+        if entry.state in ("verified_free", "offered_no_z0") and entry.has_provenance
+    ]
+    assert len(backed) == 3
+
+
+def test_coverage_floor_ignores_unbacked_claims(tmp_path: Path) -> None:
+    """Three verified_free entries with no provenance cannot satisfy the floor.
+
+    They cannot even load -- the provenance rule fires first -- which is the
+    point: an unsupported free claim never counts as coverage.
+    """
+
+    block = _coverage_block(
+        states={
+            "serverless-functions": "verified_free",
+            "containers-app-hosting": "verified_free",
+            "networking-cdn-dns": "verified_free",
+        },
+        provenance={},
+    )
+    problems = _coverage_problems(tmp_path, block)
+    assert "without provenance" in problems
+
+
+def test_shipped_cloudflare_config_satisfies_the_floor() -> None:
+    model = load_and_validate(EXAMPLES / "providers" / "cloudflare.example.yaml")
+    assert set(model.coverage) == set(canonical_slugs())
+    backed = [
+        slug
+        for slug, entry in model.coverage.items()
+        if entry.state in ("verified_free", "offered_no_z0") and entry.has_provenance
+    ]
+    assert len(backed) >= MIN_EVIDENCE_BACKED_COVERAGE
 
 
 def test_mcp_source_requires_capabilities(tmp_path: Path) -> None:

@@ -305,10 +305,17 @@ def test_serialize_category_matrix_always_14_and_states() -> None:
 
     serverless_row = next(r for r in matrix.categories if r.slug == "serverless-functions")
     by_provider = {c.provider_slug: c for c in serverless_row.providers}
-    assert by_provider["cloudflare"].state == "verified_free"
+    assert by_provider["cloudflare"].derived_state == "verified_free"
     assert by_provider["cloudflare"].free_offer_count == 1
-    # The synthetic provider offers nothing in this category.
-    assert by_provider["example-two"].state == "not_offered"
+    # With no declaration loaded, the displayed state is the honest default.
+    assert by_provider["cloudflare"].state == "unknown"
+    assert by_provider["cloudflare"].declared_state is None
+    # The synthetic provider offers nothing in this category. That is NOT
+    # evidence of absence: a zero published count must never be reported as
+    # 'not_offered' (F008 slice S2 deleted that guess).
+    assert by_provider["example-two"].derived_state == "unknown"
+    assert by_provider["example-two"].state == "unknown"
+    assert by_provider["example-two"].state != "not_offered"
 
     # The synthetic provider's uncategorized, non-free offer is surfaced honestly.
     uncat = {u.provider_slug: u for u in matrix.uncategorized}
@@ -367,6 +374,13 @@ def client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
     monkeypatch.setattr(queries, "fetch_providers", lambda session: graph["providers"])
     monkeypatch.setattr(
         queries, "category_map_for_providers", lambda session, providers: graph["cat_map"]
+    )
+    monkeypatch.setattr(
+        queries,
+        "coverage_signal_context",
+        lambda session, providers, now=None: queries.CoverageSignalContext(
+            declarations={}, conflicted_services=frozenset(), stale_offer_version_ids=frozenset()
+        ),
     )
     monkeypatch.setattr(
         queries,

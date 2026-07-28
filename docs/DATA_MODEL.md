@@ -26,6 +26,49 @@ set equality with the constant. The seed is idempotent (`ON CONFLICT (slug) DO N
 downgrade deletes only those fourteen slugs, degrading categorised services to `category_id IS NULL`
 rather than failing on the FK.
 
+### ProviderCategoryCoverage
+
+The **declared** coverage state of one `(provider, category)` pair — "does this provider offer
+anything in this category, and if so is it Z0?". Columns: `provider_id` (FK, `ON DELETE CASCADE`),
+`category_id` (FK, `ON DELETE CASCADE`), `state`, `rationale`, `source_id`
+(FK → `source`, `ON DELETE SET NULL`), `evidence_url`, `declared_at`, `created_at`, with
+`UNIQUE(provider_id, category_id)`. Introduced by migration `0011_provider_category_coverage`.
+
+The vocabulary is the seven-member closed set in `apps/api/app/models/vocab.py::COVERAGE_STATES`:
+`verified_free`, `offered_no_z0`, `not_offered`, `incomplete`, `stale`, `conflicting`, `unknown`.
+
+Three honesty rules are enforced by **database CHECK constraints**, not only in Pydantic, so a raw
+`INSERT` cannot bypass them:
+
+- `state` must be one of the seven;
+- `state = 'not_offered'` requires a non-empty `rationale` — a claim that a provider deliberately
+  does not offer a category is a claim, and must be justified;
+- `state IN ('verified_free', 'offered_no_z0')` requires `source_id IS NOT NULL OR evidence_url IS
+  NOT NULL` — an offer claim must be provenance-backed.
+
+The same expressions back the ORM `CheckConstraint`s, so the migration and the model cannot drift.
+
+**This table stores the declaration only.** There is deliberately **no `derived_state` /
+`derived_at` column** (decision Q11). The *observed* state is computed on demand by the pure
+`apps/api/app/read_api/coverage.py::derive_coverage_state()` from published offers, pending
+evidence-contradiction review items and staleness, and is never persisted or cached — a stored
+projection would be a second source of truth that can silently go stale, which is exactly what the
+`stale` state exists to detect. `derive_coverage_state()` **never returns `not_offered`**: that
+state is only ever a declaration. Should a read-path performance problem ever appear, the sanctioned
+escape hatch is a read-only SQL *view*, never a written column.
+
+The durable audit artefact for a material declared-vs-derived contradiction is the existing
+`ReviewItem` (`reason='evidence_conflict:coverage:<provider>:<category>'`,
+`recommended_action='manual_review'`, `admin_disposition='pending'`), raised by
+`app.ingest.reconcile_coverage.reconcile_coverage()` and surfaced through the existing F007
+`GET /api/admin/review-queue`. No new admin surface exists for coverage.
+
+Declarations are **withdrawable**: `ingest.config_sync.sync_coverage()` upserts on
+`(provider_id, category_id)`, overwrites a changed state (refreshing `declared_at` only when the
+content actually changes) and deletes rows for pairs the provider YAML no longer declares, so the DB
+converges on the declared truth rather than retaining a stale row. The same principle now applies to
+`service_categories`: withdrawing a service's declaration reverts `service.category_id` to `NULL`.
+
 ### Offer
 
 Service, offer type, Z class, status, eligibility, commercial/personal conditions, card requirement, paid dependencies, dates, visibility, first-seen and last-verified timestamps.

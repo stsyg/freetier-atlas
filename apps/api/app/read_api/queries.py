@@ -14,7 +14,9 @@ when it is linked to a published ``offer_version``.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
+from datetime import UTC, datetime
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
@@ -26,6 +28,8 @@ from app.models.domain import (
     Offer,
     OfferVersion,
     Provider,
+    ProviderCategoryCoverage,
+    ReviewItem,
     Service,
     Snapshot,
     Source,
@@ -198,6 +202,110 @@ def get_source(session: Session, source_id: int) -> Source | None:
     return session.get(Source, source_id)
 
 
+# --------------------------------------------------------------------------- #
+# F008 slice S2 - coverage declarations + derivation signals                   #
+# --------------------------------------------------------------------------- #
+
+
+@dataclass(frozen=True)
+class CoverageSignalContext:
+    """Everything the coverage derivation needs beyond the provider graph.
+
+    Gathered once per request in a handful of queries so the per-pair derivation
+    stays a pure function over already-loaded data.
+    """
+
+    #: (provider_id, category_slug) -> the human declaration, when there is one.
+    declarations: Mapping[tuple[int, str], ProviderCategoryCoverage]
+    #: (provider_slug, service_canonical_name) pairs with an unresolved,
+    #: *pending* evidence contradiction.
+    conflicted_services: frozenset[tuple[str, str]]
+    #: Published offer-version ids whose backing evidence is past its source's
+    #: refresh window.
+    stale_offer_version_ids: frozenset[int]
+
+
+def fetch_coverage_declarations(
+    session: Session, provider_ids: Sequence[int]
+) -> dict[tuple[int, str], ProviderCategoryCoverage]:
+    """Declared coverage for ``provider_ids``, keyed by (provider id, slug)."""
+
+    if not provider_ids:
+        return {}
+    stmt = (
+        select(ProviderCategoryCoverage, Category.slug)
+        .join(Category, Category.id == ProviderCategoryCoverage.category_id)
+        .where(ProviderCategoryCoverage.provider_id.in_(sorted(set(provider_ids))))
+    )
+    return {(row.provider_id, slug): row for row, slug in session.execute(stmt).all()}
+
+
+def fetch_conflicted_services(session: Session) -> frozenset[tuple[str, str]]:
+    """(provider, service) identities with a pending evidence contradiction.
+
+    Only ``evidence_conflict``-flavoured review items count. Coverage-mismatch
+    review items are deliberately excluded: they are *produced* from the derived
+    state, so feeding them back in would make every mismatch permanently
+    ``conflicting`` regardless of the evidence.
+    """
+
+    stmt = select(
+        ReviewItem.evidence_conflict["identity"]["provider"].astext,
+        ReviewItem.evidence_conflict["identity"]["service"].astext,
+    ).where(
+        ReviewItem.admin_disposition == "pending",
+        ReviewItem.reason.like("evidence_conflict%"),
+    )
+    return frozenset(
+        (provider, service)
+        for provider, service in session.execute(stmt).all()
+        if provider is not None and service is not None
+    )
+
+
+def fetch_stale_offer_version_ids(session: Session, *, now: datetime) -> frozenset[int]:
+    """Published offer versions whose backing evidence is past its refresh window.
+
+    Conservative: a version is stale when **any** of its evidence snapshots is
+    older than the schedule window of the source it came from. Overstating
+    staleness only ever makes the catalogue admit uncertainty, which is the
+    direction the product errs in.
+    """
+
+    # Imported lazily: ``app.ingest`` imports ``app.config.models``, which imports
+    # ``app.read_api.taxonomy``, so an import-time dependency here would close a
+    # cycle. ``assess_staleness`` is a pure function with no I/O.
+    from app.ingest.reconcile import assess_staleness
+
+    stmt = (
+        select(Evidence.offer_version_id, Snapshot.fetched_at, Source.schedule)
+        .join(Snapshot, Snapshot.id == Evidence.snapshot_id)
+        .join(Source, Source.id == Evidence.source_id)
+        .where(Evidence.offer_version_id.is_not(None))
+    )
+    stale: set[int] = set()
+    for offer_version_id, fetched_at, schedule in session.execute(stmt).all():
+        if offer_version_id is None or fetched_at is None:
+            continue
+        if assess_staleness(fetched_at, now, schedule).stale:
+            stale.add(offer_version_id)
+    return frozenset(stale)
+
+
+def coverage_signal_context(
+    session: Session, providers: Sequence[Provider], *, now: datetime | None = None
+) -> CoverageSignalContext:
+    """Gather the declarations and derivation signals for ``providers``."""
+
+    return CoverageSignalContext(
+        declarations=fetch_coverage_declarations(session, [p.id for p in providers]),
+        conflicted_services=fetch_conflicted_services(session),
+        stale_offer_version_ids=fetch_stale_offer_version_ids(
+            session, now=now or datetime.now(UTC)
+        ),
+    )
+
+
 __all__: Sequence[str] = (
     "latest_version",
     "is_published",
@@ -212,4 +320,9 @@ __all__: Sequence[str] = (
     "category_map_for_providers",
     "get_snapshot",
     "get_source",
+    "CoverageSignalContext",
+    "coverage_signal_context",
+    "fetch_coverage_declarations",
+    "fetch_conflicted_services",
+    "fetch_stale_offer_version_ids",
 )

@@ -46,6 +46,15 @@ Every provider is evaluated across:
 
 Coverage states: verified offer, category exists but no Z0, provider does not offer category, incomplete, stale, or conflicting.
 
+**Implemented** (F008 slice S2) as the seven-member closed set
+`verified_free | offered_no_z0 | not_offered | incomplete | stale | conflicting | unknown`
+(`apps/api/app/models/vocab.py::COVERAGE_STATES`). `unknown` is the seventh member and the default
+for an undeclared pair — "unknown is better than guessed". Every `(provider, category)` pair carries
+an explicit **declared** state in `provider_category_coverage`, provenance-backed by DB CHECK
+constraints; the **derived** state is computed on demand from published evidence and is never
+stored. `not_offered` is only ever a declaration with a rationale — it is never inferred from the
+absence of published offers.
+
 ## Zero-cost classes
 
 ### Z0 — True $0

@@ -138,8 +138,10 @@ The read API is extended (still strictly read-only, GET-only, same no-SSRF /
 published-only / candidate-never-surfaced posture) with three catalogue-wide query
 capabilities. Their query logic lives in `search.py` (deterministic search) and
 `normalize.py` (shared, conservative quota-unit normalization); the canonical
-category taxonomy is a code constant in `taxonomy.py` (no DB seed, no migration —
-Alembic head stays 0007). The endpoints are:
+category taxonomy is a code constant in `taxonomy.py`. (F008 S1 later added migration
+`0010_category_seed`, which seeds the DB `category` table from that same constant;
+`taxonomy.py` remains the single source of truth. F008 S2 added
+`0011_provider_category_coverage`.) The endpoints are:
 
 - `GET /catalogue/search?q=&provider=&category=&zero_cost_class=&offer_type=&commercial_use=&status=&page=`
   — keyword search + composable filters over **published** offers. `q` is
@@ -151,11 +153,19 @@ Alembic head stays 0007). The endpoints are:
   size (owner decision Q3: in-DB match only; a full-text index is deferred to F008).
 - `GET /catalogue/categories` — the canonical **14-category taxonomy × provider
   coverage** matrix. Every category is always present; each `(category, provider)`
-  cell carries a closed-set coverage state derived strictly from published offers
-  (`verified_free` when ≥1 published `Z0_TRUE_FREE` offer, `no_free_tier` when
-  published offers exist but none are Z0, `not_offered` otherwise). A published
-  service with no canonical category is not guessed into one — it is surfaced
-  honestly in a per-provider `uncategorized` rollup.
+  cell carries both the **declared** state read from `provider_category_coverage`
+  and the **derived** state computed on demand by `read_api/coverage.py`
+  (`derive_coverage_state()`), plus a `mismatch` flag when the two materially
+  disagree. The closed set is the seven states in `models/vocab.py::COVERAGE_STATES`
+  (`verified_free`, `offered_no_z0`, `not_offered`, `incomplete`, `stale`,
+  `conflicting`, `unknown`). Since F008 S2 the endpoint **never infers coverage from
+  a zero published-offer count**: an undeclared pair reports `unknown`, and
+  `not_offered` appears only where a provider has explicitly declared it with a
+  rationale. Derivation is pure and never persisted (decision Q11); a material
+  declared-vs-derived contradiction is recorded durably as a pending `review_item`
+  in the existing admin review queue. A published service with no canonical category
+  is not guessed into one — it is surfaced honestly in a per-provider
+  `uncategorized` rollup.
 - `GET /catalogue/compare?offers=1,2,3` — normalized side-by-side of a **bounded**
   set of published offers (id set validated + size-capped: oversize / non-integer →
   422, unknown/unpublished id → 404). Each quota amount is conservatively
@@ -308,7 +318,8 @@ fixed `/api/catalogue/...` paths; filter values are appended only as query-strin
 parameters (internal slugs, closed enums, keywords, page number) via
 `URLSearchParams`, so there remains no user-controlled URL and no SSRF surface.
 The UI never re-derives a Z0 or confidence rating — the category-matrix coverage
-`state` and every offer's classification come verbatim from the API — the
+`state`, `declared_state` and `derived_state` and every offer's classification come
+verbatim from the API — the
 confidence **label** stays the primary signal (numeric only inside a closed
 advanced disclosure, per D039), and null fields render honestly as "Unknown"
 (including quotas the API could not normalize, which are shown as reported and

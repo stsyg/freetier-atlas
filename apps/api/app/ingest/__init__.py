@@ -47,8 +47,10 @@ from .base import (
     SourceDocument,
 )
 from .config_sync import (
+    CoverageSyncResult,
     SourceSyncOutcome,
     SyncResult,
+    sync_coverage,
     sync_provider,
 )
 from .fetch import (
@@ -161,7 +163,9 @@ __all__ = (
     "UnknownAdapterError",
     # config -> DB sync
     "sync_provider",
+    "sync_coverage",
     "SyncResult",
+    "CoverageSyncResult",
     "SourceSyncOutcome",
     # scan runner / runtime entrypoint
     "run_provider_scans",

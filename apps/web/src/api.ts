@@ -258,8 +258,23 @@ export interface SearchQuery {
 export interface ProviderCoverage {
   provider_slug: string;
   provider_name: string;
-  /** `verified_free` | `no_free_tier` | `not_offered` (from the API; never re-derived). */
+  /**
+   * What to display: `unknown` when nothing is declared, `conflicting` when the
+   * declaration and the derivation materially disagree, otherwise the
+   * declaration. Produced by the API and never re-derived here.
+   */
   state: string;
+  /** The human declaration, or `null` when the pair has none. */
+  declared_state?: string | null;
+  /**
+   * What the published catalogue supports right now, recomputed per request and
+   * never stored. Never `not_offered` — an empty catalogue means "not verified".
+   */
+  derived_state?: string;
+  /** True when the declaration and the derivation materially disagree. */
+  mismatch?: boolean;
+  rationale?: string | null;
+  evidence_url?: string | null;
   published_offer_count: number;
   free_offer_count: number;
 }

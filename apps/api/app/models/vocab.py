@@ -114,6 +114,32 @@ REVIEW_DISPOSITIONS: tuple[str, ...] = (
     "deferred",
 )
 
+# Provider x category coverage states (F008 slice S2). The first six mirror
+# ``docs/PRODUCT_REQUIREMENTS.md`` -> "Coverage states" ("verified offer, category
+# exists but no Z0, provider does not offer category, incomplete, stale, or
+# conflicting"); ``unknown`` is the honest default for a pair nothing is known
+# about yet. Nothing outside this closed set is accepted, by the ORM, by the
+# provider config schema, or by the database CHECK.
+#
+# ``not_offered`` is only ever a human DECLARATION with a stated rationale. It is
+# never derived: an empty query result means "we have not verified this", not
+# "the provider does not offer it" (see ``app.read_api.coverage``).
+COVERAGE_STATES: tuple[str, ...] = (
+    "verified_free",
+    "offered_no_z0",
+    "not_offered",
+    "incomplete",
+    "stale",
+    "conflicting",
+    "unknown",
+)
+
+#: Declared states that assert a genuine offer exists, and therefore require
+#: provenance (a declared ``source`` or an ``evidence_url``) at both the config
+#: and the database layer. "Never publish an unsupported claim that a service is
+#: free" is enforced here, not merely documented.
+EVIDENCE_BACKED_COVERAGE_STATES: tuple[str, ...] = ("verified_free", "offered_no_z0")
+
 # Candidate verification-state lifecycle (F004 source ingestion). This mirrors
 # ``app.ingest.vocab.VERIFICATION_STATES`` (docs/ARCHITECTURE.md -> Verification
 # states) exactly and is the single source of truth for the ``candidate`` table
@@ -154,3 +180,31 @@ def sql_in(values: tuple[str, ...]) -> str:
 
     quoted = ", ".join(f"'{v}'" for v in values)
     return f"({quoted})"
+
+
+# --------------------------------------------------------------------------- #
+# provider_category_coverage CHECK expressions (F008 slice S2)                 #
+# --------------------------------------------------------------------------- #
+# Defined once here so the ORM model (``models.domain.ProviderCategoryCoverage``)
+# and migration ``0011_provider_category_coverage`` are guaranteed to install the
+# *same* constraint text. These enforce the product's honesty rules in the
+# DATABASE, not only in Pydantic: a raw ``INSERT`` that bypasses the config
+# schema is still rejected.
+
+#: The declared state must be one of the seven.
+COVERAGE_STATE_CHECK = f"state IN {sql_in(COVERAGE_STATES)}"
+
+#: "The provider does not offer this category" is a claim, so it must carry a
+#: stated reason. Blank-but-not-NULL is rejected too.
+COVERAGE_RATIONALE_CHECK = (
+    "state <> 'not_offered' OR (rationale IS NOT NULL AND btrim(rationale) <> '')"
+)
+
+#: Asserting a real offer exists requires provenance: a declared official source
+#: row or an explicit evidence URL. This is the database-level half of "never
+#: publish an unsupported claim that a service is free".
+COVERAGE_EVIDENCE_CHECK = (
+    f"state NOT IN {sql_in(EVIDENCE_BACKED_COVERAGE_STATES)} "
+    "OR source_id IS NOT NULL "
+    "OR (evidence_url IS NOT NULL AND btrim(evidence_url) <> '')"
+)

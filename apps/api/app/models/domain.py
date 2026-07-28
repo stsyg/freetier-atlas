@@ -35,6 +35,9 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from .base import Base
 from .vocab import (
     CHANGE_TYPES,
+    COVERAGE_EVIDENCE_CHECK,
+    COVERAGE_RATIONALE_CHECK,
+    COVERAGE_STATE_CHECK,
     DEPLOYMENT_MODELS,
     DISCOVERY_VERIFICATION_STATUSES,
     EXHAUSTION_BEHAVIOURS,
@@ -91,6 +94,59 @@ class Category(Base):
     created_at: Mapped[datetime] = _created_at()
 
     __table_args__ = (UniqueConstraint("slug", name="uq_category_slug"),)
+
+
+class ProviderCategoryCoverage(Base):
+    """One provider's EXPLICIT, provenance-backed state for one canonical category.
+
+    F008 slice S2. Every (provider, category) pair carries a *declaration* -- what
+    a human asserted, with a rationale and/or provenance -- so the catalogue never
+    has to infer coverage from the absence of data. Before this table existed the
+    read API guessed ``not_offered`` whenever a category had zero published
+    offers, which conflated "we have not verified this" with "the provider does
+    not offer it". ``not_offered`` is now only ever declared, never derived.
+
+    Declaration only (decision Q11)
+    -------------------------------
+    This table deliberately holds **no** ``derived_state`` / ``derived_at``
+    column. The observed state is computed at query time by the pure
+    :func:`app.read_api.coverage.derive_coverage_state`; persisting a projection
+    of it would create a second source of truth that can silently go stale --
+    exactly what the ``stale`` state exists to detect. The durable artefact for a
+    declared-vs-derived contradiction is an ordinary ``review_item``
+    (:mod:`app.ingest.reconcile_coverage`), surfaced by the existing admin review
+    queue.
+
+    The honesty rules are enforced by CHECK constraints rather than only by the
+    config schema, so a raw ``INSERT`` cannot bypass them: ``not_offered``
+    requires a non-blank ``rationale``, and ``verified_free`` / ``offered_no_z0``
+    require a ``source_id`` or a non-blank ``evidence_url``.
+    """
+
+    __tablename__ = "provider_category_coverage"
+
+    id: Mapped[int] = _pk()
+    provider_id: Mapped[int] = mapped_column(
+        ForeignKey("provider.id", ondelete="CASCADE"), nullable=False
+    )
+    category_id: Mapped[int] = mapped_column(
+        ForeignKey("category.id", ondelete="CASCADE"), nullable=False
+    )
+    state: Mapped[str] = mapped_column(Text, nullable=False)
+    rationale: Mapped[str | None] = mapped_column(Text, nullable=True)
+    source_id: Mapped[int | None] = mapped_column(
+        ForeignKey("source.id", ondelete="SET NULL"), nullable=True
+    )
+    evidence_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    declared_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = _created_at()
+
+    __table_args__ = (
+        UniqueConstraint("provider_id", "category_id", name="uq_provider_category_coverage"),
+        CheckConstraint(COVERAGE_STATE_CHECK, name="coverage_state_valid"),
+        CheckConstraint(COVERAGE_RATIONALE_CHECK, name="not_offered_requires_rationale"),
+        CheckConstraint(COVERAGE_EVIDENCE_CHECK, name="claimed_offer_requires_evidence"),
+    )
 
 
 class Service(Base):

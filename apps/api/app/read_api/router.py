@@ -238,14 +238,19 @@ def search_catalogue(
 def get_category_matrix(session: SessionDep) -> CategoryMatrixResponse:
     """The canonical 14-category taxonomy crossed with per-provider coverage.
 
-    Every canonical category is always present; coverage states are derived
-    strictly from published offers, and published offers with no canonical
-    category are surfaced honestly in a per-provider uncategorized rollup.
+    Every canonical category is always present. Each pair reports the human
+    ``declared_state``, the ``derived_state`` computed on demand from published
+    offers (never stored -- decision Q11), and the ``state`` to display. A pair
+    with no declaration is ``unknown``: a zero published-offer count is never
+    reported as ``not_offered``, which can only ever be declared with a stated
+    rationale. Published offers with no canonical category are surfaced honestly
+    in a per-provider uncategorized rollup.
     """
 
     providers = queries.fetch_providers(session)
     cat_map = queries.category_map_for_providers(session, providers)
-    return service.serialize_category_matrix(providers, cat_map)
+    context = queries.coverage_signal_context(session, providers)
+    return service.serialize_category_matrix(providers, cat_map, context)
 
 
 @router.get("/compare", response_model=CompareResponse)
