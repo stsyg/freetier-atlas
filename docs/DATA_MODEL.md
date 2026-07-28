@@ -10,6 +10,22 @@ ID, slug, name, official domains, type, source health, completeness score, fresh
 
 Provider, canonical name, category, description, official URL, managed/self-hosted, portability traits.
 
+`service.category_id` is a **nullable, mutable** FK to `category` with `ON DELETE SET NULL`. It is
+declared metadata, never inferred: a service whose category is not declared in its provider config
+(`service_categories`) stays `NULL` and is reported honestly as uncategorised. Category is *not* a
+material fact — it is absent from `publish/publisher._stable_material_facts()`, so setting or
+changing it never alters an offer's `content_hash` and never mints a new `offer_version`. This is
+what makes back-filling categories over an already-published catalogue safe.
+
+### Category
+
+The fourteen canonical product categories (`docs/PRODUCT_REQUIREMENTS.md`, decision D025). The
+single source of truth for the slug/name/ordinal set is `apps/api/app/read_api/taxonomy.py`
+(`CATEGORY_TAXONOMY`); migration `0010_category_seed` seeds those exact fourteen rows and asserts
+set equality with the constant. The seed is idempotent (`ON CONFLICT (slug) DO NOTHING`) and its
+downgrade deletes only those fourteen slugs, degrading categorised services to `category_id IS NULL`
+rather than failing on the FK.
+
 ### Offer
 
 Service, offer type, Z class, status, eligibility, commercial/personal conditions, card requirement, paid dependencies, dates, visibility, first-seen and last-verified timestamps.

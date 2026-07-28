@@ -330,7 +330,13 @@ def run_provider_scans(
         for source, scan_run, index in scanned:
             savepoint = session.begin_nested()
             try:
-                publish_result = publish_scan(session, scan_run, source, config.publishing)
+                publish_result = publish_scan(
+                    session,
+                    scan_run,
+                    source,
+                    config.publishing,
+                    service_categories=config.service_categories,
+                )
                 savepoint.commit()
             except Exception as exc:  # noqa: BLE001 - isolate one source's publish fault
                 savepoint.rollback()

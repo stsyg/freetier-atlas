@@ -190,6 +190,108 @@ publishing:
     assert "automatic_threshold" in "\n".join(excinfo.value.problems)
 
 
+# --- service_categories (F008 slice S1) -------------------------------------
+
+
+def _provider_yaml(service_categories_block: str) -> str:
+    return (
+        """
+provider:
+  id: cloudflare
+  name: Cloudflare
+  official_domains: [cloudflare.com]
+sources:
+  - id: cloudflare-changelog
+    type: rss
+    trust_level: official
+    url: https://developers.cloudflare.com/changelog/
+    schedule_ref: rss
+publishing:
+  automatic_threshold: 0.90
+  uncertain_threshold: 0.70
+  require_official_source: true
+  require_deterministic_numeric_validation: true
+"""
+        + service_categories_block
+    )
+
+
+def test_service_categories_accepts_canonical_slugs(tmp_path: Path) -> None:
+    path = _write(
+        tmp_path,
+        "provider.yaml",
+        _provider_yaml(
+            """service_categories:
+  Cloudflare Workers: serverless-functions
+  Cloudflare R2: object-file-storage
+"""
+        ),
+    )
+    model = load_and_validate(path)
+    assert model.service_categories == {
+        "Cloudflare Workers": "serverless-functions",
+        "Cloudflare R2": "object-file-storage",
+    }
+
+
+def test_service_categories_defaults_to_empty_when_absent(tmp_path: Path) -> None:
+    path = _write(tmp_path, "provider.yaml", _provider_yaml(""))
+    assert load_and_validate(path).service_categories == {}
+
+
+def test_service_categories_rejects_unknown_slug(tmp_path: Path) -> None:
+    path = _write(
+        tmp_path,
+        "provider.yaml",
+        _provider_yaml(
+            """service_categories:
+  Cloudflare Workers: serverless
+"""
+        ),
+    )
+    with pytest.raises(ConfigError) as excinfo:
+        load_and_validate(path)
+    problems = "\n".join(excinfo.value.problems)
+    # Actionable: names the service, the bad slug, and points at the valid set.
+    assert "Cloudflare Workers" in problems
+    assert "serverless" in problems
+    assert "serverless-functions" in problems
+
+
+def test_service_categories_rejects_blank_service_name(tmp_path: Path) -> None:
+    path = _write(
+        tmp_path,
+        "provider.yaml",
+        _provider_yaml(
+            """service_categories:
+  "   ": serverless-functions
+"""
+        ),
+    )
+    with pytest.raises(ConfigError):
+        load_and_validate(path)
+
+
+def test_service_categories_unknown_service_name_is_accepted(tmp_path: Path) -> None:
+    """A service that does not exist yet is a no-op, not a validation error.
+
+    Config is declared ahead of ingestion; the mapping is applied by slug when
+    (and if) the service appears.
+    """
+
+    path = _write(
+        tmp_path,
+        "provider.yaml",
+        _provider_yaml(
+            """service_categories:
+  Totally Unshipped Service: ai-inference-embeddings
+"""
+        ),
+    )
+    model = load_and_validate(path)
+    assert model.service_categories == {"Totally Unshipped Service": "ai-inference-embeddings"}
+
+
 def test_mcp_source_requires_capabilities(tmp_path: Path) -> None:
     path = _write(
         tmp_path,

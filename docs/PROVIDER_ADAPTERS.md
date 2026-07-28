@@ -96,6 +96,29 @@ A new provider needs:
 9. Documentation
 10. Tests
 
+### Category coverage declaration (item 4)
+
+Item 4 is **partly implemented**. A provider YAML may now declare `service_categories:`, a mapping
+from a service's canonical name (exactly as it appears in the extracted candidate facts' `service`
+field) to one of the fourteen canonical category slugs in `apps/api/app/read_api/taxonomy.py`. An
+unknown slug fails config validation at load with an actionable error naming the provider, the
+service, the bad slug, and the valid slug list.
+
+The mapping is applied in two places, both idempotent and both slug-keyed:
+
+- `ingest.config_sync.categorise_services()` back-fills already-existing services on every
+  `sync_provider` run;
+- `publish.publisher._resolve_service()` sets the category when a service row is first created and
+  back-fills it on re-publish.
+
+An undeclared service stays uncategorised (`category_id IS NULL`) and is surfaced honestly in the
+`uncategorized` rollup. A category is **never inferred from a service name** — declare it with a
+rationale or leave it unknown.
+
+What is still missing: an explicit *coverage* declaration (this provider deliberately does not offer
+anything in category X, versus we simply have not ingested it yet). Until that lands, a category
+with no published offers for a provider cannot be distinguished from an un-ingested one.
+
 ### Extraction-profile registration seam (F008 S3)
 
 Provider-specific extraction knowledge is **data**, and each provider owns one
