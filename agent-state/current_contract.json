@@ -2,79 +2,82 @@
   "schema_version": 1,
   "status": "approved",
   "feature_id": "F008",
-  "increment": "slice-s1-category-seed-and-service-categorisation",
+  "increment": "s3-multi-format-fixture-harness-and-case-corpus-generalisation",
   "builder": "Copilot CLI (Chief)",
-  "evaluator": "fresh independent Level 2 evaluator (per-slice); a later F008 S4 full-epic Level 2 close-out owns the passes flip",
+  "evaluator": "fresh independent Level 2 evaluator (per-slice); the S4 close-out owns the F008 passes flip",
   "approved_at": "2026-07-27T00:00:00Z",
   "base_commit": "e9f8cc4",
   "approval_notes": [
-    "Orchestrator-directed F008 Slice S1 (Wave 1): make the fourteen canonical categories REAL ROWS (migration 0010_category_seed) and make published services carry a DECLARED category, so the adviser can produce a live satisfiable $0 recommendation against the REAL Cloudflare-only catalogue. Closes the recorded carry-over 'f008-categorise-offers'. Cites resolved decisions Q4-A (taxonomy stays read_api/taxonomy.py::CATEGORY_TAXONOMY, seeded by 0010) and Q6-A (no new dependency).",
-    "Build ONE slice, open ONE PR, do NOT merge, do NOT flip any passes flag. F008 stays passes:false until the S4 close-out.",
-    "HARD CONSTRAINTS: exactly one migration (0010_category_seed on top of 0009_admin_audit); NO new runtime OR test dependency (Q6-A); NO Redis; NO live network in code/tests/CI (Q3-A, OfflineFetcher/FixtureFetcher only); NO credentialed provider APIs (Q5-A); NO secrets anywhere (detect-secrets green AFTER git add); region availability/residency OUT of scope (Q8-A); read_api/taxonomy.py is READ-ONLY source of truth; the coverage: block and the read_api/service.py _coverage_state guess belong to S2 and are NOT touched here.",
-    "A sibling S3 session builds concurrently from the same base; footprints are disjoint and S1 has right of way. S3's files (ingest/runner.py, ingest/adapters/profiles/, tests/support/, scripts/capture_fixture.py, ingest/reconcile.py) are NOT touched."
+    "Orchestrator-directed F008 Slice S3 (Wave 1, concurrent with S1): build the multi-format fixture harness and generalise the case corpus so the six Wave-3 provider slices add ONLY DATA and can run CONCURRENTLY, and so the changed/stale/withdrawn/contradictory cases (F008 acceptance step 3) are deterministically drivable OFFLINE. Cites resolved decisions Q2-A (owner-run capture, minimal official excerpts, capture.json provenance sidecar, CI validates presence+hash NEVER freshness), Q3-A (no live network in code/tests/CI; LiveFetcher only in the owner-run capture script), Q7-A (fold the reconcile idempotency guard + the unknown-materiality e2e in here; DEFER DNS-rebinding hardening).",
+    "S1 HAS RIGHT OF WAY: a sibling session is concurrently building S1 (category seed, migration 0010) from the same base. Footprints are disjoint. On any merge conflict THIS slice rebases onto S1, never the reverse. S1's files are untouched here: migrations/, apps/api/app/config/models.py, apps/api/app/ingest/config_sync.py, apps/api/app/publish/publisher.py, config/examples/providers/cloudflare.example.yaml.",
+    "HARD CONSTRAINTS: NO migration (alembic head stays exactly what main has - 0009_admin_audit at branch time, or 0010 if S1 merges first); NO new runtime OR test dependency (stdlib + what is installed, Q6-A); NO Redis (PostgreSQL stays the only mandatory stateful service); NO live network in code/tests/CI (Q3-A); NO credentialed provider APIs (Q5-A); NO secrets anywhere including fixtures (detect-secrets green AFTER git add); NO DNS-rebinding hardening in fetch.py (explicitly DEFERRED per Q7-A)."
   ],
-  "objective": "Seed the fourteen canonical categories as real 'category' rows from apps/api/app/read_api/taxonomy.py::CATEGORY_TAXONOMY (migration 0010_category_seed, idempotent, reversible) and make service->category a DECLARED, validated piece of provider configuration that both the config sync (backfill of existing services) and the publisher (new services at publication time) apply. Category is structural metadata on the mutable 'service' row: it is absent from _stable_material_facts(), so content_hash is unchanged and re-publishing mints no new offer_version. An undeclared service stays category_id IS NULL (honest uncategorised) and is never inferred from its name.",
+  "objective": "Make it possible for six later provider slices (Wave 3: GitHub, Vercel, GCP, Azure, Oracle, AWS - all six running CONCURRENTLY) to add ONLY DATA, and make the changed/stale/withdrawn/contradictory cases deterministically drivable offline. Concretely: (a) generalise build_fixture_fetcher() to resolve HTML, JSON and RSS/XML fixtures with the CORRECT MIME chosen from the source type/extension, never a guess; (b) introduce a per-provider profile REGISTRATION SEAM so adding a provider profile requires NO edit to any shared dict - this is the single deliverable that makes Wave 3 six-way parallelism safe; (c) ship a shared parametrised fixture harness (tests/support/fixtures.py) with the seven-case vocabulary plus TIME-INJECTED drive_withdrawn/drive_stale helpers exercised end-to-end on REAL ORM rows; (d) ship the owner-run-only scripts/capture_fixture.py with a capture.json provenance sidecar plus an integrity (never freshness) test; (e) land both Q7-A carry-overs (reconcile idempotency guard + unknown-materiality e2e) with their own regression tests.",
   "scope": [
-    "migrations/versions/0010_category_seed.py (NEW): revision '0010_category_seed', down_revision '0009_admin_audit'. upgrade() inserts the fourteen category rows (slug, name; description NULL) DERIVED FROM CATEGORY_TAXONOMY with an in-migration assertion that the seeded slug set and count (14) match the constant exactly; idempotent via ON CONFLICT (slug) DO NOTHING against uq_category_slug. downgrade() deletes ONLY those fourteen slugs (never TRUNCATE); service.category_id is ON DELETE SET NULL so downgrade degrades to uncategorised rather than an FK violation.",
-    "apps/api/app/config/models.py: ProviderConfig gains optional 'service_categories: dict[str, str]' mapping a service canonical_name (as it appears in candidate facts' 'service' field) to a canonical category slug, validated against taxonomy.is_canonical_slug with an actionable ValueError at load; Source gains an optional 'category: Slug | None' default for a source covering exactly one category, validated the same way. extra='forbid' retained. The coverage: block is NOT added (S2).",
-    "apps/api/app/ingest/config_sync.py: new categorise_services(session, config) -- idempotent, slug-keyed, sets service.category_id for that provider's existing services from the declared map, returns a CategorisationResult with counts for assertions; called from sync_provider after the source sync. Never writes offer / offer_version / quota. An undeclared or unknown-to-the-DB service is a no-op, never an error.",
-    "apps/api/app/publish/publisher.py: _resolve_service() resolves category_id from an explicitly-threaded declared map (publish_candidate/publish_scan gain an optional service_categories parameter) instead of the hardcoded None; when undeclared the category stays None. No config loading is imported into publisher; _stable_material_facts() and every content_hash input are untouched.",
-    "config/examples/providers/cloudflare.example.yaml: declare service_categories for the two really-published Cloudflare services -- 'Cloudflare Workers' -> serverless-functions and 'Cloudflare Pages' -> containers-app-hosting -- with an inline rationale comment (Q10-A). Anything genuinely unclear is omitted and left unknown.",
-    "docs/DATA_MODEL.md: record the 0010 category seed, the taxonomy-as-source-of-truth rule, and the category-mutability/immutability note. docs/PROVIDER_ADAPTERS.md: onboarding item 4 'Category coverage declaration' is now partly real (service_categories); note that S2 completes it with the explicit provider x category coverage block.",
-    "tests/integration/test_category_seed_migration.py (NEW): upgrade reaches 0010_category_seed with exactly the 14 canonical slugs; a second upgrade is a no-op; downgrade removes exactly those 14 and leaves service rows intact with category_id IS NULL; no ORM drift after the up->down->up round trip.",
-    "tests/unit/test_config_system.py (EXTEND): a valid service_categories map (and a valid per-source category) is accepted; an unknown slug is rejected with an actionable error naming the service/source and the bad slug; an unknown service NAME is accepted (a no-op at sync time, not a config error); the shipped cloudflare example validates and declares both real services.",
-    "tests/integration/test_ingest_config_sync.py (EXTEND): categorise_services backfills a pre-existing uncategorised service, is idempotent (a second run reports zero changes), leaves an undeclared service NULL, and writes no offer/offer_version/quota rows.",
-    "tests/integration/test_publish_pipeline.py (EXTEND): publishing with the declared map sets service.category_id to the declared canonical category; an undeclared service publishes with category_id IS NULL; and the offer_version row count plus every content_hash are IDENTICAL before and after categorisation and after a re-publish.",
-    "tests/integration/test_adviser_recommend.py (EXTEND): a live satisfiable $0 recommendation against the REAL published Cloudflare catalogue (fixture scan + publish, no synthetic providers) for a serverless-functions requirement; and the same request against an uncategorised catalogue blocks -- proving the category is what unblocks it.",
-    "tests/integration/test_adviser_recommend.py and tests/integration/test_read_api_search.py seed helpers: resolve the canonical Category rows that 0010 now seeds instead of INSERTing duplicates (they would otherwise violate uq_category_slug). Behaviour-preserving adjustment forced by this slice."
+    "apps/api/app/ingest/runner.py: generalise build_fixture_fetcher() to resolve source.html|json|xml AND flat <id>.<ext>, selecting the MIME from the source's type/extension (text/html, application/json, application/rss+xml, application/xml). Unresolvable => NOT registered (graceful per-source not-found), never a guessed MIME and never a network reach. Document the --fixtures-root convention: a provider's directory is tests/fixtures/ingest/<provider>/<adapter>/.",
+    "apps/api/app/ingest/adapters/profiles/__init__.py (NEW): the profile REGISTRATION SEAM. Per-provider modules register their own profiles into the HTML / structured(JSON) / MCP registries via a register_* API and module discovery, so six concurrent slices never edit one shared dict.",
+    "apps/api/app/ingest/adapters/profiles/cloudflare.py (NEW): the existing cloudflare_workers_limits / cloudflare_pages_limits profiles moved behind the registry. BEHAVIOUR-NEUTRAL refactor: existing Cloudflare tests pass UNCHANGED and the Cloudflare content_hash is byte-identical.",
+    "tests/support/fixtures.py (NEW): shared parametrised harness. Given (provider, adapter, case) it loads source.* + expected.json, runs the adapter through a FixtureFetcher, and asserts facts + evidence locations + a stable content_hash. Case vocabulary: unchanged | changed | partial | malformed | contradictory | withdrawn | stale. Helpers drive_withdrawn(...) (scan A then scan B with the offer row ABSENT => change_event.change_type == 'withdrawn', materiality 'material') and drive_stale(...) (FROZEN CLOCK beyond the source's schedule window => assess_staleness().stale is True, the publication gate WITHHOLDS, a review item is raised). Both TIME-INJECTED, never sleep()-based.",
+    "scripts/capture_fixture.py (NEW, OWNER-RUN ONLY, never invoked by tests or CI): uses LiveFetcher with the provider's official-domain allowlist; writes source.<ext> plus a capture.json sidecar {url, fetched_at, http_status, sha256_original, sha256_stored, trim_method, robots_allowed, tos_note, captured_by}; prints a warning that only MINIMAL OFFICIAL EXCERPTS may be committed (Q2-A copyright posture).",
+    "tests/fixtures/ingest/README.md (NEW): attribution + the minimal-excerpt rule + the capture.json schema + the directory convention.",
+    "apps/api/app/ingest/reconcile.py (Q7-A carry-over a): idempotency guard so a new_candidate_id that already has a change_event does not get a duplicate (defends against same-scan_run re-invocation). Same guard for the withdrawn arm keyed on previous_candidate_id.",
+    "tests/unit/test_fixture_harness.py (NEW); tests/unit/test_capture_sidecar.py (NEW, integrity only - sidecar present + sha256_stored matches the bytes on disk, NEVER freshness); tests/unit/test_no_live_fetcher_in_tests.py (NEW): AST-based - no test constructs LiveFetcher except the sanctioned loopback-only fetcher unit test, and scripts/capture_fixture.py is the only module constructing it outside fetch.py.",
+    "tests/integration/test_ingest_withdrawn.py (NEW) and tests/integration/test_ingest_stale.py (NEW): withdrawn + stale end-to-end on REAL ORM rows with an injected clock, deterministic on repeat runs.",
+    "tests/integration/test_ingest_reconcile.py (EXTEND): the Q7-A idempotency-guard regression and the unknown-materiality e2e (an unrecognised changed field) driven through scan -> reconcile -> gate on REAL rows.",
+    "tests/unit/test_ingest_runner.py (EXTEND): multi-format MIME resolution + graceful unresolvable.",
+    "docs/TEST_STRATEGY.md (case vocabulary + the two new F008 cases) and docs/PROVIDER_ADAPTERS.md (fixture layout + capture workflow + the registration seam).",
+    "agent-state/current_contract.json (this file) and an APPEND-ONLY handoff at the end of agent-state/progress.md."
   ],
   "out_of_scope": [
-    "Editing apps/api/app/read_api/taxonomy.py (READ-ONLY source of truth) or inventing any category.",
-    "_stable_material_facts() or anything feeding content_hash; offer_version / quota write paths; the adviser engine; the web app.",
-    "read_api/service.py::_coverage_state (the zero-published-count 'not_offered' guess) and the provider YAML coverage: block plus migration 0011 -- these are S2.",
-    "Any other provider YAML; any new provider; region availability and data residency (Q8-A).",
-    "S3's files: ingest/runner.py, ingest/adapters/profiles/, tests/support/, scripts/capture_fixture.py, ingest/reconcile.py.",
-    "Editing agent-state/feature_list.json (F008 passes stays false) or agent-state/evaluation.json; flipping any passes flag; merging the PR."
+    "Any migration or schema change. This slice adds NO migration; the alembic head must be UNCHANGED by this work.",
+    "fetch.py policy logic - explicitly NO DNS-rebinding hardening (DEFERRED per Q7-A).",
+    "The config schema (apps/api/app/config/models.py) - S1 and S2 own it; apps/api/app/ingest/config_sync.py, apps/api/app/publish/publisher.py, migrations/, config/examples/providers/cloudflare.example.yaml - all S1's files.",
+    "The adviser, the web app, and any provider YAML.",
+    "Region availability / data residency (Q8-A, out of F008 scope).",
+    "Any new runtime or test dependency; any Redis; any live network; any credentialed provider API; any secret in any committed file.",
+    "Editing agent-state/feature_list.json (F008 stays passes:false) or agent-state/evaluation.json; flipping any passes flag; merging the PR."
   ],
   "acceptance_criteria": [
-    "1. alembic upgrade head reaches 0010_category_seed and creates exactly 14 category rows whose slugs equal taxonomy.canonical_slugs(); a second upgrade is a no-op; downgrade removes exactly those 14 and leaves service rows intact with category_id IS NULL.",
-    "2. A provider YAML with an unknown category slug fails config validation with an actionable error naming the offending service/source and slug.",
-    "3. After sync_provider + Cloudflare fixture scan + publish, ZERO published Cloudflare services are uncategorised, and GET /api/catalogue/categories returns an EMPTY uncategorized list.",
-    "4. IMMUTABILITY/IDEMPOTENCY: the offer_version row count and every content_hash are IDENTICAL before and after categorisation and after a re-publish; trg_offer_version_immutable still rejects a direct UPDATE.",
-    "5. POST /api/adviser/recommend returns a SATISFIABLE $0 recommendation against the real (Cloudflare-only) catalogue for a requirement in a category Cloudflare genuinely covers; no requirement blocks purely for want of a category.",
-    "6. UNKNOWN IS BETTER THAN GUESSED: a plausible but undeclared service name stays category_id IS NULL and appears in the uncategorized rollup -- no code path infers a category from a service name.",
-    "7. Alembic head is exactly 0010_category_seed; scripts/test.ps1 exit 0 (pytest >= 868 passed / 63 skipped baseline plus the additions; web vitest 103; vite build) and scripts/check.ps1 -NodeAudit exit 0 (all 8 gates, re-run AFTER git add).",
-    "8. F008 remains passes:false; feature_list.json and evaluation.json untouched; PR opened and NOT merged."
+    "1. The runner serves HTML, JSON and RSS fixtures with the correct MIME, chosen from the source type/extension and never guessed; an unresolvable fixture is simply not registered (graceful per-source not-found, no network). The existing Cloudflare HTML path is behaviourally unchanged - the SAME content_hash.",
+    "2. The profile registration seam works: HTML_EXTRACTION_PROFILES is populated from profiles/cloudflare.py, and adding a provider profile requires NO edit to any shared dict (proven by a test that registers a throwaway second provider profile module without touching a shared file).",
+    "3. withdrawn and stale are exercised end-to-end against REAL ORM rows with an INJECTED clock, deterministically - same result on repeat runs, no wall-clock dependence, no sleep().",
+    "4. The capture.json schema is documented; the integrity test (sidecar present for every committed provider fixture; sha256_stored matches the bytes on disk) is green; there is NO freshness assertion anywhere in the tree.",
+    "5. No test constructs LiveFetcher (except the sanctioned pre-existing loopback-only fetcher unit test, which performs zero external egress); CI performs zero socket operations; LiveFetcher is constructed outside fetch.py ONLY by scripts/capture_fixture.py.",
+    "6. Both Q7-A carry-overs landed with their own regression tests: (a) the reconcile idempotency guard (no duplicate change_event for a new_candidate_id that already has one) and (b) an end-to-end unknown-materiality path (an unrecognised changed field) through scan -> reconcile -> gate on REAL rows.",
+    "7. The alembic head is UNCHANGED by this slice; offline gates green: pwsh -File scripts/test.ps1 exit 0 (pytest >= the 868 passed / 63 skipped baseline plus the additions; web vitest 103; vite build) and pwsh -File scripts/check.ps1 -NodeAudit exit 0 (all 8 gates, detect-secrets re-run AFTER git add). Tree clean.",
+    "8. Mutation-probe resistance: reverting build_fixture_fetcher to HTML-only turns the JSON/RSS tests RED, and neutering the reconcile idempotency guard turns its regression test RED.",
+    "9. F008 remains passes:false; feature_list.json and evaluation.json untouched. Did NOT merge; did NOT flip any passes flag."
   ],
   "verification_plan": {
     "baseline_commands": [
       "git status --short --branch",
       "git --no-pager log --oneline -20",
-      "pwsh -File scripts/init.ps1",
       "pwsh -File scripts/bootstrap-dev.ps1",
       "pwsh -File scripts/test.ps1",
       "pwsh -File scripts/check.ps1 -NodeAudit"
     ],
     "unit_commands": [
       "pwsh -File scripts/test.ps1",
-      "pwsh -File scripts/check.ps1 -NodeAudit"
+      "pwsh -File scripts/check.ps1 -NodeAudit",
+      ".venv/Scripts/python.exe -m pytest tests/unit/test_fixture_harness.py tests/unit/test_capture_sidecar.py tests/unit/test_no_live_fetcher_in_tests.py tests/unit/test_ingest_runner.py tests/unit/test_adapter_html_cloudflare.py -q"
     ],
     "integration_commands": [
-      "docker compose -p ftatlas_f008_s1 up -d postgres  (POSTGRES_PORT=55432, DATABASE_URL exported host-side ONLY)",
-      "alembic upgrade head; alembic downgrade 0009_admin_audit; alembic upgrade head",
-      "python -m pytest tests/integration -q  (with DATABASE_URL set: the previously-skipped integration tests plus the new ones actually run)",
-      "real HTTP POST /api/adviser/recommend against the running API for the live satisfiable $0 proof",
-      "docker compose -p ftatlas_f008_s1 down --volumes"
+      "docker compose -p ftatlas_f008_s3 up -d (POSTGRES_PORT=55434 API_PORT=8012 WEB_PORT=8092; DATABASE_URL host-side only, NEVER exported into compose)",
+      "$env:DATABASE_URL='postgresql+psycopg://...@localhost:55434/...'; .venv/Scripts/python.exe -m pytest tests/integration/test_ingest_withdrawn.py tests/integration/test_ingest_stale.py tests/integration/test_ingest_reconcile.py tests/integration/test_ingest_runner.py -q",
+      "re-run the withdrawn/stale suites TWICE and once under a shifted clock to prove determinism",
+      "alembic current / heads before and after to prove the head is UNCHANGED",
+      "docker compose -p ftatlas_f008_s3 down --volumes"
     ]
   },
   "risks": {
-    "data_migration": "0010 is a data-only seed of 14 rows keyed on the UNIQUE category.slug, applied with ON CONFLICT DO NOTHING so a re-run is a no-op. downgrade deletes exactly those fourteen slugs (never TRUNCATE) and, because service.category_id is ON DELETE SET NULL, leaves service rows intact and merely uncategorised -- no orphans, no FK violation. The seeded slug set and count are asserted against CATEGORY_TAXONOMY inside the migration, so the seed can never drift from the product taxonomy.",
-    "security_privacy": "No new endpoint, no authentication surface, no user input path, no secret. Category is non-sensitive structural metadata declared in a non-secret example YAML.",
-    "portability": "No new runtime or test dependency and no Redis (Q6-A); PostgreSQL stays the only mandatory stateful service. The migration uses plain SQLAlchemy Core inserts. amd64/arm64 unaffected.",
-    "zero_cost_safety": "Category is NOT an offer fact and never affects Z0 classification, quotas, or the publication gate. It is declared configuration, never inferred: an undeclared service stays uncategorised and is honestly reported in the uncategorized rollup rather than guessed into a category. No free claim is created or strengthened by this slice.",
-    "immutability": "service.category_id is a mutable column on 'service'; trg_offer_version_immutable guards offer_version only; and category is absent from _stable_material_facts(), so content_hash is unchanged and re-publishing after categorisation mints NO new offer_version. This is asserted directly (offer_version count + every content_hash identical before/after) rather than assumed.",
-    "regression": "The only behaviour change to existing code paths is that a published service may now carry a declared category instead of always NULL, plus two integration seed helpers that must now resolve rather than re-insert the canonical Category rows 0010 seeds. The whole existing suite is re-run; the previously-skipped integration tests are additionally run for real against an isolated PostgreSQL.",
-    "supply_chain": "No new npm or Python dependency; pip-audit, npm audit and detect-secrets stay green."
+    "data_migration": "None: this slice adds NO migration and touches no model or schema. The alembic head is asserted UNCHANGED before and after.",
+    "security_privacy": "The offline posture is STRENGTHENED, not weakened: an AST-based regression test pins that no test constructs LiveFetcher (bar the sanctioned loopback-only fetcher unit test) and that scripts/capture_fixture.py is the only construction site outside fetch.py. The capture script is owner-run only, never invoked by tests or CI, and enforces the provider official-domain allowlist through the existing FetchPolicy. NO DNS-rebinding hardening is attempted here (deferred, Q7-A). No secrets in any fixture; detect-secrets re-run after git add.",
+    "portability": "No new runtime or test dependency (Q6-A): stdlib + the already-installed toolchain only. No Redis; PostgreSQL stays the only mandatory stateful service. amd64/arm64 unaffected.",
+    "zero_cost_safety": "Untouched: this slice supplies DATA and a HARNESS, not new classification machinery. The Z0 rules, the publication gate and 'unknown is better than guessed' are asserted (the unresolvable-fixture path refuses to guess a MIME) rather than relaxed. Community-vs-official separation is unchanged.",
+    "immutability": "offer_version remains immutable/append-only: nothing here writes offer/offer_version. The Cloudflare refactor is behaviour-neutral and the content_hash is asserted identical, so no spurious version is minted.",
+    "regression": "The Cloudflare profile move is the main regression surface; it is mitigated by keeping the existing Cloudflare tests UNCHANGED and asserting an identical content_hash. The reconcile idempotency guard is additive and only suppresses a DUPLICATE event for an already-evented candidate; its regression test is written to go RED if the guard is removed.",
+    "supply_chain": "No new npm or Python dependency; pip-audit + npm audit + detect-secrets stay green. Any package install would go through the Microsoft feed proxies (pip https://packagefeedproxy.microsoft.io/pypi/simple; NuGet https://packagefeedproxy.microsoft.io/nuget/v3/index.json) - none is needed.",
+    "concurrency": "S1 is building concurrently and HAS RIGHT OF WAY. Footprints are disjoint by construction; on any conflict this slice rebases onto S1. Live-run isolation uses POSTGRES_PORT=55434 API_PORT=8012 WEB_PORT=8092 and compose project -p ftatlas_f008_s3 so it cannot collide with S1's 55432/8010/8090."
   },
   "required_evaluation_level": 2,
   "contract_review": {
@@ -82,7 +85,7 @@
     "reviewer": "owner",
     "disposition": "approved",
     "notes": [
-      "Orchestrator directed F008 Slice S1 (Wave 1): migration 0010_category_seed + declared service->category metadata so the adviser can produce a live satisfiable $0 recommendation against the real Cloudflare catalogue, closing the carry-over 'f008-categorise-offers'. Decisions Q4-A and Q6-A. Hard constraints: exactly one migration (head 0010_category_seed), no new dependency, no live network, no credentialed APIs, no secrets, taxonomy.py read-only, coverage:/_coverage_state deferred to S2. F008 passes stays false; do NOT merge; do NOT flip passes; then STOP for a fresh-context Level 2 evaluation."
+      "Orchestrator directed F008 Slice S3: multi-format fixture harness + case-corpus generalisation, NO migration. The profile-registration seam is the most important deliverable - the evaluator's decisive conflict-surface probe adds a throwaway second provider profile module and confirms it registers WITHOUT editing any shared file; if that fails, the slice FAILS. Hard constraints: no migration (head unchanged), no new runtime/test dependency, no Redis, no live network / zero sockets in tests, no credentialed provider APIs, no secrets, no DNS-rebinding hardening (deferred Q7-A). F008 passes stays false; do NOT merge; do NOT flip passes; then STOP for a fresh-context Level 2 evaluation."
     ]
   }
 }

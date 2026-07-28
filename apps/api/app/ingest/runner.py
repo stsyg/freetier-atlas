@@ -25,7 +25,10 @@ Hard invariants carried from the pipeline it composes:
   :class:`~app.ingest.fetch.OfflineFetcher` (no egress). ``--fixtures`` builds a
   :class:`~app.ingest.fetch.FixtureFetcher` from captured official snapshots so
   extraction is deterministic and offline; ``LiveFetcher`` stays disabled by
-  default.
+  default. Fixtures are multi-format (F008 S3): a source is served
+  ``source.html`` / ``source.json`` / ``source.xml`` with the MIME derived from
+  its **declared** ``type``, and an unresolvable source is left unregistered
+  rather than served a guessed content type.
 
 The library function leaves the transaction to its caller (it uses SAVEPOINTs +
 ``flush``). The ``__main__`` CLI owns a session and commits once at the end
@@ -52,7 +55,92 @@ from app.ingest.reconcile import reconcile_scan
 from app.ingest.scan import run_scan
 from app.models.domain import Provider, ScanRun, Source
 
-_DEFAULT_MIME = "text/html"
+_HTML_MIME = "text/html"
+_JSON_MIME = "application/json"
+_RSS_MIME = "application/rss+xml"
+_XML_MIME = "application/xml"
+
+#: MIME type served for each supported fixture extension. ``xml`` is refined by
+#: the source's declared type (an ``rss`` source serves ``application/rss+xml``),
+#: because a feed and a generic XML document are different content types to the
+#: fetch policy's MIME allowlist.
+FIXTURE_MIME_BY_EXTENSION: dict[str, str] = {
+    "html": _HTML_MIME,
+    "json": _JSON_MIME,
+    "xml": _XML_MIME,
+}
+
+#: Which fixture extension(s) a source of each declared ``type`` may be served
+#: from. Keyed by the config ``source.type`` (== the ORM ``adapter_type``).
+#: ``mcp`` sources carry no URL and are never fixture-registered. A source whose
+#: type is not listed here falls back to "any known extension, but only if the
+#: choice is unambiguous" -- see :func:`resolve_fixture_path`.
+FIXTURE_EXTENSIONS_BY_SOURCE_TYPE: dict[str, tuple[str, ...]] = {
+    "html": ("html",),
+    "rss": ("xml",),
+    "reference-json": ("json",),
+    "structured-api": ("json",),
+    "mcp": (),
+}
+
+
+def fixture_mime_for(source_type: str | None, extension: str) -> str | None:
+    """Return the MIME type to serve a ``extension`` fixture for ``source_type``.
+
+    Returns ``None`` for an extension we do not recognise -- the caller then
+    declines to register the fixture rather than guessing a content type.
+    """
+
+    mime = FIXTURE_MIME_BY_EXTENSION.get(extension.lower().lstrip("."))
+    if mime is None:
+        return None
+    if mime == _XML_MIME and (source_type or "").lower() == "rss":
+        return _RSS_MIME
+    return mime
+
+
+def resolve_fixture_path(
+    directory: Path, source_id: str, source_type: str | None
+) -> tuple[Path, str] | None:
+    """Resolve the captured fixture for one source, or ``None`` if there is none.
+
+    Two layouts are accepted for each candidate extension, nested first (the
+    layout the capture script writes and the extraction fixtures already use)
+    and then flat::
+
+        <directory>/<source id>/source.<ext>
+        <directory>/<source id>.<ext>
+
+    The candidate extensions come from the source's declared ``type``
+    (:data:`FIXTURE_EXTENSIONS_BY_SOURCE_TYPE`), so an ``html`` source is served
+    HTML and an ``rss`` source is served XML -- the format is *declared*, never
+    sniffed. A source type we do not know falls back to trying every known
+    extension, but an **ambiguous** match (more than one extension present)
+    resolves to ``None``: "unknown is better than guessed" outranks convenience,
+    so an unresolvable source is simply not registered and the fetcher reports it
+    as not-found rather than serving a coin-flip.
+    """
+
+    declared = FIXTURE_EXTENSIONS_BY_SOURCE_TYPE.get((source_type or "").lower())
+    if declared is not None and not declared:
+        return None  # e.g. mcp: no URL-backed document to serve
+    candidates = declared if declared else tuple(FIXTURE_MIME_BY_EXTENSION)
+
+    found: list[tuple[Path, str]] = []
+    for extension in candidates:
+        nested = directory / source_id / f"source.{extension}"
+        flat = directory / f"{source_id}.{extension}"
+        for path in (nested, flat):
+            if path.is_file():
+                found.append((path, extension))
+                break
+
+    if not found:
+        return None
+    if declared is None and len(found) > 1:
+        # Undeclared type with several possible fixtures: refuse to guess.
+        return None
+    return found[0]
 
 
 @dataclass(frozen=True)
@@ -121,11 +209,22 @@ def build_fixture_fetcher(
     """Build a :class:`FixtureFetcher` mapping each source URL to a captured file.
 
     For every source in ``config`` that has a ``url``, a captured fixture is
-    registered under that URL if one exists in ``fixtures_dir`` -- either a flat
-    ``<source id>.html`` file or a ``<source id>/source.html`` file (the layout
-    the extraction fixtures already use). Sources without a matching fixture are
-    simply not registered, so the fetcher reports them as not-found (a graceful
-    per-source error) rather than reaching the network.
+    registered under that URL if one can be resolved in ``fixtures_dir`` -- either
+    a nested ``<source id>/source.<ext>`` file or a flat ``<source id>.<ext>``
+    file, where ``<ext>`` is chosen from the source's declared ``type``
+    (``html`` -> ``source.html`` as ``text/html``; ``rss`` -> ``source.xml`` as
+    ``application/rss+xml``; ``structured-api`` / ``reference-json`` ->
+    ``source.json`` as ``application/json``). The MIME is therefore *derived from
+    the declaration*, never sniffed from the bytes and never defaulted.
+
+    Sources whose fixture cannot be resolved unambiguously are simply not
+    registered, so the fetcher reports them as not-found (a graceful per-source
+    error) rather than reaching the network or serving a guessed content type.
+
+    **Fixture-root convention.** ``fixtures_dir`` is one adapter directory of one
+    provider: ``tests/fixtures/ingest/<provider>/<adapter>/``. Each source (or
+    case) is a child directory holding ``source.<ext>`` next to its
+    ``expected.json`` and ``capture.json`` sidecar.
     """
 
     directory = Path(fixtures_dir)
@@ -133,11 +232,14 @@ def build_fixture_fetcher(
     for source in config.sources:
         if not source.url:
             continue
-        flat = directory / f"{source.id}.html"
-        nested = directory / source.id / "source.html"
-        path = flat if flat.is_file() else nested
-        if path.is_file():
-            fixtures[source.url] = (path.read_bytes(), _DEFAULT_MIME)
+        resolved = resolve_fixture_path(directory, source.id, source.type)
+        if resolved is None:
+            continue
+        path, extension = resolved
+        mime = fixture_mime_for(source.type, extension)
+        if mime is None:  # unknown extension: decline rather than guess
+            continue
+        fixtures[source.url] = (path.read_bytes(), mime)
     return FixtureFetcher(fixtures, policy or fetch_policy_for(config))
 
 
@@ -274,7 +376,11 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         metavar="DIR",
         default=None,
         help=(
-            "Directory of captured '<source id>.html' fixtures. When given, a "
+            "Directory of captured official fixtures for this provider+adapter "
+            "(convention: tests/fixtures/ingest/<provider>/<adapter>/). Each "
+            "source resolves to '<source id>/source.<ext>' or '<source id>.<ext>' "
+            "where <ext> follows the source's declared type (html -> .html, "
+            "rss -> .xml, structured-api/reference-json -> .json). When given, a "
             "FixtureFetcher serves those offline; otherwise the safe OfflineFetcher "
             "is used (no network egress)."
         ),
@@ -402,6 +508,10 @@ __all__: Sequence[str] = (
     "RunnerResult",
     "fetch_policy_for",
     "build_fixture_fetcher",
+    "resolve_fixture_path",
+    "fixture_mime_for",
+    "FIXTURE_MIME_BY_EXTENSION",
+    "FIXTURE_EXTENSIONS_BY_SOURCE_TYPE",
     "run_provider_scans",
     "main",
 )

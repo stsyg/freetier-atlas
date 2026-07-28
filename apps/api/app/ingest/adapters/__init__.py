@@ -4,6 +4,12 @@ Each adapter turns one *official* source shape into candidate-only facts and
 reaches the network solely through the injected
 :class:`~app.ingest.fetch.Fetcher`. Provider-specific knowledge stays behind the
 adapter boundary (and, for HTML, inside a declarative extraction profile).
+
+Provider-specific *profiles* live one-module-per-provider under
+:mod:`app.ingest.adapters.profiles` and are auto-discovered at import time by
+:func:`~app.ingest.adapters.profiles.load_provider_profiles` (F008 S3). Adding a
+provider is therefore a single new file: no shared registry dict, and no line in
+this module, needs editing.
 """
 
 from __future__ import annotations
@@ -29,6 +35,14 @@ from .mcp import (
     UnknownMcpProfileError,
     resolve_mcp_profile,
 )
+from .profiles import (
+    ProfileConflictError,
+    load_provider_profiles,
+    register_html_profile,
+    register_json_profile,
+    register_mcp_profile,
+    registered_profile_names,
+)
 from .rss import RssFeedAdapter
 from .structured import (
     JSON_EXTRACTION_PROFILES,
@@ -36,6 +50,10 @@ from .structured import (
     UnknownJsonProfileError,
     resolve_json_profile,
 )
+
+# Import every per-provider profile module so its profiles are registered before
+# any adapter resolves a profile name. Idempotent (module bodies run once).
+load_provider_profiles()
 
 __all__ = (
     "RssFeedAdapter",
@@ -64,4 +82,11 @@ __all__ = (
     "UnknownMcpProfileError",
     "DisallowedCapabilityError",
     "McpDisabledError",
+    # per-provider profile registration seam (F008 S3)
+    "ProfileConflictError",
+    "register_html_profile",
+    "register_json_profile",
+    "register_mcp_profile",
+    "load_provider_profiles",
+    "registered_profile_names",
 )
