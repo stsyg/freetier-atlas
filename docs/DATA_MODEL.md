@@ -69,6 +69,37 @@ content actually changes) and deletes rows for pairs the provider YAML no longer
 converges on the declared truth rather than retaining a stale row. The same principle now applies to
 `service_categories`: withdrawing a service's declaration reverts `service.category_id` to `NULL`.
 
+**A resolution failure is not a withdrawal** — on either axis, though the two are protected by
+different mechanisms because they fail differently:
+
+- An unresolvable **`source`** reference still resolves its category, so the pair is registered as
+  declared and its stored row is left exactly as it stands.
+- An unresolvable **category** slug (taxonomy drift, typically a rename — note the FK's
+  `ON DELETE CASCADE` does *not* help here, because the category row still exists) leaves the sync
+  unable to name the id its stored row is keyed on. That row becomes indistinguishable from a
+  genuinely withdrawn pair, so withdrawal cannot be positively proven and the prune is suppressed
+  **wholesale for that run** (`CoverageSyncResult.prune_suppressed`) rather than deleting what it
+  cannot attribute.
+
+Both conditions surface in the `unknown_source` / `unknown_category` outcome counts. Only a pair the
+YAML genuinely stops declaring, in a run where every category reference resolved, is pruned. The conservative
+error is retaining a row that could have been withdrawn, which is the correct side to err on.
+
+The Q9-A evidence floor is enforced **twice** — once at config load
+(`ProviderConfig.validate_coverage_floor()`) and once after every sync against the rows actually
+persisted. `sync_coverage()` re-reads the provider's stored rows and raises `CoverageFloorError` if
+fewer than three are evidence-backed `verified_free` / `offered_no_z0`. Zero persisted rows is not an
+exemption but the maximal erosion, and is reported as such; the sole skip is a database with no
+canonical taxonomy at all (pre-0010), where the sync writes nothing. The floor is therefore a
+**database** invariant, not only a config-load one.
+
+One condition is worth stating precisely rather than claiming more than holds: the erosion is
+prevented from committing because the exception propagates out of the caller's transaction, and every
+current caller lets it. That is a property of the callers, not yet of `sync_coverage` itself — a
+caller that caught the error and committed anyway would persist the shortfall, since the writes are
+already flushed. Making the guarantee structural (a provider-unit savepoint) is tracked as a
+follow-up.
+
 ### Offer
 
 Service, offer type, Z class, status, eligibility, commercial/personal conditions, card requirement, paid dependencies, dates, visibility, first-seen and last-verified timestamps.

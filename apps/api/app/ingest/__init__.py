@@ -47,6 +47,7 @@ from .base import (
     SourceDocument,
 )
 from .config_sync import (
+    CoverageFloorError,
     CoverageSyncResult,
     SourceSyncOutcome,
     SyncResult,
@@ -166,6 +167,7 @@ __all__ = (
     "sync_coverage",
     "SyncResult",
     "CoverageSyncResult",
+    "CoverageFloorError",
     "SourceSyncOutcome",
     # scan runner / runtime entrypoint
     "run_provider_scans",

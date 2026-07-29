@@ -7,6 +7,7 @@ JSON Schema export, and the CLI. All tests run offline.
 
 from __future__ import annotations
 
+import inspect
 import json
 from pathlib import Path
 
@@ -15,6 +16,7 @@ from app.config import ConfigError, load_and_validate
 from app.config.cli import main as cli_main
 from app.config.loader import detect_family
 from app.config.models import FAMILY_MODELS, MIN_EVIDENCE_BACKED_COVERAGE
+from app.models.vocab import EVIDENCE_BACKED_COVERAGE_STATES
 from app.read_api.taxonomy import canonical_slugs
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -512,6 +514,34 @@ def test_shipped_cloudflare_config_satisfies_the_floor() -> None:
         if entry.state in ("verified_free", "offered_no_z0") and entry.has_provenance
     ]
     assert len(backed) >= MIN_EVIDENCE_BACKED_COVERAGE
+
+
+def test_the_load_time_and_post_sync_floors_cannot_drift_apart() -> None:
+    """Q9-A is enforced twice; both sites must share one definition.
+
+    ``ProviderConfig.validate_coverage_floor`` guards the config file and
+    ``app.ingest.config_sync._assert_persisted_coverage_floor`` guards the rows
+    that actually landed in the database. If the two ever disagreed about the
+    threshold or about which states count as evidence-backed, one of them would
+    silently stop protecting anything.
+    """
+
+    import app.config.models as config_models
+    import app.ingest.config_sync as config_sync
+
+    assert config_sync.MIN_EVIDENCE_BACKED_COVERAGE is config_models.MIN_EVIDENCE_BACKED_COVERAGE
+    assert config_sync.EVIDENCE_BACKED_COVERAGE_STATES is EVIDENCE_BACKED_COVERAGE_STATES
+
+    source = inspect.getsource(config_sync._assert_persisted_coverage_floor)
+    assert "MIN_EVIDENCE_BACKED_COVERAGE" in source, (
+        "the persisted-row floor must use the shared threshold, not a literal"
+    )
+    assert "EVIDENCE_BACKED_COVERAGE_STATES" in source, (
+        "the persisted-row floor must use the shared evidence-backed state set"
+    )
+    # A hard failure, not a note: silence is what let the catalogue erode.
+    assert issubclass(config_sync.CoverageFloorError, ValueError)
+    assert "raise CoverageFloorError" in source
 
 
 def test_mcp_source_requires_capabilities(tmp_path: Path) -> None:
