@@ -31,7 +31,11 @@ rows (F008 slice S2, see :func:`sync_coverage`); it never touches ``offer`` /
 ``offer_version`` / ``quota`` and opens no socket.
 
 The caller owns the transaction: :func:`sync_provider` uses ``session.flush()``
-(so the new provider id is available for its sources) but never commits.
+(so the new provider id is available for its sources) but never commits. Within
+that transaction the provider is nonetheless an **atomic unit**: all four writes
+run inside a SAVEPOINT that is rolled back and re-raised from on any failure, so
+a partially synced provider is never left in the caller's transaction for it to
+commit (see :func:`sync_provider`).
 """
 
 from __future__ import annotations
@@ -681,18 +685,54 @@ def sync_provider(session: Session, config: ProviderConfig) -> SyncResult:
     declared ``coverage`` block (:func:`sync_coverage`, which runs after the
     sources so its ``source`` references resolve); both are themselves
     idempotent. The caller owns the transaction (this flushes but never commits).
+
+    **All four writes are one atomic unit.** They run inside a SAVEPOINT which is
+    rolled back -- and the original exception re-raised -- if any of them fails,
+    so the provider is either fully synced or entirely untouched and a
+    half-synced provider is never handed to the caller's transaction.
+
+    This makes the guarantee local to this function instead of a property of who
+    calls it. :func:`sync_coverage` protects the Q9-A evidence floor by *raising*
+    (:class:`CoverageFloorError`), which only prevents the erosion because the
+    flushed DELETEs die with the transaction. A caller shaped ``try:
+    sync_provider(...) except Exception: continue`` followed by a ``commit()``
+    -- the shape ``app.ingest.runner`` already uses per source, and the expected
+    shape of a batch runner over several providers -- would otherwise commit
+    exactly the erosion the raise was meant to prevent.
+
+    The savepoint is scoped to the whole provider unit rather than to the
+    coverage block alone, deliberately. On a *new* provider's first sync there is
+    no prior coverage to revert to, so a coverage-only savepoint would commit a
+    provider carrying **zero** coverage rows -- every category then reads
+    ``unknown`` and :func:`_assert_persisted_coverage_floor` cannot detect it,
+    which is worse than aborting. Provider-unit scope keeps the unit coherent:
+    fully synced, or untouched, never provider-without-coverage.
+
+    The exception is re-raised, never converted into a return value. Rolling back
+    and returning would hand back a ``SyncResult`` built over ORM objects the
+    rollback has expired, *reporting success* for a sync that did not happen --
+    a silent degradation in place of a loud one. The type is preserved too, so
+    ``CoverageFloorError`` still reaches the caller as itself.
     """
 
-    provider, provider_action = _sync_provider_row(session, config)
-    result = SyncResult(
-        provider_slug=config.provider.id,
-        provider_id=provider.id,
-        provider_action=provider_action,
-    )
-    for source_config in config.sources:
-        result.sources.append(_sync_source_row(session, source_config, provider.id))
-    result.categorisation = categorise_services(session, config)
-    result.coverage = sync_coverage(session, config)
+    savepoint = session.begin_nested()
+    try:
+        provider, provider_action = _sync_provider_row(session, config)
+        result = SyncResult(
+            provider_slug=config.provider.id,
+            provider_id=provider.id,
+            provider_action=provider_action,
+        )
+        for source_config in config.sources:
+            result.sources.append(_sync_source_row(session, source_config, provider.id))
+        result.categorisation = categorise_services(session, config)
+        result.coverage = sync_coverage(session, config)
+        savepoint.commit()
+    except BaseException:
+        # Re-raise unconditionally: a caller must never receive a success-shaped
+        # result for a sync that was rolled back.
+        savepoint.rollback()
+        raise
     return result
 
 

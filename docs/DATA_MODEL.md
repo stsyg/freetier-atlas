@@ -93,12 +93,16 @@ exemption but the maximal erosion, and is reported as such; the sole skip is a d
 canonical taxonomy at all (pre-0010), where the sync writes nothing. The floor is therefore a
 **database** invariant, not only a config-load one.
 
-One condition is worth stating precisely rather than claiming more than holds: the erosion is
-prevented from committing because the exception propagates out of the caller's transaction, and every
-current caller lets it. That is a property of the callers, not yet of `sync_coverage` itself — a
-caller that caught the error and committed anyway would persist the shortfall, since the writes are
-already flushed. Making the guarantee structural (a provider-unit savepoint) is tracked as a
-follow-up.
+The guarantee is now structural rather than a property of the call chain. `sync_provider()` runs all
+four of its writes — the provider row, the source rows, `categorise_services()` and
+`sync_coverage()` — inside a **SAVEPOINT**, which it rolls back before re-raising the original
+exception. A provider is therefore fully synced or entirely untouched, and a caller shaped
+`try: sync_provider(...) except Exception: continue` followed by a `commit()` persists nothing of the
+failed provider. The savepoint is scoped to the provider unit, not to the coverage block alone: a
+coverage-only savepoint would commit a **new** provider carrying zero coverage rows, which reads as
+`unknown` everywhere and which the persisted floor check cannot detect. The exception is re-raised,
+never turned into a return value, so a caller that ignores it still learns nothing it did not before;
+the caller still owns the transaction, and `sync_provider()` still never commits it.
 
 ### Offer
 

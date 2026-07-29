@@ -156,9 +156,11 @@ both surface in the `unknown_source` / `unknown_category` outcome counts.
 The evidence floor is re-checked **after** the sync against the rows actually persisted, so it is a
 database invariant rather than only a config-load one. If fewer than three persisted rows are
 evidence-backed, `sync_coverage()` raises `CoverageFloorError`; zero rows is the maximal erosion, not
-an exemption. The shortfall does not commit because the exception propagates out of the caller's
-transaction and every current caller lets it — a property of the callers rather than of
-`sync_coverage` itself, which a provider-unit savepoint is tracked to make structural.
+an exemption. The shortfall does not commit, and that is structural rather than a property of the
+callers: `sync_provider()` wraps all four of its writes in a **SAVEPOINT** which it rolls back before
+re-raising, so a failed sync leaves the provider entirely untouched even if the caller swallows the
+exception and commits. The savepoint covers the whole provider unit, not just the coverage block —
+a coverage-only savepoint would commit a new provider with zero coverage rows.
 
 Finally, a pair declared `unknown` or `not_offered` while the derivation from published evidence
 says `verified_free` / `offered_no_z0` is a **material contradiction**: it raises a pending
