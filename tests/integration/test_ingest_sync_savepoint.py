@@ -25,7 +25,13 @@ even if the guarantee broke. Instead each test:
   never ``cloudflare`` -- the hazard is slug collision, and a shared slug would
   make the teardown cascade depend on what other tests happened to run first;
 * tears down explicitly, on a connection of its own, **even when the test body
-  fails**, and asserts empirically that nothing of its own is left behind.
+  fails**, deleting strictly by captured ownership ids so it can never remove a
+  row it did not create, and asserting the result against those ids rather than
+  against the predicate it deleted by.
+
+The failure axes are pinned separately: the coverage-floor path, a **non-coverage**
+write (the source write, with a sentinel exception type), and a rollback that
+itself fails. A guard narrowed to any one of those must go RED.
 """
 
 from __future__ import annotations
@@ -43,6 +49,7 @@ from alembic import command
 from alembic.config import Config
 from app.config.loader import load_and_validate
 from app.config.models import MIN_EVIDENCE_BACKED_COVERAGE, ProviderConfig
+from app.ingest import config_sync
 from app.ingest.config_sync import CoverageFloorError, sync_provider
 from app.read_api.taxonomy import canonical_slugs
 from sqlalchemy import create_engine, text
@@ -58,6 +65,14 @@ skip_without_db = pytest.mark.skipif(
     not DATABASE_URL,
     reason="DATABASE_URL not set; start Postgres (scripts/stack-up) and export it to enable.",
 )
+
+
+class _SentinelSourceWriteError(RuntimeError):
+    """A failure type the savepoint guard has no special knowledge of.
+
+    Deliberately *not* :class:`CoverageFloorError`: a guard narrowed to the
+    coverage axis must not be able to catch it.
+    """
 
 
 def _alembic_config() -> Config:
@@ -134,17 +149,25 @@ class Probe:
         return model
 
     def committed_counts(self) -> dict[str, int]:
-        """Read this provider's persisted rows on a wholly separate connection."""
+        """Read this provider's persisted rows on a wholly separate connection.
 
-        like = f"{self.slug}%"
+        Every count is **ownership-scoped**: sources are counted through their
+        ``provider_id`` rather than by a slug prefix, so a foreign row that
+        merely happens to share the prefix cannot satisfy -- or disturb -- these
+        assertions.
+        """
+
         with self.read_engine.connect() as conn:
             providers = conn.execute(
                 text("SELECT count(*) FROM provider WHERE slug = :slug"),
                 {"slug": self.slug},
             ).scalar_one()
             sources = conn.execute(
-                text("SELECT count(*) FROM source WHERE slug LIKE :like"),
-                {"like": like},
+                text(
+                    "SELECT count(*) FROM source s "
+                    "JOIN provider p ON p.id = s.provider_id WHERE p.slug = :slug"
+                ),
+                {"slug": self.slug},
             ).scalar_one()
             coverage = conn.execute(
                 text(
@@ -160,13 +183,20 @@ class Probe:
 def probe(tmp_path: Path) -> Iterator[Probe]:
     """A unique provider slug with its own engines and an explicit teardown.
 
-    The slug is unique per run, so the teardown below is safe **by construction**
-    rather than by assumption about what else ran: no other test or fixture can
-    have attached a row to it. ``source.provider_id`` is ``ON DELETE SET NULL``,
-    so deleting the provider does *not* remove its sources -- they are deleted
-    explicitly, before the provider, and the result is verified rather than
-    assumed. The slug contains no ``%`` or ``_``, so the ``LIKE`` patterns above
-    carry no wildcard.
+    Two distinct properties, which are worth not conflating:
+
+    * the slug is unique per run, so no other test or fixture can have attached
+      a row to this provider -- that prevents *collision*;
+    * the teardown deletes strictly by **ownership** (``provider_id``, resolved
+      from this provider's row) and never by slug prefix -- that prevents
+      deleting a row this fixture did not create, which slug uniqueness alone
+      would *not* prevent.
+
+    ``source.provider_id`` is ``ON DELETE SET NULL``, so deleting the provider
+    does not remove its sources; they are deleted first, while the ownership
+    link still exists. The leftover assertion afterwards is deliberately made
+    against the **captured row ids**, not against the predicate the delete used,
+    so it cannot be self-satisfying.
     """
 
     command.upgrade(_alembic_config(), "head")
@@ -186,26 +216,41 @@ def probe(tmp_path: Path) -> Iterator[Probe]:
         )
     finally:
         try:
-            like = f"{slug}%"
             with read_engine.begin() as conn:
-                conn.execute(
-                    text(
-                        "DELETE FROM provider_category_coverage WHERE provider_id IN "
-                        "(SELECT id FROM provider WHERE slug = :slug)"
-                    ),
-                    {"slug": slug},
+                provider_ids = list(
+                    conn.execute(
+                        text("SELECT id FROM provider WHERE slug = :slug"),
+                        {"slug": slug},
+                    ).scalars()
                 )
-                conn.execute(text("DELETE FROM source WHERE slug LIKE :like"), {"like": like})
+                source_ids = (
+                    list(
+                        conn.execute(
+                            text("SELECT id FROM source WHERE provider_id = ANY(:ids)"),
+                            {"ids": provider_ids},
+                        ).scalars()
+                    )
+                    if provider_ids
+                    else []
+                )
+                conn.execute(
+                    text("DELETE FROM provider_category_coverage WHERE provider_id = ANY(:ids)"),
+                    {"ids": provider_ids},
+                )
+                conn.execute(
+                    text("DELETE FROM source WHERE provider_id = ANY(:ids)"),
+                    {"ids": provider_ids},
+                )
                 conn.execute(text("DELETE FROM provider WHERE slug = :slug"), {"slug": slug})
             with read_engine.connect() as conn:
                 leftovers = {
                     "provider": conn.execute(
-                        text("SELECT count(*) FROM provider WHERE slug = :slug"),
-                        {"slug": slug},
+                        text("SELECT count(*) FROM provider WHERE id = ANY(:ids)"),
+                        {"ids": provider_ids},
                     ).scalar_one(),
                     "source": conn.execute(
-                        text("SELECT count(*) FROM source WHERE slug LIKE :like"),
-                        {"like": like},
+                        text("SELECT count(*) FROM source WHERE id = ANY(:ids)"),
+                        {"ids": source_ids},
                     ).scalar_one(),
                 }
             assert leftovers == {"provider": 0, "source": 0}, (
@@ -262,6 +307,103 @@ def test_a_caller_that_swallows_the_failure_and_commits_persists_nothing(
         "a failed sync_provider must leave the database untouched even when the "
         "caller swallows the exception and commits"
     )
+
+
+@skip_without_db
+def test_a_failure_outside_the_coverage_block_also_persists_nothing(
+    probe: Probe,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Atomicity is pinned on a **non-coverage** axis too, not only the floor.
+
+    The coverage-floor test above only exercises the last of the four writes, so
+    a savepoint narrowed to ``except CoverageFloorError`` would still pass it
+    while committing a partial provider on every other path. Here the failure is
+    raised from the **source** write -- after the provider row and the first
+    source have already been flushed -- with an exception type the guard has no
+    special knowledge of. The whole unit must still vanish.
+    """
+
+    config = probe.config()
+    assert len(config.sources) > 1, "the sentinel must fire after at least one source is written"
+
+    real_sync_source_row = config_sync._sync_source_row
+    calls = {"n": 0}
+
+    def failing_sync_source_row(session: Session, source_config: Any, provider_id: int) -> Any:
+        calls["n"] += 1
+        if calls["n"] == 2:
+            raise _SentinelSourceWriteError("sentinel failure on the source write")
+        return real_sync_source_row(session, source_config, provider_id)
+
+    monkeypatch.setattr(config_sync, "_sync_source_row", failing_sync_source_row)
+
+    caught: BaseException | None = None
+    returned = None
+    with Session(probe.write_engine) as session:
+        try:
+            returned = sync_provider(session, config)
+        except Exception as exc:  # noqa: BLE001 - deliberately the swallowing caller
+            caught = exc
+        session.commit()
+
+    assert isinstance(caught, _SentinelSourceWriteError), (
+        "the original exception must reach the caller untranslated, whatever its type"
+    )
+    assert returned is None
+    assert calls["n"] == 2, "the sentinel must have fired after a successful first source write"
+
+    assert probe.committed_counts() == {"provider": 0, "source": 0, "coverage": 0}, (
+        "a failure on the source write must roll the whole provider unit back, not "
+        "only failures that come from the coverage block"
+    )
+
+
+@skip_without_db
+def test_a_rollback_that_itself_fails_does_not_displace_the_original(
+    probe: Probe,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A secondary rollback failure must not become what the caller sees.
+
+    If the SAVEPOINT is already gone by the time the guard runs, ``rollback()``
+    raises in its own right (SQLAlchemy reports ``ResourceClosedError`` for a
+    closed nested transaction). The caller must still receive the **original**
+    exception, unchanged in type *and* identity; the rollback failure is
+    attached to it as a note rather than discarded.
+    """
+
+    config = probe.config()
+    original = _SentinelSourceWriteError("the real failure")
+    rollback_failure = RuntimeError("this transaction is closed")
+
+    class _DeadSavepoint:
+        is_active = False
+
+        def commit(self) -> None:  # pragma: no cover - this test always fails first
+            raise AssertionError("unreachable: the unit fails before it commits")
+
+        def rollback(self) -> None:
+            raise rollback_failure
+
+    def failing_sync_provider_row(session: Session, cfg: Any) -> Any:
+        raise original
+
+    monkeypatch.setattr(config_sync, "_sync_provider_row", failing_sync_provider_row)
+
+    with Session(probe.write_engine) as session:
+        monkeypatch.setattr(session, "begin_nested", lambda: _DeadSavepoint())
+        with pytest.raises(_SentinelSourceWriteError) as excinfo:
+            sync_provider(session, config)
+        session.rollback()
+
+    assert excinfo.value is original, "the caller must receive the original exception object itself"
+    notes = getattr(excinfo.value, "__notes__", [])
+    assert any("SAVEPOINT" in note and repr(rollback_failure) in note for note in notes), (
+        f"the suppressed rollback failure must be attached, not discarded; notes={notes}"
+    )
+
+    assert probe.committed_counts() == {"provider": 0, "source": 0, "coverage": 0}
 
 
 @skip_without_db

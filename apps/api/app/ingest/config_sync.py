@@ -33,9 +33,10 @@ rows (F008 slice S2, see :func:`sync_coverage`); it never touches ``offer`` /
 The caller owns the transaction: :func:`sync_provider` uses ``session.flush()``
 (so the new provider id is available for its sources) but never commits. Within
 that transaction the provider is nonetheless an **atomic unit**: all four writes
-run inside a SAVEPOINT that is rolled back and re-raised from on any failure, so
-a partially synced provider is never left in the caller's transaction for it to
-commit (see :func:`sync_provider`).
+run inside a SAVEPOINT that is rolled back, and the original exception re-raised
+unchanged, whenever any of them raises -- so a partially synced provider is
+never left in the caller's transaction for it to commit (see
+:func:`sync_provider`).
 """
 
 from __future__ import annotations
@@ -687,8 +688,8 @@ def sync_provider(session: Session, config: ProviderConfig) -> SyncResult:
     idempotent. The caller owns the transaction (this flushes but never commits).
 
     **All four writes are one atomic unit.** They run inside a SAVEPOINT which is
-    rolled back -- and the original exception re-raised -- if any of them fails,
-    so the provider is either fully synced or entirely untouched and a
+    rolled back -- and the original exception re-raised -- when any of them
+    raises, so the provider is either fully synced or entirely untouched and a
     half-synced provider is never handed to the caller's transaction.
 
     This makes the guarantee local to this function instead of a property of who
@@ -709,10 +710,14 @@ def sync_provider(session: Session, config: ProviderConfig) -> SyncResult:
     fully synced, or untouched, never provider-without-coverage.
 
     The exception is re-raised, never converted into a return value. Rolling back
-    and returning would hand back a ``SyncResult`` built over ORM objects the
-    rollback has expired, *reporting success* for a sync that did not happen --
-    a silent degradation in place of a loud one. The type is preserved too, so
-    ``CoverageFloorError`` still reaches the caller as itself.
+    and returning would hand the caller a ``SyncResult`` describing writes that
+    no longer exist -- *reporting success* for a sync that did not happen, a
+    silent degradation in place of a loud one. (The ``SyncResult`` itself holds
+    primitive ids and dataclasses, so it would remain readable after the
+    rollback; that is precisely what makes returning it dangerous rather than
+    merely broken.) The original exception is re-raised unchanged in type and
+    identity -- a failing rollback is attached to it as a note rather than
+    replacing it -- so ``CoverageFloorError`` still reaches the caller as itself.
     """
 
     savepoint = session.begin_nested()
@@ -728,10 +733,26 @@ def sync_provider(session: Session, config: ProviderConfig) -> SyncResult:
         result.categorisation = categorise_services(session, config)
         result.coverage = sync_coverage(session, config)
         savepoint.commit()
-    except BaseException:
-        # Re-raise unconditionally: a caller must never receive a success-shaped
-        # result for a sync that was rolled back.
-        savepoint.rollback()
+    except BaseException as exc:
+        # The rollback is attempted unconditionally rather than gated on
+        # ``savepoint.is_active``: that flag is also False for a nested
+        # transaction the failure merely *deactivated*, which still needs its
+        # SAVEPOINT released. A rollback that fails anyway (a closed nested
+        # transaction raises ``ResourceClosedError``) must not displace the
+        # primary exception, so the secondary failure is attached to it as a
+        # note instead of propagating or being discarded.
+        was_active = savepoint.is_active
+        try:
+            savepoint.rollback()
+        except BaseException as rollback_exc:
+            exc.add_note(
+                "app.ingest.config_sync.sync_provider: rolling the provider "
+                "SAVEPOINT back failed and was suppressed so it could not "
+                f"displace this exception (savepoint.is_active={was_active}): "
+                f"{rollback_exc!r}"
+            )
+        # Re-raise unconditionally, and only ever the original: a caller must
+        # never receive a success-shaped result for a sync that was rolled back.
         raise
     return result
 

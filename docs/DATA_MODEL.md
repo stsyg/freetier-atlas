@@ -96,13 +96,17 @@ canonical taxonomy at all (pre-0010), where the sync writes nothing. The floor i
 The guarantee is now structural rather than a property of the call chain. `sync_provider()` runs all
 four of its writes — the provider row, the source rows, `categorise_services()` and
 `sync_coverage()` — inside a **SAVEPOINT**, which it rolls back before re-raising the original
-exception. A provider is therefore fully synced or entirely untouched, and a caller shaped
-`try: sync_provider(...) except Exception: continue` followed by a `commit()` persists nothing of the
-failed provider. The savepoint is scoped to the provider unit, not to the coverage block alone: a
-coverage-only savepoint would commit a **new** provider carrying zero coverage rows, which reads as
-`unknown` everywhere and which the persisted floor check cannot detect. The exception is re-raised,
-never turned into a return value, so a caller that ignores it still learns nothing it did not before;
-the caller still owns the transaction, and `sync_provider()` still never commits it.
+exception, whichever of the four raised it. A provider is therefore fully synced or entirely
+untouched, and a caller shaped `try: sync_provider(...) except Exception: continue` followed by a
+`commit()` persists nothing of the failed provider. The savepoint is scoped to the provider unit, not
+to the coverage block alone: a coverage-only savepoint would commit a **new** provider carrying zero
+coverage rows, which reads as `unknown` everywhere and which the persisted floor check cannot detect.
+The exception is re-raised unchanged in type and identity, never turned into a return value, so a
+caller that ignores it still learns nothing it did not before; the caller still owns the transaction,
+and `sync_provider()` still never commits it. What the savepoint does **not** cover is a failure that
+has already poisoned the session's connection to the point where the SAVEPOINT itself is gone; in
+that case the rollback cannot run, the secondary failure is attached to the original as a note, and
+the outer transaction — which the caller owns — is what aborts.
 
 ### Offer
 
