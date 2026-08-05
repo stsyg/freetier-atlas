@@ -107,10 +107,23 @@ and `sync_provider()` still never commits it. That identity guarantee is uncondi
 `sync_provider`: if the rollback itself raises, the failure is attached to the original exception as a
 note rather than replacing it, and if attaching the note *also* raises — `add_note` is an ordinary
 overridable method — that tertiary failure is discarded, because the note was the only channel
-available for reporting it and the primary exception is what must survive. What the savepoint does
-**not** cover is a failure that has already poisoned the session's connection to the point where the
-SAVEPOINT itself is gone; in that case the rollback cannot run and the outer transaction — which the
-caller owns — is what aborts.
+available for reporting it and the primary exception is what must survive.
+
+What the savepoint does **not** cover is a failure raised while the SAVEPOINT is being **released**
+rather than by one of the four writes. SQLAlchemy dispatches `after_transaction_end` *after* the
+`RELEASE SAVEPOINT` has succeeded, so by the time such a listener raises, the four writes already
+belong to the caller's enclosing transaction and `sync_provider()` — which does not own that
+transaction — can no longer revert them. The caller still receives the original exception, with the
+same identity and note handling, but a subsequent `commit()` **persists the provider anyway**: a sync
+reported as failed can still be committed as complete. This is a library seam, not a live defect —
+nothing under `apps/` registers such a listener, and a test asserts that none does, so adding one
+forces this boundary to be re-examined rather than letting it silently become reachable. It is
+documented rather than guarded deliberately: SQLAlchemy 2.0 offers no supported way to mark the
+enclosing transaction rollback-only (`rollback_only` is a `join_transaction_mode` value for
+externally-supplied connections, not a session flag), and the public alternatives — `Session.rollback()`,
+`invalidate()`, `close()` — were measured to leave the caller's `commit()` succeeding *silently* while
+also destroying the caller's own unrelated work, which would trade this narrow boundary for unbounded
+loss in the caller's scope.
 
 ### Offer
 

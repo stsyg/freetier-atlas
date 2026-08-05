@@ -1080,3 +1080,113 @@ Measured figures for r2 (all measured on this branch, not carried forward):
   sources; alembic head `0011_provider_category_coverage`, single head
 
 Scope unchanged: six changed files, no migration, F008 remains `passes:false`.
+
+## 2026-08-05 -- F008 savepoint hardening, round r3 (builder)
+
+Round r3 remediates the single finding F-8 from the third independent Level-2
+evaluation of PR #41. F-5 and F-6 were confirmed closed by that evaluation, and
+the four-raise-site closed-set enumeration was audited and confirmed COMPLETE,
+so that axis is closed permanently and is untouched here. Criteria 2 through 6
+remain PASS.
+
+F-8 is earlier than the exception handler. `savepoint.commit()` successfully
+issues `RELEASE SAVEPOINT`, and only then does `after_transaction_end` event
+dispatch raise. By that point the four writes belong to the caller's enclosing
+transaction, and `sync_provider` -- which does not own that transaction -- can no
+longer revert them, so a swallowing caller's `commit()` persists a provider whose
+sync reported failure.
+
+The remedy was **measured on real PostgreSQL**, not reasoned about, with the
+caller holding its own unrelated flushed work:
+
+| remedy | caller `commit()` | our rows | caller's own rows |
+| --- | --- | --- | --- |
+| none (F-8 today) | SILENT | 1 | 1 |
+| `Session.rollback()` | SILENT | 0 | 0 -- destroyed |
+| `get_transaction().rollback()` | SILENT | 0 | 0 -- destroyed |
+| `Session.invalidate()` | SILENT | 0 | 0 -- destroyed |
+| `Session.close()` | SILENT | 0 | 0 -- destroyed |
+| private `_state=DEACTIVE` | RAISES `PendingRollbackError` | 0 | 0 |
+
+The decisive column is the middle one: **every public remedy leaves the caller's
+commit succeeding silently**, changing what persists but not what the caller
+believes -- the same defect as F-8 with the sign flipped -- and additionally
+destroys the caller's own unrelated rows, trading a narrow bounded boundary for
+unbounded loss in the caller's scope. Only writing the private
+`SessionTransaction._state` / `_rollback_exception` pair makes it loud, and that
+was rejected for consistency with the earlier refusal to depend on SQLAlchemy
+internals for `is_active`: that was a *read* of a property, this would be a
+*write* faking an internal state-machine transition, which a rename would break
+**silently**, with no test going red until someone registered a listener.
+SQLAlchemy 2.0.36 exposes no supported route -- `rollback_only` exists only as a
+`join_transaction_mode` value for externally-supplied connections, not as a
+session-level flag. Narrowing the window is structurally impossible: the
+dangerous step is the terminating one by definition, so anything reordered after
+it inherits the problem. Owning the transaction outright would solve rather than
+report, but inverts the caller-owns-the-transaction invariant held since F005
+slice 1 and breaks `runner.py`'s per-source savepoints; it is recorded as
+rejected-on-blast-radius rather than omitted, since an enumeration that quietly
+drops the one real solution is not an honest enumeration.
+
+The chosen response is to **document the boundary honestly and test it, not
+guard it**. The module header, the `sync_provider` docstring, `DATA_MODEL.md` and
+`PROVIDER_ADAPTERS.md` now state that atomicity covers failures in the four
+writes and that a failure during SAVEPOINT *release* is outside it, naming the
+concrete consequence: a sync reported as failed can still be committed as
+complete. A comment at the release site records the measured options and why each
+was rejected, so the next person finds the analysis instead of rediscovering it.
+
+Two tests were added. The first asserts the **documented** outcome rather than an
+aspirational `0/0/0`, with a docstring stating explicitly that it pins a
+*boundary* and not a *guarantee*, so a passing run cannot later be misread as
+proof of atomicity in that window; it also pins that the boundary sits exactly at
+the release, so a failable step slid after `savepoint.commit()` by a future
+refactor surfaces there. The second converts the materiality finding into an
+enforced invariant by scanning `apps/` for `after_transaction_end` /
+`after_transaction_create` **registrations**.
+
+That second test taught something worth recording: the first version matched the
+bare event name and immediately went RED on `config_sync.py` -- because the
+module now *documents* the boundary at length. A name-only scan is guaranteed to
+fire on its own documentation and would be silenced or deleted within a round,
+enforcing nothing. It now matches the `event.listen(...)` and
+`@event.listens_for(...)` spellings instead, and the trade is disclosed in the
+test docstring: a dynamically-constructed event name would evade it.
+
+**Recorded for the next person who probes transaction semantics: do not use
+SQLite for it.** The first run of the remedy matrix above was on SQLite and was
+an artifact -- it reported that `Session.rollback()` left the row committed,
+which would have made public remedies look uniformly useless and would have
+supported the same conclusion by a broken route. That is the pysqlite driver's
+BEGIN-emission quirk, not SQLAlchemy behaviour. It was caught because
+`rollback()` leaving data behind is not a believable result; the table above is
+the PostgreSQL re-run. Disbelief in a convenient result is worth treating as a
+signal to re-measure.
+
+Measured figures for r3:
+
+- savepoint suite: 8 passed (6 previous + 2 new)
+- mutation M7 (boundary test asserts `0/0/0` instead of the documented
+  outcome): RED -- confirms the new test reads real committed state and is not
+  vacuous
+- registration-scan probes: the `@event.listens_for(...)` form and the
+  imperative `event.listen(...)` form each make the invariant test RED;
+  `runner.py` restored byte-identical afterwards
+- mutation M1 (savepoint removed): RED -- 5 failed / 3 passed
+- mutation M2 (`rollback()` then `return`): RED -- 6 failed / 2 passed
+- mutation M3 (savepoint narrowed to the coverage block): RED -- 5 failed /
+  3 passed
+- mutation M4 (`except BaseException` -> `except CoverageFloorError`): RED --
+  3 failed / 5 passed
+- mutation M5 (`except BaseException` -> `except Exception`): RED -- 1 failed /
+  7 passed
+- mutation M6 (`add_note` guard removed): RED -- 1 failed / 7 passed
+- every mutation restored; `git status --short` clean of unintended files after
+  each
+- offline suite: 1004 passed / 155 skipped
+- live PostgreSQL suite: 1157 passed / 2 skipped
+- residue check: zero probe providers, sources and coverage rows; zero orphan
+  sources; alembic head `0011_provider_category_coverage`, single head
+
+Scope: four changed files plus the two agent-state ledgers, no migration, no new
+dependency, F008 remains `passes:false`.

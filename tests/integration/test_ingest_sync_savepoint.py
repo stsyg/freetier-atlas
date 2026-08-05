@@ -43,11 +43,21 @@ write (a non-coverage axis, with a sentinel ``Exception`` subclass), the
 ``Exception``, so the breadth of the ``except`` clause is pinned too), a rollback
 that itself fails, and an ``add_note`` that fails on top of it. A guard narrowed
 to any one of those must go RED.
+
+Two further tests pin the guarantee's **boundary** rather than the guarantee, and
+should not be read as evidence of atomicity: a failure raised while the SAVEPOINT
+is being *released* lands after ``RELEASE SAVEPOINT`` has already succeeded, so
+the writes are the caller's transaction's by then and are committed. That case is
+asserted at its documented outcome, and a source scan asserts that nothing under
+``apps/`` registers the ``after_transaction_end`` listener which would make it
+reachable -- so the condition the boundary rests on is enforced rather than
+assumed.
 """
 
 from __future__ import annotations
 
 import os
+import re
 import uuid
 from collections.abc import Iterator
 from dataclasses import dataclass
@@ -63,7 +73,7 @@ from app.config.models import MIN_EVIDENCE_BACKED_COVERAGE, ProviderConfig
 from app.ingest import config_sync
 from app.ingest.config_sync import CoverageFloorError, sync_provider
 from app.read_api.taxonomy import canonical_slugs
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine, event, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session
 
@@ -588,3 +598,132 @@ def test_a_successful_sync_still_commits_every_write(probe: Probe) -> None:
         "source": len(config.sources),
         "coverage": len(canonical_slugs()),
     }
+
+
+@skip_without_db
+def test_a_failure_during_savepoint_release_documents_its_boundary(
+    probe: Probe,
+) -> None:
+    """Pins the **boundary** of the atomicity guarantee -- not the guarantee.
+
+    Read this test as documentation of where atomicity stops, never as evidence
+    that it holds here. Everything above pins failures raised *by* the four
+    writes. This pins the one failure that is outside them: one raised while the
+    SAVEPOINT is being **released**.
+
+    SQLAlchemy dispatches ``after_transaction_end`` *after* ``RELEASE SAVEPOINT``
+    has already succeeded. By then the four writes belong to the caller's
+    enclosing transaction, and ``sync_provider`` -- which does not own that
+    transaction -- can no longer revert them, so a swallowing caller's
+    ``commit()`` persists the provider even though the sync reported failure.
+    That is asserted here as the *documented* outcome rather than an aspirational
+    zero, because asserting zero would be asserting a fix that was deliberately
+    not built (see the comment at the ``savepoint.commit()`` call for the
+    measured options and why each was rejected).
+
+    Two things this still pins, which are the reason it earns its place:
+
+    * the exception handling is unchanged on this path -- the caller receives the
+      original exception, by identity;
+    * the boundary sits **exactly** at the release. Any failable step a future
+      refactor slides in *before* ``savepoint.commit()`` is covered by the tests
+      above; if one is ever moved *after* it, the guarantee silently shrinks and
+      this test is where that shows up.
+
+    If a future SQLAlchemy changes the dispatch ordering so that the writes no
+    longer survive, this test goes RED -- which is the intended signal to revisit
+    the documented boundary, not to re-baseline the assertion.
+    """
+
+    config = probe.config()
+    boom = RuntimeError("after_transaction_end listener failure during release")
+    armed = {"on": False}
+
+    caught: BaseException | None = None
+    with Session(probe.write_engine) as session:
+
+        @event.listens_for(session, "after_transaction_end")
+        def _fail_on_release(_session: Session, transaction: Any) -> None:
+            # Only the provider unit's own SAVEPOINT release, not the outer
+            # transaction's lifecycle events.
+            if armed["on"] and transaction.nested:
+                armed["on"] = False
+                raise boom
+
+        armed["on"] = True
+        try:
+            sync_provider(session, config)
+        except BaseException as exc:  # noqa: BLE001 - the swallowing caller
+            caught = exc
+        armed["on"] = False
+        session.commit()
+
+    assert caught is boom, (
+        "the release-path failure must still reach the caller by identity; the "
+        "exception handling is not what this boundary is about"
+    )
+
+    assert probe.committed_counts() == {
+        "provider": 1,
+        "source": len(config.sources),
+        "coverage": len(canonical_slugs()),
+    }, (
+        "DOCUMENTED BOUNDARY, not a guarantee: a failure raised during SAVEPOINT "
+        "release lands after RELEASE SAVEPOINT has succeeded, so the writes are "
+        "already the caller's transaction's and sync_provider cannot revert them. "
+        "If this assertion fails, the boundary described in DATA_MODEL.md and at "
+        "the savepoint.commit() call has moved -- re-read that analysis rather "
+        "than adjusting these numbers."
+    )
+
+
+def test_no_after_transaction_end_listener_is_registered_in_the_app() -> None:
+    """The release boundary is safe only *because* nothing registers a listener.
+
+    That is a real condition, and until it is asserted it is an unenforced
+    assumption: the moment any module under ``apps/`` registers an
+    ``after_transaction_end`` (or ``after_transaction_create``) listener, the
+    boundary above stops being theoretical and a failure in that listener can
+    commit a provider whose sync reported failure.
+
+    This test is a **source scan**, not a runtime one, and deliberately so: a
+    runtime check could only see listeners registered by modules that happen to
+    have been imported. It matches the *registration* spellings --
+    ``event.listen(..., "after_transaction_end", ...)`` and
+    ``@event.listens_for(..., "after_transaction_end")`` -- rather than the bare
+    event name, so that prose mentioning the boundary (``config_sync.py``
+    documents it at length) is not mistaken for a registration. The trade is
+    deliberate and worth stating: matching registrations means an exotic
+    spelling, such as building the event name dynamically, would slip past. That
+    is the right trade here, because a name-only scan is guaranteed to fire on
+    documentation and would be silenced or deleted within a round, which enforces
+    nothing at all.
+
+    It needs no database, which is why it is not marked ``skip_without_db``.
+
+    If this goes RED, the listener may well be legitimate. The required response
+    is to re-examine the documented boundary (and reconsider option (d) at the
+    ``savepoint.commit()`` call), not to add the file to an ignore list.
+    """
+
+    apps_root = REPO_ROOT / "apps"
+    assert apps_root.is_dir(), "expected an apps/ tree to scan"
+
+    registration = re.compile(
+        r"(?:event\.listen|listens_for)\s*\(.*?after_transaction_(?:end|create)",
+        re.DOTALL,
+    )
+
+    offenders: list[str] = []
+    for path in sorted(apps_root.rglob("*.py")):
+        if registration.search(path.read_text(encoding="utf-8")):
+            offenders.append(path.relative_to(REPO_ROOT).as_posix())
+
+    assert offenders == [], (
+        "a transaction-lifecycle event listener was registered under apps/: "
+        f"{offenders}. The SAVEPOINT-release boundary documented in "
+        "DATA_MODEL.md and at the savepoint.commit() call in config_sync.py is "
+        "only a library seam while no such listener exists; with one, a failure "
+        "raised during release can commit a provider whose sync reported "
+        "failure. Re-examine that boundary before allowing this."
+    )

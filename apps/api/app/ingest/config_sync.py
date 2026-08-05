@@ -35,8 +35,11 @@ The caller owns the transaction: :func:`sync_provider` uses ``session.flush()``
 that transaction the provider is nonetheless an **atomic unit**: all four writes
 run inside a SAVEPOINT that is rolled back, and the original exception re-raised
 unchanged, whenever any of them raises -- so a partially synced provider is
-never left in the caller's transaction for it to commit (see
-:func:`sync_provider`).
+never left in the caller's transaction for it to commit. A failure raised while
+that SAVEPOINT is being *released* is outside the guarantee, because the writes
+have already joined the caller's transaction by then; see
+:func:`sync_provider` for that boundary and why it is documented rather than
+guarded.
 """
 
 from __future__ import annotations
@@ -692,6 +695,20 @@ def sync_provider(session: Session, config: ProviderConfig) -> SyncResult:
     raises, so the provider is either fully synced or entirely untouched and a
     half-synced provider is never handed to the caller's transaction.
 
+    That guarantee covers failures *in the four writes*. It does not extend to a
+    failure raised while the SAVEPOINT is being **released** -- notably from an
+    ``after_transaction_end`` event listener, which SQLAlchemy dispatches after
+    the ``RELEASE SAVEPOINT`` has already succeeded. By then the four writes
+    belong to the caller's enclosing transaction and this function, which does
+    not own that transaction, can no longer revert them. The caller therefore
+    receives the original exception (identity and note handling are unchanged in
+    that path) but a subsequent ``commit()`` persists the provider anyway: a sync
+    reported as failed can still be committed as complete. Nothing under
+    ``apps/`` registers such a listener, so this is a library seam rather than a
+    live defect; ``tests/integration/test_ingest_sync_savepoint.py`` pins both the
+    boundary and the absence of any registration. See the comment at the
+    ``savepoint.commit()`` call for why no guard is applied here.
+
     This makes the guarantee local to this function instead of a property of who
     calls it. :func:`sync_coverage` protects the Q9-A evidence floor by *raising*
     (:class:`CoverageFloorError`), which only prevents the erosion because the
@@ -734,6 +751,38 @@ def sync_provider(session: Session, config: ProviderConfig) -> SyncResult:
             result.sources.append(_sync_source_row(session, source_config, provider.id))
         result.categorisation = categorise_services(session, config)
         result.coverage = sync_coverage(session, config)
+        # Releasing the SAVEPOINT is the last thing that can fail here, and a
+        # failure *in* the release (an ``after_transaction_end`` listener raising
+        # after ``RELEASE SAVEPOINT`` has already succeeded) is outside what a
+        # nested transaction can undo: the writes are the enclosing
+        # transaction's by then, and that transaction belongs to the caller. It
+        # is deliberately left unguarded. The options were measured on
+        # PostgreSQL, with the caller holding unrelated flushed work:
+        #   (a) mark the enclosing transaction rollback-only, so the caller's
+        #       commit raises instead of persisting. SQLAlchemy 2.0 exposes no
+        #       supported route: ``rollback_only`` is a ``join_transaction_mode``
+        #       value for externally-supplied connections, not a session flag,
+        #       and ``PendingRollbackError`` is reachable only by writing the
+        #       private ``SessionTransaction._state`` / ``_rollback_exception``.
+        #       Faking an internal state-machine transition would break silently
+        #       on a rename -- no test would go red until someone registered a
+        #       listener -- so the boundary would quietly become false again.
+        #       The public alternatives (``Session.rollback``/``invalidate``/
+        #       ``close``) all leave the caller's commit succeeding *silently*
+        #       and additionally discard the caller's own unrelated work, which
+        #       trades this narrow boundary for unbounded loss in the caller's
+        #       scope.
+        #   (b) narrow the window: impossible, the dangerous step is the
+        #       terminating one, so anything reordered after it inherits the
+        #       problem.
+        #   (d) own the transaction outright (or use a dedicated connection).
+        #       This is the only option that solves rather than reports, and it
+        #       is rejected on blast radius, not merit: it inverts the
+        #       caller-owns-the-transaction invariant held since F005 slice 1 and
+        #       breaks ``runner.py``'s per-source savepoints. Revisit it only if
+        #       a listener is ever registered, which a test now prevents
+        #       happening unnoticed.
+        # So the boundary is documented and tested instead of guarded.
         savepoint.commit()
     except BaseException as exc:
         # Everything in this block exists to protect one thing: that ``exc`` --
