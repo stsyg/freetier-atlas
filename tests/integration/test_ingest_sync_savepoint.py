@@ -49,10 +49,11 @@ Two further tests pin the guarantee's **boundary** rather than the guarantee, an
 should not be read as evidence of atomicity: a failure raised while the SAVEPOINT
 is being *released* lands after ``RELEASE SAVEPOINT`` has already succeeded, so
 the writes are the caller's transaction's by then and are committed. That case is
-asserted at its documented outcome, and a source scan asserts that nothing under
-``apps/`` registers the ``after_transaction_end`` listener which would make it
-reachable -- so the condition the boundary rests on is enforced rather than
-assumed.
+asserted at its documented outcome, and a runtime check asserts that importing
+``apps/api/app`` registers no new class-level ``after_transaction_end`` listener
+on ``Session`` or a subclass -- which is a tripwire for the realistic regression
+rather than proof that the condition holds. See that test's docstring for the
+two shapes it deliberately does not catch.
 """
 
 from __future__ import annotations
@@ -684,13 +685,16 @@ def test_a_failure_during_savepoint_release_documents_its_boundary(
 
 
 def test_no_after_transaction_end_listener_is_registered_in_the_app() -> None:
-    """The release boundary is safe only *because* nothing registers a listener.
+    """No new class-level ``after_transaction_end`` listener appears on import.
 
-    That is a real condition, and until it is asserted it is an unenforced
-    assumption: the moment any module under ``apps/`` registers an
-    ``after_transaction_end`` listener, the boundary above stops being
-    theoretical and a failure raised inside that listener can commit a provider
-    whose sync reported failure.
+    The release boundary above is only reachable if something registers an
+    ``after_transaction_end`` listener, and nothing under ``apps/`` does. This is
+    a **tripwire for the realistic regression** -- someone adding
+    ``event.listen(Session, "after_transaction_end", ...)`` to a module -- and is
+    deliberately not a proof that the condition holds; see the accepted limits
+    below. If it fires, the boundary has stopped being theoretical and a failure
+    raised inside that listener can commit a provider whose sync reported
+    failure.
 
     **This asks SQLAlchemy what is registered rather than reading our source.**
     An earlier version of this test scanned for the registration spellings and
@@ -699,8 +703,10 @@ def test_no_after_transaction_end_listener_is_registered_in_the_app() -> None:
     ``from sqlalchemy.event import listen``, ``getattr(event, "listen")`` or a
     re-export. No amount of pattern work fixes that, because the question
     "is a listener registered" is not answerable from source text. The runtime
-    registry answers it directly, and catches every spelling including a
-    dynamically-constructed event name.
+    registry answers it directly, and catches every spelling **at class level and
+    import time**, including a dynamically-constructed event name, a registration
+    on a ``Session`` subclass or via ``sessionmaker()``, and one made inside a
+    function that import happens to call.
 
     Three properties of the mechanism, each deliberate:
 
@@ -725,6 +731,22 @@ def test_no_after_transaction_end_listener_is_registered_in_the_app() -> None:
     exactly the problem this test exists to prevent. SQLAlchemy 2.0 exposes no
     public enumeration API: ``event.contains()`` requires a specific function
     object, so it cannot answer "is *anything* registered".
+
+    **Two registration shapes are known, accepted limits rather than gaps.**
+    Both stay GREEN here:
+
+    * a listener attached to an **individual ``Session`` instance**, which lives
+      on that instance's dispatch and never reaches the class-level registry;
+    * a registration **deferred inside a function that import never executes**,
+      which has not happened yet when the snapshot is compared.
+
+    Catching either would require intercepting ``event.listen`` from production
+    code -- real complexity in the shipping path to guard a library seam with no
+    live trigger -- and that was judged disproportionate. These are documented
+    limits, so the claim this test supports is exactly: *importing*
+    ``apps/api/app`` registers no new **class-level** ``after_transaction_end``
+    listener on ``Session`` or a subclass. It is not a claim that nothing
+    anywhere registers one.
 
     It needs no database, which is why it is not marked ``skip_without_db``.
 

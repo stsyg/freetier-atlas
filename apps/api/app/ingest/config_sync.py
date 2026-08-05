@@ -708,8 +708,11 @@ def sync_provider(session: Session, config: ProviderConfig) -> SyncResult:
     that path) but a subsequent ``commit()`` persists the provider anyway: a sync
     reported as failed can still be committed as complete. Nothing under
     ``apps/`` registers such a listener, so this is a library seam rather than a
-    live defect; ``tests/integration/test_ingest_sync_savepoint.py`` pins both the
-    boundary and the absence of any registration. See the comment at the
+    live defect; ``tests/integration/test_ingest_sync_savepoint.py`` pins the
+    boundary, and asserts that importing ``apps/api/app`` registers no new
+    *class-level* ``after_transaction_end`` listener on ``Session`` or a subclass
+    -- a tripwire for the realistic regression, with two limits documented in
+    that test rather than a proof that none exists anywhere. See the comment at the
     ``savepoint.commit()`` call for why no guard is applied here.
 
     This makes the guarantee local to this function instead of a property of who

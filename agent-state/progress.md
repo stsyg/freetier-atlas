@@ -1314,3 +1314,86 @@ mechanism truthfully rather than a scan.
   M6 RED (4f/4p), M7 RED (1f/7p), M8a-d all RED
 - residue zero; alembic head `0011_provider_category_coverage`, single head
 - `git status --short` clean of unintended files after every mutation
+## F008 round r4b -- remediating the r4 Level-2 FAIL (F-10b, F-11): prose only
+
+r4 evaluation returned FAIL with two findings, both about the listener test's
+**claims**, not its mechanism. Criteria 1-5 PASS for the third consecutive
+round; `sync_provider()`'s logic is not in question and **did not change**.
+
+### The decision that shaped this round
+
+The evaluator measured the runtime check across **13 registration shapes**:
+**11 RED** -- literal `event.listen`, `@listens_for`, alias, dynamic name,
+`from sqlalchemy.event import listen`, `getattr(event, "listen")`, local-helper
+re-export, registration inside a function *called* at import, `Session`
+**subclass**, `sessionmaker()`, and a planted import error correctly reported
+rather than passing vacuously -- and **2 GREEN**: a listener on an individual
+`Session` **instance**, and a registration **deferred inside a function import
+never executes**.
+
+The orchestrator's decision was to **narrow the claim, not broaden the
+mechanism**: catching those two would require intercepting `event.listen` from
+*production* code, which is real complexity in the shipping path to guard a
+library seam with no live trigger. The check is a **tripwire for the realistic
+regression** -- someone adding `event.listen(Session, ...)` to a module -- not a
+proof. Instance-level and deferred registration are accepted, documented and out
+of scope.
+
+F-10 was a mechanism defect; F-11 is an over-claim about a mechanism that is now
+precisely measured. Same call as F-8: state the boundary exactly and stop
+claiming past it.
+
+### F-10b -- an objectively false sentence
+
+The test module docstring still said "**a source scan** asserts that nothing
+under `apps/` registers ...". The source scan was **deleted in r4**. It also
+concluded the condition was "**enforced rather than assumed**", which is the
+over-claim itself. Both rewritten to state the runtime check and describe it as
+a tripwire.
+
+### F-11 -- four sites narrowed to the measured scope
+
+The supportable claim is: *importing `apps/api/app` registers no new
+**class-level** `after_transaction_end` listener on `Session` or a subclass.*
+Not "nothing registers such a listener", not "any registration", not "every
+spelling". Applied at the test module docstring, the listener test's docstring,
+`DATA_MODEL.md`, `PROVIDER_ADAPTERS.md`, and `sync_provider()`'s docstring.
+
+The surviving "catches every spelling" is now qualified **"at class level and
+import time"** -- a different and true statement. The two GREEN shapes are
+recorded in the listener test's docstring as known accepted limits, with the
+reason closing them was judged disproportionate. A documented limit is honest; a
+discovered one is a defect. The private-read-fails-loudly justification is
+unchanged and deliberately not weakened.
+
+**Limits re-measured rather than transcribed.** I did not want to document a
+limit on someone else's measurement, so I planted all four adjacent shapes
+myself: instance-level **GREEN**, deferred-never-executed **GREEN**, `Session`
+subclass **RED**, registration in a function called at import **RED**. The prose
+describes what I measured.
+
+### M6 reconciliation
+
+The r4 figure (RED 4 failed / 4 passed) and the evaluator's (RED 1 failed /
+7 passed) are **not a discrepancy** -- they are different mutations of the same
+block, and both reproduce exactly:
+
+| targeting | result |
+|---|---|
+| neutralise the executable `savepoint.rollback()` call | RED **4 failed / 4 passed** |
+| remove the executable inner `add_note` guard | RED **1 failed / 7 passed** |
+
+Nothing was off; the r4 record described a different mutation than the
+evaluator's. Both are now named explicitly so the figures are reproducible.
+
+### Measured (r4b)
+
+- savepoint suite **8 passed**
+- live Postgres **1157 passed / 2 skipped** (identical to r4)
+- M1 RED (5f/3p), M2 RED (6f/2p), M3 RED (5f/3p), M4 RED (4f/4p), M5 RED (1f/7p),
+  M6 RED (4f/4p line-targeted; 1f/7p under the evaluator's targeting),
+  M7 RED (1f/7p), M8a-d all RED
+- listener limits: L1 instance-level GREEN, L2 deferred GREEN (both documented),
+  L3 subclass RED, L4 called-at-import RED
+- residue zero; alembic head `0011_provider_category_coverage`, single head
+- every mutation restored byte-for-byte, sha256 verified
