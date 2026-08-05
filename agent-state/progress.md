@@ -1483,3 +1483,102 @@ cleanly and no live clause overstates.
 - residue zero, no probe temp dirs left behind; alembic head
   `0011_provider_category_coverage`, single head
 - every mutation restored byte-for-byte, sha256 verified
+## F008 round r6 -- listener tripwire REMOVED rather than repaired (F-14), canonical smoke waived
+
+**Verdict being remediated.** The r5 independent Level-2 evaluation returned **FAIL**.
+Criteria 1-5 and 7 **PASS**; `sync_provider()`'s logic was not touched for the sixth
+consecutive round and is not in question. Criterion 6 failed on **F-14**, and the ruling
+was to **DELETE the listener tripwire, not repair it a fifth time**.
+
+**F-14 -- marker collision.** The r5 probe separated its ordering canary from real
+offenders by **substring match over the rendered registry entry**. The evaluator planted an
+ordinary class-level, import-time app registration whose listener function was merely
+*named* `_f008_ordering_canary_listener`. That single naming coincidence made one real
+offender satisfy `canary_seen` *and* be filtered out of `new`, so the full live suite
+stayed **GREEN 1157/2 with a genuine in-scope listener registered**. No accepted limit is
+involved: this is precisely the regression the mechanism claimed to catch.
+
+**A clean fifth repair exists and was declined deliberately.** Tracking the canary by
+identity or provenance instead of by name, or splitting calibration and measurement into
+separate subprocess runs so that no filter is needed at all, is smaller than what it would
+replace. It was rejected on the record because it looked equally obvious and equally final
+at r4, r4b and r5. Four distinct defects across four rounds -- **alias evasion (F-10),
+scope over-claim (F-11), wrong-target drift (F-12), marker collision (F-14)** -- with each
+repair creating the conditions for the next, is sufficient evidence that the mechanism's
+complexity exceeds the risk it guards for a library seam with no live trigger. The
+independent evaluator ruled removal **on the merits**, not merely on the orchestrator's
+standing pre-commitment.
+
+**The builder's counter-argument is recorded as WRONG, because it inverted F-13.** In the
+r5 report this builder argued for retention on the ground that deletion leaves an
+unenforced point-in-time claim, "exactly the shape F-13 ruled unacceptable". That reading
+is backwards: F-13 rejected the **absolute standing** claim and *prescribed* point-in-time,
+inspection-based wording as its remedy -- wording that shipped in r5 and that the evaluator
+has since PASSED. Removal plus that existing wording therefore lands exactly where F-13
+asked. Only the enforcement clauses go: "a test asserts / pins / enforces", the tripwire
+sentences, and the accepted-limits paragraphs, all of which describe a mechanism that no
+longer exists. The honest bounded observation stays.
+
+**Consequence accepted explicitly rather than glossed.** A future class-level
+`after_transaction_end` registration will make the documented SAVEPOINT-release boundary
+reachable **silently**, with nothing in this repository detecting it. Every surviving
+claim now says so. The release-boundary test itself is **retained** -- it is a different
+artefact, it pins documented behaviour, it is not implicated by F-14, and criterion 1
+depends on it.
+
+**A stale enforcement claim was found in a place the remedy list did not name.** The
+option-(d) comment at the `savepoint.commit()` call still read "Revisit it only if a
+listener is ever registered, **which a test now prevents happening unnoticed**", and the
+line below it read "documented **and tested** instead of guarded". Both are false once the
+tripwire is gone. They were found by grepping for the *claim shape* rather than by working
+through the four named sites, which is the lesson: a removal has to be swept for, not
+enumerated.
+
+**Process note -- a self-inflicted error, disclosed.** While restoring a mutation this
+builder ran `git checkout -- apps/api/app/ingest/config_sync.py`, which silently reverted
+that round's *uncommitted* prose edits along with the mutation. It was caught immediately
+by re-grepping for the stale strings, and the edits were reapplied and re-verified. The
+lesson for the next person: never use `git checkout --` as a mutation-restore mechanism in
+a dirty tree; restore from an in-memory snapshot of the file and verify by sha256, which is
+what the mutation harness itself does.
+
+**Measured at this head, against live PostgreSQL.**
+
+- savepoint suite **7 passed** (was 8)
+- full live suite **1156 passed / 2 skipped** (was 1157/2); collection **1158** (was 1159)
+- Both counts moved by exactly one, in both totals, which is the reconciliation the
+  orchestrator asked for: a count that had *not* moved would have meant the deleted test was
+  never collected in the first place, which would have been its own finding.
+- **M1** RED (6f/1p) -- savepoint removed
+- **M2** RED (6f/1p) -- `rollback()` then `return`
+- **M3** RED (2f/5p) -- savepoint narrowed to the coverage block
+- **M4** RED (3f/4p) -- `except BaseException` -> `except CoverageFloorError`
+- **M5** RED (1f/6p) -- outer `except BaseException` -> `except Exception`
+- **M6a** RED (4f/3p) -- executable `savepoint.rollback()` call neutralised
+- **M6b** RED (1f/6p) -- executable inner `add_note` guard removed
+- **M7** RED (1f/6p) -- boundary test asserts `0/0/0` instead of the documented `1/3/14`
+- Every mutation restored byte-for-byte, verified by sha256.
+- Failure counts differ from r5's by exactly the one deleted test where it had been
+  collateral; the pass counts drop by one throughout for the same reason.
+- `ruff check .` clean; alembic head `0011_provider_category_coverage`, single head.
+- Guardrail diff vs `origin/main` **empty**; F008 remains `passes:false`.
+
+**M7 requires line-targeting, and now more than before.** The boundary test's
+`{"provider": 1, "source": ..., "coverage": ...}` block is no longer unique in the file --
+there are three occurrences (the fixture's expectation helpers and the boundary assertion).
+A naive string replace either fails as ambiguous or mutates the wrong site and reads green.
+The mutation must target the **last** occurrence by line number. This is the same hazard
+already recorded for `savepoint.rollback()`, which a naive replace matches inside the
+closed-set comment first.
+
+**Canonical stack smoke WAIVED this round, with the reason on record.** The orchestrator
+reproduced the failure independently at this exact head in a throwaway worktree: the cached
+pip layer does not hit and `pip install` fails TLS to `files.pythonhosted.org` for FastAPI.
+Root cause is that host pip uses a machine-wide corporate index which containers do not
+inherit, while the repository's Dockerfiles declare no index override. **That is out of
+scope for this PR and is logged as a separate pre-Wave-3 slice** (add a generic
+`ARG PIP_INDEX_URL` with no default). The internal feed URL must **never** be committed --
+it is Microsoft-internal infrastructure and this repository is public. The waiver does not
+weaken the evidence for this change: this PR has **zero diff** on all three Dockerfiles, on
+`requirements*.txt` and on `package-lock.json`, and its correctness evidence is host-side
+pytest against live PostgreSQL at the exact head under evaluation.

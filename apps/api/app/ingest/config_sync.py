@@ -691,9 +691,9 @@ def sync_provider(session: Session, config: ProviderConfig) -> SyncResult:
     sources so its ``source`` references resolve); both are themselves
     idempotent. The caller owns the transaction (this flushes but never commits).
 
-    **All four writes are one atomic unit -- for any failure in those four
+    **All four writes are one atomic unit — for any failure in those four
     writes.** They run inside a SAVEPOINT which is
-    rolled back -- and the original exception re-raised -- when any of them
+    rolled back — and the original exception re-raised — when any of them
     raises, so for any failure *in those four writes* the provider is either
     fully synced or entirely untouched, and a half-synced provider is never
     handed to the caller's transaction.
@@ -708,14 +708,14 @@ def sync_provider(session: Session, config: ProviderConfig) -> SyncResult:
     that path) but a subsequent ``commit()`` persists the provider anyway: a sync
     reported as failed can still be committed as complete. No module under
     ``apps/`` registered such a listener at the time of writing, verified by
-    inspection, so this is a library seam rather than a live defect -- a
-    point-in-time observation, not a standing guarantee;
-    ``tests/integration/test_ingest_sync_savepoint.py`` pins the
-    boundary, and asserts that importing ``apps/api/app`` registers no new
-    *class-level* ``after_transaction_end`` listener on ``Session`` or a subclass
-    -- a tripwire for the realistic regression, with two limits documented in
-    that test rather than a proof that none exists anywhere. See the comment at the
-    ``savepoint.commit()`` call for why no guard is applied here.
+    inspection, so this is a library seam rather than a live defect — a
+    point-in-time observation, not a standing guarantee, and nothing in this
+    repository detects it becoming false. An automated check was attempted and
+    removed (see AMENDMENT 8 in ``agent-state/current_contract.json``); the claim
+    is deliberately an inspection result rather than an enforced invariant.
+    ``tests/integration/test_ingest_sync_savepoint.py`` pins the boundary itself.
+    See the comment at the ``savepoint.commit()`` call for why no guard is
+    applied here.
 
     This makes the guarantee local to this function instead of a property of who
     calls it. :func:`sync_coverage` protects the Q9-A evidence floor by *raising*
@@ -788,10 +788,10 @@ def sync_provider(session: Session, config: ProviderConfig) -> SyncResult:
         #       This is the only option that solves rather than reports, and it
         #       is rejected on blast radius, not merit: it inverts the
         #       caller-owns-the-transaction invariant held since F005 slice 1 and
-        #       breaks ``runner.py``'s per-source savepoints. Revisit it only if
-        #       a listener is ever registered, which a test now prevents
-        #       happening unnoticed.
-        # So the boundary is documented and tested instead of guarded.
+        #       breaks ``runner.py``'s per-source savepoints. Revisit it if a
+        #       listener is ever registered -- which nothing detects
+        #       automatically, so the trigger is inspection, not a test.
+        # So the boundary is documented rather than guarded.
         savepoint.commit()
     except BaseException as exc:
         # Everything in this block exists to protect one thing: that ``exc`` --

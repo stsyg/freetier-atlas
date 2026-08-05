@@ -117,14 +117,11 @@ belong to the caller's enclosing transaction and `sync_provider()` — which doe
 transaction — can no longer revert them. The caller still receives the original exception, with the
 same identity and note handling, but a subsequent `commit()` **persists the provider anyway**: a sync
 reported as failed can still be committed as complete. This is a library seam, not a live defect —
-no module under `apps/` registered such a listener at the time of writing, verified by inspection --
-a point-in-time observation rather than a standing property -- and a test asserts that importing the whole app
-package in a fresh interpreter registers no new *class-level* `after_transaction_end` listener on
-`Session` or a subclass, by querying SQLAlchemy's own listener registry. That is a tripwire for the
-realistic regression rather than a proof: a listener attached to an individual `Session` instance, or
-one registered inside a function that import never executes, would not be caught, and those limits are
-recorded in that test. Within its scope, adding a registration forces this boundary to be re-examined
-rather than letting it silently become reachable. It is
+no module under `apps/` registered such a listener at the time of writing, verified by inspection —
+a point-in-time observation rather than a standing property, and nothing in this repository detects
+it becoming false. An automated check was attempted and removed (see AMENDMENT 8 in
+`agent-state/current_contract.json`); the claim is deliberately an inspection result rather than an
+enforced invariant, so a future registration would make this boundary reachable silently. It is
 documented rather than guarded deliberately: SQLAlchemy 2.0 offers no supported way to mark the
 enclosing transaction rollback-only (`rollback_only` is a `join_transaction_mode` value for
 externally-supplied connections, not a session flag), and the public alternatives — `Session.rollback()`,
