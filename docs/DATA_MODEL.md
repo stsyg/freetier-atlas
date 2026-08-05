@@ -117,7 +117,7 @@ belong to the caller's enclosing transaction and `sync_provider()` — which doe
 transaction — can no longer revert them. The caller still receives the original exception, with the
 same identity and note handling, but a subsequent `commit()` **persists the provider anyway**: a sync
 reported as failed can still be committed as complete. This is a library seam, not a live defect —
-nothing under `apps/` registers such a listener, and a test asserts that none does, so adding one
+nothing under `apps/` registers such a listener, and a test asserts that none does by importing the whole app package in a fresh interpreter and querying SQLAlchemy's own listener registry, so adding one
 forces this boundary to be re-examined rather than letting it silently become reachable. It is
 documented rather than guarded deliberately: SQLAlchemy 2.0 offers no supported way to mark the
 enclosing transaction rollback-only (`rollback_only` is a `join_transaction_mode` value for

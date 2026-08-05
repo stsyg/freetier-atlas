@@ -1,4 +1,5 @@
-"""The provider sync is atomic in its own right (F008 savepoint hardening).
+"""The provider sync is atomic in its own right -- for any failure in its four
+writes (F008 savepoint hardening).
 
 ``sync_coverage()`` protects the Q9-A evidence floor by *raising*
 (:class:`~app.ingest.config_sync.CoverageFloorError`). That only prevents the
@@ -56,8 +57,11 @@ assumed.
 
 from __future__ import annotations
 
+import json
 import os
-import re
+import subprocess
+import sys
+import textwrap
 import uuid
 from collections.abc import Iterator
 from dataclasses import dataclass
@@ -298,9 +302,11 @@ def test_a_caller_that_swallows_the_failure_and_commits_persists_nothing(
 
     Reproduces the batch-runner shape Wave 3 makes likely -- ``try:
     sync_provider(...) except Exception: continue`` followed by a real
-    ``commit()`` -- against a genuinely failing sync, and asserts on a separate
-    connection that **nothing** was persisted: not the provider row, not its
-    sources, not the coverage rows written before the failure.
+    ``commit()`` -- against a sync failing inside the four writes, and asserts on
+    a separate connection that **nothing** was persisted: not the provider row,
+    not its sources, not the coverage rows written before the failure. That
+    scoping is load-bearing: a failure raised while the SAVEPOINT is *released*
+    is outside this claim, and the boundary test below pins what persists there.
 
     The failure is the documented partially-synced-database case: the config's
     only evidence-backed declarations cite sources, so removing the sources makes
@@ -682,48 +688,118 @@ def test_no_after_transaction_end_listener_is_registered_in_the_app() -> None:
 
     That is a real condition, and until it is asserted it is an unenforced
     assumption: the moment any module under ``apps/`` registers an
-    ``after_transaction_end`` (or ``after_transaction_create``) listener, the
-    boundary above stops being theoretical and a failure in that listener can
-    commit a provider whose sync reported failure.
+    ``after_transaction_end`` listener, the boundary above stops being
+    theoretical and a failure raised inside that listener can commit a provider
+    whose sync reported failure.
 
-    This test is a **source scan**, not a runtime one, and deliberately so: a
-    runtime check could only see listeners registered by modules that happen to
-    have been imported. It matches the *registration* spellings --
-    ``event.listen(..., "after_transaction_end", ...)`` and
-    ``@event.listens_for(..., "after_transaction_end")`` -- rather than the bare
-    event name, so that prose mentioning the boundary (``config_sync.py``
-    documents it at length) is not mistaken for a registration. The trade is
-    deliberate and worth stating: matching registrations means an exotic
-    spelling, such as building the event name dynamically, would slip past. That
-    is the right trade here, because a name-only scan is guaranteed to fire on
-    documentation and would be silenced or deleted within a round, which enforces
-    nothing at all.
+    **This asks SQLAlchemy what is registered rather than reading our source.**
+    An earlier version of this test scanned for the registration spellings and
+    was defeated by ``from sqlalchemy import event as sae`` -- routine Python,
+    not an exotic evasion -- and would equally have been defeated by
+    ``from sqlalchemy.event import listen``, ``getattr(event, "listen")`` or a
+    re-export. No amount of pattern work fixes that, because the question
+    "is a listener registered" is not answerable from source text. The runtime
+    registry answers it directly, and catches every spelling including a
+    dynamically-constructed event name.
+
+    Three properties of the mechanism, each deliberate:
+
+    * it runs in a **subprocess with a fresh interpreter**, so the result cannot
+      depend on whichever modules pytest happened to import first;
+    * it **snapshots the listener set before importing** and asserts that no
+      *new* listener appeared, rather than asserting zero. A third-party library
+      that legitimately registers one on import is then not a spurious failure --
+      the assertion is that *our* code adds none;
+    * it imports **every module under** ``apps/api/app``, because a registration
+      only exists once the module executes; importing the package root alone
+      would see almost nothing.
+
+    ``Session.dispatch.after_transaction_end._clslevel`` is private, and this
+    file elsewhere records a refusal to depend on SQLAlchemy internals. The two
+    are different in the way that matters: that was a *write* in production code
+    faking an internal state transition, where a rename would break the guarantee
+    **silently**. This is a *read* in a test, where a rename raises
+    ``AttributeError`` and turns this test **loudly** red. It is therefore
+    accessed directly and deliberately **without** a ``getattr`` fallback -- a
+    fallback would convert that loud failure into a silent one and reintroduce
+    exactly the problem this test exists to prevent. SQLAlchemy 2.0 exposes no
+    public enumeration API: ``event.contains()`` requires a specific function
+    object, so it cannot answer "is *anything* registered".
 
     It needs no database, which is why it is not marked ``skip_without_db``.
 
     If this goes RED, the listener may well be legitimate. The required response
     is to re-examine the documented boundary (and reconsider option (d) at the
-    ``savepoint.commit()`` call), not to add the file to an ignore list.
+    ``savepoint.commit()`` call), not to silence this test.
     """
 
-    apps_root = REPO_ROOT / "apps"
-    assert apps_root.is_dir(), "expected an apps/ tree to scan"
+    app_root = REPO_ROOT / "apps" / "api" / "app"
+    assert app_root.is_dir(), f"expected an app package to import: {app_root}"
 
-    registration = re.compile(
-        r"(?:event\.listen|listens_for)\s*\(.*?after_transaction_(?:end|create)",
-        re.DOTALL,
+    modules = sorted(
+        ".".join(("app",) + path.relative_to(app_root).with_suffix("").parts)
+        .removesuffix(".__init__")
+        .replace(".__init__", "")
+        for path in app_root.rglob("*.py")
+        if "__pycache__" not in path.parts
+    )
+    assert len(modules) > 20, f"import sweep looks too small to be meaningful: {len(modules)}"
+
+    probe_source = textwrap.dedent(
+        """
+        import importlib
+        import json
+        import sys
+
+        sys.path.insert(0, sys.argv[1])
+        from sqlalchemy.orm import Session
+
+        def registered():
+            # Direct, unguarded read: see this test's docstring for why a
+            # getattr fallback would be actively harmful here.
+            clslevel = Session.dispatch.after_transaction_end._clslevel
+            return {
+                f"{cls.__module__}.{cls.__qualname__}:{fn!r}"
+                for cls, fns in clslevel.items()
+                for fn in fns
+            }
+
+        before = registered()
+        failed = {}
+        for name in json.loads(sys.argv[2]):
+            try:
+                importlib.import_module(name)
+            except BaseException as exc:
+                failed[name] = f"{type(exc).__name__}: {exc}"
+        print(json.dumps({"new": sorted(registered() - before), "failed": failed}))
+        """
     )
 
-    offenders: list[str] = []
-    for path in sorted(apps_root.rglob("*.py")):
-        if registration.search(path.read_text(encoding="utf-8")):
-            offenders.append(path.relative_to(REPO_ROOT).as_posix())
+    completed = subprocess.run(
+        [sys.executable, "-c", probe_source, str(REPO_ROOT / "apps" / "api"), json.dumps(modules)],
+        capture_output=True,
+        text=True,
+        timeout=300,
+        cwd=REPO_ROOT,
+    )
+    assert completed.returncode == 0, (
+        "the listener probe subprocess failed; it must run cleanly for its result "
+        f"to mean anything.\nstdout: {completed.stdout}\nstderr: {completed.stderr}"
+    )
+    outcome = json.loads(completed.stdout.strip().splitlines()[-1])
 
-    assert offenders == [], (
-        "a transaction-lifecycle event listener was registered under apps/: "
-        f"{offenders}. The SAVEPOINT-release boundary documented in "
-        "DATA_MODEL.md and at the savepoint.commit() call in config_sync.py is "
-        "only a library seam while no such listener exists; with one, a failure "
-        "raised during release can commit a provider whose sync reported "
+    # A module that fails to import registers nothing, so an unnoticed import
+    # error would make this test vacuously green.
+    assert outcome["failed"] == {}, (
+        "modules failed to import during the listener sweep, so they were never "
+        f"executed and this assertion would be vacuous: {outcome['failed']}"
+    )
+
+    assert outcome["new"] == [], (
+        "importing the app package registered an after_transaction_end listener: "
+        f"{outcome['new']}. The SAVEPOINT-release boundary documented in "
+        "DATA_MODEL.md and at the savepoint.commit() call in config_sync.py holds "
+        "as a mere library seam only while no such listener exists; with one, a "
+        "failure raised during release can commit a provider whose sync reported "
         "failure. Re-examine that boundary before allowing this."
     )

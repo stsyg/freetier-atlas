@@ -691,7 +691,8 @@ def sync_provider(session: Session, config: ProviderConfig) -> SyncResult:
     sources so its ``source`` references resolve); both are themselves
     idempotent. The caller owns the transaction (this flushes but never commits).
 
-    **All four writes are one atomic unit.** They run inside a SAVEPOINT which is
+    **All four writes are one atomic unit -- for any failure in those four
+    writes.** They run inside a SAVEPOINT which is
     rolled back -- and the original exception re-raised -- when any of them
     raises, so for any failure *in those four writes* the provider is either
     fully synced or entirely untouched, and a half-synced provider is never

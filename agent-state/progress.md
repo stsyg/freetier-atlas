@@ -1225,3 +1225,92 @@ Re-verified after the edit: savepoint suite 8 passed; mutation M7 still RED;
 offline 1005 / 154; live PostgreSQL 1157 / 2; vitest 110; both gates exit 0;
 residue zero; alembic head `0011_provider_category_coverage`, single head. Prose
 only -- three files, no code, no test changes, F008 remains `passes:false`.
+## F008 round r4 -- remediating the r3 Level-2 FAIL (F-9, F-10)
+
+r3 evaluation returned FAIL with two narrow findings. Criteria 1-5 PASS: the
+scoped implementation was reproduced empirically -- the evaluator's independent
+probe matched the documented 1/3/14, and a `before_commit` listener raising just
+*before* release still yielded 0/0/0, confirming the boundary sits exactly where
+documented. **No code in `sync_provider()` changed this round.**
+
+### F-10 -- the listener test's mechanism was wrong, not its regex
+
+The r3 test was a source scan. It is defeated by an ordinary import alias:
+
+    from sqlalchemy import event as sae
+    sae.listen(Session, "after_transaction_end", lambda *_a: None)
+
+Planted in `config_sync.py`, that left the **entire live suite GREEN at 1157/2**
+with a real listener registered. This is not the dynamic-name evasion the r3
+docstring disclosed -- it is routine Python any contributor might write.
+`from sqlalchemy.event import listen`, `getattr(event, "listen")` and re-exports
+defeat it equally. No pattern work fixes this, because "is a listener
+registered" is simply not answerable from source text.
+
+Replaced with a **runtime registry** check. Confirmed first that SQLAlchemy 2.0
+exposes no public enumeration API: `sqlalchemy.event` offers only
+`contains/listen/listens_for/remove`, and `contains()` needs a specific function
+object, so it cannot answer "is *anything* registered";
+`_ClsLevelDispatch` is not iterable.
+
+The test now runs a **subprocess with a fresh interpreter** (deterministic,
+unaffected by whatever pytest already imported), **snapshots**
+`Session.dispatch.after_transaction_end._clslevel`, imports **every module under
+`apps/api/app`** (88 modules -- a registration only exists once the module
+executes, so importing the package root would see almost nothing), and asserts
+**no new** listener appeared. Baseline-diff rather than assert-zero, so a
+third-party library that legitimately registers one is not a spurious failure:
+the assertion is that *our* code adds none. It additionally asserts that no
+module failed to import, since a silent import error would make it vacuously
+green.
+
+`_clslevel` is private and is read **directly, with no `getattr` fallback**.
+This is not inconsistent with the private route refused for F-8: that was a
+*write* in production code faking an internal state transition, where a rename
+breaks the guarantee **silently**; this is a *read* in a test, where a rename
+raises `AttributeError` and goes **loudly** red. A fallback would convert that
+loud failure into a silent one and reintroduce precisely the problem the test
+exists to prevent.
+
+Verified RED for all four spellings, each restored byte-for-byte (sha256
+checked):
+
+| mutation | spelling | result |
+|---|---|---|
+| M8a | literal `event.listen` | RED |
+| M8b | `@listens_for` decorator | RED |
+| M8c | aliased `sae.listen` (the shape that defeated the scanner) | RED |
+| M8d | dynamically-constructed event name | RED |
+
+M8d is notable: the r3 docstring had disclosed dynamic construction as an
+unavoidable gap. The runtime registry closes it, because it asks the library
+what is registered rather than what the source looks like.
+
+### F-9 -- four prose sites scoped inline
+
+Each asserted unconditional atomicity when read standing alone:
+
+1. `tests/integration/test_ingest_sync_savepoint.py:1` -- now "atomic in its own
+   right -- for any failure in its four writes".
+2. `apps/api/app/ingest/config_sync.py` `sync_provider()` docstring -- "All four
+   writes are one atomic unit **-- for any failure in those four writes**".
+3. The swallow-and-commit test docstring -- "a genuinely failing sync" is now "a
+   sync failing inside the four writes", with the release-boundary carve-out
+   stated in the same paragraph. This is the site flagged for a ruling in r3 and
+   ruled a finding; the reasoning was sound, the sentence just needed its scope
+   inline.
+4. `agent-state/current_contract.json` objective ("on any failure") and scope
+   ("on ANY exception") -- both amended to match criterion 1.
+
+Both docs' claim that "a test asserts that none does" now describes the new
+mechanism truthfully rather than a scan.
+
+### Measured (r4)
+
+- savepoint suite **8 passed**
+- offline **1005 passed / 154 skipped**
+- live Postgres **1157 passed / 2 skipped** (identical to the pre-r4 baseline)
+- M1 RED (5f/3p), M2 RED (6f/2p), M3 RED (5f/3p), M4 RED (4f/4p), M5 RED (1f/7p),
+  M6 RED (4f/4p), M7 RED (1f/7p), M8a-d all RED
+- residue zero; alembic head `0011_provider_category_coverage`, single head
+- `git status --short` clean of unintended files after every mutation
