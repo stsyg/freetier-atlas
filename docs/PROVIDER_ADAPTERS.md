@@ -161,8 +161,9 @@ callers: `sync_provider()` wraps all four of its writes in a **SAVEPOINT** which
 re-raising, whichever of the four raised, so a failed sync leaves the provider entirely untouched
 even if the caller swallows the exception and commits. The original exception is re-raised unchanged
 in type and identity; a rollback that itself fails is attached to it as a note rather than replacing
-it. The savepoint covers the whole provider unit, not just the coverage block — a coverage-only
-savepoint would commit a new provider with zero coverage rows.
+it, and a note that itself fails to attach is discarded rather than allowed to displace it. The
+savepoint covers the whole provider unit, not just the coverage block — a coverage-only savepoint
+would commit a new provider with zero coverage rows.
 
 Finally, a pair declared `unknown` or `not_offered` while the derivation from published evidence
 says `verified_free` / `offered_no_z0` is a **material contradiction**: it raises a pending

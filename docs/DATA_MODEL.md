@@ -103,10 +103,14 @@ to the coverage block alone: a coverage-only savepoint would commit a **new** pr
 coverage rows, which reads as `unknown` everywhere and which the persisted floor check cannot detect.
 The exception is re-raised unchanged in type and identity, never turned into a return value, so a
 caller that ignores it still learns nothing it did not before; the caller still owns the transaction,
-and `sync_provider()` still never commits it. What the savepoint does **not** cover is a failure that
-has already poisoned the session's connection to the point where the SAVEPOINT itself is gone; in
-that case the rollback cannot run, the secondary failure is attached to the original as a note, and
-the outer transaction — which the caller owns — is what aborts.
+and `sync_provider()` still never commits it. That identity guarantee is unconditional within
+`sync_provider`: if the rollback itself raises, the failure is attached to the original exception as a
+note rather than replacing it, and if attaching the note *also* raises — `add_note` is an ordinary
+overridable method — that tertiary failure is discarded, because the note was the only channel
+available for reporting it and the primary exception is what must survive. What the savepoint does
+**not** cover is a failure that has already poisoned the session's connection to the point where the
+SAVEPOINT itself is gone; in that case the rollback cannot run and the outer transaction — which the
+caller owns — is what aborts.
 
 ### Offer
 

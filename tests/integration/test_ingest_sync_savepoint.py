@@ -14,7 +14,7 @@ These tests pin the property so such a caller goes RED instead of degrading
 silently. **They deliberately do not use the rolled-back ``session`` fixture from
 ``test_ingest_config_sync``**: that fixture binds to a connection inside an outer
 transaction which teardown rolls back, so a test written against it would pass
-even if the guarantee broke. Instead each test:
+even if the guarantee broke. Instead each test that asserts on persistence:
 
 * takes its **own engine** for the write side and a **second, independent
   engine** for the read-back, so the assertions cannot be satisfied by a shared
@@ -29,9 +29,20 @@ even if the guarantee broke. Instead each test:
   row it did not create, and asserting the result against those ids rather than
   against the predicate it deleted by.
 
-The failure axes are pinned separately: the coverage-floor path, a **non-coverage**
-write (the source write, with a sentinel exception type), and a rollback that
-itself fails. A guard narrowed to any one of those must go RED.
+The one exception, stated rather than glossed over: the rollback-failure test
+(``test_a_rollback_that_itself_fails_does_not_displace_the_original``, and its
+``add_note``-override variant) asserts on *exception identity*, not on
+persistence. It substitutes a fake dead savepoint and rolls the session back
+explicitly, so it performs no real ``commit()``; it still uses the fixture's own
+engines and its zero-row check still reads the committed state on the separate
+connection.
+
+The failure axes are pinned separately: the coverage-floor path, the **source**
+write (a non-coverage axis, with a sentinel ``Exception`` subclass), the
+**categorisation** write (with a genuine ``BaseException`` that is *not* an
+``Exception``, so the breadth of the ``except`` clause is pinned too), a rollback
+that itself fails, and an ``add_note`` that fails on top of it. A guard narrowed
+to any one of those must go RED.
 """
 
 from __future__ import annotations
@@ -72,6 +83,14 @@ class _SentinelSourceWriteError(RuntimeError):
 
     Deliberately *not* :class:`CoverageFloorError`: a guard narrowed to the
     coverage axis must not be able to catch it.
+    """
+
+
+class _SentinelBaseException(BaseException):
+    """A sentinel that is a ``BaseException`` but deliberately **not** an ``Exception``.
+
+    Only a clause with the full ``except BaseException`` breadth catches this, so
+    narrowing the guard to ``except Exception`` must make the test using it RED.
     """
 
 
@@ -300,7 +319,7 @@ def test_a_caller_that_swallows_the_failure_and_commits_persists_nothing(
     )
     assert returned is None, (
         "a rolled-back sync must never return a success-shaped SyncResult; rolling "
-        "back and returning would report success over expired ORM objects"
+        "back and returning would report success for a sync that did not happen"
     )
 
     assert probe.committed_counts() == {"provider": 0, "source": 0, "coverage": 0}, (
@@ -360,6 +379,78 @@ def test_a_failure_outside_the_coverage_block_also_persists_nothing(
 
 
 @skip_without_db
+def test_a_base_exception_from_the_categorisation_write_persists_nothing(
+    probe: Probe,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Two untested things at once: the third write, and ``BaseException`` breadth.
+
+    ``categorise_services()`` is the one write of the four that no other test
+    fails, and every sentinel used so far is an ``Exception`` subclass -- so
+    narrowing the guard from ``except BaseException`` to ``except Exception``
+    left the whole suite green while a caller could commit
+    ``{provider: 1, source: 3, coverage: 0}``.
+
+    The sentinel here derives from ``BaseException`` *directly* and is
+    deliberately **not** an ``Exception``, so it is caught only by a clause with
+    the full breadth. It is raised after the provider row and all three sources
+    have already been flushed, which is what makes the partial commit visible if
+    the guard misses it. The swallowing caller must therefore catch
+    ``BaseException`` too -- a normal ``except Exception`` would not see it.
+    """
+
+    config = probe.config()
+    assert not issubclass(_SentinelBaseException, Exception), (
+        "the sentinel must not be an Exception subclass, or it pins nothing new"
+    )
+
+    flushed: dict[str, int] = {}
+
+    def failing_categorise_services(session: Session, cfg: Any) -> Any:
+        # Prove the earlier writes really are in the transaction at this point:
+        # without the savepoint they are exactly what a swallowing caller commits.
+        session.flush()
+        flushed["provider"] = session.execute(
+            text("SELECT count(*) FROM provider WHERE slug = :slug"),
+            {"slug": probe.slug},
+        ).scalar_one()
+        flushed["source"] = session.execute(
+            text(
+                "SELECT count(*) FROM source s JOIN provider p ON p.id = s.provider_id "
+                "WHERE p.slug = :slug"
+            ),
+            {"slug": probe.slug},
+        ).scalar_one()
+        raise _SentinelBaseException("sentinel BaseException from the categorisation write")
+
+    monkeypatch.setattr(config_sync, "categorise_services", failing_categorise_services)
+
+    caught: BaseException | None = None
+    returned = None
+    with Session(probe.write_engine) as session:
+        try:
+            returned = sync_provider(session, config)
+        except BaseException as exc:  # noqa: BLE001 - the sentinel is not an Exception
+            caught = exc
+        session.commit()
+
+    assert isinstance(caught, _SentinelBaseException), (
+        "a BaseException that is not an Exception must still reach the caller untranslated"
+    )
+    assert returned is None
+    assert flushed == {"provider": 1, "source": len(config.sources)}, (
+        "the provider and its sources must already be flushed when the sentinel "
+        f"fires, or this test pins nothing; got {flushed}"
+    )
+
+    assert probe.committed_counts() == {"provider": 0, "source": 0, "coverage": 0}, (
+        "a BaseException from the categorisation write must roll the whole "
+        "provider unit back; a guard narrowed to `except Exception` would let "
+        "the already-flushed provider and sources commit"
+    )
+
+
+@skip_without_db
 def test_a_rollback_that_itself_fails_does_not_displace_the_original(
     probe: Probe,
     monkeypatch: pytest.MonkeyPatch,
@@ -402,6 +493,62 @@ def test_a_rollback_that_itself_fails_does_not_displace_the_original(
     assert any("SAVEPOINT" in note and repr(rollback_failure) in note for note in notes), (
         f"the suppressed rollback failure must be attached, not discarded; notes={notes}"
     )
+
+    assert probe.committed_counts() == {"provider": 0, "source": 0, "coverage": 0}
+
+
+@skip_without_db
+def test_a_failing_add_note_on_top_of_a_failing_rollback_still_yields_the_original(
+    probe: Probe,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The last link: ``add_note`` is virtually dispatched, so it can raise too.
+
+    The guard's response to a failing rollback is to attach a note to the
+    original exception -- but ``add_note`` is an ordinary method that a hostile
+    or simply broken exception type can override. With *both* the rollback and
+    the note failing, the caller must **still** receive the original exception by
+    identity. There is no channel left to report the note failure through, so it
+    is discarded deliberately; this test pins that the discarding happens rather
+    than the tertiary failure escaping.
+    """
+
+    config = probe.config()
+    note_failure = RuntimeError("add_note is broken too")
+
+    class _NoteHostileError(RuntimeError):
+        def add_note(self, note: str) -> None:
+            raise note_failure
+
+    original = _NoteHostileError("the real failure")
+    rollback_failure = RuntimeError("this transaction is closed")
+
+    class _DeadSavepoint:
+        is_active = False
+
+        def commit(self) -> None:  # pragma: no cover - this test always fails first
+            raise AssertionError("unreachable: the unit fails before it commits")
+
+        def rollback(self) -> None:
+            raise rollback_failure
+
+    def failing_sync_provider_row(session: Session, cfg: Any) -> Any:
+        raise original
+
+    monkeypatch.setattr(config_sync, "_sync_provider_row", failing_sync_provider_row)
+
+    with Session(probe.write_engine) as session:
+        monkeypatch.setattr(session, "begin_nested", lambda: _DeadSavepoint())
+        with pytest.raises(_NoteHostileError) as excinfo:
+            sync_provider(session, config)
+        session.rollback()
+
+    assert excinfo.value is original, (
+        "neither the rollback failure nor the add_note failure may displace the "
+        f"original exception; the caller received {excinfo.value!r}"
+    )
+    assert excinfo.value is not note_failure
+    assert excinfo.value is not rollback_failure
 
     assert probe.committed_counts() == {"provider": 0, "source": 0, "coverage": 0}
 

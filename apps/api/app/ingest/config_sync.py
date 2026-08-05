@@ -715,9 +715,11 @@ def sync_provider(session: Session, config: ProviderConfig) -> SyncResult:
     silent degradation in place of a loud one. (The ``SyncResult`` itself holds
     primitive ids and dataclasses, so it would remain readable after the
     rollback; that is precisely what makes returning it dangerous rather than
-    merely broken.) The original exception is re-raised unchanged in type and
-    identity -- a failing rollback is attached to it as a note rather than
-    replacing it -- so ``CoverageFloorError`` still reaches the caller as itself.
+    merely broken.) The original exception reaches the caller unchanged in type
+    and identity whatever happens inside the failure path: a failing rollback is
+    attached to it as a note rather than replacing it, and if attaching the note
+    fails too that failure is discarded rather than allowed to displace it. So
+    ``CoverageFloorError`` still reaches the caller as itself.
     """
 
     savepoint = session.begin_nested()
@@ -734,23 +736,45 @@ def sync_provider(session: Session, config: ProviderConfig) -> SyncResult:
         result.coverage = sync_coverage(session, config)
         savepoint.commit()
     except BaseException as exc:
+        # Everything in this block exists to protect one thing: that ``exc`` --
+        # the original failure -- is what the caller receives, unchanged in type
+        # and identity. Only four statements here can raise, and they are a
+        # closed set: the ``savepoint.is_active`` read, ``savepoint.rollback()``,
+        # the ``exc.add_note(...)`` statement (whose f-string also invokes
+        # ``rollback_exc.__repr__``, dispatched just as virtually), and the bare
+        # ``raise``, which introduces nothing new. The first three are guarded
+        # below; nothing else in this block dispatches user- or library-supplied
+        # code, so there is no further masking path to find.
+        #
         # The rollback is attempted unconditionally rather than gated on
         # ``savepoint.is_active``: that flag is also False for a nested
-        # transaction the failure merely *deactivated*, which still needs its
-        # SAVEPOINT released. A rollback that fails anyway (a closed nested
-        # transaction raises ``ResourceClosedError``) must not displace the
-        # primary exception, so the secondary failure is attached to it as a
-        # note instead of propagating or being discarded.
-        was_active = savepoint.is_active
+        # transaction the failure merely *deactivated* -- a flush IntegrityError
+        # leaves exactly that state -- which still needs its SAVEPOINT released,
+        # so gating on it would skip a rollback that is genuinely required. The
+        # flag is read for diagnosis only, and inside the guard so that even a
+        # raising ``is_active`` cannot displace the primary exception.
+        was_active: object = "unread"
         try:
+            was_active = savepoint.is_active
             savepoint.rollback()
         except BaseException as rollback_exc:
-            exc.add_note(
-                "app.ingest.config_sync.sync_provider: rolling the provider "
-                "SAVEPOINT back failed and was suppressed so it could not "
-                f"displace this exception (savepoint.is_active={was_active}): "
-                f"{rollback_exc!r}"
-            )
+            try:
+                exc.add_note(
+                    "app.ingest.config_sync.sync_provider: rolling the provider "
+                    "SAVEPOINT back failed and was suppressed so it could not "
+                    f"displace this exception (savepoint.is_active={was_active}): "
+                    f"{rollback_exc!r}"
+                )
+            except BaseException:
+                # ``add_note`` is virtually dispatched, so a hostile or broken
+                # exception type can make it raise too. Discarding that failure
+                # is correct rather than lazy at this depth: the note *was* the
+                # channel for reporting a suppressed failure, so there is no
+                # remaining channel to report its own failure through, and any
+                # alternative (re-raising, logging into the exception) would put
+                # the primary exception back at risk. The primary exception is
+                # the thing that must survive; it does.
+                pass
         # Re-raise unconditionally, and only ever the original: a caller must
         # never receive a success-shaped result for a sync that was rolled back.
         raise

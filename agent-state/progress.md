@@ -1002,3 +1002,81 @@ Append one entry after every meaningful implementation or evaluation session. Do
 - **Gates (measured, not claimed).** ruff check + format clean. Offline pytest **1004 passed / 151 skipped** (baseline 1004/147; +4 new DB-gated tests, which offline can only land in `skipped`). Live DB on the isolated `-p ftatlas_f008_savepoint` / port **55462** stack, `DATABASE_URL` host-side only: **1153 passed / 2 skipped** (baseline 1149/2). vitest **110 passed** (9 files), vite build OK. `scripts/check.ps1 -NodeAudit` green with the secret scan re-run after `git add`. Alembic head `0011_provider_category_coverage`, single row. Residue after the full live suite: `f008-probe-%` providers/sources/coverage all **0**, orphan sources **0**, total providers/sources/`offer_version` all **0**. Torn down with `down --volumes`.
 - **Attestations.** Did **NOT** merge. No `passes` flag touched (F008 stays `passes:false`). No migration. Exactly **6** changed files. `migrations/`, `agent-state/feature_list.json`, `agent-state/evaluation.json`, `apps/api/app/ingest/adapters/**`, `apps/web/`, `apps/api/app/read_api/taxonomy.py`, `apps/api/app/ingest/runner.py`, `apps/api/app/models/domain.py` and all dependency manifests: **zero diff vs `origin/main`**. No pre-existing test modified. Observations B/C/D/E untouched. Scope held to F-1..F-4.
 - **Next action:** re-evaluation of PR #41 at Level 2.
+
+## 2026-07-27 -- F008 savepoint hardening, round r2 (builder)
+
+Round r2 remediates findings F-5, F-6 and F-7 from the second independent
+Level-2 evaluation of PR #41. Findings F-2 (ownership-scoped teardown) and F-3
+(non-coverage failure axis, mutation M4 RED) were confirmed CLOSED by that
+evaluation and are untouched, as is the unconditional-rollback `is_active`
+reasoning, which the evaluator upheld empirically -- a real flush
+`IntegrityError` leaves the nested transaction `is_active=False` and
+unconditional rollback still succeeds and persists zero rows, so gating on the
+flag would have been wrong. Criteria 1, 3, 4 and 5 remained PASS across both
+evaluations and were not reworked.
+
+F-5. `exc.add_note()` is virtually dispatched and therefore attacker-controlled
+in exactly the way `savepoint.rollback()` was: a `RuntimeError` subclass whose
+`add_note()` raises, combined with a failing rollback, delivered the note
+failure to the caller instead of the original exception. The `add_note()` call
+is now wrapped in a bare `except BaseException: pass`. Discarding silently is
+correct rather than lazy at this depth -- the note exists only to preserve a
+secondary diagnostic, and once attaching it fails there is no remaining channel
+to report the tertiary failure through, so the only choice left is between
+discarding it and letting it displace the primary exception, which is the very
+defect being fixed. The `savepoint.is_active` read was moved inside the same
+guard so the enumeration below is closed structurally rather than by
+inspection.
+
+F-6. Mutation M5 (`except BaseException` -> `except Exception`) left the live
+suite green at 1153/2 while a genuine `BaseException` raised from
+`categorise_services()` -- the third write -- let a caller commit a partial
+`{provider:1, source:3, coverage:0}`. The implementation was already correct on
+that axis; only the pin was missing. A new test raises
+`_SentinelBaseException(BaseException)`, deliberately not an `Exception`
+subclass, from the categorisation write, covering the previously untested third
+write and the previously untested `BaseException` breadth in one test.
+
+F-7. Three stale strings corrected: the unqualified identity claim (falsified
+until F-5 landed, now true and re-read in its strongest reading); a test
+assertion message still citing the "expired ORM objects" rationale that r1
+replaced everywhere else; and the module docstring's literally false claim that
+"each test" performs a real commit, which the two rollback-failure tests do not.
+
+CLOSED-SET ENUMERATION (required by the r1 report). After F-5 the `except`
+block in `sync_provider` contains exactly four statements that can raise:
+
+1. the `savepoint.is_active` read -- now inside the rollback guard;
+2. the guarded `savepoint.rollback()`;
+3. the guarded `exc.add_note(...)`, whose f-string argument also invokes
+   `rollback_exc.__repr__` and is therefore covered by the same guard;
+4. the bare `raise`, which re-raises the active exception and introduces
+   nothing new.
+
+Items 1 to 3 sit inside guards that cannot propagate; item 4 cannot introduce a
+different exception. There is therefore no remaining masking path inside
+`sync_provider`. A future round proposing a fifth must show which of these four
+statements it originates from.
+
+Measured figures for r2 (all measured on this branch, not carried forward):
+
+- new savepoint suite: 6 passed
+- mutation M5 (`except BaseException` -> `except Exception`): RED, 1 failed /
+  5 passed, assertion diff `{'source': 3} != {'source': 0}` -- exactly the
+  partial commit the evaluator reproduced
+- mutation M6 (revert the `add_note` guard): RED, 1 failed / 5 passed
+- mutation M1 (savepoint removed): RED, 4 failed / 2 passed
+- mutation M2 (`rollback()` then `return`): RED, 5 failed / 1 passed
+- mutation M3 (savepoint narrowed to the coverage block): RED, 4 failed /
+  2 passed
+- mutation M4 (`except BaseException` -> `except CoverageFloorError`): RED,
+  3 failed / 3 passed
+- every mutation restored; `git status --short` empty after each restore
+- hostile-`__repr__` probe: caller receives the original exception by identity
+  (`e is original` True) with an empty `__notes__`
+- offline suite: 1004 passed / 153 skipped
+- live Postgres suite: 1155 passed / 2 skipped
+- residue check: zero probe providers, sources and coverage rows; zero orphan
+  sources; alembic head `0011_provider_category_coverage`, single head
+
+Scope unchanged: six changed files, no migration, F008 remains `passes:false`.
