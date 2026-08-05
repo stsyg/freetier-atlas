@@ -14,6 +14,16 @@ TIMEOUT_SECONDS="${STACK_UP_TIMEOUT:-120}"
 API_PORT="${API_PORT:-8000}"
 HEALTH_URL="http://localhost:${API_PORT}/health"
 
+# Package-index overrides are passed to the image builds by docker-compose.yml,
+# which inherits this process's environment. Nothing needs to be forwarded
+# explicitly; report the state so a misconfigured build is obvious. The value is
+# never printed: feed URLs are frequently private.
+if [[ -n "${PIP_INDEX_URL:-}" ]]; then
+  echo "==> PIP_INDEX_URL override is active (value not shown)"
+else
+  echo "==> Using the default Python package index (public PyPI)"
+fi
+
 echo "==> docker compose up -d --build"
 if ! docker compose up -d --build; then
   echo "ERROR: docker compose up failed" >&2

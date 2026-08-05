@@ -20,6 +20,17 @@ Set-Location $RepoRoot
 
 $apiPort = if ($env:API_PORT) { $env:API_PORT } else { "8000" }
 
+# Package-index overrides are passed to the image builds by docker-compose.yml,
+# which inherits this process's environment. Nothing needs to be forwarded
+# explicitly; report the state so a misconfigured build is obvious. The value is
+# never printed: feed URLs are frequently private.
+if ($env:PIP_INDEX_URL) {
+    Write-Host "==> PIP_INDEX_URL override is active (value not shown)" -ForegroundColor Yellow
+}
+else {
+    Write-Host "==> Using the default Python package index (public PyPI)" -ForegroundColor DarkGray
+}
+
 Write-Host "==> docker compose up -d --build" -ForegroundColor Cyan
 & docker compose up -d --build
 if ($LASTEXITCODE -ne 0) { Write-Error "docker compose up failed"; exit 1 }
