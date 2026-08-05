@@ -156,9 +156,22 @@ both surface in the `unknown_source` / `unknown_category` outcome counts.
 The evidence floor is re-checked **after** the sync against the rows actually persisted, so it is a
 database invariant rather than only a config-load one. If fewer than three persisted rows are
 evidence-backed, `sync_coverage()` raises `CoverageFloorError`; zero rows is the maximal erosion, not
-an exemption. The shortfall does not commit because the exception propagates out of the caller's
-transaction and every current caller lets it — a property of the callers rather than of
-`sync_coverage` itself, which a provider-unit savepoint is tracked to make structural.
+an exemption. The shortfall does not commit, and that is structural rather than a property of the
+callers: `sync_provider()` wraps all four of its writes in a **SAVEPOINT** which it rolls back before
+re-raising, whichever of the four raised, so a sync that fails in those four writes leaves the
+provider entirely untouched even if the caller swallows the exception and commits. The original exception is re-raised unchanged
+in type and identity; a rollback that itself fails is attached to it as a note rather than replacing
+it, and a note that itself fails to attach is discarded rather than allowed to displace it. The
+savepoint covers the whole provider unit, not just the coverage block — a coverage-only savepoint
+would commit a new provider with zero coverage rows. The one failure this does not cover is one
+raised while the SAVEPOINT is being *released* — an `after_transaction_end` listener, dispatched once
+`RELEASE SAVEPOINT` has already succeeded — because the writes have joined the caller's transaction
+by then; no module under `apps/` registered such a listener at the time of writing, verified by
+inspection — a point-in-time observation rather than a standing property, and nothing in this
+repository detects it becoming false. An automated check was attempted and removed (see AMENDMENT 8
+in `agent-state/current_contract.json`); the claim is deliberately an inspection result rather than
+an enforced invariant. See
+`DATA_MODEL.md` for that boundary and why it is documented rather than guarded.
 
 Finally, a pair declared `unknown` or `not_offered` while the derivation from published evidence
 says `verified_free` / `offered_no_z0` is a **material contradiction**: it raises a pending

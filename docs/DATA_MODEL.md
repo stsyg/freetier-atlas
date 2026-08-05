@@ -93,12 +93,41 @@ exemption but the maximal erosion, and is reported as such; the sole skip is a d
 canonical taxonomy at all (pre-0010), where the sync writes nothing. The floor is therefore a
 **database** invariant, not only a config-load one.
 
-One condition is worth stating precisely rather than claiming more than holds: the erosion is
-prevented from committing because the exception propagates out of the caller's transaction, and every
-current caller lets it. That is a property of the callers, not yet of `sync_coverage` itself — a
-caller that caught the error and committed anyway would persist the shortfall, since the writes are
-already flushed. Making the guarantee structural (a provider-unit savepoint) is tracked as a
-follow-up.
+The guarantee is now structural rather than a property of the call chain. `sync_provider()` runs all
+four of its writes — the provider row, the source rows, `categorise_services()` and
+`sync_coverage()` — inside a **SAVEPOINT**, which it rolls back before re-raising the original
+exception, whichever of the four raised it. A provider is therefore fully synced or entirely
+untouched **for any failure in those four writes**, and against such a failure a caller shaped `try:
+sync_provider(...) except Exception: continue` followed by a `commit()` persists nothing of the
+failed provider. The savepoint is scoped to the provider unit, not
+to the coverage block alone: a coverage-only savepoint would commit a **new** provider carrying zero
+coverage rows, which reads as `unknown` everywhere and which the persisted floor check cannot detect.
+The exception is re-raised unchanged in type and identity, never turned into a return value, so a
+caller that ignores it still learns nothing it did not before; the caller still owns the transaction,
+and `sync_provider()` still never commits it. That identity guarantee is unconditional within
+`sync_provider`: if the rollback itself raises, the failure is attached to the original exception as a
+note rather than replacing it, and if attaching the note *also* raises — `add_note` is an ordinary
+overridable method — that tertiary failure is discarded, because the note was the only channel
+available for reporting it and the primary exception is what must survive.
+
+What the savepoint does **not** cover is a failure raised while the SAVEPOINT is being **released**
+rather than by one of the four writes. SQLAlchemy dispatches `after_transaction_end` *after* the
+`RELEASE SAVEPOINT` has succeeded, so by the time such a listener raises, the four writes already
+belong to the caller's enclosing transaction and `sync_provider()` — which does not own that
+transaction — can no longer revert them. The caller still receives the original exception, with the
+same identity and note handling, but a subsequent `commit()` **persists the provider anyway**: a sync
+reported as failed can still be committed as complete. This is a library seam, not a live defect —
+no module under `apps/` registered such a listener at the time of writing, verified by inspection —
+a point-in-time observation rather than a standing property, and nothing in this repository detects
+it becoming false. An automated check was attempted and removed (see AMENDMENT 8 in
+`agent-state/current_contract.json`); the claim is deliberately an inspection result rather than an
+enforced invariant, so a future registration would make this boundary reachable silently. It is
+documented rather than guarded deliberately: SQLAlchemy 2.0 offers no supported way to mark the
+enclosing transaction rollback-only (`rollback_only` is a `join_transaction_mode` value for
+externally-supplied connections, not a session flag), and the public alternatives — `Session.rollback()`,
+`invalidate()`, `close()` — were measured to leave the caller's `commit()` succeeding *silently* while
+also destroying the caller's own unrelated work, which would trade this narrow boundary for unbounded
+loss in the caller's scope.
 
 ### Offer
 

@@ -974,3 +974,611 @@ Append one entry after every meaningful implementation or evaluation session. Do
 - **Attestations:** did **NOT** merge; no `passes` flag touched; no migration (head stays `0011`); `config_sync.py` **zero diff vs `e756819`**; `migrations/`, `feature_list.json`, `evaluation.json`, `apps/api/app/ingest/adapters/**`, `apps/web/`, `reconcile.py`, `taxonomy.py` and all dependency manifests **zero diff vs `origin/main`**; observations B/C/D/E untouched. Builder session died mid-remediation at r0; the orchestrator carried r1 and r2, and disclosed this to the evaluator with an instruction to grade harder rather than softer.
 
 - **Correction to the r2 figures above (caught by the Level-2 evaluator, verified independently):** the offline pytest count is **1004 passed / 147 skipped**, not 1005/147. The parametrisation adds exactly one *collected* test and it is DB-gated, so offline it can only land in `skipped` -- `146 -> 147` is right and `1004 -> 1005` is arithmetically impossible for a DB-gated addition. Collection totals reconcile: offline `1004+147 = 1151` and live `1149+2 = 1151`, against `1004+146 = 1150` / `1148+2 = 1150` on the previous head. The artifact was never affected; the error was in the report. Recorded here rather than by editing the line above, which would violate the append-only rule.
+
+## 2026-07-28 - F008 savepoint hardening: the provider sync becomes atomic in its own right (off fresh `main` `f790633`)
+
+- **Context.** PR #40 (merged as `f790633`) closed the `sync_coverage()` prune defect and made the Q9-A evidence floor a database invariant via `_assert_persisted_coverage_floor()` / `CoverageFloorError`. Its "the erosion never commits" guarantee was, by its own honest admission in the docs, a property of the **callers**: `sync_coverage` only `flush()`es, its sole non-test caller is `sync_provider` (`config_sync.py:695`), whose sole caller is `runner.py:272`, which sits outside any `try`/`except`, and the CLI is a bare `with Session(engine)` + `session.commit()`. A caller shaped `try: ... except Exception: continue` then committing **would** persist the erosion, because the DELETEs are already flushed. `runner.py` already uses exactly that shape per source (lines ~296/341) and Wave 3 adds six providers on this path, so a batch runner of that shape is the expected next step.
+- **Deliverable 1 - the savepoint.** `sync_provider()` now wraps **all four** writes (provider row -> source rows -> `categorise_services()` -> `sync_coverage()`) in `session.begin_nested()`, commits the savepoint on success, and on any exception rolls it back and **re-raises the original exception unchanged**. `CoverageFloorError` still reaches the caller as itself.
+- **Scope is the provider unit, not the coverage block - load-bearing.** A coverage-only savepoint *creates* the problem it aims to prevent: on a **new** provider's first sync there is no prior coverage to revert to, so it would commit a provider with **zero** coverage rows; every category then reads `unknown`, and `_assert_persisted_coverage_floor` returns early on `not checked` so nothing detects it. "Six new providers, first sync" is a literal description of Wave 3. Provider-unit scope makes the unit coherent: fully synced or entirely untouched, never provider-without-coverage - which also makes the `try/except: continue` batch shape *correct* rather than merely survivable.
+- **`rollback()` then `raise`, never `rollback()` then return.** ORM objects created inside a savepoint are expired/detached after rollback; returning a half-built `SyncResult` over them would be a fresh silent-degradation vector that *reports success*. Pinned by mutation probe 2 below.
+- **Deliverable 2 - the regression test** (`tests/integration/test_ingest_sync_savepoint.py`, new file, 2 tests). This is the part that is easy to write dishonestly: the existing integration `session` fixture binds to a connection inside an outer transaction that teardown rolls back, so a test written against it would **pass even if the property broke**. The new tests therefore take their **own engine** for writes and a **second independent engine** for the read-back, perform a **real `commit()`** in the caller's position, and assert on the separate connection. `test_a_caller_that_swallows_the_failure_and_commits_persists_nothing` reproduces the CLI shape verbatim and asserts `{provider: 0, source: 0, coverage: 0}`; `test_a_successful_sync_still_commits_every_write` proves the savepoint does not swallow good writes (1 provider / 3 sources / 14 coverage rows, and idempotent through a second committed run).
+- **Unique slug, cascade-safe by construction.** The tests never touch `cloudflare`. Each run creates `f008-probe-<uuid12>` as a **real YAML file** loaded through `load_and_validate()` (so the 14-slug and Q9-A floor validators are genuinely exercised, not bypassed), and destroys it in a teardown that runs even when the test body fails. The hazard was slug collision, not self-inflicted cascade: committing under `cloudflare` shares a row with every other fixture, and an unrelated `offer_version` row would block the teardown cascade *intermittently, depending on execution order*. `source.provider_id` is `ON DELETE SET NULL`, so sources are deleted **explicitly** rather than assumed to cascade, and the teardown asserts zero leftovers. Verified empirically after the full live suite: `f008-probe-%` providers/sources/coverage all **0**, orphan sources (`provider_id IS NULL`) **0**.
+- **Mutation probes (both run, both RED, both restored).** (1) Revert the savepoint to the plain sequential body -> the swallow-and-commit test FAILS with `{provider: 1, coverage: 11}` committed, reproducing the exact vulnerability. (2) Replace the re-raise with `return SyncResult(...)` after the rollback -> the test still FAILS (`isinstance(None, CoverageFloorError)`), proving it pins the raise as well as the rollback. `git status --short` clean of both afterwards; `config_sync.py` diff re-read line by line post-restore.
+- **Docs (disclosed amendment, recorded in the contract).** `docs/DATA_MODEL.md` and `docs/PROVIDER_ADAPTERS.md` each carried a PR #40 paragraph stating the guarantee is "a property of the callers, not yet of `sync_coverage` itself" with the savepoint "tracked as a follow-up". This change makes both sentences **false**, so both were rewritten to describe exactly what is implemented - the savepoint, its provider-unit scope, the re-raise, and the unchanged caller-owns-the-transaction rule - and nothing more. A previous PR failed evaluation twice for doc claims stronger than the implementation; the new text was written against that failure mode deliberately.
+- **Gates.** ruff check + format clean (194 files). Offline pytest **1004 passed / 149 skipped** (baseline 1004/147; +2 new DB-gated tests, which offline can only land in `skipped` - collection reconciles at 1153 both ways). Live DB on an isolated `-p ftatlas_f008_savepoint` / port **55462** stack, `DATABASE_URL` host-side only: **1151 passed / 2 skipped** (baseline 1149/2). vitest **110**. `scripts/check.ps1 -NodeAudit` **8/8** with the secret scan re-run after `git add`. Alembic head `0011_provider_category_coverage`, single. Torn down with `down --volumes`.
+- **Known limitation, disclosed.** The new regression test is integration-marked and `DATABASE_URL`-gated, like every other sync test in this repo. A savepoint regression is therefore caught by the **live** suite only, not by an offline run. No offline equivalent was added: the property being pinned is transactional persistence, which cannot be honestly asserted without a real commit against a real database.
+- **Attestations.** Did **NOT** merge. No `passes` flag touched (F008 stays `passes:false`; the S4 close-out owns it). No migration. `migrations/`, `agent-state/feature_list.json`, `agent-state/evaluation.json`, `apps/api/app/ingest/adapters/**`, `apps/web/`, `apps/api/app/read_api/taxonomy.py` and all dependency manifests: **zero diff vs `origin/main`**. `runner.py` untouched - the point of the provider-unit savepoint is that a future batch runner becomes correct without `runner.py` changing today. No pre-existing test modified. Observations B/C/D/E untouched.
+- **Next action:** fresh-context Level-2 evaluation on a live Postgres stack.
+
+## 2026-07-28 - F008 savepoint hardening, remediation r1 (Level-2 FAIL on PR #41, findings F-1..F-4)
+
+- **Verdict being remediated.** Independent Level-2 evaluation returned **FAIL** on PR #41 with four blocking findings. Criteria **1, 3, 4, 5 PASSED** and were **not** reworked: atomicity on the coverage-floor path, no success-shaped result after rollback, a success path byte-identical to `main`, and preserved idempotency. The provider-unit scope decision was verified *empirically* by the evaluator (their mutation M3 narrowed the savepoint to the coverage block and the new-provider case committed `{provider:1, source:0, coverage:0}` - exactly the zero-coverage provider the contract predicted), and `except BaseException` was ruled **correct** because it is unconditionally re-raised.
+- **F-1 - a failing rollback could displace the original exception.** `savepoint.rollback()` can itself raise (`ResourceClosedError` on an already-closed nested transaction), and the bare `raise` was only reached *if the rollback succeeded*, so the caller could receive the secondary failure instead of the real one. The rollback is now wrapped in its own `try`/`except`; a secondary failure is attached to the original exception via `add_note()` - carrying the observed `savepoint.is_active` value - rather than propagating or being silently discarded, and the `raise` is now reached unconditionally. **A deliberate departure from the evaluator's hint, disclosed:** the rollback is still *attempted* unconditionally rather than gated on `savepoint.is_active`. That flag is also `False` for a nested transaction the failure merely *deactivated*, which still needs its `SAVEPOINT` released; using it as a guard would skip a rollback that is genuinely required. It is recorded in the note for diagnosis instead.
+- **F-2 - the fixture could delete rows it did not create.** Teardown deleted by `slug LIKE '<probe-slug>%'` and then asserted zero leftovers **by that same predicate**, which is self-satisfying: the evaluator inserted a foreign `<slug>-not-created-by-fixture` source, teardown deleted it, and the assertion still passed. Teardown now captures the provider id and its source ids **first** and deletes strictly by those ids, and the leftover assertion counts by the captured ids - a predicate independent of the delete. `Probe.committed_counts()` likewise counts sources through `provider_id` rather than by slug prefix. The docstring claiming the teardown was "safe **by construction**" was **false** and is replaced by one that separates the two properties honestly: slug uniqueness prevents *collision*; ownership-scoped deletion is what prevents deleting a foreign row. **Verified empirically, not argued:** a foreign source sharing the prefix was inserted, the fixture was run through a full setup/teardown cycle, teardown did **not** raise, and the foreign row **survived** (`count=1`); the probe then deleted its own orphan.
+- **F-3 - the suite pinned only the coverage axis** (the most important of the four). The evaluator's mutation M4 narrowed `except BaseException` to `except CoverageFloorError` and the **entire live suite stayed green**, while a sentinel failure on the *source* write committed a partial provider. Two tests are added. `test_a_failure_outside_the_coverage_block_also_persists_nothing` injects `_SentinelSourceWriteError` - a type deliberately unrelated to `CoverageFloorError` - from the **second** source write, after the provider row and the first source have already been flushed, and asserts `{provider: 0, source: 0, coverage: 0}` after a swallow-and-commit. `test_a_rollback_that_itself_fails_does_not_displace_the_original` constructs the inactive-savepoint case for F-1 directly and asserts the caller receives the original exception **by identity** (`excinfo.value is original`) with the suppressed rollback failure present in `__notes__`.
+- **F-4 - docs overstated, and one stated rationale was factually wrong.** Every sentence claiming the guarantee holds "on any failure" is narrowed to "whenever any of the four writes raises", and `DATA_MODEL.md` now states explicitly what the savepoint does **not** cover: a failure that has already destroyed the `SAVEPOINT` itself, where the rollback cannot run, the secondary failure is attached as a note, and it is the caller's outer transaction that aborts. Separately, the `sync_provider` docstring justified never returning after a rollback by claiming the `SyncResult` is built over ORM objects the rollback has expired. **That was inaccurate** - it holds primitive ids and dataclasses and stays readable after commit. The conclusion is unchanged; the reason is corrected to the honest one: it would *report success for a sync that did not happen*, which is precisely what makes it dangerous rather than merely broken. The same wrong rationale appeared in `current_contract.json` and is corrected there too (as an amendment, not a rewrite).
+- **A `# pragma: no cover` was removed** from the new rollback-failure branch: it is now genuinely exercised by the F-1 test, so the marker had become a false claim.
+- **Mutation battery - all four RED, all restored, `git status --short` verified clean after each.** **M4** (`except BaseException` -> `except CoverageFloorError`, the acceptance test for F-3): **2 failed** - the non-coverage-axis test and the rollback-failure test both go RED, where before this remediation the whole live suite stayed green. **M1** (savepoint removed entirely): **3 failed**. **M2** (`rollback()` then `return` instead of `raise`): **3 failed**. **M3** (savepoint narrowed to the coverage block alone): **3 failed**. Restored state re-verified green at **4 passed**.
+- **Gates (measured, not claimed).** ruff check + format clean. Offline pytest **1004 passed / 151 skipped** (baseline 1004/147; +4 new DB-gated tests, which offline can only land in `skipped`). Live DB on the isolated `-p ftatlas_f008_savepoint` / port **55462** stack, `DATABASE_URL` host-side only: **1153 passed / 2 skipped** (baseline 1149/2). vitest **110 passed** (9 files), vite build OK. `scripts/check.ps1 -NodeAudit` green with the secret scan re-run after `git add`. Alembic head `0011_provider_category_coverage`, single row. Residue after the full live suite: `f008-probe-%` providers/sources/coverage all **0**, orphan sources **0**, total providers/sources/`offer_version` all **0**. Torn down with `down --volumes`.
+- **Attestations.** Did **NOT** merge. No `passes` flag touched (F008 stays `passes:false`). No migration. Exactly **6** changed files. `migrations/`, `agent-state/feature_list.json`, `agent-state/evaluation.json`, `apps/api/app/ingest/adapters/**`, `apps/web/`, `apps/api/app/read_api/taxonomy.py`, `apps/api/app/ingest/runner.py`, `apps/api/app/models/domain.py` and all dependency manifests: **zero diff vs `origin/main`**. No pre-existing test modified. Observations B/C/D/E untouched. Scope held to F-1..F-4.
+- **Next action:** re-evaluation of PR #41 at Level 2.
+
+## 2026-07-27 -- F008 savepoint hardening, round r2 (builder)
+
+Round r2 remediates findings F-5, F-6 and F-7 from the second independent
+Level-2 evaluation of PR #41. Findings F-2 (ownership-scoped teardown) and F-3
+(non-coverage failure axis, mutation M4 RED) were confirmed CLOSED by that
+evaluation and are untouched, as is the unconditional-rollback `is_active`
+reasoning, which the evaluator upheld empirically -- a real flush
+`IntegrityError` leaves the nested transaction `is_active=False` and
+unconditional rollback still succeeds and persists zero rows, so gating on the
+flag would have been wrong. Criteria 1, 3, 4 and 5 remained PASS across both
+evaluations and were not reworked.
+
+F-5. `exc.add_note()` is virtually dispatched and therefore attacker-controlled
+in exactly the way `savepoint.rollback()` was: a `RuntimeError` subclass whose
+`add_note()` raises, combined with a failing rollback, delivered the note
+failure to the caller instead of the original exception. The `add_note()` call
+is now wrapped in a bare `except BaseException: pass`. Discarding silently is
+correct rather than lazy at this depth -- the note exists only to preserve a
+secondary diagnostic, and once attaching it fails there is no remaining channel
+to report the tertiary failure through, so the only choice left is between
+discarding it and letting it displace the primary exception, which is the very
+defect being fixed. The `savepoint.is_active` read was moved inside the same
+guard so the enumeration below is closed structurally rather than by
+inspection.
+
+F-6. Mutation M5 (`except BaseException` -> `except Exception`) left the live
+suite green at 1153/2 while a genuine `BaseException` raised from
+`categorise_services()` -- the third write -- let a caller commit a partial
+`{provider:1, source:3, coverage:0}`. The implementation was already correct on
+that axis; only the pin was missing. A new test raises
+`_SentinelBaseException(BaseException)`, deliberately not an `Exception`
+subclass, from the categorisation write, covering the previously untested third
+write and the previously untested `BaseException` breadth in one test.
+
+F-7. Three stale strings corrected: the unqualified identity claim (falsified
+until F-5 landed, now true and re-read in its strongest reading); a test
+assertion message still citing the "expired ORM objects" rationale that r1
+replaced everywhere else; and the module docstring's literally false claim that
+"each test" performs a real commit, which the two rollback-failure tests do not.
+
+CLOSED-SET ENUMERATION (required by the r1 report). After F-5 the `except`
+block in `sync_provider` contains exactly four statements that can raise:
+
+1. the `savepoint.is_active` read -- now inside the rollback guard;
+2. the guarded `savepoint.rollback()`;
+3. the guarded `exc.add_note(...)`, whose f-string argument also invokes
+   `rollback_exc.__repr__` and is therefore covered by the same guard;
+4. the bare `raise`, which re-raises the active exception and introduces
+   nothing new.
+
+Items 1 to 3 sit inside guards that cannot propagate; item 4 cannot introduce a
+different exception. There is therefore no remaining masking path inside
+`sync_provider`. A future round proposing a fifth must show which of these four
+statements it originates from.
+
+Measured figures for r2 (all measured on this branch, not carried forward):
+
+- new savepoint suite: 6 passed
+- mutation M5 (`except BaseException` -> `except Exception`): RED, 1 failed /
+  5 passed, assertion diff `{'source': 3} != {'source': 0}` -- exactly the
+  partial commit the evaluator reproduced
+- mutation M6 (revert the `add_note` guard): RED, 1 failed / 5 passed
+- mutation M1 (savepoint removed): RED, 4 failed / 2 passed
+- mutation M2 (`rollback()` then `return`): RED, 5 failed / 1 passed
+- mutation M3 (savepoint narrowed to the coverage block): RED, 4 failed /
+  2 passed
+- mutation M4 (`except BaseException` -> `except CoverageFloorError`): RED,
+  3 failed / 3 passed
+- every mutation restored; `git status --short` empty after each restore
+- hostile-`__repr__` probe: caller receives the original exception by identity
+  (`e is original` True) with an empty `__notes__`
+- offline suite: 1004 passed / 153 skipped
+- live Postgres suite: 1155 passed / 2 skipped
+- residue check: zero probe providers, sources and coverage rows; zero orphan
+  sources; alembic head `0011_provider_category_coverage`, single head
+
+Scope unchanged: six changed files, no migration, F008 remains `passes:false`.
+
+## 2026-08-05 -- F008 savepoint hardening, round r3 (builder)
+
+Round r3 remediates the single finding F-8 from the third independent Level-2
+evaluation of PR #41. F-5 and F-6 were confirmed closed by that evaluation, and
+the four-raise-site closed-set enumeration was audited and confirmed COMPLETE,
+so that axis is closed permanently and is untouched here. Criteria 2 through 6
+remain PASS.
+
+F-8 is earlier than the exception handler. `savepoint.commit()` successfully
+issues `RELEASE SAVEPOINT`, and only then does `after_transaction_end` event
+dispatch raise. By that point the four writes belong to the caller's enclosing
+transaction, and `sync_provider` -- which does not own that transaction -- can no
+longer revert them, so a swallowing caller's `commit()` persists a provider whose
+sync reported failure.
+
+The remedy was **measured on real PostgreSQL**, not reasoned about, with the
+caller holding its own unrelated flushed work:
+
+| remedy | caller `commit()` | our rows | caller's own rows |
+| --- | --- | --- | --- |
+| none (F-8 today) | SILENT | 1 | 1 |
+| `Session.rollback()` | SILENT | 0 | 0 -- destroyed |
+| `get_transaction().rollback()` | SILENT | 0 | 0 -- destroyed |
+| `Session.invalidate()` | SILENT | 0 | 0 -- destroyed |
+| `Session.close()` | SILENT | 0 | 0 -- destroyed |
+| private `_state=DEACTIVE` | RAISES `PendingRollbackError` | 0 | 0 |
+
+The decisive column is the middle one: **every public remedy leaves the caller's
+commit succeeding silently**, changing what persists but not what the caller
+believes -- the same defect as F-8 with the sign flipped -- and additionally
+destroys the caller's own unrelated rows, trading a narrow bounded boundary for
+unbounded loss in the caller's scope. Only writing the private
+`SessionTransaction._state` / `_rollback_exception` pair makes it loud, and that
+was rejected for consistency with the earlier refusal to depend on SQLAlchemy
+internals for `is_active`: that was a *read* of a property, this would be a
+*write* faking an internal state-machine transition, which a rename would break
+**silently**, with no test going red until someone registered a listener.
+SQLAlchemy 2.0.36 exposes no supported route -- `rollback_only` exists only as a
+`join_transaction_mode` value for externally-supplied connections, not as a
+session-level flag. Narrowing the window is structurally impossible: the
+dangerous step is the terminating one by definition, so anything reordered after
+it inherits the problem. Owning the transaction outright would solve rather than
+report, but inverts the caller-owns-the-transaction invariant held since F005
+slice 1 and breaks `runner.py`'s per-source savepoints; it is recorded as
+rejected-on-blast-radius rather than omitted, since an enumeration that quietly
+drops the one real solution is not an honest enumeration.
+
+The chosen response is to **document the boundary honestly and test it, not
+guard it**. The module header, the `sync_provider` docstring, `DATA_MODEL.md` and
+`PROVIDER_ADAPTERS.md` now state that atomicity covers failures in the four
+writes and that a failure during SAVEPOINT *release* is outside it, naming the
+concrete consequence: a sync reported as failed can still be committed as
+complete. A comment at the release site records the measured options and why each
+was rejected, so the next person finds the analysis instead of rediscovering it.
+
+Two tests were added. The first asserts the **documented** outcome rather than an
+aspirational `0/0/0`, with a docstring stating explicitly that it pins a
+*boundary* and not a *guarantee*, so a passing run cannot later be misread as
+proof of atomicity in that window; it also pins that the boundary sits exactly at
+the release, so a failable step slid after `savepoint.commit()` by a future
+refactor surfaces there. The second converts the materiality finding into an
+enforced invariant by scanning `apps/` for `after_transaction_end` /
+`after_transaction_create` **registrations**.
+
+That second test taught something worth recording: the first version matched the
+bare event name and immediately went RED on `config_sync.py` -- because the
+module now *documents* the boundary at length. A name-only scan is guaranteed to
+fire on its own documentation and would be silenced or deleted within a round,
+enforcing nothing. It now matches the `event.listen(...)` and
+`@event.listens_for(...)` spellings instead, and the trade is disclosed in the
+test docstring: a dynamically-constructed event name would evade it.
+
+**Recorded for the next person who probes transaction semantics: do not use
+SQLite for it.** The first run of the remedy matrix above was on SQLite and was
+an artifact -- it reported that `Session.rollback()` left the row committed,
+which would have made public remedies look uniformly useless and would have
+supported the same conclusion by a broken route. That is the pysqlite driver's
+BEGIN-emission quirk, not SQLAlchemy behaviour. It was caught because
+`rollback()` leaving data behind is not a believable result; the table above is
+the PostgreSQL re-run. Disbelief in a convenient result is worth treating as a
+signal to re-measure.
+
+Measured figures for r3:
+
+- savepoint suite: 8 passed (6 previous + 2 new)
+- mutation M7 (boundary test asserts `0/0/0` instead of the documented
+  outcome): RED -- confirms the new test reads real committed state and is not
+  vacuous
+- registration-scan probes: the `@event.listens_for(...)` form and the
+  imperative `event.listen(...)` form each make the invariant test RED;
+  `runner.py` restored byte-identical afterwards
+- mutation M1 (savepoint removed): RED -- 5 failed / 3 passed
+- mutation M2 (`rollback()` then `return`): RED -- 6 failed / 2 passed
+- mutation M3 (savepoint narrowed to the coverage block): RED -- 5 failed /
+  3 passed
+- mutation M4 (`except BaseException` -> `except CoverageFloorError`): RED --
+  3 failed / 5 passed
+- mutation M5 (`except BaseException` -> `except Exception`): RED -- 1 failed /
+  7 passed
+- mutation M6 (`add_note` guard removed): RED -- 1 failed / 7 passed
+- every mutation restored; `git status --short` clean of unintended files after
+  each
+- offline suite: 1004 passed / 155 skipped
+- live PostgreSQL suite: 1157 passed / 2 skipped
+- residue check: zero probe providers, sources and coverage rows; zero orphan
+  sources; alembic head `0011_provider_category_coverage`, single head
+
+Scope: four changed files plus the two agent-state ledgers, no migration, no new
+dependency, F008 remains `passes:false`.
+
+### r3 follow-up -- scope moved into the claim clause (prose only)
+
+Every sentence asserting atomicity now carries its scope *in the clause itself*
+rather than being qualified a few sentences later, so none of them is
+unconditional when read standing alone -- which is how this surface has been
+evaluated three rounds running. The carve-out paragraphs are unchanged; no
+information was added or removed.
+
+Five sites, all four claim sites plus one consequential clause:
+
+- module header: "a provider partially synced *by a failure in those four
+  writes* is never left in the caller's transaction"
+- `sync_provider` docstring: "for any failure *in those four writes* the
+  provider is either fully synced or entirely untouched"
+- the provider-unit scope rationale in the same docstring: "keeps the unit
+  coherent *against a failure in the four writes*"
+- `DATA_MODEL.md`: "fully synced or entirely untouched **for any failure in
+  those four writes**", and the following `try/except: continue` clause scoped
+  to "against such a failure" rather than reading absolutely on its own
+- `PROVIDER_ADAPTERS.md`: "a sync that fails in those four writes leaves the
+  provider entirely untouched even if the caller swallows the exception and
+  commits" -- this replaces the exact string the r2 evaluation quoted as the
+  falsified strongest claim, which is now absent from the tree
+
+One site was reviewed and deliberately left alone: the docstring of
+`test_a_caller_that_swallows_the_failure_and_commits_persists_nothing` says
+"nothing was persisted", but it is scoped in its own sentence to the specific
+coverage-floor failure it injects, so it does not assert unconditional
+atomicity.
+
+Re-verified after the edit: savepoint suite 8 passed; mutation M7 still RED;
+offline 1005 / 154; live PostgreSQL 1157 / 2; vitest 110; both gates exit 0;
+residue zero; alembic head `0011_provider_category_coverage`, single head. Prose
+only -- three files, no code, no test changes, F008 remains `passes:false`.
+## F008 round r4 -- remediating the r3 Level-2 FAIL (F-9, F-10)
+
+r3 evaluation returned FAIL with two narrow findings. Criteria 1-5 PASS: the
+scoped implementation was reproduced empirically -- the evaluator's independent
+probe matched the documented 1/3/14, and a `before_commit` listener raising just
+*before* release still yielded 0/0/0, confirming the boundary sits exactly where
+documented. **No code in `sync_provider()` changed this round.**
+
+### F-10 -- the listener test's mechanism was wrong, not its regex
+
+The r3 test was a source scan. It is defeated by an ordinary import alias:
+
+    from sqlalchemy import event as sae
+    sae.listen(Session, "after_transaction_end", lambda *_a: None)
+
+Planted in `config_sync.py`, that left the **entire live suite GREEN at 1157/2**
+with a real listener registered. This is not the dynamic-name evasion the r3
+docstring disclosed -- it is routine Python any contributor might write.
+`from sqlalchemy.event import listen`, `getattr(event, "listen")` and re-exports
+defeat it equally. No pattern work fixes this, because "is a listener
+registered" is simply not answerable from source text.
+
+Replaced with a **runtime registry** check. Confirmed first that SQLAlchemy 2.0
+exposes no public enumeration API: `sqlalchemy.event` offers only
+`contains/listen/listens_for/remove`, and `contains()` needs a specific function
+object, so it cannot answer "is *anything* registered";
+`_ClsLevelDispatch` is not iterable.
+
+The test now runs a **subprocess with a fresh interpreter** (deterministic,
+unaffected by whatever pytest already imported), **snapshots**
+`Session.dispatch.after_transaction_end._clslevel`, imports **every module under
+`apps/api/app`** (88 modules -- a registration only exists once the module
+executes, so importing the package root would see almost nothing), and asserts
+**no new** listener appeared. Baseline-diff rather than assert-zero, so a
+third-party library that legitimately registers one is not a spurious failure:
+the assertion is that *our* code adds none. It additionally asserts that no
+module failed to import, since a silent import error would make it vacuously
+green.
+
+`_clslevel` is private and is read **directly, with no `getattr` fallback**.
+This is not inconsistent with the private route refused for F-8: that was a
+*write* in production code faking an internal state transition, where a rename
+breaks the guarantee **silently**; this is a *read* in a test, where a rename
+raises `AttributeError` and goes **loudly** red. A fallback would convert that
+loud failure into a silent one and reintroduce precisely the problem the test
+exists to prevent.
+
+Verified RED for all four spellings, each restored byte-for-byte (sha256
+checked):
+
+| mutation | spelling | result |
+|---|---|---|
+| M8a | literal `event.listen` | RED |
+| M8b | `@listens_for` decorator | RED |
+| M8c | aliased `sae.listen` (the shape that defeated the scanner) | RED |
+| M8d | dynamically-constructed event name | RED |
+
+M8d is notable: the r3 docstring had disclosed dynamic construction as an
+unavoidable gap. The runtime registry closes it, because it asks the library
+what is registered rather than what the source looks like.
+
+### F-9 -- four prose sites scoped inline
+
+Each asserted unconditional atomicity when read standing alone:
+
+1. `tests/integration/test_ingest_sync_savepoint.py:1` -- now "atomic in its own
+   right -- for any failure in its four writes".
+2. `apps/api/app/ingest/config_sync.py` `sync_provider()` docstring -- "All four
+   writes are one atomic unit **-- for any failure in those four writes**".
+3. The swallow-and-commit test docstring -- "a genuinely failing sync" is now "a
+   sync failing inside the four writes", with the release-boundary carve-out
+   stated in the same paragraph. This is the site flagged for a ruling in r3 and
+   ruled a finding; the reasoning was sound, the sentence just needed its scope
+   inline.
+4. `agent-state/current_contract.json` objective ("on any failure") and scope
+   ("on ANY exception") -- both amended to match criterion 1.
+
+Both docs' claim that "a test asserts that none does" now describes the new
+mechanism truthfully rather than a scan.
+
+### Measured (r4)
+
+- savepoint suite **8 passed**
+- offline **1005 passed / 154 skipped**
+- live Postgres **1157 passed / 2 skipped** (identical to the pre-r4 baseline)
+- M1 RED (5f/3p), M2 RED (6f/2p), M3 RED (5f/3p), M4 RED (4f/4p), M5 RED (1f/7p),
+  M6 RED (4f/4p), M7 RED (1f/7p), M8a-d all RED
+- residue zero; alembic head `0011_provider_category_coverage`, single head
+- `git status --short` clean of unintended files after every mutation
+## F008 round r4b -- remediating the r4 Level-2 FAIL (F-10b, F-11): prose only
+
+r4 evaluation returned FAIL with two findings, both about the listener test's
+**claims**, not its mechanism. Criteria 1-5 PASS for the third consecutive
+round; `sync_provider()`'s logic is not in question and **did not change**.
+
+### The decision that shaped this round
+
+The evaluator measured the runtime check across **13 registration shapes**:
+**11 RED** -- literal `event.listen`, `@listens_for`, alias, dynamic name,
+`from sqlalchemy.event import listen`, `getattr(event, "listen")`, local-helper
+re-export, registration inside a function *called* at import, `Session`
+**subclass**, `sessionmaker()`, and a planted import error correctly reported
+rather than passing vacuously -- and **2 GREEN**: a listener on an individual
+`Session` **instance**, and a registration **deferred inside a function import
+never executes**.
+
+The orchestrator's decision was to **narrow the claim, not broaden the
+mechanism**: catching those two would require intercepting `event.listen` from
+*production* code, which is real complexity in the shipping path to guard a
+library seam with no live trigger. The check is a **tripwire for the realistic
+regression** -- someone adding `event.listen(Session, ...)` to a module -- not a
+proof. Instance-level and deferred registration are accepted, documented and out
+of scope.
+
+F-10 was a mechanism defect; F-11 is an over-claim about a mechanism that is now
+precisely measured. Same call as F-8: state the boundary exactly and stop
+claiming past it.
+
+### F-10b -- an objectively false sentence
+
+The test module docstring still said "**a source scan** asserts that nothing
+under `apps/` registers ...". The source scan was **deleted in r4**. It also
+concluded the condition was "**enforced rather than assumed**", which is the
+over-claim itself. Both rewritten to state the runtime check and describe it as
+a tripwire.
+
+### F-11 -- four sites narrowed to the measured scope
+
+The supportable claim is: *importing `apps/api/app` registers no new
+**class-level** `after_transaction_end` listener on `Session` or a subclass.*
+Not "nothing registers such a listener", not "any registration", not "every
+spelling". Applied at the test module docstring, the listener test's docstring,
+`DATA_MODEL.md`, `PROVIDER_ADAPTERS.md`, and `sync_provider()`'s docstring.
+
+The surviving "catches every spelling" is now qualified **"at class level and
+import time"** -- a different and true statement. The two GREEN shapes are
+recorded in the listener test's docstring as known accepted limits, with the
+reason closing them was judged disproportionate. A documented limit is honest; a
+discovered one is a defect. The private-read-fails-loudly justification is
+unchanged and deliberately not weakened.
+
+**Limits re-measured rather than transcribed.** I did not want to document a
+limit on someone else's measurement, so I planted all four adjacent shapes
+myself: instance-level **GREEN**, deferred-never-executed **GREEN**, `Session`
+subclass **RED**, registration in a function called at import **RED**. The prose
+describes what I measured.
+
+### M6 reconciliation
+
+The r4 figure (RED 4 failed / 4 passed) and the evaluator's (RED 1 failed /
+7 passed) are **not a discrepancy** -- they are different mutations of the same
+block, and both reproduce exactly:
+
+| targeting | result |
+|---|---|
+| neutralise the executable `savepoint.rollback()` call | RED **4 failed / 4 passed** |
+| remove the executable inner `add_note` guard | RED **1 failed / 7 passed** |
+
+Nothing was off; the r4 record described a different mutation than the
+evaluator's. Both are now named explicitly so the figures are reproducible.
+
+### Measured (r4b)
+
+- savepoint suite **8 passed**
+- live Postgres **1157 passed / 2 skipped** (identical to r4)
+- M1 RED (5f/3p), M2 RED (6f/2p), M3 RED (5f/3p), M4 RED (4f/4p), M5 RED (1f/7p),
+  M6 RED (4f/4p line-targeted; 1f/7p under the evaluator's targeting),
+  M7 RED (1f/7p), M8a-d all RED
+- listener limits: L1 instance-level GREEN, L2 deferred GREEN (both documented),
+  L3 subclass RED, L4 called-at-import RED
+- residue zero; alembic head `0011_provider_category_coverage`, single head
+- every mutation restored byte-for-byte, sha256 verified
+## F008 round r5 -- remediating the r4b Level-2 FAIL (F-12, F-13)
+
+r4b evaluation returned FAIL with two findings. Criteria 1-5 PASS for the fourth
+consecutive round; the implementation and the accepted two-shape boundary hold
+and are not in question. **`sync_provider()`'s logic did not change.**
+
+### F-12 -- the tripwire was not self-calibrating
+
+The evaluator changed **only** the probe's registry read, from
+`after_transaction_end._clslevel` to `after_transaction_create._clslevel`. Full
+live suite stayed **GREEN 1157/2**. Combined with a real class-level,
+import-time `event.listen(Session, "after_transaction_end", ...)` in an app
+module: still **GREEN 1157/2**. The exact regression the test claims to trip,
+defeated by one token of drift. A tripwire that can silently watch nothing
+enforces nothing -- a fair criterion-6 failure, and not a narrower instance of
+the accepted instance/deferred limits.
+
+**Fixed per the evaluator's design.** After the baseline snapshot the probe
+registers a known **sentinel** `after_transaction_end` listener, asserts the
+selected registry observes it, removes it, asserts the baseline is restored, and
+only then measures the app-import delta.
+
+One detail that decides whether the calibration is real: the sentinel's event
+name is written as a **literal**, deliberately *not* sharing the constant used in
+the read. Had both come from one name, drift would move them together and the
+calibration would pass while watching the wrong event -- reproducing the very
+defect in the mechanism meant to detect it.
+
+M9 (wrong-target read alone) and M10 (wrong-target plus a real class-level
+import-time registration) both **RED**, failing on the calibration assertion.
+
+### F-12 generalised -- a fourth silent-success path, found and closed
+
+The orchestrator asked me to confirm the probe had no *other* way to verify
+nothing. Four paths probed:
+
+| silent-success path | before | after |
+|---|---|---|
+| empty module list | RED | RED |
+| sweep loop neutered | RED | RED |
+| module failed to import | RED (r4) | RED |
+| **baseline snapshot taken *after* the imports** | **GREEN** | **RED** |
+
+The last was a **genuine remaining hole**, found by the generalisation rather
+than named in the brief: sampling the baseline after the sweep makes the delta
+empty by construction, and every assertion passes while observing nothing.
+
+Closed with an **ordering positive control**: a canary module, written to a temp
+dir and imported as part of the sweep, registers a class-level listener of its
+own which must appear in the delta. A baseline sampled too late loses it and the
+test fails. The canary is filtered out of the offender list so it cannot mask a
+real registration, and its temp dir is removed after the run (verified: zero
+residue).
+
+### F-13 -- four absolute clauses made point-in-time
+
+Each of `config_sync.py`, `DATA_MODEL.md`, `PROVIDER_ADAPTERS.md` and the
+listener test's docstring asserted flatly that nothing under `apps/` registers
+such a listener. True today, but an **unenforced standing claim**: the repository
+cannot detect it becoming false through either accepted limit, so the sentence
+quietly outlives its own verification. For a project whose central rule is never
+to publish an unsupported claim, a present-tense assertion the code cannot detect
+losing is the wrong shape however true it is right now.
+
+All four rewritten as explicitly point-in-time and inspection-based -- "no module
+under `apps/` registered such a listener at the time of writing, verified by
+inspection" -- with the scoped tripwire and accepted-limits sentences that follow
+left intact. Contract history left alone: AMENDMENT 6 supersedes AMENDMENT 5
+cleanly and no live clause overstates.
+
+### Measured (r5)
+
+- savepoint suite **8 passed**
+- live Postgres **1157 passed / 2 skipped** (identical to r4b)
+- M1 RED (5f/3p), M2 RED (6f/2p), M3 RED (5f/3p), M4 RED (4f/4p), M5 RED (1f/7p),
+  M6a RED (4f/4p, rollback call), M6b RED (1f/7p, inner add_note guard),
+  M7 RED (1f/7p)
+- **M9 RED, M10 RED** (calibration assertion), V1/V2/V3 all RED
+- detection shapes all RED: literal, `@listens_for`, alias, dynamic name,
+  `from sqlalchemy.event import listen`, `getattr`, `Session` subclass,
+  `sessionmaker()`, registration in a function called at import
+- accepted limits still GREEN as documented: instance-level, deferred-never-called
+- planted import error fails loudly
+- residue zero, no probe temp dirs left behind; alembic head
+  `0011_provider_category_coverage`, single head
+- every mutation restored byte-for-byte, sha256 verified
+## F008 round r6 -- listener tripwire REMOVED rather than repaired (F-14), canonical smoke waived
+
+**Verdict being remediated.** The r5 independent Level-2 evaluation returned **FAIL**.
+Criteria 1-5 and 7 **PASS**; `sync_provider()`'s logic was not touched for the sixth
+consecutive round and is not in question. Criterion 6 failed on **F-14**, and the ruling
+was to **DELETE the listener tripwire, not repair it a fifth time**.
+
+**F-14 -- marker collision.** The r5 probe separated its ordering canary from real
+offenders by **substring match over the rendered registry entry**. The evaluator planted an
+ordinary class-level, import-time app registration whose listener function was merely
+*named* `_f008_ordering_canary_listener`. That single naming coincidence made one real
+offender satisfy `canary_seen` *and* be filtered out of `new`, so the full live suite
+stayed **GREEN 1157/2 with a genuine in-scope listener registered**. No accepted limit is
+involved: this is precisely the regression the mechanism claimed to catch.
+
+**A clean fifth repair exists and was declined deliberately.** Tracking the canary by
+identity or provenance instead of by name, or splitting calibration and measurement into
+separate subprocess runs so that no filter is needed at all, is smaller than what it would
+replace. It was rejected on the record because it looked equally obvious and equally final
+at r4, r4b and r5. Four distinct defects across four rounds -- **alias evasion (F-10),
+scope over-claim (F-11), wrong-target drift (F-12), marker collision (F-14)** -- with each
+repair creating the conditions for the next, is sufficient evidence that the mechanism's
+complexity exceeds the risk it guards for a library seam with no live trigger. The
+independent evaluator ruled removal **on the merits**, not merely on the orchestrator's
+standing pre-commitment.
+
+**The builder's counter-argument is recorded as WRONG, because it inverted F-13.** In the
+r5 report this builder argued for retention on the ground that deletion leaves an
+unenforced point-in-time claim, "exactly the shape F-13 ruled unacceptable". That reading
+is backwards: F-13 rejected the **absolute standing** claim and *prescribed* point-in-time,
+inspection-based wording as its remedy -- wording that shipped in r5 and that the evaluator
+has since PASSED. Removal plus that existing wording therefore lands exactly where F-13
+asked. Only the enforcement clauses go: "a test asserts / pins / enforces", the tripwire
+sentences, and the accepted-limits paragraphs, all of which describe a mechanism that no
+longer exists. The honest bounded observation stays.
+
+**Consequence accepted explicitly rather than glossed.** A future class-level
+`after_transaction_end` registration will make the documented SAVEPOINT-release boundary
+reachable **silently**, with nothing in this repository detecting it. Every surviving
+claim now says so. The release-boundary test itself is **retained** -- it is a different
+artefact, it pins documented behaviour, it is not implicated by F-14, and criterion 1
+depends on it.
+
+**A stale enforcement claim was found in a place the remedy list did not name.** The
+option-(d) comment at the `savepoint.commit()` call still read "Revisit it only if a
+listener is ever registered, **which a test now prevents happening unnoticed**", and the
+line below it read "documented **and tested** instead of guarded". Both are false once the
+tripwire is gone. They were found by grepping for the *claim shape* rather than by working
+through the four named sites, which is the lesson: a removal has to be swept for, not
+enumerated.
+
+**Process note -- a self-inflicted error, disclosed.** While restoring a mutation this
+builder ran `git checkout -- apps/api/app/ingest/config_sync.py`, which silently reverted
+that round's *uncommitted* prose edits along with the mutation. It was caught immediately
+by re-grepping for the stale strings, and the edits were reapplied and re-verified. The
+lesson for the next person: never use `git checkout --` as a mutation-restore mechanism in
+a dirty tree; restore from an in-memory snapshot of the file and verify by sha256, which is
+what the mutation harness itself does.
+
+**Measured at this head, against live PostgreSQL.**
+
+- savepoint suite **7 passed** (was 8)
+- full live suite **1156 passed / 2 skipped** (was 1157/2); collection **1158** (was 1159)
+- Both counts moved by exactly one, in both totals, which is the reconciliation the
+  orchestrator asked for: a count that had *not* moved would have meant the deleted test was
+  never collected in the first place, which would have been its own finding.
+- **M1** RED (6f/1p) -- savepoint removed
+- **M2** RED (6f/1p) -- `rollback()` then `return`
+- **M3** RED (2f/5p) -- savepoint narrowed to the coverage block
+- **M4** RED (3f/4p) -- `except BaseException` -> `except CoverageFloorError`
+- **M5** RED (1f/6p) -- outer `except BaseException` -> `except Exception`
+- **M6a** RED (4f/3p) -- executable `savepoint.rollback()` call neutralised
+- **M6b** RED (1f/6p) -- executable inner `add_note` guard removed
+- **M7** RED (1f/6p) -- boundary test asserts `0/0/0` instead of the documented `1/3/14`
+- Every mutation restored byte-for-byte, verified by sha256.
+- Failure counts differ from r5's by exactly the one deleted test where it had been
+  collateral; the pass counts drop by one throughout for the same reason.
+- `ruff check .` clean; alembic head `0011_provider_category_coverage`, single head.
+- Guardrail diff vs `origin/main` **empty**; F008 remains `passes:false`.
+
+**M7 requires line-targeting, and now more than before.** The boundary test's
+`{"provider": 1, "source": ..., "coverage": ...}` block is no longer unique in the file --
+there are three occurrences (the fixture's expectation helpers and the boundary assertion).
+A naive string replace either fails as ambiguous or mutates the wrong site and reads green.
+The mutation must target the **last** occurrence by line number. This is the same hazard
+already recorded for `savepoint.rollback()`, which a naive replace matches inside the
+closed-set comment first.
+
+**Canonical stack smoke WAIVED this round, with the reason on record.** The orchestrator
+reproduced the failure independently at this exact head in a throwaway worktree: the cached
+pip layer does not hit and `pip install` fails TLS to `files.pythonhosted.org` for FastAPI.
+Root cause is that host pip uses a machine-wide corporate index which containers do not
+inherit, while the repository's Dockerfiles declare no index override. **That is out of
+scope for this PR and is logged as a separate pre-Wave-3 slice** (add a generic
+`ARG PIP_INDEX_URL` with no default). The internal feed URL must **never** be committed --
+it is Microsoft-internal infrastructure and this repository is public. The waiver does not
+weaken the evidence for this change: this PR has **zero diff** on all three Dockerfiles, on
+`requirements*.txt` and on `package-lock.json`, and its correctness evidence is host-side
+pytest against live PostgreSQL at the exact head under evaluation.

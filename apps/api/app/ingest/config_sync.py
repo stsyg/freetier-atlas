@@ -31,7 +31,16 @@ rows (F008 slice S2, see :func:`sync_coverage`); it never touches ``offer`` /
 ``offer_version`` / ``quota`` and opens no socket.
 
 The caller owns the transaction: :func:`sync_provider` uses ``session.flush()``
-(so the new provider id is available for its sources) but never commits.
+(so the new provider id is available for its sources) but never commits. Within
+that transaction the provider is nonetheless an **atomic unit**: all four writes
+run inside a SAVEPOINT that is rolled back, and the original exception re-raised
+unchanged, whenever any of them raises -- so a provider partially synced *by a
+failure in those four writes* is never left in the caller's transaction for it
+to commit. A failure raised while
+that SAVEPOINT is being *released* is outside the guarantee, because the writes
+have already joined the caller's transaction by then; see
+:func:`sync_provider` for that boundary and why it is documented rather than
+guarded.
 """
 
 from __future__ import annotations
@@ -681,18 +690,152 @@ def sync_provider(session: Session, config: ProviderConfig) -> SyncResult:
     declared ``coverage`` block (:func:`sync_coverage`, which runs after the
     sources so its ``source`` references resolve); both are themselves
     idempotent. The caller owns the transaction (this flushes but never commits).
+
+    **All four writes are one atomic unit — for any failure in those four
+    writes.** They run inside a SAVEPOINT which is
+    rolled back — and the original exception re-raised — when any of them
+    raises, so for any failure *in those four writes* the provider is either
+    fully synced or entirely untouched, and a half-synced provider is never
+    handed to the caller's transaction.
+
+    That guarantee covers failures *in the four writes*. It does not extend to a
+    failure raised while the SAVEPOINT is being **released** -- notably from an
+    ``after_transaction_end`` event listener, which SQLAlchemy dispatches after
+    the ``RELEASE SAVEPOINT`` has already succeeded. By then the four writes
+    belong to the caller's enclosing transaction and this function, which does
+    not own that transaction, can no longer revert them. The caller therefore
+    receives the original exception (identity and note handling are unchanged in
+    that path) but a subsequent ``commit()`` persists the provider anyway: a sync
+    reported as failed can still be committed as complete. No module under
+    ``apps/`` registered such a listener at the time of writing, verified by
+    inspection, so this is a library seam rather than a live defect — a
+    point-in-time observation, not a standing guarantee, and nothing in this
+    repository detects it becoming false. An automated check was attempted and
+    removed (see AMENDMENT 8 in ``agent-state/current_contract.json``); the claim
+    is deliberately an inspection result rather than an enforced invariant.
+    ``tests/integration/test_ingest_sync_savepoint.py`` pins the boundary itself.
+    See the comment at the ``savepoint.commit()`` call for why no guard is
+    applied here.
+
+    This makes the guarantee local to this function instead of a property of who
+    calls it. :func:`sync_coverage` protects the Q9-A evidence floor by *raising*
+    (:class:`CoverageFloorError`), which only prevents the erosion because the
+    flushed DELETEs die with the transaction. A caller shaped ``try:
+    sync_provider(...) except Exception: continue`` followed by a ``commit()``
+    -- the shape ``app.ingest.runner`` already uses per source, and the expected
+    shape of a batch runner over several providers -- would otherwise commit
+    exactly the erosion the raise was meant to prevent.
+
+    The savepoint is scoped to the whole provider unit rather than to the
+    coverage block alone, deliberately. On a *new* provider's first sync there is
+    no prior coverage to revert to, so a coverage-only savepoint would commit a
+    provider carrying **zero** coverage rows -- every category then reads
+    ``unknown`` and :func:`_assert_persisted_coverage_floor` cannot detect it,
+    which is worse than aborting. Provider-unit scope keeps the unit coherent
+    against a failure in the four writes: fully synced, or untouched, never
+    provider-without-coverage.
+
+    The exception is re-raised, never converted into a return value. Rolling back
+    and returning would hand the caller a ``SyncResult`` describing writes that
+    no longer exist -- *reporting success* for a sync that did not happen, a
+    silent degradation in place of a loud one. (The ``SyncResult`` itself holds
+    primitive ids and dataclasses, so it would remain readable after the
+    rollback; that is precisely what makes returning it dangerous rather than
+    merely broken.) The original exception reaches the caller unchanged in type
+    and identity whatever happens inside the failure path: a failing rollback is
+    attached to it as a note rather than replacing it, and if attaching the note
+    fails too that failure is discarded rather than allowed to displace it. So
+    ``CoverageFloorError`` still reaches the caller as itself.
     """
 
-    provider, provider_action = _sync_provider_row(session, config)
-    result = SyncResult(
-        provider_slug=config.provider.id,
-        provider_id=provider.id,
-        provider_action=provider_action,
-    )
-    for source_config in config.sources:
-        result.sources.append(_sync_source_row(session, source_config, provider.id))
-    result.categorisation = categorise_services(session, config)
-    result.coverage = sync_coverage(session, config)
+    savepoint = session.begin_nested()
+    try:
+        provider, provider_action = _sync_provider_row(session, config)
+        result = SyncResult(
+            provider_slug=config.provider.id,
+            provider_id=provider.id,
+            provider_action=provider_action,
+        )
+        for source_config in config.sources:
+            result.sources.append(_sync_source_row(session, source_config, provider.id))
+        result.categorisation = categorise_services(session, config)
+        result.coverage = sync_coverage(session, config)
+        # Releasing the SAVEPOINT is the last thing that can fail here, and a
+        # failure *in* the release (an ``after_transaction_end`` listener raising
+        # after ``RELEASE SAVEPOINT`` has already succeeded) is outside what a
+        # nested transaction can undo: the writes are the enclosing
+        # transaction's by then, and that transaction belongs to the caller. It
+        # is deliberately left unguarded. The options were measured on
+        # PostgreSQL, with the caller holding unrelated flushed work:
+        #   (a) mark the enclosing transaction rollback-only, so the caller's
+        #       commit raises instead of persisting. SQLAlchemy 2.0 exposes no
+        #       supported route: ``rollback_only`` is a ``join_transaction_mode``
+        #       value for externally-supplied connections, not a session flag,
+        #       and ``PendingRollbackError`` is reachable only by writing the
+        #       private ``SessionTransaction._state`` / ``_rollback_exception``.
+        #       Faking an internal state-machine transition would break silently
+        #       on a rename -- no test would go red until someone registered a
+        #       listener -- so the boundary would quietly become false again.
+        #       The public alternatives (``Session.rollback``/``invalidate``/
+        #       ``close``) all leave the caller's commit succeeding *silently*
+        #       and additionally discard the caller's own unrelated work, which
+        #       trades this narrow boundary for unbounded loss in the caller's
+        #       scope.
+        #   (b) narrow the window: impossible, the dangerous step is the
+        #       terminating one, so anything reordered after it inherits the
+        #       problem.
+        #   (d) own the transaction outright (or use a dedicated connection).
+        #       This is the only option that solves rather than reports, and it
+        #       is rejected on blast radius, not merit: it inverts the
+        #       caller-owns-the-transaction invariant held since F005 slice 1 and
+        #       breaks ``runner.py``'s per-source savepoints. Revisit it if a
+        #       listener is ever registered -- which nothing detects
+        #       automatically, so the trigger is inspection, not a test.
+        # So the boundary is documented rather than guarded.
+        savepoint.commit()
+    except BaseException as exc:
+        # Everything in this block exists to protect one thing: that ``exc`` --
+        # the original failure -- is what the caller receives, unchanged in type
+        # and identity. Only four statements here can raise, and they are a
+        # closed set: the ``savepoint.is_active`` read, ``savepoint.rollback()``,
+        # the ``exc.add_note(...)`` statement (whose f-string also invokes
+        # ``rollback_exc.__repr__``, dispatched just as virtually), and the bare
+        # ``raise``, which introduces nothing new. The first three are guarded
+        # below; nothing else in this block dispatches user- or library-supplied
+        # code, so there is no further masking path to find.
+        #
+        # The rollback is attempted unconditionally rather than gated on
+        # ``savepoint.is_active``: that flag is also False for a nested
+        # transaction the failure merely *deactivated* -- a flush IntegrityError
+        # leaves exactly that state -- which still needs its SAVEPOINT released,
+        # so gating on it would skip a rollback that is genuinely required. The
+        # flag is read for diagnosis only, and inside the guard so that even a
+        # raising ``is_active`` cannot displace the primary exception.
+        was_active: object = "unread"
+        try:
+            was_active = savepoint.is_active
+            savepoint.rollback()
+        except BaseException as rollback_exc:
+            try:
+                exc.add_note(
+                    "app.ingest.config_sync.sync_provider: rolling the provider "
+                    "SAVEPOINT back failed and was suppressed so it could not "
+                    f"displace this exception (savepoint.is_active={was_active}): "
+                    f"{rollback_exc!r}"
+                )
+            except BaseException:
+                # ``add_note`` is virtually dispatched, so a hostile or broken
+                # exception type can make it raise too. Discarding that failure
+                # is correct rather than lazy at this depth: the note *was* the
+                # channel for reporting a suppressed failure, so there is no
+                # remaining channel to report its own failure through, and any
+                # alternative (re-raising, logging into the exception) would put
+                # the primary exception back at risk. The primary exception is
+                # the thing that must survive; it does.
+                pass
+        # Re-raise unconditionally, and only ever the original: a caller must
+        # never receive a success-shaped result for a sync that was rolled back.
+        raise
     return result
 
 
