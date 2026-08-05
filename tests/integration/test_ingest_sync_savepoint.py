@@ -60,8 +60,10 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import subprocess
 import sys
+import tempfile
 import textwrap
 import uuid
 from collections.abc import Iterator
@@ -688,7 +690,10 @@ def test_no_after_transaction_end_listener_is_registered_in_the_app() -> None:
     """No new class-level ``after_transaction_end`` listener appears on import.
 
     The release boundary above is only reachable if something registers an
-    ``after_transaction_end`` listener, and nothing under ``apps/`` does. This is
+    ``after_transaction_end`` listener; no module under ``apps/`` did so at the
+    time of writing, verified by inspection. That is a point-in-time observation
+    rather than a standing property -- the two accepted limits below are exactly
+    the shapes the repository could not detect it losing. This is
     a **tripwire for the realistic regression** -- someone adding
     ``event.listen(Session, "after_transaction_end", ...)`` to a module -- and is
     deliberately not a proof that the condition holds; see the accepted limits
@@ -708,7 +713,22 @@ def test_no_after_transaction_end_listener_is_registered_in_the_app() -> None:
     on a ``Session`` subclass or via ``sessionmaker()``, and one made inside a
     function that import happens to call.
 
-    Three properties of the mechanism, each deliberate:
+    **The tripwire calibrates itself before it is believed.** A tripwire that can
+    silently watch nothing enforces nothing: changing the registry read by one
+    token, to ``after_transaction_create``, left this test green even with a real
+    class-level listener registered. So the probe registers a **sentinel**
+    listener of its own, asserts the read observes it, removes it and asserts the
+    baseline is restored -- all before the app-import delta is measured. The
+    sentinel's event name is written as a **literal**, deliberately not shared
+    with the constant in the read: a shared name would drift with it and
+    calibrate nothing. The same reasoning covers the other ways this could verify
+    nothing -- an empty or truncated sweep (the imported-count assertion), a
+    module that failed to import (the failure assertion), and a baseline sampled
+    *after* the imports rather than before, which would make the delta empty by
+    construction (a canary module, imported as part of the sweep, registers a
+    listener that must appear in the delta).
+
+    Three further properties of the mechanism, each deliberate:
 
     * it runs in a **subprocess with a fresh interpreter**, so the result cannot
       depend on whichever modules pytest happened to import first;
@@ -767,6 +787,18 @@ def test_no_after_transaction_end_listener_is_registered_in_the_app() -> None:
     )
     assert len(modules) > 20, f"import sweep looks too small to be meaningful: {len(modules)}"
 
+    canary_dir = tempfile.mkdtemp(prefix="f008-listener-probe-")
+    canary_name = "_f008_ordering_canary"
+    Path(canary_dir, f"{canary_name}.py").write_text(
+        "from sqlalchemy import event\n"
+        "from sqlalchemy.orm import Session\n"
+        "def _f008_ordering_canary_listener(*_args):\n"
+        "    return None\n"
+        'event.listen(Session, "after_transaction_end", _f008_ordering_canary_listener)\n',
+        encoding="utf-8",
+    )
+    swept = [*modules, canary_name]
+
     probe_source = textwrap.dedent(
         """
         import importlib
@@ -774,7 +806,11 @@ def test_no_after_transaction_end_listener_is_registered_in_the_app() -> None:
         import sys
 
         sys.path.insert(0, sys.argv[1])
+        sys.path.insert(0, sys.argv[3])
+        from sqlalchemy import event
         from sqlalchemy.orm import Session
+
+        CANARY_MARKER = "_f008_ordering_canary"
 
         def registered():
             # Direct, unguarded read: see this test's docstring for why a
@@ -786,24 +822,73 @@ def test_no_after_transaction_end_listener_is_registered_in_the_app() -> None:
                 for fn in fns
             }
 
+        # CALIBRATION. A registry read that drifts to another event -- one token
+        # is enough -- would watch nothing and pass forever. So prove the read
+        # observes a registration we make ourselves before trusting it to observe
+        # one we did not. The sentinel is registered against the event name as a
+        # *literal* here, deliberately not shared with the constant read above:
+        # sharing one name would let drift move both together and calibrate
+        # nothing.
+        def _sentinel(*_args):
+            return None
+
+        baseline = registered()
+        event.listen(Session, "after_transaction_end", _sentinel)
+        calibration_saw_sentinel = bool(registered() - baseline)
+        event.remove(Session, "after_transaction_end", _sentinel)
+        calibration_clean = registered() == baseline
+
+        # ORDERING POSITIVE CONTROL. ``before`` must be sampled *before* the
+        # sweep; taken after it, the delta is empty by construction and this
+        # test passes while observing nothing. The canary module is imported as
+        # part of the sweep and registers a class-level listener of its own, so
+        # a baseline sampled too late loses it from the delta and this fails.
         before = registered()
         failed = {}
+        imported = 0
         for name in json.loads(sys.argv[2]):
             try:
                 importlib.import_module(name)
             except BaseException as exc:
                 failed[name] = f"{type(exc).__name__}: {exc}"
-        print(json.dumps({"new": sorted(registered() - before), "failed": failed}))
+            else:
+                imported += 1
+        print(
+            json.dumps(
+                {
+                    "new": sorted(
+                        entry
+                        for entry in registered() - before
+                        if CANARY_MARKER not in entry
+                    ),
+                    "canary_seen": any(
+                        CANARY_MARKER in entry for entry in registered() - before
+                    ),
+                    "failed": failed,
+                    "imported": imported,
+                    "calibration_saw_sentinel": calibration_saw_sentinel,
+                    "calibration_clean": calibration_clean,
+                }
+            )
+        )
         """
     )
 
     completed = subprocess.run(
-        [sys.executable, "-c", probe_source, str(REPO_ROOT / "apps" / "api"), json.dumps(modules)],
+        [
+            sys.executable,
+            "-c",
+            probe_source,
+            str(REPO_ROOT / "apps" / "api"),
+            json.dumps(swept),
+            canary_dir,
+        ],
         capture_output=True,
         text=True,
         timeout=300,
         cwd=REPO_ROOT,
     )
+    shutil.rmtree(canary_dir, ignore_errors=True)
     assert completed.returncode == 0, (
         "the listener probe subprocess failed; it must run cleanly for its result "
         f"to mean anything.\nstdout: {completed.stdout}\nstderr: {completed.stderr}"
@@ -815,6 +900,38 @@ def test_no_after_transaction_end_listener_is_registered_in_the_app() -> None:
     assert outcome["failed"] == {}, (
         "modules failed to import during the listener sweep, so they were never "
         f"executed and this assertion would be vacuous: {outcome['failed']}"
+    )
+
+    # The tripwire must be shown to be watching the right event before its
+    # silence is read as evidence. Changing the registry read to another event
+    # -- for example after_transaction_create -- otherwise leaves this test
+    # green even with a real class-level listener registered.
+    assert outcome["calibration_saw_sentinel"], (
+        "CALIBRATION FAILED: the registry read did not observe a sentinel "
+        "after_transaction_end listener that this probe registered itself, so it "
+        "is watching the wrong event (or SQLAlchemy's registry layout changed) "
+        "and its silence about the app package means nothing. Fix the read; do "
+        "not relax this assertion."
+    )
+    assert outcome["calibration_clean"], (
+        "CALIBRATION FAILED: removing the sentinel did not restore the baseline, "
+        "so the delta below is measured against a polluted snapshot."
+    )
+
+    # A module that never executed registers nothing, so an empty or truncated
+    # sweep would make the delta below vacuous in exactly the same way.
+    assert outcome["canary_seen"], (
+        "ORDERING CHECK FAILED: the canary module registers a class-level "
+        "after_transaction_end listener during the sweep, and it did not appear "
+        "in the delta. The baseline snapshot is therefore not being taken before "
+        "the imports, which makes the delta empty by construction and the "
+        "assertion below vacuous."
+    )
+
+    assert outcome["imported"] == len(swept), (
+        f"the sweep executed {outcome['imported']} of {len(swept)} modules; a "
+        "module that did not run cannot register anything, so the assertion "
+        "below would be vacuous"
     )
 
     assert outcome["new"] == [], (

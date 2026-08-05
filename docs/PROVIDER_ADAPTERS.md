@@ -166,7 +166,8 @@ savepoint covers the whole provider unit, not just the coverage block — a cove
 would commit a new provider with zero coverage rows. The one failure this does not cover is one
 raised while the SAVEPOINT is being *released* — an `after_transaction_end` listener, dispatched once
 `RELEASE SAVEPOINT` has already succeeded — because the writes have joined the caller's transaction
-by then; nothing under `apps/` registers such a listener, and a test asserts that importing the whole app
+by then; no module under `apps/` registered such a listener at the time of writing, verified by
+inspection -- a point-in-time observation rather than a standing property -- and a test asserts that importing the whole app
 package in a fresh interpreter registers no new *class-level* `after_transaction_end` listener on
 `Session` or a subclass, by querying SQLAlchemy's own listener registry rather than scanning source
 text. That check has two documented limits -- an instance-level registration and one deferred inside a

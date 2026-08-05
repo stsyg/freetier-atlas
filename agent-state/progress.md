@@ -1397,3 +1397,89 @@ evaluator's. Both are now named explicitly so the figures are reproducible.
   L3 subclass RED, L4 called-at-import RED
 - residue zero; alembic head `0011_provider_category_coverage`, single head
 - every mutation restored byte-for-byte, sha256 verified
+## F008 round r5 -- remediating the r4b Level-2 FAIL (F-12, F-13)
+
+r4b evaluation returned FAIL with two findings. Criteria 1-5 PASS for the fourth
+consecutive round; the implementation and the accepted two-shape boundary hold
+and are not in question. **`sync_provider()`'s logic did not change.**
+
+### F-12 -- the tripwire was not self-calibrating
+
+The evaluator changed **only** the probe's registry read, from
+`after_transaction_end._clslevel` to `after_transaction_create._clslevel`. Full
+live suite stayed **GREEN 1157/2**. Combined with a real class-level,
+import-time `event.listen(Session, "after_transaction_end", ...)` in an app
+module: still **GREEN 1157/2**. The exact regression the test claims to trip,
+defeated by one token of drift. A tripwire that can silently watch nothing
+enforces nothing -- a fair criterion-6 failure, and not a narrower instance of
+the accepted instance/deferred limits.
+
+**Fixed per the evaluator's design.** After the baseline snapshot the probe
+registers a known **sentinel** `after_transaction_end` listener, asserts the
+selected registry observes it, removes it, asserts the baseline is restored, and
+only then measures the app-import delta.
+
+One detail that decides whether the calibration is real: the sentinel's event
+name is written as a **literal**, deliberately *not* sharing the constant used in
+the read. Had both come from one name, drift would move them together and the
+calibration would pass while watching the wrong event -- reproducing the very
+defect in the mechanism meant to detect it.
+
+M9 (wrong-target read alone) and M10 (wrong-target plus a real class-level
+import-time registration) both **RED**, failing on the calibration assertion.
+
+### F-12 generalised -- a fourth silent-success path, found and closed
+
+The orchestrator asked me to confirm the probe had no *other* way to verify
+nothing. Four paths probed:
+
+| silent-success path | before | after |
+|---|---|---|
+| empty module list | RED | RED |
+| sweep loop neutered | RED | RED |
+| module failed to import | RED (r4) | RED |
+| **baseline snapshot taken *after* the imports** | **GREEN** | **RED** |
+
+The last was a **genuine remaining hole**, found by the generalisation rather
+than named in the brief: sampling the baseline after the sweep makes the delta
+empty by construction, and every assertion passes while observing nothing.
+
+Closed with an **ordering positive control**: a canary module, written to a temp
+dir and imported as part of the sweep, registers a class-level listener of its
+own which must appear in the delta. A baseline sampled too late loses it and the
+test fails. The canary is filtered out of the offender list so it cannot mask a
+real registration, and its temp dir is removed after the run (verified: zero
+residue).
+
+### F-13 -- four absolute clauses made point-in-time
+
+Each of `config_sync.py`, `DATA_MODEL.md`, `PROVIDER_ADAPTERS.md` and the
+listener test's docstring asserted flatly that nothing under `apps/` registers
+such a listener. True today, but an **unenforced standing claim**: the repository
+cannot detect it becoming false through either accepted limit, so the sentence
+quietly outlives its own verification. For a project whose central rule is never
+to publish an unsupported claim, a present-tense assertion the code cannot detect
+losing is the wrong shape however true it is right now.
+
+All four rewritten as explicitly point-in-time and inspection-based -- "no module
+under `apps/` registered such a listener at the time of writing, verified by
+inspection" -- with the scoped tripwire and accepted-limits sentences that follow
+left intact. Contract history left alone: AMENDMENT 6 supersedes AMENDMENT 5
+cleanly and no live clause overstates.
+
+### Measured (r5)
+
+- savepoint suite **8 passed**
+- live Postgres **1157 passed / 2 skipped** (identical to r4b)
+- M1 RED (5f/3p), M2 RED (6f/2p), M3 RED (5f/3p), M4 RED (4f/4p), M5 RED (1f/7p),
+  M6a RED (4f/4p, rollback call), M6b RED (1f/7p, inner add_note guard),
+  M7 RED (1f/7p)
+- **M9 RED, M10 RED** (calibration assertion), V1/V2/V3 all RED
+- detection shapes all RED: literal, `@listens_for`, alias, dynamic name,
+  `from sqlalchemy.event import listen`, `getattr`, `Session` subclass,
+  `sessionmaker()`, registration in a function called at import
+- accepted limits still GREEN as documented: instance-level, deferred-never-called
+- planted import error fails loudly
+- residue zero, no probe temp dirs left behind; alembic head
+  `0011_provider_category_coverage`, single head
+- every mutation restored byte-for-byte, sha256 verified

@@ -117,7 +117,8 @@ belong to the caller's enclosing transaction and `sync_provider()` — which doe
 transaction — can no longer revert them. The caller still receives the original exception, with the
 same identity and note handling, but a subsequent `commit()` **persists the provider anyway**: a sync
 reported as failed can still be committed as complete. This is a library seam, not a live defect —
-nothing under `apps/` registers such a listener, and a test asserts that importing the whole app
+no module under `apps/` registered such a listener at the time of writing, verified by inspection --
+a point-in-time observation rather than a standing property -- and a test asserts that importing the whole app
 package in a fresh interpreter registers no new *class-level* `after_transaction_end` listener on
 `Session` or a subclass, by querying SQLAlchemy's own listener registry. That is a tripwire for the
 realistic regression rather than a proof: a listener attached to an individual `Session` instance, or

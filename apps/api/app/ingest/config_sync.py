@@ -706,9 +706,11 @@ def sync_provider(session: Session, config: ProviderConfig) -> SyncResult:
     not own that transaction, can no longer revert them. The caller therefore
     receives the original exception (identity and note handling are unchanged in
     that path) but a subsequent ``commit()`` persists the provider anyway: a sync
-    reported as failed can still be committed as complete. Nothing under
-    ``apps/`` registers such a listener, so this is a library seam rather than a
-    live defect; ``tests/integration/test_ingest_sync_savepoint.py`` pins the
+    reported as failed can still be committed as complete. No module under
+    ``apps/`` registered such a listener at the time of writing, verified by
+    inspection, so this is a library seam rather than a live defect -- a
+    point-in-time observation, not a standing guarantee;
+    ``tests/integration/test_ingest_sync_savepoint.py`` pins the
     boundary, and asserts that importing ``apps/api/app`` registers no new
     *class-level* ``after_transaction_end`` listener on ``Session`` or a subclass
     -- a tripwire for the realistic regression, with two limits documented in
