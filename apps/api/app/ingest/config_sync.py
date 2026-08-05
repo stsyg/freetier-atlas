@@ -34,8 +34,9 @@ The caller owns the transaction: :func:`sync_provider` uses ``session.flush()``
 (so the new provider id is available for its sources) but never commits. Within
 that transaction the provider is nonetheless an **atomic unit**: all four writes
 run inside a SAVEPOINT that is rolled back, and the original exception re-raised
-unchanged, whenever any of them raises -- so a partially synced provider is
-never left in the caller's transaction for it to commit. A failure raised while
+unchanged, whenever any of them raises -- so a provider partially synced *by a
+failure in those four writes* is never left in the caller's transaction for it
+to commit. A failure raised while
 that SAVEPOINT is being *released* is outside the guarantee, because the writes
 have already joined the caller's transaction by then; see
 :func:`sync_provider` for that boundary and why it is documented rather than
@@ -692,8 +693,9 @@ def sync_provider(session: Session, config: ProviderConfig) -> SyncResult:
 
     **All four writes are one atomic unit.** They run inside a SAVEPOINT which is
     rolled back -- and the original exception re-raised -- when any of them
-    raises, so the provider is either fully synced or entirely untouched and a
-    half-synced provider is never handed to the caller's transaction.
+    raises, so for any failure *in those four writes* the provider is either
+    fully synced or entirely untouched, and a half-synced provider is never
+    handed to the caller's transaction.
 
     That guarantee covers failures *in the four writes*. It does not extend to a
     failure raised while the SAVEPOINT is being **released** -- notably from an
@@ -723,8 +725,9 @@ def sync_provider(session: Session, config: ProviderConfig) -> SyncResult:
     no prior coverage to revert to, so a coverage-only savepoint would commit a
     provider carrying **zero** coverage rows -- every category then reads
     ``unknown`` and :func:`_assert_persisted_coverage_floor` cannot detect it,
-    which is worse than aborting. Provider-unit scope keeps the unit coherent:
-    fully synced, or untouched, never provider-without-coverage.
+    which is worse than aborting. Provider-unit scope keeps the unit coherent
+    against a failure in the four writes: fully synced, or untouched, never
+    provider-without-coverage.
 
     The exception is re-raised, never converted into a return value. Rolling back
     and returning would hand the caller a ``SyncResult`` describing writes that

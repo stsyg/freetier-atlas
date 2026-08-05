@@ -158,8 +158,8 @@ database invariant rather than only a config-load one. If fewer than three persi
 evidence-backed, `sync_coverage()` raises `CoverageFloorError`; zero rows is the maximal erosion, not
 an exemption. The shortfall does not commit, and that is structural rather than a property of the
 callers: `sync_provider()` wraps all four of its writes in a **SAVEPOINT** which it rolls back before
-re-raising, whichever of the four raised, so a failed sync leaves the provider entirely untouched
-even if the caller swallows the exception and commits. The original exception is re-raised unchanged
+re-raising, whichever of the four raised, so a sync that fails in those four writes leaves the
+provider entirely untouched even if the caller swallows the exception and commits. The original exception is re-raised unchanged
 in type and identity; a rollback that itself fails is attached to it as a note rather than replacing
 it, and a note that itself fails to attach is discarded rather than allowed to displace it. The
 savepoint covers the whole provider unit, not just the coverage block — a coverage-only savepoint

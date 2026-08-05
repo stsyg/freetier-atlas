@@ -1190,3 +1190,38 @@ Measured figures for r3:
 
 Scope: four changed files plus the two agent-state ledgers, no migration, no new
 dependency, F008 remains `passes:false`.
+
+### r3 follow-up -- scope moved into the claim clause (prose only)
+
+Every sentence asserting atomicity now carries its scope *in the clause itself*
+rather than being qualified a few sentences later, so none of them is
+unconditional when read standing alone -- which is how this surface has been
+evaluated three rounds running. The carve-out paragraphs are unchanged; no
+information was added or removed.
+
+Five sites, all four claim sites plus one consequential clause:
+
+- module header: "a provider partially synced *by a failure in those four
+  writes* is never left in the caller's transaction"
+- `sync_provider` docstring: "for any failure *in those four writes* the
+  provider is either fully synced or entirely untouched"
+- the provider-unit scope rationale in the same docstring: "keeps the unit
+  coherent *against a failure in the four writes*"
+- `DATA_MODEL.md`: "fully synced or entirely untouched **for any failure in
+  those four writes**", and the following `try/except: continue` clause scoped
+  to "against such a failure" rather than reading absolutely on its own
+- `PROVIDER_ADAPTERS.md`: "a sync that fails in those four writes leaves the
+  provider entirely untouched even if the caller swallows the exception and
+  commits" -- this replaces the exact string the r2 evaluation quoted as the
+  falsified strongest claim, which is now absent from the tree
+
+One site was reviewed and deliberately left alone: the docstring of
+`test_a_caller_that_swallows_the_failure_and_commits_persists_nothing` says
+"nothing was persisted", but it is scoped in its own sentence to the specific
+coverage-floor failure it injects, so it does not assert unconditional
+atomicity.
+
+Re-verified after the edit: savepoint suite 8 passed; mutation M7 still RED;
+offline 1005 / 154; live PostgreSQL 1157 / 2; vitest 110; both gates exit 0;
+residue zero; alembic head `0011_provider_category_coverage`, single head. Prose
+only -- three files, no code, no test changes, F008 remains `passes:false`.

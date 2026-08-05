@@ -97,8 +97,9 @@ The guarantee is now structural rather than a property of the call chain. `sync_
 four of its writes — the provider row, the source rows, `categorise_services()` and
 `sync_coverage()` — inside a **SAVEPOINT**, which it rolls back before re-raising the original
 exception, whichever of the four raised it. A provider is therefore fully synced or entirely
-untouched, and a caller shaped `try: sync_provider(...) except Exception: continue` followed by a
-`commit()` persists nothing of the failed provider. The savepoint is scoped to the provider unit, not
+untouched **for any failure in those four writes**, and against such a failure a caller shaped `try:
+sync_provider(...) except Exception: continue` followed by a `commit()` persists nothing of the
+failed provider. The savepoint is scoped to the provider unit, not
 to the coverage block alone: a coverage-only savepoint would commit a **new** provider carrying zero
 coverage rows, which reads as `unknown` everywhere and which the persisted floor check cannot detect.
 The exception is re-raised unchanged in type and identity, never turned into a return value, so a
