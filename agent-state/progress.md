@@ -1688,3 +1688,182 @@ exits 0. `docker-compose.yml` hardcodes the `DATABASE_URL` default instead of
 deriving it from `POSTGRES_USER`/`POSTGRES_DB`, so overriding those alone
 starts a database the API cannot authenticate against; this is now documented
 in `docs/LOCAL_DEVELOPMENT.md`.
+
+## infra: derive DATABASE_URL from POSTGRES_*, and validate Python by running it (branch `stsyg-fix-dev-env-db-url-python-detect`)
+
+Two developer-environment defects that the preceding stack-port slice observed
+and deliberately left unfixed. Both were reproduced on `ce2d58d` **before** any
+fix; a fix whose failure mode was never observed is not evidence. Measured
+facts are marked **[M]**.
+
+**Defect A - `DATABASE_URL` ignored `POSTGRES_USER` / `POSTGRES_DB`.** Lines 44,
+102 and 127 of `docker-compose.yml` hardcoded `atlas:atlas@postgres:5432/atlas`
+while lines 15-17 and the healthcheck on line 23 interpolated `POSTGRES_USER` /
+`POSTGRES_DB`. Overriding only the `POSTGRES_*` variables therefore initialised
+the database with one set of credentials and dialled it with another.
+
+**[M] Reproduction.** With a `.env` carrying only ports the stack came up
+healthy (`STACK UP: API is live at http://localhost:8071/health`, exit 0). After
+`docker compose down --volumes` and adding `POSTGRES_USER=probeuser`,
+`POSTGRES_PASSWORD=probepass`, `POSTGRES_DB=probedb`, `stack-up.sh` exited **1**
+with `dependency failed to start: container ftadbfix-api-1 is unhealthy`, and
+the api log ended, roughly twenty-five frames down a SQLAlchemy traceback, in:
+
+```
+sqlalchemy.exc.OperationalError: (psycopg.OperationalError) connection failed:
+connection to server at "172.24.0.2", port 5432 failed:
+FATAL:  password authentication failed for user "atlas"
+```
+
+The volume removal matters: Postgres only reads `POSTGRES_USER` when it
+initialises an empty data directory, so on a reused volume the defect hides.
+
+**The fix, and the evidence that chose it.** The nested form
+`${DATABASE_URL:-postgresql+psycopg://${POSTGRES_USER:-atlas}:${POSTGRES_PASSWORD:-atlas}@postgres:5432/${POSTGRES_DB:-atlas}}`
+was **tested before adoption, not assumed** - Compose's handling of `${}` inside
+a default value is version-dependent. It was first exercised in a throwaway
+compose file, then verified on the real file. **[M] On Docker Compose v5.0.1**,
+`docker compose --env-file <case> config --format json` resolved all four cases
+exactly as intended, with **zero** unresolved braces, and api / worker /
+scheduler always agreeing:
+
+| case | api/worker/scheduler resolve to | postgres env | healthcheck |
+|---|---|---|---|
+| no overrides | `atlas:atlas@postgres/atlas` | `atlas/atlas/atlas` | `pg_isready -U atlas -d atlas` |
+| `POSTGRES_*` overridden | `probeuser:probepass@postgres/probedb` | `probeuser/probepass/probedb` | `pg_isready -U probeuser -d probedb` |
+| whole `DATABASE_URL` | `extuser:extpw@db.example.com/extdb` | `atlas/atlas/atlas` | `pg_isready -U atlas -d atlas` |
+| both | `extuser:extpw@db.example.com/extdb` | `probeuser/probepass/probedb` | `pg_isready -U probeuser -d probedb` |
+
+The escape hatch is intact: a whole-string `DATABASE_URL` still wins over every
+part. In the last two rows the services deliberately do **not** match the local
+`postgres` service - that is the point of pointing them at an external database,
+not an inconsistency.
+
+**[M] End to end.** With `POSTGRES_USER` / `POSTGRES_PASSWORD` / `POSTGRES_DB`
+overridden - the exact configuration that failed above - `stack-up.sh` exited
+**0** and `stack-smoke.sh` reported **15 PASS / 0 FAIL**.
+
+**Defect B - presence was mistaken for function.** `bootstrap-dev.sh:13`,
+`check-env.sh:35`, `init.sh:36-37` and `smoke.sh:36-37` selected an interpreter
+with `command -v python3` and then captured its output as a version string.
+`command -v` never executes the file, so its exit status was never observed.
+Under Git Bash on this machine `python3` resolves to the Microsoft Store
+execution-alias stub, which prints an advertisement and exits 49; the real
+interpreter is `python` at `C:\Python313`.
+
+**[M] Reproduction on `ce2d58d`.** `check-env.sh` printed
+`[ok]      Python: Python was not found; run without arguments to install from
+the Microsoft Store...`, then `ENVIRONMENT CHECK PASSED`, exit **0** - the error
+text captured as the version.
+
+**[M] A finding the brief did not anticipate, and which is worse.** `init.sh`
+and `smoke.sh` are not merely cosmetic on this machine: they **fail outright**,
+exit **1**, printing the Store advertisement with no explanation - a misleading
+"Python was not found" while a working `python` sits on PATH. These are the
+canonical initialisation and smoke scripts named in the session startup
+protocol. Under the exit-0 sabotage below they are worse still: they print
+`Agent-state JSON syntax: ok` while the "interpreter" parsed nothing. That is a
+fake success path in a validation script.
+
+**The fix** adopts the pattern already merged in `scripts/stack-env.sh`
+(`_stack_python`): try `python3`, `python`, `py` in turn and accept a candidate
+only when it evaluates a trivial program and prints a sentinel **on stdout**.
+Validation is on OUTPUT, not on presence and not on exit status.
+
+**[M] B-sabotage - the decisive control.** Stubs first on `PATH` for **all** of
+`python3`, `python` and `py`, each printing the Store advertisement and exiting
+**0** so the exit status carries no signal whatsoever. `ce2d58d`'s scripts were
+extracted with `git show` and byte-length-verified against the object store
+(1887 / 2450 / 2462 bytes) before use. Old and new ran under one identical
+sabotaged `PATH`:
+
+| script | old (`ce2d58d`) | new |
+|---|---|---|
+| `check-env.sh` | `ENVIRONMENT CHECK PASSED`, exit **0** | `ENVIRONMENT CHECK FAILED: missing Python`, exit **1** |
+| `init.sh` | `Agent-state JSON syntax: ok`, exit **0** | `ERROR: no working Python interpreter was found`, exit **1** |
+| `smoke.sh` | `Agent-state JSON syntax: ok`, exit **0** | `ERROR: no working Python interpreter was found`, exit **1** |
+| `bootstrap-dev.sh` | exit **127**, `.venv/Scripts/python.exe: No such file or directory` | exit **1**, naming the interpreter as the cause |
+
+The first three diverge, which is what makes the control worth running. The
+fourth does **not** change pass/fail - it failed before and fails now - and is
+recorded as an improvement in diagnosis only, not as a defect fixed. Saying
+otherwise would inflate the result.
+
+**[M] B-positive.** With the real interpreter on PATH the fixed `check-env.sh`
+reports `[ok]      Python: Python 3.13.14 (/c/Python313/python)` and exits 0,
+and `init.sh` / `smoke.sh` both exit **0** where they exited 1 before.
+
+**Behaviour change, stated plainly.** Where no working interpreter exists these
+scripts now FAIL where three of them previously reported success. On a machine
+whose only Python is a Store alias stub, `check-env.sh` goes from green to red.
+That is the intended point of the change, not a regression. `check-env.sh` is
+**not** in CI - no workflow references it; it is referenced only by
+`docs/LOCAL_DEVELOPMENT.md` and `docs/CODEX_ENVIRONMENT.md`. Its cost was that
+it is the documented first step every fresh agent session runs.
+
+**[M] Contamination control.** Other sessions run stacks on this machine; one
+occupied 8000/8080 throughout. All verification ran under
+`COMPOSE_PROJECT_NAME=ftadbfix` on `API_PORT=8071` / `WEB_PORT=8171`. A green
+smoke alone would prove nothing, so the result was made to move: stopping
+**only** this project's api took the smoke from 15 PASS / 0 FAIL to **12 PASS /
+3 FAIL** (API liveness, API readiness, web-proxies-API), exit 1, while
+`http://localhost:8000/health` stayed **200** throughout. A probe talking to
+another session's API could not have produced that movement. Restarting the api
+restored `:8071/health` to 200.
+
+**[M] A measurement error I made, and caught.** The first sabotage run extracted
+the old scripts with PowerShell `git show | Set-Content -NoNewline`, which joins
+the pipeline's lines *without* newlines and collapsed each script to a single
+line. All three "old" scripts produced empty output and exit **0** - which
+happened to match the exit 0 I was expecting, and would have been recorded as a
+passing control. The byte-count check against `git cat-file` is what exposed it.
+Re-extracted with `git show` inside bash, the sandbox copies matched the object
+store exactly and the real control ran. A measurement that agrees with your
+hypothesis for the wrong reason is the most dangerous kind.
+
+**Other changes.** `.env.example` set `DATABASE_URL` explicitly, so copying it
+to `.env` would have silently re-armed defect A by overriding the new
+derivation; the line is now commented out, with the escape-hatch semantics and
+the URL-reserved-character caveat documented. `docs/LOCAL_DEVELOPMENT.md` lost
+the instruction to "set `DATABASE_URL` to match", which the fix makes false, and
+gained the execute-to-validate rule.
+
+**Known limitation, disclosed.** The parts are substituted into the URL
+literally, so a `POSTGRES_PASSWORD` containing characters reserved in a URL
+(`@ : / ? # %`) would corrupt it, where the old hardcoded default could not.
+Documented in both `.env.example` and `docs/LOCAL_DEVELOPMENT.md`; the
+whole-string override remains the answer for such values. INFERENCE, untested:
+the nested-interpolation syntax is verified on Compose v5.0.1 only, so an
+appreciably older Compose is unproven.
+
+**Pre-existing defects observed and deliberately NOT fixed**, to keep the diff
+reviewable: (1) `scripts/check-env.ps1:51` has the same presence-not-function
+shape - it tests `python` only, which happens to be the real interpreter on this
+machine, so it does not misreport here, but a stubbed `python` would fool it
+identically; (2) `scripts/init.ps1` and `scripts/smoke.ps1` share the pattern;
+(3) `scripts/init.sh` and `scripts/smoke.sh` remain near-duplicates of each
+other by construction, which is why the interpreter helper is now duplicated in
+four scripts rather than centralised - each is a standalone entry point and
+restructuring them was out of scope.
+
+**Guardrails.** `apps/api/**`, `apps/web/**`, `tests/**`, `.github/workflows/**`,
+`scripts/stack-env.*`, `scripts/stack-up.*`, `scripts/stack-smoke.*`,
+`scripts/stack-down.*`, `scripts/check_urls.py`, `scripts/url-allowlist.txt`,
+`agent-state/feature_list.json` and `agent-state/evaluation.json` are all **zero
+diff** versus `main`, each verified with `git diff --numstat main -- <path>`.
+`url-allowlist.txt` was not extended. No migration; no dependency change; no
+`passes` flag touched - this is infrastructure, not a ledger feature, following
+the precedent of the three preceding infrastructure slices.
+
+**Cleanup.** Torn down scoped to `COMPOSE_PROJECT_NAME=ftadbfix` only, with
+`--volumes --remove-orphans`; nothing global was pruned and other sessions'
+stacks were confirmed still running afterwards. The probe `.env` was deleted (it
+is git-ignored and was never staged).
+
+**Attestations.** Did **not** merge and did **not** open a pull request; owner
+authorisation pending. No internal package-feed or registry hostname was written
+into any tracked file, commit message or report - the values used during the
+image builds were read from this machine's own `pip` and `npm` configuration at
+run time and never printed.
+
+**Next action:** owner review, then open the PR.

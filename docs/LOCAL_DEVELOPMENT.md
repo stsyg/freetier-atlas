@@ -20,6 +20,16 @@ scripts/check-env.sh      # or: pwsh -File scripts/check-env.ps1
 The check fails with an actionable message if a runtime is missing or the Docker
 daemon is not reachable. It never prints secrets or full environment dumps.
 
+Python is validated by **running** it, not by finding it on `PATH`. Windows ships
+`python3` / `python` execution-alias stubs that resolve on `PATH` but only print
+a Microsoft Store advertisement; under Git Bash such a stub is the first
+candidate found. The scripts try `python3`, `python` and `py` in turn and accept
+one only when it evaluates a trivial program and prints the expected sentinel, so
+the reported version always belongs to an interpreter that can actually execute
+code. If no candidate works, the check now FAILS rather than reporting the
+advertisement as a version — install a real interpreter, or disable the alias
+under Settings > Apps > Advanced app settings > App execution aliases.
+
 ## One-time bootstrap
 
 ```bash
@@ -111,10 +121,18 @@ same key in `.env`. If the scripts cannot read Compose's model they fall back to
 the same defaults as before, but they say so on stderr rather than resolving a
 wrong value silently.
 
-If you override `POSTGRES_USER` or `POSTGRES_DB`, set `DATABASE_URL` to match.
-Compose does not derive one from the other, so changing only the former leaves
-the API authenticating with the default credentials against a database that no
-longer accepts them.
+`DATABASE_URL` is **derived** from `POSTGRES_USER`, `POSTGRES_PASSWORD` and
+`POSTGRES_DB`, so overriding those alone gives a consistent stack: the same
+credentials initialise the database, drive its healthcheck, and are dialled by
+the api, worker and scheduler services.
+
+Setting `DATABASE_URL` itself still overrides the whole string and wins over
+every part — that is the escape hatch for pointing the services at a database
+outside the Compose project.
+
+The parts are substituted into the URL literally, so a password containing
+characters that are reserved in a URL (`@ : / ? # %`) must be percent-encoded,
+or `DATABASE_URL` set explicitly instead.
 
 Variable names (values live in your environment, not the repo):
 
