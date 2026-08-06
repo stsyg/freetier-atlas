@@ -3,15 +3,19 @@
 #
 # Runs `docker compose up -d --build` for the postgres and api services and
 # waits until the API liveness endpoint responds. Resolves the repository root
-# from this script's own path.
+# from this script's own path, and the API host port from Compose's own resolved
+# model so a port set only in .env is honoured.
 set -uo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd -- "${SCRIPT_DIR}/.." && pwd)"
 cd -- "${REPO_ROOT}"
 
+# shellcheck source=scripts/stack-env.sh
+. "${SCRIPT_DIR}/stack-env.sh"
+
 TIMEOUT_SECONDS="${STACK_UP_TIMEOUT:-120}"
-API_PORT="${API_PORT:-8000}"
+API_PORT="$(stack_port api 8000 API_PORT 8000)"
 HEALTH_URL="http://localhost:${API_PORT}/health"
 
 # Package-index overrides are passed to the image builds by docker-compose.yml,
