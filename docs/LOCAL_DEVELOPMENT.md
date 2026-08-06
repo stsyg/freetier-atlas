@@ -44,6 +44,53 @@ automatically (no lockfile changes needed):
 - The web Docker image: set `NPM_REGISTRY=<your-feed>` in `.env`; it is passed to
   the image build as a build arg (defaults to the public registry).
 
+### Python package index (mirrors / proxies)
+
+The `api` and `worker` images install their dependencies with `pip` from **public
+PyPI** by default, so they build anywhere with no configuration. If your network
+blocks or mirrors PyPI, point the builds at your approved feed with these build
+args, which both Dockerfiles declare:
+
+| Build arg | pip equivalent |
+| --- | --- |
+| `PIP_INDEX_URL` | `--index-url` |
+| `PIP_EXTRA_INDEX_URL` | `--extra-index-url` |
+| `PIP_TRUSTED_HOST` | `--trusted-host` (for a feed whose TLS chain the base image does not trust) |
+
+They are declared with **no default**. A build arg that is never supplied is
+absent from the build environment rather than set to an empty string, so leaving
+them alone reproduces the previous public-PyPI behaviour exactly — the
+`pip install` line in each Dockerfile is unchanged and needs no conditional
+flags, because pip reads all three names natively from its environment.
+
+Via Compose (`scripts/stack-up.sh`, `stack-up.ps1`, or `docker compose build`),
+export the variable or set it in `.env`; Compose forwards it to the `api`,
+`worker`, and `scheduler` builds only when it is set:
+
+```bash
+export PIP_INDEX_URL=https://packages.example.com/pypi/simple
+scripts/stack-up.sh
+```
+
+Or for a single image, without involving `.env` at all:
+
+```bash
+docker build -f apps/api/Dockerfile \
+  --build-arg PIP_INDEX_URL=https://packages.example.com/pypi/simple .
+```
+
+Both URLs above are **placeholders**. Feed URLs are environment-specific and
+often private, so no default is committed and none should be added: supply yours
+at build time.
+
+One caveat worth knowing: a value passed this way is recorded in the built
+image's layer history (`docker history --no-trunc` shows it on the `ARG` entry
+and on every `RUN` in its scope, even under BuildKit). It does **not** appear in
+`docker inspect` and is **not** present in the running container's environment,
+but treat an image built against a private feed as carrying that feed's name —
+never put credentials in the URL, and don't push such an image to a public
+registry.
+
 ## Environment configuration
 
 Copy the example environment file and adjust if needed:
@@ -64,6 +111,8 @@ Variable names (values live in your environment, not the repo):
 - `WORKER_POLL_INTERVAL_SECONDS`, `SCHEDULER_INTERVAL_SECONDS`, `HEARTBEAT_STALE_SECONDS`
 - `WEB_PORT` — host port for the nginx-served web frontend (default `8080`)
 - `NPM_REGISTRY` — npm registry used when building the web image (default public)
+- `PIP_INDEX_URL`, `PIP_EXTRA_INDEX_URL`, `PIP_TRUSTED_HOST` — optional Python
+  package index overrides for the api/worker image builds (default public PyPI)
 
 ## The development stack
 

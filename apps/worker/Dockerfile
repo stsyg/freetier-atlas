@@ -13,6 +13,16 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
+# Optional package-index overrides for networks that cannot reach public PyPI.
+# Declared with NO default, exactly as in apps/api/Dockerfile: an unsupplied
+# build arg is absent from the build environment rather than empty, so an
+# unconfigured build resolves from public PyPI exactly as before and the
+# `pip install` below is unchanged. Supplied values are read natively by pip
+# from its environment. Never commit a value.
+ARG PIP_INDEX_URL
+ARG PIP_EXTRA_INDEX_URL
+ARG PIP_TRUSTED_HOST
+
 # Install runtime dependencies first for better layer caching.
 COPY apps/worker/requirements.txt /app/requirements.txt
 RUN pip install -r /app/requirements.txt

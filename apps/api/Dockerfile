@@ -12,6 +12,20 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
+# Optional package-index overrides for networks that cannot reach public PyPI
+# (corporate proxies, mirrors, air-gapped feeds). They are deliberately declared
+# with NO default: a build arg that is declared but never supplied is absent
+# from the build environment rather than set to an empty string, so an
+# unconfigured build resolves from public PyPI exactly as it did before these
+# lines existed — the `pip install` below is unchanged. When a value IS supplied
+# (`docker build --build-arg PIP_INDEX_URL=...`, or the same-named variable in
+# the environment `docker compose` runs in) pip picks these names up natively
+# from its environment, so no flag plumbing is needed. Never commit a value:
+# feeds are site-specific and frequently private.
+ARG PIP_INDEX_URL
+ARG PIP_EXTRA_INDEX_URL
+ARG PIP_TRUSTED_HOST
+
 # Install runtime dependencies first for better layer caching.
 COPY apps/api/requirements.txt /app/requirements.txt
 RUN pip install -r /app/requirements.txt
