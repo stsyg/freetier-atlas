@@ -62,6 +62,12 @@ jobs:
       - name: Scan tracked files against baseline
         shell: bash
         run: git ls-files -z | xargs -0 detect-secrets-hook --baseline .secrets.baseline
+      # Disclosure guard: every URL host in a tracked file must be on the
+      # reviewed public allowlist. Stdlib-only, so it needs no install step.
+      # Kept inside this job rather than a new one so the existing required
+      # check name is unchanged.
+      - name: URL host allowlist
+        run: python scripts/check_urls.py
 
   dependencies:
     name: Dependency audit

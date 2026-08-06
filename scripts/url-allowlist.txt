@@ -1,0 +1,75 @@
+# FreeTier Atlas URL host allowlist.
+#
+# Consumed by scripts/check_urls.py. Every http:// or https:// URL in a tracked
+# file must resolve to a host listed here, or the check fails.
+#
+# This is deliberately an ALLOWLIST, never a denylist. A denylist would require
+# committing the very hostnames we are trying to keep out of a public repository,
+# which would re-disclose them. If you need a new host, add it here in a reviewed
+# commit and say why.
+#
+# Format
+#   host.example.org   exact host match
+#   .example.org       suffix rule: matches the domain itself and any subdomain
+#   # comment          ignored
+#
+# Ports, userinfo and trailing dots are stripped before matching, and matching is
+# case-insensitive, so list bare lowercase hostnames only.
+#
+# Operational note: package-lock.json funding URLs are in scope, so a dependency
+# bump can introduce a new host and fail this check. That is intended - the new
+# host gets a human look before it lands.
+
+# --- Reserved, non-resolvable namespaces (RFC 2606 / RFC 6761) ---------------
+# Safe as categorical entries: these labels are never delegated, so no real
+# internal host can hide beneath them.
+.test
+.example
+.invalid
+.localhost
+.example.com
+.example.net
+.example.org
+
+# --- Local development and container networking ------------------------------
+localhost
+127.0.0.1
+api
+10.0.0.1
+# Link-local cloud metadata address, used only as an SSRF target in the security
+# corpus (tests/security/test_security_corpus_llm_intake.py).
+169.254.169.254
+
+# --- Single-label hostnames used as test inputs ------------------------------
+evil
+x
+
+# --- Package registries and funding metadata ---------------------------------
+registry.npmjs.org
+opencollective.com
+tidelift.com
+
+# --- Source hosting and project pages ----------------------------------------
+github.com
+api.github.com
+docs.github.com
+stsyg.github.io
+freetier-atlas.github.io
+freetier-atlas.pages.dev
+
+# --- Provider and vendor documentation cited by the catalogue and docs --------
+developers.cloudflare.com
+www.cloudflare.com
+firebase.google.com
+vercel.com
+
+# --- Toolchain and reference documentation -----------------------------------
+eslint.org
+react.dev
+vite.dev
+www.conventionalcommits.org
+www.anthropic.com
+
+# --- Licence text ------------------------------------------------------------
+www.gnu.org
+fsf.org
