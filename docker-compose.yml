@@ -41,7 +41,21 @@ services:
         PIP_EXTRA_INDEX_URL:
         PIP_TRUSTED_HOST:
     environment:
-      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://atlas:atlas@postgres:5432/atlas} # pragma: allowlist secret
+      # The default is DERIVED from the same POSTGRES_* variables that
+      # initialise the postgres service above, so overriding only
+      # POSTGRES_USER / POSTGRES_PASSWORD / POSTGRES_DB yields a consistent
+      # stack. A hardcoded default silently disagreed with an initialised
+      # database and surfaced as "password authentication failed for user
+      # 'atlas'" many frames down a SQLAlchemy traceback — a symptom that
+      # points at Postgres while the cause is here.
+      #
+      # Setting DATABASE_URL itself still overrides the whole string and wins
+      # over every part: that is the escape hatch for an external database.
+      #
+      # NOTE: the parts are substituted literally, so a password containing
+      # characters that are reserved in a URL (`@ : / ? # %`) must be
+      # percent-encoded, or DATABASE_URL set explicitly instead.
+      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://${POSTGRES_USER:-atlas}:${POSTGRES_PASSWORD:-atlas}@postgres:5432/${POSTGRES_DB:-atlas}} # pragma: allowlist secret
       APP_ENV: ${APP_ENV:-development}
       # First runtime consumer of the llm-providers config (F007). The example
       # config ships every provider disabled, so the assisted adviser always
@@ -99,7 +113,9 @@ services:
         PIP_TRUSTED_HOST:
     command: ["python", "-m", "worker.main"]
     environment:
-      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://atlas:atlas@postgres:5432/atlas} # pragma: allowlist secret
+      # See the api service above: derived from POSTGRES_*, whole-string
+      # DATABASE_URL still wins.
+      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://${POSTGRES_USER:-atlas}:${POSTGRES_PASSWORD:-atlas}@postgres:5432/${POSTGRES_DB:-atlas}} # pragma: allowlist secret
       WORKER_POLL_INTERVAL_SECONDS: ${WORKER_POLL_INTERVAL_SECONDS:-2}
       HEARTBEAT_STALE_SECONDS: ${HEARTBEAT_STALE_SECONDS:-30}
     depends_on:
@@ -124,7 +140,9 @@ services:
         PIP_TRUSTED_HOST:
     command: ["python", "-m", "worker.scheduler"]
     environment:
-      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://atlas:atlas@postgres:5432/atlas} # pragma: allowlist secret
+      # See the api service above: derived from POSTGRES_*, whole-string
+      # DATABASE_URL still wins.
+      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://${POSTGRES_USER:-atlas}:${POSTGRES_PASSWORD:-atlas}@postgres:5432/${POSTGRES_DB:-atlas}} # pragma: allowlist secret
       SCHEDULER_INTERVAL_SECONDS: ${SCHEDULER_INTERVAL_SECONDS:-5}
       HEARTBEAT_STALE_SECONDS: ${HEARTBEAT_STALE_SECONDS:-30}
     depends_on:
