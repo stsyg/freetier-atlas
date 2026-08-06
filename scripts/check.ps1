@@ -4,10 +4,10 @@
     Run the FreeTier Atlas F001 repository checks locally, mirroring CI.
 .DESCRIPTION
     Runs Ruff lint, Ruff format check, pytest, Prettier check, ESLint, a
-    detect-secrets scan against the committed baseline, and a Python dependency
-    audit. Resolves the repository root from this script's own path so it can be
-    invoked from any working directory. Prefers tools from a local .venv when
-    present and falls back to tools on PATH.
+    detect-secrets scan against the committed baseline, a URL host allowlist
+    check, and a Python dependency audit. Resolves the repository root from this
+    script's own path so it can be invoked from any working directory. Prefers
+    tools from a local .venv when present and falls back to tools on PATH.
 .NOTES
     Exit code 0 when all checks pass; non-zero when any check fails.
 #>
@@ -56,6 +56,9 @@ $pytest = Resolve-Tool "pytest"
 $detectHook = Resolve-Tool "detect-secrets-hook"
 $pipAudit = Resolve-Tool "pip-audit"
 
+$venvPython = Join-Path $venvScripts "python.exe"
+if (Test-Path $venvPython) { $python = $venvPython } else { $python = "python" }
+
 Invoke-Check "Ruff lint" { & $ruff check . }
 Invoke-Check "Ruff format check" { & $ruff format --check . }
 Invoke-Check "Pytest" { & $pytest -q }
@@ -65,6 +68,7 @@ Invoke-Check "Secret scan" {
     $files = git ls-files -co --exclude-standard
     & $detectHook --baseline .secrets.baseline @($files)
 }
+Invoke-Check "URL host allowlist" { & $python scripts/check_urls.py }
 Invoke-Check "Python dependency audit" { & $pipAudit -r requirements-dev.txt }
 
 if ($NodeAudit) {

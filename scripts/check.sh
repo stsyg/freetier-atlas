@@ -2,10 +2,10 @@
 # Run the FreeTier Atlas F001 repository checks locally, mirroring CI.
 #
 # Runs Ruff lint, Ruff format check, pytest, Prettier check, ESLint, a
-# detect-secrets scan against the committed baseline, and a Python dependency
-# audit. Resolves the repository root from this script's own path so it can be
-# invoked from any working directory. Prefers tools from a local .venv when
-# present and falls back to tools on PATH.
+# detect-secrets scan against the committed baseline, a URL host allowlist
+# check, and a Python dependency audit. Resolves the repository root from this
+# script's own path so it can be invoked from any working directory. Prefers
+# tools from a local .venv when present and falls back to tools on PATH.
 #
 # Exit code 0 when all checks pass; non-zero when any check fails.
 set -uo pipefail
@@ -35,6 +35,7 @@ RUFF="$(resolve_tool ruff)"
 PYTEST="$(resolve_tool pytest)"
 DETECT_HOOK="$(resolve_tool detect-secrets-hook)"
 PIP_AUDIT="$(resolve_tool pip-audit)"
+PYTHON="$(resolve_tool python)"
 
 FAILURES=()
 
@@ -62,6 +63,7 @@ check "Pytest" "${PYTEST}" -q
 check "Prettier check" npm run --silent format:check
 check "ESLint" npm run --silent lint
 check "Secret scan" secret_scan
+check "URL host allowlist" "${PYTHON}" scripts/check_urls.py
 check "Python dependency audit" "${PIP_AUDIT}" -r requirements-dev.txt
 
 if [[ "${RUN_NODE_AUDIT}" -eq 1 ]]; then
