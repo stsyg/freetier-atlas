@@ -79,10 +79,42 @@ jobs:
           python-version: "3.13"
       - name: Install pip-audit
         run: python -m pip install --disable-pip-version-check pip-audit==2.9.0
-      - name: Audit Python dev dependencies
+      # apps/api/Dockerfile installs exactly this file into the runtime image,
+      # so it is the production Python surface. It was previously audited by
+      # nothing: this job only ever read requirements-dev.txt, which contains
+      # development tooling that never ships.
+      - name: Audit Python production dependencies (apps/api)
+        run: pip-audit -r apps/api/requirements.txt
+      # Every audit below runs even when an earlier one fails, so one finding
+      # never hides the rest. The job still fails: this reports more, not less.
+      #
+      # apps/worker/Dockerfile installs this second file into the worker and
+      # scheduler image. It is a subset of the API's pins, but a subset is not
+      # a duplicate: it can drift, and auditing apps/api alone would leave a
+      # shipped image uncovered.
+      - name: Audit Python production dependencies (apps/worker)
+        if: ${{ !cancelled() }}
+        run: pip-audit -r apps/worker/requirements.txt
+      - name: Audit Python development dependencies
+        if: ${{ !cancelled() }}
         run: pip-audit -r requirements-dev.txt
       - uses: actions/setup-node@v4
+        if: ${{ !cancelled() }}
         with:
           node-version: "20"
-      - name: Audit Node dependencies
-        run: npm audit --omit=dev --audit-level=high
+      # Audited WITH development dependencies, deliberately. `--omit=dev` cannot
+      # fail here and so carries no information: the root package declares zero
+      # production dependencies, and apps/web's two production dependencies
+      # carry no advisories, so both commands reduce to a guaranteed
+      # "found 0 vulnerabilities". The development tree is genuine build-time
+      # exposure -- apps/web/Dockerfile runs `npm ci` with it present to produce
+      # the static assets that ship -- so it is the surface worth gating on.
+      - name: Audit Node dependencies (repo root tooling)
+        if: ${{ !cancelled() }}
+        run: npm audit --audit-level=high
+      # apps/web is a separate install (the root package declares no npm
+      # workspaces), so a root-only audit never reads it.
+      - name: Audit Node dependencies (apps/web)
+        if: ${{ !cancelled() }}
+        working-directory: apps/web
+        run: npm audit --audit-level=high

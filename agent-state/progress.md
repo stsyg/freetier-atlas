@@ -1867,3 +1867,159 @@ image builds were read from this machine's own `pip` and `npm` configuration at
 run time and never printed.
 
 **Next action:** owner review, then open the PR.
+
+## ci: audit the dependency sets that actually ship (branch `stsyg-ci-dependency-audit-coverage`)
+
+The job named "Dependency audit" audited no production surface at all — three
+were uncovered, not the two first supposed. Its Python step read
+`requirements-dev.txt` — ruff, pytest, detect-secrets, pip-audit,
+httpx — while `apps/api/requirements.txt`, the file `apps/api/Dockerfile` copies
+into the runtime image, and `apps/worker/requirements.txt`, which
+`apps/worker/Dockerfile` copies into the worker and scheduler image, were both
+referenced nowhere under `.github/`. Its Node step
+ran `npm audit --omit=dev` at the repository root, which declares zero
+production dependencies, so the command reduced to `found 0 vulnerabilities`
+and exit 0 unconditionally. `apps/web`, a separate install because the root
+package declares no npm workspaces, was never audited at all.
+
+The measured consequence is not theoretical. Aimed at the production file the
+same pip-audit build reports **7 advisories in `starlette` 0.41.3**
+(PYSEC-2026-161, -249, -248, -1942, -1941, -2281, -2280), pulled in
+transitively by `fastapi==0.115.6` and shipped on the API request path. The job
+was green precisely because it audited the wrong file: same tool, same version,
+same runner — only the input differed.
+
+The Python step now audits `apps/api/requirements.txt` and
+`apps/worker/requirements.txt` before the dev audit, which it keeps, so one
+blind spot was not traded for another. The worker set is a subset of the API's
+pins, but a subset is not a duplicate: it can drift independently, and auditing
+`apps/api` alone would have left a second shipped image uncovered. Its own
+audit is clean — no known vulnerabilities — which is worth recording precisely
+because a clean result is only meaningful once the negative control has shown
+the same command can fail. Both Node audits now run
+where dependencies actually live, root and `apps/web`, and deliberately
+**include** development dependencies. `--omit=dev` was rejected on evidence
+rather than taste: root has no production dependencies, `apps/web`'s two carry
+no advisories, so the flag guarantees a pass in both places, and every finding
+the Node ecosystem currently produces here is a build-time one that
+`apps/web/Dockerfile` executes during `npm ci` while producing the assets that
+ship. Each audit carries `if: ${{ !cancelled() }}` so a first failure no longer
+hides the rest; the job still fails.
+
+The four Node findings were **fixed, not suppressed**. `npm audit fix` moved
+brace-expansion 1.1.16 to 1.1.18 and 5.0.7 to 5.0.9 (GHSA-mh99-v99m-4gvg,
+GHSA-rgw5-rvv9-x895) — dev-only, reached transitively via `@typescript-eslint`,
+and absent from the runtime image, which ships nginx plus the built `dist`. The
+js-yaml advisory GHSA-5p4m-2wfm-xmqj has no fixed 4.x release, so it was
+resolved with an `overrides` pin to `^5.2.2` — the pattern already used for vite
+and esbuild — which upgrades the resolved package rather than hiding it. Root
+additionally moved eslint and @eslint/js from 9.15.0 to 9.39.5, clearing
+@eslint/plugin-kit GHSA-xffm-g5w8-qvg7. Because a major-version transitive jump
+can break a linter silently, the outcome was checked rather than assumed:
+eslint, prettier, `tsc -b && vite build` and 110/110 vitest tests all pass.
+
+**A green audit was not offered as evidence, because the broken job is green
+too.** Fourteen controls compared the old and new commands on the same inputs,
+each expecting a specific exit code, with 0 mismatches. Decisive ones: with a
+vulnerable `apps/web` physically present in the tree the old root command still
+exits 0; `lodash@4.17.20` injected as a *production* dependency of `apps/web` is
+invisible to the old command and caught by the new one; injected as a
+*development* dependency it is invisible to `--omit=dev` in both workspaces and
+caught in both by the new configuration. `pyyaml==5.3.1` injected into a scratch
+copy of the production requirements is caught by the new Python step, and the
+old command sabotaged the same way also fails — establishing that it was aimed
+wrong, not broken.
+
+One control was deliberately run against the working tree rather than a copy,
+to characterise a trap rather than to avoid it. `tests/unit/test_requirements_sync.py`
+requires every worker pin to match `pyproject.toml`, so planting a vulnerable
+pin into `apps/worker/requirements.txt` turns **two** jobs red at once: the
+sync guard `test_worker_pins_subset_of_declared`, in `Python lint, format,
+tests`, and the audit step itself. Only the second is a detection. A control
+read by run colour alone would score the sync-guard failure as proof the audit
+works, and would be flattered by a result the audit never produced — so the
+controls above are reported by job and step name, and every other plant was
+made in a scratch copy outside the tree where no sync guard can fire and only
+the audit can change the exit code. The planted pin was reverted and the file's
+blob hash confirmed identical to its pre-plant value; the repository is
+otherwise only read.
+
+**The first run of that control script proved nothing and said it had.** It
+patched `package.json` via `process.argv[1]`, which is the script path rather
+than the first argument, so the "sabotaged" packages were clean copies and four
+controls reported a passing audit as though coverage were absent. Only the
+expected-versus-measured column caught it. The script now asserts the injected
+package is present in both `package.json` and the lockfile before auditing.
+
+**A worse self-inflicted error: `npm install` rewrote 34 `resolved` URLs in the
+two lockfiles to this machine's internal package-feed hostnames** — the exact
+disclosure class the URL guard added in `19efefb` exists to prevent, in the
+files that guard was added because of. The guard caught it: 34 URLs, 0 on
+`main`. It was fixed by rewriting the proxy prefix back to
+`https://registry.npmjs.org/`, leaving integrity hashes untouched;
+`scripts/url-allowlist.txt` is **zero diff**, since allowlisting one's own leak
+to go green is the same failure as raising an audit threshold to go green. Both
+lockfiles were then re-verified end to end: `npm ci` from the rewritten files,
+audit, lint and the full web test suite all pass, and the guard reports 855
+URLs across 50 distinct hosts, all allowlisted.
+
+**The job FAILED as committed**, on step 1, on the seven real starlette
+advisories. Nothing was ignored, allowlisted or threshold-adjusted to hide
+that; a finding converted into a silent pass would simply have recreated the
+defect this change removes. `fastapi==0.141.1` was verified in a scratch
+resolution to clear all seven with no other pin changed, and the owner then
+granted a waiver scoped to exactly that one pin in exactly two files.
+
+Applied under that waiver: `apps/api/requirements.txt` and `pyproject.toml`
+move `fastapi==0.115.6` to `fastapi==0.141.1` and nothing else, in lockstep
+because `test_requirements_sync.py` compares the two as exact string sets.
+That resolves `starlette` to 1.4.1 — a **major** version jump, so the outcome
+was measured rather than assumed. The full suite was run with a PostgreSQL
+present, which promoted the ~150 integration tests from skipped to executed:
+**1156 passed, 2 skipped**, then **1158 passed, 0 skipped** once a live stack
+supplied `ATLAS_STACK_BASE_URL`. The API image was rebuilt `--no-cache`, so the
+non-editable `pip install -r requirements.txt` path was exercised rather than
+the editable one used for tests; the container reported healthy and `/health`
+and `/health/ready` both returned 200 from outside it, with the running image
+confirming fastapi 0.141.1 and starlette 1.4.1. The `StarletteDeprecationWarning`
+about `httpx` in the test client remains a warning and is not promoted to an
+error by this project's pytest configuration; it was left alone rather than
+silenced, since a filter would hide a real future signal.
+
+One build failure was observed and proved **not** to be caused by the bump. The
+image build could not reach the public package host, failing on a TLS handshake.
+Rebuilding the unmodified old pin failed identically, which is the discriminating
+test: a cause that produces the same result under both hypotheses is
+environmental, not a property of the change. The Dockerfile's existing
+`PIP_INDEX_URL` build argument — declared with no default precisely for
+restricted networks — was supplied from the environment for the local rebuild
+and, as that file instructs, no feed URL is committed anywhere in this diff.
+
+With the bump applied, every audit step passes and the job's conclusion flips
+from FAILURE to PASS. That flip is the increment: the same job, on the same
+inputs, that could not fail before now can, does, and then does not once the
+underlying advisory is genuinely fixed.
+
+Local gate: `scripts/check.ps1 -NodeAudit` exits 0 with **9 PASS / 0 FAIL**.
+CI could not validate the workflow change: the workflow triggers only on pushes
+to `main` and on pull requests, so a push to this branch dispatches no run at
+all, and no PR was opened. Each job step was therefore run locally and is
+reported as such. Contrary to the briefing, Actions is not currently dead — the
+two most recent `main` pushes completed successfully, though at 18m and 42m
+against a 33s-1m historic baseline, so it is degraded rather than absent.
+
+Two pre-existing defects were observed and deliberately left unfixed. First,
+`scripts/check.ps1:75` runs the identical vacuous `npm audit --omit=dev
+--audit-level=high` at the repository root, so the local gate shares the defect
+this change removes from CI; it is untouched only because `scripts/**` was a
+zero-diff guardrail for this slice, and it should be brought into line with
+`ci.yml` next. Second, `.github/workflows/ci.yml:29` installs `-e ".[dev]"` for
+the test job while the audit job reads pinned requirements files, so the two
+jobs can resolve different versions of the same package. Diff is 5 files:
+`ci.yml`, both `package.json` and both `package-lock.json`. `apps/**`,
+`tests/**`, `scripts/**`, `docker-compose.yml`, `pyproject.toml`,
+`requirements-dev.txt`, `migrations/**`, `agent-state/feature_list.json` and
+`agent-state/evaluation.json` are each **zero diff**, verified per path. No
+`passes` flag was touched: this is CI plumbing, not a ledger feature. Did not
+merge and did not open a PR; owner authorisation pending, and the starlette
+bump needs an explicit guardrail waiver.

@@ -16,7 +16,7 @@ keywords = ["free-tier", "cloud", "catalogue", "adviser", "z0"]
 # in sync with apps/api/requirements.txt (enforced by
 # tests/unit/test_requirements_sync.py).
 dependencies = [
-  "fastapi==0.115.6",
+  "fastapi==0.141.1",
   "uvicorn[standard]==0.34.0",
   "sqlalchemy==2.0.36",
   "alembic==1.14.0",
