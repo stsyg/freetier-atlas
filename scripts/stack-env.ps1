@@ -14,15 +14,26 @@
     the process environment (which wins over .env), and the `${VAR:-default}`
     defaults declared in docker-compose.yml are all applied by Compose itself.
 
-    If Compose cannot be consulted at all, the helpers fall back to the process
-    environment and then to the documented default, which is exactly the old
-    behaviour.
+    If Compose cannot be consulted at all (Docker is not installed), the helpers
+    fall back to the process environment and then to the documented default,
+    which is exactly the old behaviour and is not worth reporting.
+
+    Any OTHER failure is anomalous and is reported on stderr rather than
+    absorbed: a silent fallback would reproduce the very false-failure bug this
+    file exists to remove, while looking like a successful resolution.
 .NOTES
     Dot-source this file; it defines functions and does not execute checks.
 #>
 
 $script:StackComposeConfig = $null
 $script:StackComposeConfigLoaded = $false
+
+function Write-StackWarning {
+    param([Parameter(Mandatory = $true)] [string] $Message)
+    # True stderr, so it cannot be silenced by $WarningPreference and stays out
+    # of the value captured by the caller.
+    [Console]::Error.WriteLine("stack-env: WARNING: $Message")
+}
 
 function Get-StackComposeConfig {
     <#
@@ -31,6 +42,10 @@ function Get-StackComposeConfig {
     #>
     if ($script:StackComposeConfigLoaded) { return $script:StackComposeConfig }
     $script:StackComposeConfigLoaded = $true
+
+    if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
+        return $null
+    }
 
     $previous = $ErrorActionPreference
     $ErrorActionPreference = "Continue"
@@ -45,6 +60,10 @@ function Get-StackComposeConfig {
     }
     finally {
         $ErrorActionPreference = $previous
+    }
+
+    if ($null -eq $script:StackComposeConfig) {
+        Write-StackWarning "'docker compose config' returned no configuration; falling back to environment variables and defaults."
     }
 
     return $script:StackComposeConfig
@@ -63,13 +82,16 @@ function Get-StackPort {
     )
 
     $config = Get-StackComposeConfig
-    if ($config -and $config.services -and $config.services.$Service) {
-        foreach ($mapping in @($config.services.$Service.ports)) {
-            if ($null -eq $mapping) { continue }
-            if ([int]$mapping.target -eq $ContainerPort -and $mapping.published) {
-                return [string]$mapping.published
+    if ($config) {
+        if ($config.services -and $config.services.$Service) {
+            foreach ($mapping in @($config.services.$Service.ports)) {
+                if ($null -eq $mapping) { continue }
+                if ([int]$mapping.target -eq $ContainerPort -and $mapping.published) {
+                    return [string]$mapping.published
+                }
             }
         }
+        Write-StackWarning "Compose returned a configuration but the published host port for service '$Service' (container port $ContainerPort) could not be read; falling back to `$env:$EnvVar or $Default. The value used may not match the running stack."
     }
 
     $fromEnv = [Environment]::GetEnvironmentVariable($EnvVar)
@@ -89,12 +111,15 @@ function Get-StackServiceSetting {
     )
 
     $config = Get-StackComposeConfig
-    if ($config -and $config.services -and $config.services.$Service) {
-        $environment = $config.services.$Service.environment
-        if ($environment -and ($environment.PSObject.Properties.Name -contains $Name)) {
-            $value = $environment.$Name
-            if ($value) { return [string]$value }
+    if ($config) {
+        if ($config.services -and $config.services.$Service) {
+            $environment = $config.services.$Service.environment
+            if ($environment -and ($environment.PSObject.Properties.Name -contains $Name)) {
+                $value = $environment.$Name
+                if ($value) { return [string]$value }
+            }
         }
+        Write-StackWarning "Compose returned a configuration but '$Name' for service '$Service' could not be read; falling back to `$env:$Name or $Default. The value used may not match the running stack."
     }
 
     $fromEnv = [Environment]::GetEnvironmentVariable($Name)

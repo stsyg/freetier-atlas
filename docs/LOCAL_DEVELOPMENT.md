@@ -107,7 +107,14 @@ The `stack-up` and `stack-smoke` helper scripts ask Compose for its own resolved
 model (`docker compose config`) rather than reading `.env` themselves, so a port
 set only in `.env` is honoured by the scripts and by the containers alike.
 Compose's precedence still applies: a value exported in your shell overrides the
-same key in `.env`.
+same key in `.env`. If the scripts cannot read Compose's model they fall back to
+the same defaults as before, but they say so on stderr rather than resolving a
+wrong value silently.
+
+If you override `POSTGRES_USER` or `POSTGRES_DB`, set `DATABASE_URL` to match.
+Compose does not derive one from the other, so changing only the former leaves
+the API authenticating with the default credentials against a database that no
+longer accepts them.
 
 Variable names (values live in your environment, not the repo):
 

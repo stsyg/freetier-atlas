@@ -1651,3 +1651,40 @@ pytest against live PostgreSQL at the exact head under evaluation.
 - **Cleanup, verified by counting rather than by assuming.** Both throwaway stacks were torn down with `--volumes --remove-orphans`; afterwards containers, volumes, networks and Compose projects matching `ftaportfix` all counted **0**, the eight images built during verification were deleted to a count of **0**, ports 8061/8141/55483 had no listener, the detached worktree was removed, and the local `.env` used for the controls was deleted (it is git-ignored and was never staged).
 - **Attestations:** did **NOT** merge and did **NOT** open a PR (owner authorisation pending). No internal package-feed or registry hostname was written into any tracked file, commit message or report; the values used during verification were read from this machine's own `pip` and `npm` configuration at run time.
 - **Next action:** owner review, then open the PR.
+
+## infra: validate the interpreter and report failed resolution in the stack env helpers (branch `stsyg-fix-stack-script-port-source`)
+
+Review of the first commit on this branch found the shell resolver silently
+returning the fallback defaults under Git Bash. `_stack_python` selected an
+interpreter with `command -v python3`, which matched the Microsoft Store
+execution-alias stub that resolves on PATH but refuses to run. The value then
+fell back to `8000`/`8080`/`atlas` — indistinguishable from a successful
+resolution, and the same false-failure behaviour the branch exists to remove.
+The PowerShell path was unaffected only because it uses a working interpreter.
+
+Presence on PATH is now treated as insufficient. Each candidate (`python3`,
+`python`, `py`) must evaluate a trivial program and print an expected sentinel
+before it is accepted; the check reads the OUTPUT because such stubs do not
+reliably signal failure through their exit status.
+
+Silent fallback is also removed on both paths. "Compose was never consulted"
+(Docker absent) stays quiet because that is the documented behaviour, but
+"Compose returned a configuration and the value could not be read" now warns on
+stderr naming the service and variable, then falls back.
+
+Verified in Git Bash, WSL and PowerShell: `.env`-only resolution, process
+environment winning over `.env`, unchanged defaults, and a sabotage control in
+which every interpreter candidate is an exit-zero stub — which produces visible
+warnings instead of a silent wrong port. End to end from Git Bash on
+`.env`-only ports, `stack-up.sh` exited 0 probing the overridden port and
+`stack-smoke.sh` reported 15 PASS / 0 FAIL. Because an unrelated stack occupied
+the default ports during that run, the passing result alone was not evidence;
+stopping only the overridden-port API moved the smoke to 12 PASS / 3 FAIL,
+which a resolver still probing the default port could not have produced.
+
+Two pre-existing defects were observed and deliberately left unfixed as out of
+scope. `scripts/check-env.sh` reports the same stub as a passing Python and
+exits 0. `docker-compose.yml` hardcodes the `DATABASE_URL` default instead of
+deriving it from `POSTGRES_USER`/`POSTGRES_DB`, so overriding those alone
+starts a database the API cannot authenticate against; this is now documented
+in `docs/LOCAL_DEVELOPMENT.md`.
