@@ -6,17 +6,22 @@
 # table plus the worker job_queue and service_heartbeat tables, that the worker
 # and scheduler containers are healthy, that at least one queued job reached
 # 'done', and that both service heartbeats are fresh. Resolves the repository
-# root from the script's own path. Requires the stack to be running (stack-up).
+# root from the script's own path, plus the host ports and PostgreSQL
+# credentials from Compose's own resolved model so values set only in .env are
+# honoured. Requires the stack to be running (stack-up).
 set -uo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd -- "${SCRIPT_DIR}/.." && pwd)"
 cd -- "${REPO_ROOT}"
 
-API_PORT="${API_PORT:-8000}"
-WEB_PORT="${WEB_PORT:-8080}"
-PG_USER="${POSTGRES_USER:-atlas}"
-PG_DB="${POSTGRES_DB:-atlas}"
+# shellcheck source=scripts/stack-env.sh
+. "${SCRIPT_DIR}/stack-env.sh"
+
+API_PORT="$(stack_port api 8000 API_PORT 8000)"
+WEB_PORT="$(stack_port web 80 WEB_PORT 8080)"
+PG_USER="$(stack_service_setting postgres POSTGRES_USER atlas)"
+PG_DB="$(stack_service_setting postgres POSTGRES_DB atlas)"
 
 failures=()
 

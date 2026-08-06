@@ -8,8 +8,9 @@
     app_meta table plus the worker job_queue and service_heartbeat tables, that
     the worker and scheduler containers are healthy, that at least one queued job
     reached 'done', and that both service heartbeats are fresh. Resolves the
-    repository root from this script's own path. Requires the stack to be running
-    (stack-up).
+    repository root from this script's own path, plus the host ports and
+    PostgreSQL credentials from Compose's own resolved model so values set only
+    in .env are honoured. Requires the stack to be running (stack-up).
 .NOTES
     Exit code 0 when all checks pass; non-zero otherwise.
 #>
@@ -20,10 +21,12 @@ $ErrorActionPreference = "Stop"
 $RepoRoot = Split-Path -Parent $PSScriptRoot
 Set-Location $RepoRoot
 
-$apiPort = if ($env:API_PORT) { $env:API_PORT } else { "8000" }
-$webPort = if ($env:WEB_PORT) { $env:WEB_PORT } else { "8080" }
-$pgUser = if ($env:POSTGRES_USER) { $env:POSTGRES_USER } else { "atlas" }
-$pgDb = if ($env:POSTGRES_DB) { $env:POSTGRES_DB } else { "atlas" }
+. (Join-Path $PSScriptRoot "stack-env.ps1")
+
+$apiPort = Get-StackPort -Service "api" -ContainerPort 8000 -EnvVar "API_PORT" -Default "8000"
+$webPort = Get-StackPort -Service "web" -ContainerPort 80 -EnvVar "WEB_PORT" -Default "8080"
+$pgUser = Get-StackServiceSetting -Service "postgres" -Name "POSTGRES_USER" -Default "atlas"
+$pgDb = Get-StackServiceSetting -Service "postgres" -Name "POSTGRES_DB" -Default "atlas"
 
 $failures = @()
 

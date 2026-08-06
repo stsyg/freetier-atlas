@@ -5,7 +5,8 @@
 .DESCRIPTION
     Runs `docker compose up -d --build` for the postgres and api services and
     waits until the API liveness endpoint responds. Resolves the repository root
-    from this script's own path.
+    from this script's own path, and the API host port from Compose's own
+    resolved model so a port set only in .env is honoured.
 .NOTES
     Exit code 0 when the stack is up and the API is live; non-zero otherwise.
 #>
@@ -18,7 +19,9 @@ $ErrorActionPreference = "Stop"
 $RepoRoot = Split-Path -Parent $PSScriptRoot
 Set-Location $RepoRoot
 
-$apiPort = if ($env:API_PORT) { $env:API_PORT } else { "8000" }
+. (Join-Path $PSScriptRoot "stack-env.ps1")
+
+$apiPort = Get-StackPort -Service "api" -ContainerPort 8000 -EnvVar "API_PORT" -Default "8000"
 
 # Package-index overrides are passed to the image builds by docker-compose.yml,
 # which inherits this process's environment. Nothing needs to be forwarded
