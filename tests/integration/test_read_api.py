@@ -115,6 +115,7 @@ def test_providers_reflect_published_catalogue(session: Session) -> None:
     providers = queries.fetch_providers(session)
     slugs = {p.slug for p in providers}
     assert "cloudflare" in slugs
+    assert "ci-red-proof-provider-that-does-not-exist" in slugs
 
     provider = _cloudflare(session)
     summary = service.serialize_provider_summary(provider)
