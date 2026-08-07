@@ -273,19 +273,50 @@ def test_time_limitation_alone_blocks_z0_even_with_a_safe_exhaustion_behaviour()
 
 
 def test_the_contradictory_page_offers_a_row_that_must_never_be_z0() -> None:
-    """The synthetic conflicting row bills automatically -> Z1, never Z0."""
+    """The synthetic conflicting row demands a card and bills -> Z1, never Z0."""
 
     fixture = load_case(PROVIDER, ADAPTER, "contradictory")
-    second = dict(fixture.expected_candidates[1]["facts"])
-    result = classify(
-        OfferFacts(
-            offer_type=str(second["offer_type"]),
-            requires_card=False,
-            has_paid_dependencies=False,
-            exhaustion_behaviours=(second["exhaustion_behaviour"],),
-        )
+    first, second = (dict(c["facts"]) for c in fixture.expected_candidates[:2])
+
+    # Both rows claim the same offer identity, so a reader that trusted either
+    # one in isolation would publish a different answer for the same offer.
+    assert (first["service"], first["offer_type"]) == (second["service"], second["offer_type"])
+    assert first["requires_card"] != second["requires_card"]
+
+    def verdict(facts: dict[str, object]) -> str:
+        return classify(
+            OfferFacts(
+                offer_type=str(facts["offer_type"]),
+                requires_card=bool(facts["requires_card"]),
+                has_paid_dependencies=bool(facts["has_paid_dependencies"]),
+                exhaustion_behaviours=(str(facts["exhaustion_behaviour"]),),
+            )
+        ).zero_cost_class
+
+    assert verdict(first) == "Z0_TRUE_FREE"
+    assert verdict(second) == "Z1_BILLING_EXPOSURE"
+
+
+def test_a_contradiction_about_perpetuity_is_structurally_undetectable() -> None:
+    """The most dangerous disagreement is the one the reconciler cannot report.
+
+    ``_identity_of`` groups candidates by ``(provider, service, offer_type)``
+    while ``MATERIAL_FACT_FIELDS`` also lists ``offer_type``. Two official
+    sources that disagree about whether an offer is perpetual or a trial
+    therefore land in *different* identity groups and are never compared, so
+    the exact §A0 conflict -- always_free versus trial -- can never raise a
+    contradiction. This test pins that behaviour so the day someone fixes it
+    is a deliberate, visible change rather than a silent one.
+    """
+
+    from app.ingest.reconcile import MATERIAL_FACT_FIELDS, _identity_of
+
+    assert "offer_type" in MATERIAL_FACT_FIELDS
+    perpetual = {"service": "GitHub Actions", "offer_type": "always_free"}
+    temporary = {"service": "GitHub Actions", "offer_type": "trial"}
+    assert _identity_of("github", perpetual) != _identity_of("github", temporary), (
+        "offer_type is part of the identity key, so it cannot also be compared as a conflict"
     )
-    assert result.zero_cost_class == "Z1_BILLING_EXPOSURE"
 
 
 # --- Coverage declaration (Q9-A / Q10-A) -----------------------------------

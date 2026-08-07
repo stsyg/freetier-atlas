@@ -4,7 +4,7 @@
   "http_status": 200,
   "robots_allowed": true,
   "sha256_original": null,
-  "sha256_stored": "5c53f41cf28b988dbc1dd3b2bee6c369435a5b5ebf300f473bc38a2e1dcf0148",
+  "sha256_stored": "ed343a088d70d17053c23eae3130dc4659edad8a4097515f0fccdedb9e710266",
   "tos_note": "Official GitHub documentation (docs.github.com). https://docs.github.com/robots.txt was retrieved on 2026-08-07 and contains only 'User-agent: *' with no Disallow rules, so automated retrieval of this path is permitted. A minimal excerpt is committed here for offline, deterministic extraction testing; every value is reproduced verbatim from the cited page.",
   "trim_method": "manual-excerpt: the official Codespaces 'Free quota' table (GitHub Free for personal accounts row) plus the reset and quota-exhaustion sentences. Re-expressed as the profile's canonical one-row offer table so the declared columns line up with the extraction profile; no value is altered, reordered within a cell, or invented, and a value the page does not publish is omitted rather than guessed. sha256_original is null because retrieval returned a text rendering of the page rather than retained raw bytes, so no honest digest of the untrimmed document exists; fetched_at is the retrieval session timestamp, accurate to the minute.",
   "url": "https://docs.github.com/en/billing/concepts/product-billing/github-codespaces"

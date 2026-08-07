@@ -4,7 +4,7 @@
   "http_status": 200,
   "robots_allowed": true,
   "sha256_original": null,
-  "sha256_stored": "6f07a08a2da4690f96c996af5700a7b400ed816d174f9c5ce3ab44a21408ecc7",
+  "sha256_stored": "27b0991084e45d8aa850d4684f1fde080104e0d5162ed4bb2259ec0993423169",
   "tos_note": "Official GitHub documentation (docs.github.com). https://docs.github.com/robots.txt was retrieved on 2026-08-07 and contains only 'User-agent: *' with no Disallow rules, so automated retrieval of this path is permitted. A minimal excerpt is committed here for offline, deterministic extraction testing; every value is reproduced verbatim from the cited page.",
   "trim_method": "manual-excerpt: the official 'Free use of GitHub Actions' allowance table (GitHub Free row) plus the public-repository and quota-exhaustion sentences. Re-expressed as the profile's canonical one-row offer table so the declared columns line up with the extraction profile; no value is altered, reordered within a cell, or invented, and a value the page does not publish is omitted rather than guessed. sha256_original is null because retrieval returned a text rendering of the page rather than retained raw bytes, so no honest digest of the untrimmed document exists; fetched_at is the retrieval session timestamp, accurate to the minute.",
   "url": "https://docs.github.com/en/billing/concepts/product-billing/github-actions"

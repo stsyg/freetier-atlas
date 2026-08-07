@@ -123,6 +123,7 @@ def _github_sources(session: Session) -> list[Source]:
 def test_the_runner_persists_scans_snapshots_candidates_and_official_evidence(
     session: Session, config
 ) -> None:
+    snapshots_before = session.execute(select(func.count()).select_from(Snapshot)).scalar_one()
     result = _run(session, config)
 
     scanned = [outcome for outcome in result.sources if outcome.status == "scanned"]
@@ -131,27 +132,32 @@ def test_the_runner_persists_scans_snapshots_candidates_and_official_evidence(
     source_ids = [s.id for s in _github_sources(session)]
     assert source_ids
 
+    # Scope every count to THIS run. Asserting on whole-table totals silently
+    # depends on the database being empty, which made these assertions fail
+    # against a database that had simply been used before.
+    run_scan_ids = [outcome.scan_run_id for outcome in scanned if outcome.scan_run_id]
+    assert len(run_scan_ids) == 5
+
     scan_runs = list(
-        session.execute(select(ScanRun).where(ScanRun.source_id.in_(source_ids))).scalars()
-    )
-    snapshots = list(
-        session.execute(select(Snapshot).where(Snapshot.source_id.in_(source_ids))).scalars()
-    )
-    candidates = list(
         session.execute(
-            select(Candidate).where(Candidate.scan_run_id.in_([r.id for r in scan_runs]))
+            select(ScanRun).where(ScanRun.id.in_(run_scan_ids), ScanRun.source_id.in_(source_ids))
         ).scalars()
     )
+    candidates = list(
+        session.execute(select(Candidate).where(Candidate.scan_run_id.in_(run_scan_ids))).scalars()
+    )
+    # `snapshot` carries no scan_run_id, so scope it as a delta instead.
+    snapshots_after = session.execute(select(func.count()).select_from(Snapshot)).scalar_one()
     assert len(scan_runs) == 5
-    assert len(snapshots) == 5
+    assert snapshots_after - snapshots_before == 5, "one stored snapshot per captured page"
     assert len(candidates) == 5, "one offer row per captured official page"
 
     evidence = list(
         session.execute(
-            select(Evidence).where(Evidence.url.like("https://docs.github.com/%"))
+            select(Evidence).where(Evidence.candidate_id.in_([c.id for c in candidates]))
         ).scalars()
     )
-    assert evidence, "official sources must produce evidence rows"
+    assert len(evidence) == 5, "every official candidate must carry its own evidence row"
     for row in evidence:
         assert row.url.startswith("https://docs.github.com/"), "evidence must be official"
 
@@ -270,18 +276,55 @@ def test_a_changed_allowance_raises_a_material_change_event_on_persisted_rows(
     scan = run_scan(actions, fetcher, session)
     reconcile_scan(scan, actions, session, now=datetime(2026, 8, 7, 12, 0, tzinfo=UTC))
 
+    # `change_event` carries no scan_run_id, so scope through the candidates
+    # this scan produced. A whole-table query also picks up rows left by any
+    # earlier use of the database, including published ones.
+    scan_candidate_ids = [
+        c.id
+        for c in session.execute(
+            select(Candidate).where(Candidate.scan_run_id == scan.id)
+        ).scalars()
+    ]
+    assert scan_candidate_ids
     events = list(
         session.execute(
-            select(ChangeEvent).where(ChangeEvent.change_type.in_(("modified", "added")))
+            select(ChangeEvent).where(ChangeEvent.new_candidate_id.in_(scan_candidate_ids))
         ).scalars()
     )
     assert session.execute(select(func.count()).select_from(ChangeEvent)).scalar_one() > before, (
         "an edited allowance page produced no change event"
     )
-    assert events, "expected a persisted modified/added change event"
+    assert events, "expected a persisted change event for this scan"
+    assert any(e.change_type == "modified" for e in events), (
+        "an edited material allowance must be recorded as modified"
+    )
+    # MEASURED, and not what one might assume: a changed headline allowance is
+    # `unknown`, not `material`. `MATERIAL_FACT_FIELDS` is only offer_type /
+    # requires_card / has_paid_dependencies / quotas, and these HTML profiles
+    # publish per-limit values as flat facts (`minutes_per_month`), not inside a
+    # `quotas` structure. What matters for safety is that it is never quietly
+    # downgraded to `non_material`, and it is not.
+    assert all(e.materiality != "non_material" for e in events), (
+        "a changed allowance must never be classified cosmetic"
+    )
+    assert any(e.materiality == "unknown" for e in events)
     assert all(e.publication_status == "draft" for e in events), (
         "reconciliation has no publication path"
     )
+
+
+@skip_without_db
+def test_materiality_positive_control_a_changed_card_requirement_is_material() -> None:
+    """Guard the test above: `unknown` is a real classification, not a dead path.
+
+    Without this, `materiality != "non_material"` could pass simply because the
+    classifier never returns `material` for anything.
+    """
+
+    from app.ingest.reconcile import classify_materiality
+
+    assert classify_materiality(["requires_card"]) == "material"
+    assert classify_materiality(["minutes_per_month"]) == "unknown"
 
 
 # --- Vocabulary case: contradictory (gate withhold + pending review) --------
@@ -289,7 +332,14 @@ def test_a_changed_allowance_raises_a_material_change_event_on_persisted_rows(
 
 @skip_without_db
 def test_a_contradictory_page_is_withheld_and_queued_for_review(session: Session, config) -> None:
-    """`contradictory`: the gate must not pick the friendlier of two rows."""
+    """`contradictory`: the gate must not pick the friendlier of two rows.
+
+    Contradiction detection in this repo is deliberately *cross-source*: two
+    rows on one page differing over time are a change, not a conflict. So the
+    conflicting excerpt is served through a SECOND official GitHub source for
+    the same offer identity, which is what a real "two docs pages disagree"
+    incident looks like.
+    """
 
     from app.ingest.fetch import FetchPolicy, FixtureFetcher
     from app.ingest.reconcile import reconcile_scan
@@ -301,24 +351,63 @@ def test_a_contradictory_page_is_withheld_and_queued_for_review(session: Session
         s for s in _github_sources(session) if s.endpoint and s.endpoint.endswith("github-actions")
     )
 
+    # A second official page for the same offer, disagreeing on requires_card.
+    conflicting = Source(
+        provider_id=actions.provider_id,
+        slug="github-actions-billing-conflicting",
+        adapter_type=actions.adapter_type,
+        endpoint="https://docs.github.com/en/billing/concepts/product-billing/github-actions-conflict",
+        parser_profile=actions.parser_profile,
+        schedule=actions.schedule,
+        trust_level=actions.trust_level,
+        official=True,
+    )
+    session.add(conflicting)
+    session.flush()
+
+    reviews_before = session.execute(
+        select(func.count())
+        .select_from(ReviewItem)
+        .where(ReviewItem.admin_disposition == "pending")
+    ).scalar_one()
+    versions_before = session.execute(select(func.count()).select_from(OfferVersion)).scalar_one()
+
     body = (FIXTURES / "contradictory" / "source.html").read_bytes()
     fetcher = FixtureFetcher(
-        {actions.endpoint: (body, "text/html")}, FetchPolicy(official_domains=DOMAINS)
+        {conflicting.endpoint: (body, "text/html")}, FetchPolicy(official_domains=DOMAINS)
     )
     now = datetime(2026, 8, 7, 12, 0, tzinfo=UTC)
-    scan = run_scan(actions, fetcher, session)
-    reconcile_scan(scan, actions, session, now=now)
-    outcome = publish_scan(session, scan, actions, config.publishing, now=now)
+    scan = run_scan(conflicting, fetcher, session)
+    result = reconcile_scan(scan, conflicting, session, now=now)
 
-    assert outcome.withheld + outcome.reviewed >= 1, (
-        "a self-contradicting official page must never publish cleanly"
+    assert result.review_items >= 1, (
+        "two official sources disagreeing on requires_card must raise a review item"
     )
-    if any(o.review_item_created for o in outcome.outcomes):
-        reviews = list(
-            session.execute(select(ReviewItem).where(ReviewItem.scan_run_id == scan.id)).scalars()
-        )
-        assert reviews, "a reviewed candidate must leave a pending review item"
-        assert all(r.status == "pending" for r in reviews)
+    reviews = list(
+        session.execute(select(ReviewItem).where(ReviewItem.scan_run_id == scan.id)).scalars()
+    )
+    assert reviews, "a contradiction must leave a persisted review item"
+    assert all(r.admin_disposition == "pending" for r in reviews), "nothing is auto-resolved"
+    assert all(r.recommended_action == "manual_review" for r in reviews)
+    conflict_fields = {
+        c["field"] for r in reviews for c in (r.evidence_conflict or {}).get("conflicts", [])
+    }
+    assert "requires_card" in conflict_fields
+
+    # The gate must withhold: no version may be minted off a contradicted fact.
+    outcome = publish_scan(session, scan, conflicting, config.publishing, now=now)
+    assert all(o.decision != "publish" for o in outcome.outcomes), (
+        "a contradicted official fact must never publish cleanly"
+    )
+    versions_after = session.execute(select(func.count()).select_from(OfferVersion)).scalar_one()
+    assert versions_after == versions_before, "ZERO new published versions under contradiction"
+
+    pending_after = session.execute(
+        select(func.count())
+        .select_from(ReviewItem)
+        .where(ReviewItem.admin_disposition == "pending")
+    ).scalar_one()
+    assert pending_after > reviews_before
 
 
 # --- Vocabulary case: withdrawn --------------------------------------------

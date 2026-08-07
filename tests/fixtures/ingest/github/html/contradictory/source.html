@@ -6,17 +6,29 @@
       Fixture-case-vocabulary variant derived from the official GitHub
       Actions billing capture (github-actions-billing).
 
-      CONTRADICTORY: the same page publishes two incompatible rows for
-      GitHub Actions -- a perpetual 2,000-minute allowance that stops
-      safely, and a trial-shaped 500-minute allowance that bills
-      automatically. The pipeline must surface the conflict for review
-      instead of picking the friendlier row, which is exactly how a
-      false $0 claim would otherwise ship.
+      CONTRADICTORY: two official rows for the SAME offer identity
+      (GitHub Actions / always_free) disagree on material Z0 conditions --
+      one says no card and no paid dependencies, the other says both are
+      required. The pipeline must surface the conflict for review instead
+      of picking the friendlier row, which is exactly how a false $0 claim
+      would otherwise ship.
+
+      Both rows are deliberately `always_free`. `offer_type` is part of
+      the reconciler's offer IDENTITY (provider, service, offer_type), so
+      rows that disagree on offer_type are grouped as two DIFFERENT offers
+      and can never be reported as a contradiction. The conflict has to
+      live in a material field that is not part of the identity key.
+
+      SYNTHETIC: row 2 is a mutation of the captured official row, not
+      anything GitHub publishes.
     -->
   </head>
   <body>
     <h1>GitHub Actions billing</h1>
-    <p>Free use of GitHub Actions, GitHub Free plan. Source: https://docs.github.com/en/billing/concepts/product-billing/github-actions</p>
+    <p>
+      Free use of GitHub Actions, GitHub Free plan. Source:
+      https://docs.github.com/en/billing/concepts/product-billing/github-actions
+    </p>
     <table id="github-actions-free-use">
       <thead>
         <tr>
@@ -45,10 +57,10 @@
         </tr>
         <tr>
           <td>GitHub Actions</td>
-          <td>trial</td>
-          <td>No</td>
-          <td>No</td>
-          <td>500</td>
+          <td>always_free</td>
+          <td>Yes</td>
+          <td>Yes</td>
+          <td>2,000</td>
           <td>500 MB</td>
           <td>10 GB</td>
           <td>Free</td>
