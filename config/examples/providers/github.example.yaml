@@ -1,0 +1,233 @@
+provider:
+  id: github
+  name: GitHub
+  official_domains:
+    - github.com
+    - docs.github.com
+
+# OFFICIAL sources only (F008 Q2-A). Every source below is a docs.github.com
+# page; nothing here is a community list, so every row this config produces is
+# eligible to become `evidence`.
+#
+# NOTE ON THE CHANGELOG. The brief suggested the GitHub changelog as a source.
+# It lives on github.blog, which is NOT in scripts/url-allowlist.txt (a
+# do-not-touch file for this slice), so citing it would fail the repo's URL host
+# check. The changelog is therefore deliberately absent rather than smuggled in.
+sources:
+  - id: github-actions-billing
+    type: html
+    trust_level: official
+    url: https://docs.github.com/en/billing/concepts/product-billing/github-actions
+    schedule_ref: official_pages
+    extraction_profile: github_actions_billing
+
+  - id: github-packages-billing
+    type: html
+    trust_level: official
+    url: https://docs.github.com/en/billing/concepts/product-billing/github-packages
+    schedule_ref: official_pages
+    extraction_profile: github_packages_billing
+
+  - id: github-codespaces-billing
+    type: html
+    trust_level: official
+    url: https://docs.github.com/en/billing/concepts/product-billing/github-codespaces
+    schedule_ref: official_pages
+    extraction_profile: github_codespaces_billing
+
+  - id: github-pages-limits
+    type: html
+    trust_level: official
+    url: https://docs.github.com/en/pages/getting-started-with-github-pages/github-pages-limits
+    schedule_ref: official_pages
+    extraction_profile: github_pages_limits
+
+  # The deliberate NON-Z0 case (F008 acceptance step 2). This offer requires no
+  # payment method -- and still must never be Z0, because it expires after 30
+  # days. See the coverage note under cicd-source-control.
+  - id: github-enterprise-cloud-trial
+    type: html
+    trust_level: official
+    url: https://docs.github.com/en/enterprise-cloud@latest/admin/overview/setting-up-a-trial-of-github-enterprise-cloud
+    schedule_ref: official_pages
+    extraction_profile: github_enterprise_cloud_trial
+
+publishing:
+  automatic_threshold: 0.90
+  uncertain_threshold: 0.70
+  require_official_source: true
+  require_deterministic_numeric_validation: true
+
+# Declared service -> canonical category mapping (F008 slice S1, decision Q10-A).
+#
+# The key is the service's canonical_name exactly as it appears in the extracted
+# candidate facts' `service` field; the value must be one of the fourteen
+# canonical slugs in apps/api/app/read_api/taxonomy.py (decision D025).
+#
+# This is DECLARED structural metadata with a REQUIRED one-line rationale, never
+# inferred: there is no canonical mapping table and none is invented here. The
+# two assignments flagged ARGUABLE below are also disclosed in the pull request
+# body, because a silent arguable assignment is a process failure even when the
+# mapping is defensible.
+service_categories:
+  # Actions is GitHub's workflow runner for build/test/release automation driven
+  # by repository events -- the taxonomy's CI/CD-and-source-control category.
+  # ARGUABLE: Actions also runs arbitrary user code on demand with no server to
+  # manage, which reads as serverless-functions. CI/CD wins because the product
+  # is billed, documented and surfaced as repository automation, not as a
+  # general-purpose request-serving function runtime (it has no HTTP endpoint).
+  GitHub Actions: cicd-source-control
+  # Pages builds and serves a deployed web application from a repository; the
+  # taxonomy has no static-site category and "containers and application
+  # hosting" is its application-hosting bucket.
+  # ARGUABLE: Pages is delivered over a CDN with TLS and custom domains, which
+  # reads as networking-cdn-dns. Hosting wins because the unit of the offer is a
+  # deployed site (size, builds, deployment timeout), not delivery capacity
+  # bought independently of an origin.
+  GitHub Pages: containers-app-hosting
+  # Packages is a content-addressed artifact store metered exactly like object
+  # storage -- GB of storage plus GB of egress per month.
+  # ARGUABLE: a package registry could sit under secrets-config-devtools as
+  # developer tooling. Object storage wins because the published allowance is
+  # expressed purely in storage and transfer, which is the storage category's
+  # defining metric.
+  GitHub Packages: object-file-storage
+  # Codespaces is a managed cloud development environment: the developer-tooling
+  # half of "secrets, configuration and developer tooling".
+  # ARGUABLE: it is metered in compute-hours and storage, which reads as
+  # compute-vms. Developer tooling wins because the product is scoped to
+  # authoring code in a repository and cannot host a service (see the
+  # compute-vms rationale below).
+  GitHub Codespaces: secrets-config-devtools
+  # The GHEC trial is a time-limited evaluation of the GitHub platform itself,
+  # so it belongs with the source-control/CI product it gates.
+  GitHub Enterprise Cloud trial: cicd-source-control
+
+# Explicit provider x category coverage (F008 slice S2).
+#
+# All fourteen canonical categories MUST appear. A pair with no declaration is a
+# config error, not an implicit "unknown".
+#
+# States: verified_free | offered_no_z0 | not_offered | incomplete | stale |
+#         conflicting | unknown
+#
+# Honesty rules (enforced by the config schema AND by database CHECK
+# constraints):
+#   * not_offered REQUIRES a rationale -- asserting absence is a claim.
+#   * verified_free / offered_no_z0 REQUIRE a `source` (declared above) or an
+#     `evidence_url`.
+#   * at least three entries must be evidence-backed (decision Q9-A).
+#
+# PERPETUITY CHECK (the trap that matters most). Every entry marked
+# verified_free below is backed by a captured official excerpt that states the
+# allowance RESETS each billing cycle with no end date, or that the usage is
+# free outright. None of them is a 12-month introductory offer and none is a
+# trial. Where GitHub's own page is a time-limited offer (the GHEC trial) it is
+# published as an offer but classified NON-Z0, never counted as a free tier.
+coverage:
+  compute-vms:
+    # GitHub sells no general-purpose IaaS. Codespaces is a managed development
+    # environment tied to a repository (it cannot host a public service, and it
+    # stops when you stop working), and GitHub-hosted Actions runners are
+    # ephemeral job executors. Both are declared under their own categories.
+    state: not_offered
+    rationale: >-
+      GitHub publishes no general-purpose virtual-machine or IaaS product; its
+      managed compute is Codespaces (a repository-scoped development
+      environment, declared under secrets-config-devtools) and ephemeral
+      Actions runners (declared under cicd-source-control).
+  containers-app-hosting:
+    # GitHub Pages: free for public repositories on GitHub Free, with published
+    # usage limits and no payment method required.
+    state: verified_free
+    source: github-pages-limits
+  serverless-functions:
+    # See the ARGUABLE note on GitHub Actions above. GitHub publishes no
+    # request-triggered function runtime with an HTTP endpoint.
+    state: not_offered
+    rationale: >-
+      GitHub publishes no function-as-a-service runtime; the closest product,
+      GitHub Actions, is an event-driven CI/CD workflow runner with no
+      request-serving endpoint and is declared under cicd-source-control.
+  relational-databases:
+    state: not_offered
+    rationale: >-
+      GitHub publishes no managed relational database product; no official
+      docs.github.com page offers one at any price, free or paid.
+  nosql-key-value:
+    state: not_offered
+    rationale: >-
+      GitHub publishes no managed NoSQL, document or key-value database
+      product at any price.
+  object-file-storage:
+    # GitHub Packages: 500 MB storage and 1 GB data transfer per month on
+    # GitHub Free, with public packages free and no payment method required.
+    state: verified_free
+    source: github-packages-billing
+  networking-cdn-dns:
+    # See the ARGUABLE note on GitHub Pages above.
+    state: not_offered
+    rationale: >-
+      GitHub sells no standalone CDN, DNS or networking product; the delivery,
+      TLS and custom-domain support that back GitHub Pages are part of the
+      Pages hosting offer declared under containers-app-hosting and are not
+      purchasable independently of a Pages site.
+  queues-messaging-jobs:
+    state: not_offered
+    rationale: >-
+      GitHub publishes no managed queue, pub/sub or background-job service;
+      webhooks and Actions triggers are repository event plumbing, not a
+      general-purpose messaging product, and carry no published allowance of
+      their own.
+  auth-identity:
+    # Deliberately NOT `unknown`: this is a checked, declared absence.
+    state: not_offered
+    rationale: >-
+      GitHub publishes no identity-as-a-service product. OAuth apps and GitHub
+      Apps let third parties authenticate GitHub users, but they are an
+      unmetered capability of the platform with no separately-offered service
+      and no published free allowance, so there is nothing to classify.
+  cicd-source-control:
+    # GitHub Actions: 2,000 minutes/month and 500 MB artifact storage on GitHub
+    # Free, free for standard runners in public repositories, and blocked (not
+    # billed) at exhaustion when no payment method is on file.
+    #
+    # This category ALSO carries the deliberate non-Z0 offer: the GitHub
+    # Enterprise Cloud trial (source github-enterprise-cloud-trial) requires no
+    # payment method yet expires after 30 days, so it is published as an offer
+    # and classified NON-Z0. The category is still verified_free because the
+    # Actions allowance is a genuine perpetual free tier.
+    state: verified_free
+    source: github-actions-billing
+  monitoring-logs-tracing:
+    state: not_offered
+    rationale: >-
+      GitHub publishes no observability product; workflow run logs and the
+      audit log are features of Actions and of the enterprise plans
+      respectively, with no separately-offered monitoring service and no
+      published free allowance of their own.
+  ai-inference-embeddings:
+    # GitHub Copilot Free is available to individual developers at no cost with
+    # no payment method, per the official plans page. Its per-feature monthly
+    # allowances are published as feature-comparison icons rather than as a
+    # machine-readable table, so no numeric quota is published from this slice
+    # -- the category is declared free against the official page, and the
+    # numbers stay UNKNOWN rather than being guessed.
+    #
+    # CORRECTION TO THE BRIEF: GitHub Models, which the brief named as a likely
+    # free tier here, was FULLY RETIRED on 2026-07-30 per docs.github.com. It
+    # cannot back a free-tier claim and is deliberately not cited.
+    state: verified_free
+    evidence_url: https://docs.github.com/en/copilot/get-started/plans
+  email-notifications-comms:
+    state: not_offered
+    rationale: >-
+      GitHub publishes no email, SMS or push-notification delivery product;
+      repository notification email is a platform feature sent on GitHub's own
+      behalf, not a service an application can send through.
+  secrets-config-devtools:
+    # GitHub Codespaces: 120 hours of compute and 15 GB-month of storage per
+    # month on GitHub Free, reset each billing cycle, blocked (not billed) at
+    # exhaustion when no payment method is on file.
+    state: verified_free
+    source: github-codespaces-billing

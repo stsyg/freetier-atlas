@@ -1,0 +1,17 @@
+{
+  "profile": "github_actions_billing",
+  "mime": "text/html",
+  "source_url": "https://docs.github.com/en/billing/concepts/product-billing/github-actions",
+  "candidate_count": 1,
+  "candidates": [
+    {
+      "verification_state": "rejected",
+      "expect_valid": false,
+      "facts": {
+        "error": "table_not_found"
+      },
+      "evidence_url": "https://docs.github.com/en/billing/concepts/product-billing/github-actions",
+      "evidence_selector": null
+    }
+  ]
+}

@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <title>GitHub Codespaces billing — free quota (GitHub Free)</title>
+    <!--
+      Minimal excerpt of the official GitHub Codespaces billing page.
+
+      Verbatim from the "Free quota" table, "GitHub Free for personal accounts"
+      row: storage per month "15 GB-month", compute time per month "120 hrs".
+
+      Verbatim: "All GitHub personal accounts include a quota of free compute
+      time and storage for GitHub Codespaces."
+
+      PERPETUITY (why always_free): verbatim, "Your included compute hours reset
+      to the full amount at the start of each billing cycle." A recurring
+      monthly reset with no stated end date is the opposite of a 12-month
+      introductory offer.
+
+      EXHAUSTION (why hard_stop): verbatim, "If your account does not have a
+      valid payment method on file, usage is blocked once you use up your
+      quota." The page's own remedy list confirms the safe stop -- wait for the
+      monthly reset, or export your changes to a branch.
+
+      SCOPE NOTE (not extracted, but material to the category rationale):
+      verbatim, "GitHub plans for organizations and enterprises do not include a
+      free quota for GitHub Codespaces." This row is the personal-account
+      allowance only.
+    -->
+  </head>
+  <body>
+    <h1>GitHub Codespaces billing</h1>
+    <p>Free quota for personal accounts, GitHub Free plan. Source: https://docs.github.com/en/billing/concepts/product-billing/github-codespaces</p>
+    <table id="github-codespaces-free-quota">
+      <thead>
+        <tr>
+          <th>Service</th>
+          <th>Offer type</th>
+          <th>Card required</th>
+          <th>Paid dependencies</th>
+          <th>Compute time per month</th>
+          <th>Storage per month</th>
+          <th>Exhaustion behaviour</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>GitHub Codespaces</td>
+          <td>always_free</td>
+          <td>No</td>
+          <td>No</td>
+          <td>120 hrs</td>
+          <td>15 GB-month</td>
+          <td>hard_stop</td>
+        </tr>
+      </tbody>
+    </table>
+  </body>
+</html>

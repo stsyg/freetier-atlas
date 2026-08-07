@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <title>Setting up a trial of GitHub Enterprise Cloud</title>
+    <!--
+      Minimal excerpt of the official GitHub Enterprise Cloud trial page.
+
+      THIS ROW IS THE DELIBERATE NON-Z0 CASE. It is the trap the product exists
+      to avoid: an offer that costs nothing today, asks for no payment method,
+      and still must never be published as $0-forever.
+
+      Verbatim: "You do not need to provide a payment method to start a trial."
+      -> card required = No. And yet:
+
+      Verbatim: "The trial lasts for 30 days"; "Otherwise, after 30 days, your
+      trial will expire."; "GitHub Enterprise trial accounts are automatically
+      deleted 90 days after the trial period ends if the account has not been
+      converted to a paid account."
+
+      A time-limited trial is NOT an always-free tier, so offer type is `trial`
+      and the classifier must withhold Z0 on the offer-type test alone. The
+      exhaustion behaviour independently confirms it: continuing past day 30
+      requires purchasing GitHub Enterprise ("You can end your trial at any time
+      by purchasing GitHub Enterprise") -> manual_upgrade_required.
+
+      Verbatim allowances: "Up to 50 licenses to grant access to users."; "You
+      can create up to three new organizations in the trial enterprise."; "Up to
+      3,000 minutes of standard GitHub-hosted runners." 
+    -->
+  </head>
+  <body>
+    <h1>GitHub Enterprise Cloud trial</h1>
+    <p>What is included in the trial, and what happens when it ends. Source: https://docs.github.com/en/enterprise-cloud@latest/admin/overview/setting-up-a-trial-of-github-enterprise-cloud</p>
+    <table id="github-enterprise-cloud-trial">
+      <thead>
+        <tr>
+          <th>Service</th>
+          <th>Offer type</th>
+          <th>Card required</th>
+          <th>Paid dependencies</th>
+          <th>Trial length days</th>
+          <th>Licenses</th>
+          <th>Organizations</th>
+          <th>Actions minutes</th>
+          <th>Exhaustion behaviour</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>GitHub Enterprise Cloud trial</td>
+          <td>trial</td>
+          <td>No</td>
+          <td>No</td>
+          <td>30</td>
+          <td>50</td>
+          <td>3</td>
+          <td>3,000</td>
+          <td>manual_upgrade_required</td>
+        </tr>
+      </tbody>
+    </table>
+  </body>
+</html>

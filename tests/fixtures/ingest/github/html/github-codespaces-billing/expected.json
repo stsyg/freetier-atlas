@@ -1,0 +1,23 @@
+{
+  "profile": "github_codespaces_billing",
+  "mime": "text/html",
+  "source_url": "https://docs.github.com/en/billing/concepts/product-billing/github-codespaces",
+  "candidate_count": 1,
+  "candidates": [
+    {
+      "verification_state": "candidate",
+      "expect_valid": true,
+      "facts": {
+        "service": "GitHub Codespaces",
+        "offer_type": "always_free",
+        "requires_card": false,
+        "has_paid_dependencies": false,
+        "compute_time_per_month": "120 hrs",
+        "storage_per_month": "15 GB-month",
+        "exhaustion_behaviour": "hard_stop"
+      },
+      "evidence_url": "https://docs.github.com/en/billing/concepts/product-billing/github-codespaces",
+      "evidence_selector": "github_codespaces_billing row[1]"
+    }
+  ]
+}

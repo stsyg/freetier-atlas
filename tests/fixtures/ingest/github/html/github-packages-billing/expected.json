@@ -1,0 +1,25 @@
+{
+  "profile": "github_packages_billing",
+  "mime": "text/html",
+  "source_url": "https://docs.github.com/en/billing/concepts/product-billing/github-packages",
+  "candidate_count": 1,
+  "candidates": [
+    {
+      "verification_state": "candidate",
+      "expect_valid": true,
+      "facts": {
+        "service": "GitHub Packages",
+        "offer_type": "always_free",
+        "requires_card": false,
+        "has_paid_dependencies": false,
+        "storage": "500 MB",
+        "data_transfer_per_month": "1 GB",
+        "public_package_storage": "Free",
+        "inbound_data_transfer": "Free",
+        "exhaustion_behaviour": "hard_stop"
+      },
+      "evidence_url": "https://docs.github.com/en/billing/concepts/product-billing/github-packages",
+      "evidence_selector": "github_packages_billing row[1]"
+    }
+  ]
+}

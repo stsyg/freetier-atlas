@@ -1,0 +1,39 @@
+{
+  "profile": "github_actions_billing",
+  "mime": "text/html",
+  "source_url": "https://docs.github.com/en/billing/concepts/product-billing/github-actions",
+  "candidate_count": 2,
+  "contradiction": {
+    "field": "offer_type",
+    "shared": {
+      "service": "GitHub Actions"
+    },
+    "values": ["always_free", "trial"]
+  },
+  "candidates": [
+    {
+      "verification_state": "candidate",
+      "expect_valid": true,
+      "facts": {
+        "service": "GitHub Actions",
+        "offer_type": "always_free",
+        "minutes_per_month": "2,000",
+        "exhaustion_behaviour": "hard_stop"
+      },
+      "evidence_url": "https://docs.github.com/en/billing/concepts/product-billing/github-actions",
+      "evidence_selector": "github_actions_billing row[1]"
+    },
+    {
+      "verification_state": "candidate",
+      "expect_valid": true,
+      "facts": {
+        "service": "GitHub Actions",
+        "offer_type": "trial",
+        "minutes_per_month": "500",
+        "exhaustion_behaviour": "automatic_billing"
+      },
+      "evidence_url": "https://docs.github.com/en/billing/concepts/product-billing/github-actions",
+      "evidence_selector": "github_actions_billing row[2]"
+    }
+  ]
+}

@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <title>GitHub Actions billing — free use (contradictory)</title>
+    <!--
+      Fixture-case-vocabulary variant derived from the official GitHub
+      Actions billing capture (github-actions-billing).
+
+      CONTRADICTORY: the same page publishes two incompatible rows for
+      GitHub Actions -- a perpetual 2,000-minute allowance that stops
+      safely, and a trial-shaped 500-minute allowance that bills
+      automatically. The pipeline must surface the conflict for review
+      instead of picking the friendlier row, which is exactly how a
+      false $0 claim would otherwise ship.
+    -->
+  </head>
+  <body>
+    <h1>GitHub Actions billing</h1>
+    <p>Free use of GitHub Actions, GitHub Free plan. Source: https://docs.github.com/en/billing/concepts/product-billing/github-actions</p>
+    <table id="github-actions-free-use">
+      <thead>
+        <tr>
+          <th>Service</th>
+          <th>Offer type</th>
+          <th>Card required</th>
+          <th>Paid dependencies</th>
+          <th>Minutes per month</th>
+          <th>Artifact storage</th>
+          <th>Cache storage per repository</th>
+          <th>Public repository usage</th>
+          <th>Exhaustion behaviour</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>GitHub Actions</td>
+          <td>always_free</td>
+          <td>No</td>
+          <td>No</td>
+          <td>2,000</td>
+          <td>500 MB</td>
+          <td>10 GB</td>
+          <td>Free</td>
+          <td>hard_stop</td>
+        </tr>
+        <tr>
+          <td>GitHub Actions</td>
+          <td>trial</td>
+          <td>No</td>
+          <td>No</td>
+          <td>500</td>
+          <td>500 MB</td>
+          <td>10 GB</td>
+          <td>Free</td>
+          <td>automatic_billing</td>
+        </tr>
+      </tbody>
+    </table>
+  </body>
+</html>
