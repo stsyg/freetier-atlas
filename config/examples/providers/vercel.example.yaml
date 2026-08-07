@@ -1,0 +1,138 @@
+provider:
+  id: vercel
+  name: Vercel
+  official_domains:
+    - vercel.com
+
+# All inputs are current OFFICIAL Vercel pages captured as deterministic,
+# minimal excerpts. Tests never use the network.
+sources:
+  - id: vercel-hobby-plan
+    type: html
+    trust_level: official
+    url: https://vercel.com/docs/plans/hobby
+    schedule_ref: official_pages
+    extraction_profile: vercel_hobby_plan
+
+  - id: vercel-blob-pricing
+    type: html
+    trust_level: official
+    url: https://vercel.com/pricing#vercel-blob
+    schedule_ref: official_pages
+    extraction_profile: vercel_blob_pricing
+
+  - id: vercel-queues-pricing
+    type: html
+    trust_level: official
+    url: https://vercel.com/pricing#vercel-queues
+    schedule_ref: official_pages
+    extraction_profile: vercel_queues_pricing
+
+  - id: vercel-pro-trial
+    type: html
+    trust_level: official
+    url: https://vercel.com/docs/plans/pro-plan/trials
+    schedule_ref: official_pages
+    extraction_profile: vercel_pro_trial
+
+  - id: vercel-storage-boundary
+    type: html
+    trust_level: official
+    url: https://vercel.com/docs/storage
+    schedule_ref: official_pages
+    extraction_profile: vercel_storage_boundary
+
+  - id: vercel-ai-gateway-promotion
+    type: html
+    trust_level: official
+    url: https://vercel.com/changelog
+    schedule_ref: official_pages
+    extraction_profile: vercel_ai_gateway_promotion
+
+publishing:
+  automatic_threshold: 0.90
+  uncertain_threshold: 0.70
+  require_official_source: true
+  require_deterministic_numeric_validation: true
+
+# Declared service -> category assignments (Q10-A). Every mapping has a
+# rationale; arguable assignments are also disclosed in the pull-request body.
+service_categories:
+  # Vercel builds and serves deployed web applications; hosting is the primary product.
+  Vercel App Hosting: containers-app-hosting
+  # ARGUABLE: Functions execute inside hosted apps, but request-triggered managed compute is the taxonomy's serverless-functions definition.
+  Vercel Functions: serverless-functions
+  # ARGUABLE: Edge Network is bundled with deployments, but its metered unit is CDN requests and transfer, so networking-cdn-dns is primary.
+  Vercel Edge Network: networking-cdn-dns
+  # Git pushes automatically build and deploy, which is repository-driven CI/CD.
+  Vercel Built-in CI/CD: cicd-source-control
+  # Web Analytics and runtime logs are observability signals.
+  Vercel Monitoring and Logs: monitoring-logs-tracing
+  # Global Config is a low-latency configuration store for application settings.
+  Vercel Global Config: secrets-config-devtools
+  # Blob is native object/file storage with storage, operations, and transfer quotas.
+  Vercel Blob: object-file-storage
+  # Queues provides managed message send/receive/delete operations.
+  Vercel Queues: queues-messaging-jobs
+  # The Pro trial evaluates the hosted Vercel platform and is mapped to its primary app-hosting surface.
+  Vercel Pro trial: containers-app-hosting
+  # The promotion is explicitly for model inference through AI Gateway.
+  Ling 3.0 Tiny via Vercel AI Gateway: ai-inference-embeddings
+  # This invalid discovery row exists only to preserve the current third-party storage boundary.
+  Vercel Marketplace Postgres integrations: relational-databases
+
+coverage:
+  compute-vms:
+    state: not_offered
+    rationale: >-
+      Vercel publishes managed application builds and Functions, not a
+      general-purpose VM or IaaS product.
+  containers-app-hosting:
+    state: verified_free
+    source: vercel-hobby-plan
+  serverless-functions:
+    state: verified_free
+    source: vercel-hobby-plan
+  relational-databases:
+    state: not_offered
+    rationale: >-
+      Current Vercel Storage documentation directs Postgres users to third-party
+      Marketplace providers such as Neon; it does not offer a Vercel-native
+      relational database or a Vercel-owned free allowance.
+  nosql-key-value:
+    state: not_offered
+    rationale: >-
+      Current Vercel Storage documentation directs KV and NoSQL users to
+      third-party Marketplace providers such as Upstash and AWS; no
+      Vercel-native KV or NoSQL allowance is published.
+  object-file-storage:
+    state: verified_free
+    source: vercel-blob-pricing
+  networking-cdn-dns:
+    state: verified_free
+    source: vercel-hobby-plan
+  queues-messaging-jobs:
+    state: offered_no_z0
+    source: vercel-queues-pricing
+  auth-identity:
+    state: not_offered
+    rationale: >-
+      Vercel Authentication protects Vercel deployments; Vercel publishes no
+      general-purpose identity-as-a-service allowance for application users.
+  cicd-source-control:
+    state: verified_free
+    source: vercel-hobby-plan
+  monitoring-logs-tracing:
+    state: verified_free
+    source: vercel-hobby-plan
+  ai-inference-embeddings:
+    state: offered_no_z0
+    source: vercel-ai-gateway-promotion
+  email-notifications-comms:
+    state: not_offered
+    rationale: >-
+      Vercel sends platform notifications but publishes no application-facing
+      email, SMS, or push-delivery service allowance.
+  secrets-config-devtools:
+    state: verified_free
+    source: vercel-hobby-plan

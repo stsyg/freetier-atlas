@@ -1,0 +1,11 @@
+{
+  "captured_by": "F008 P2 Vercel builder (official excerpt variant)",
+  "fetched_at": "2026-08-07T12:00:00Z",
+  "http_status": 200,
+  "robots_allowed": true,
+  "sha256_original": null,
+  "sha256_stored": "586d18e88d09e0b9f5f8bbca0f603f24b88b796e1a88365993a781f3b49556af",
+  "tos_note": "Official Vercel documentation on vercel.com; minimal deterministic excerpt for offline testing.",
+  "trim_method": "case-variant: unchanged hosting row copied from the official Hobby excerpt.",
+  "url": "https://vercel.com/docs/plans/hobby"
+}

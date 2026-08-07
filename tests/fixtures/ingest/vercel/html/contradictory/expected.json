@@ -1,0 +1,49 @@
+{
+  "profile": "vercel_pro_trial",
+  "mime": "text/html",
+  "source_url": "https://vercel.com/docs/plans/pro-plan/trials",
+  "candidate_count": 2,
+  "contradiction": {
+    "field": "requires_card",
+    "shared": { "service": "Vercel Pro trial", "offer_type": "trial" },
+    "values": [false, true]
+  },
+  "candidates": [
+    {
+      "verification_state": "candidate",
+      "expect_valid": true,
+      "facts": {
+        "service": "Vercel Pro trial",
+        "offer_type": "trial",
+        "requires_card": false,
+        "has_paid_dependencies": false,
+        "trial_length_days": "14",
+        "trial_credit": "$20",
+        "active_cpu": "16 CPU-hrs",
+        "provisioned_memory": "1,440 GB-hrs",
+        "function_invocations_per_month": "1,000,000/month",
+        "exhaustion_behaviour": "manual_upgrade_required"
+      },
+      "evidence_url": "https://vercel.com/docs/plans/pro-plan/trials",
+      "evidence_selector": "vercel_pro_trial row[1]"
+    },
+    {
+      "verification_state": "candidate",
+      "expect_valid": true,
+      "facts": {
+        "service": "Vercel Pro trial",
+        "offer_type": "trial",
+        "requires_card": true,
+        "has_paid_dependencies": false,
+        "trial_length_days": "14",
+        "trial_credit": "$20",
+        "active_cpu": "16 CPU-hrs",
+        "provisioned_memory": "1,440 GB-hrs",
+        "function_invocations_per_month": "1,000,000/month",
+        "exhaustion_behaviour": "automatic_billing"
+      },
+      "evidence_url": "https://vercel.com/docs/plans/pro-plan/trials",
+      "evidence_selector": "vercel_pro_trial row[2]"
+    }
+  ]
+}

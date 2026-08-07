@@ -1,0 +1,11 @@
+{
+  "captured_by": "F008 P2 Vercel builder (official excerpt variant)",
+  "fetched_at": "2026-08-07T12:00:00Z",
+  "http_status": 200,
+  "robots_allowed": true,
+  "sha256_original": null,
+  "sha256_stored": "e9609d2cad68215a477ef02e86fe4b055ad2850c0bb4a3e3171716ae87e67079",
+  "tos_note": "Official Vercel documentation on vercel.com; minimal deterministic excerpt for offline testing.",
+  "trim_method": "case-variant: offer-type column removed to prove unknown material input is withheld.",
+  "url": "https://vercel.com/docs/plans/hobby"
+}

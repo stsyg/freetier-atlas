@@ -1,0 +1,22 @@
+{
+  "profile": "vercel_queues_pricing",
+  "mime": "text/html",
+  "source_url": "https://vercel.com/pricing#vercel-queues",
+  "candidate_count": 1,
+  "candidates": [
+    {
+      "verification_state": "candidate",
+      "expect_valid": true,
+      "facts": {
+        "service": "Vercel Queues",
+        "offer_type": "recurring_quota",
+        "requires_card": false,
+        "has_paid_dependencies": false,
+        "api_operations_per_month": "1M / month included",
+        "exhaustion_behaviour": "unknown"
+      },
+      "evidence_url": "https://vercel.com/pricing#vercel-queues",
+      "evidence_selector": "vercel_queues_pricing row[1]"
+    }
+  ]
+}

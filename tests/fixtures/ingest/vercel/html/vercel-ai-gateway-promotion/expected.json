@@ -1,0 +1,22 @@
+{
+  "profile": "vercel_ai_gateway_promotion",
+  "mime": "text/html",
+  "source_url": "https://vercel.com/changelog",
+  "candidate_count": 1,
+  "candidates": [
+    {
+      "verification_state": "candidate",
+      "expect_valid": true,
+      "facts": {
+        "service": "Ling 3.0 Tiny via Vercel AI Gateway",
+        "offer_type": "trial",
+        "requires_card": null,
+        "has_paid_dependencies": null,
+        "promotion_period": "three weeks",
+        "exhaustion_behaviour": "unknown"
+      },
+      "evidence_url": "https://vercel.com/changelog",
+      "evidence_selector": "vercel_ai_gateway_promotion row[1]"
+    }
+  ]
+}

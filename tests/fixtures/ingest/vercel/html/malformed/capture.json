@@ -1,0 +1,11 @@
+{
+  "captured_by": "F008 P2 Vercel builder (official excerpt variant)",
+  "fetched_at": "2026-08-07T12:00:00Z",
+  "http_status": 200,
+  "robots_allowed": true,
+  "sha256_original": null,
+  "sha256_stored": "8fc016c113eb98f318a2a377b6124e3f5c2c8360588ee7930d973a4c351ac07b",
+  "tos_note": "Official Vercel documentation on vercel.com; minimal deterministic excerpt for offline testing.",
+  "trim_method": "case-variant: expected table removed to model malformed input.",
+  "url": "https://vercel.com/docs/plans/hobby"
+}

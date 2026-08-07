@@ -1,0 +1,104 @@
+{
+  "profile": "vercel_hobby_plan",
+  "mime": "text/html",
+  "source_url": "https://vercel.com/docs/plans/hobby",
+  "candidate_count": 6,
+  "candidates": [
+    {
+      "verification_state": "candidate",
+      "expect_valid": true,
+      "facts": {
+        "service": "Vercel App Hosting",
+        "offer_type": "always_free",
+        "requires_card": false,
+        "has_paid_dependencies": false,
+        "projects": "200",
+        "deployments_per_day": "100",
+        "notes": "Personal, non-commercial use only",
+        "exhaustion_behaviour": "deployment_blocked"
+      },
+      "evidence_url": "https://vercel.com/docs/plans/hobby",
+      "evidence_selector": "vercel_hobby_plan row[1]"
+    },
+    {
+      "verification_state": "candidate",
+      "expect_valid": true,
+      "facts": {
+        "service": "Vercel Functions",
+        "offer_type": "always_free",
+        "requires_card": false,
+        "has_paid_dependencies": false,
+        "active_cpu_per_month": "4 CPU-hrs",
+        "provisioned_memory_per_month": "360 GB-hrs",
+        "invocations_per_month": "First 1,000,000",
+        "notes": "Personal, non-commercial use only",
+        "exhaustion_behaviour": "hard_stop"
+      },
+      "evidence_url": "https://vercel.com/docs/plans/hobby",
+      "evidence_selector": "vercel_hobby_plan row[2]"
+    },
+    {
+      "verification_state": "candidate",
+      "expect_valid": true,
+      "facts": {
+        "service": "Vercel Edge Network",
+        "offer_type": "always_free",
+        "requires_card": false,
+        "has_paid_dependencies": false,
+        "edge_requests_per_month": "Up to 1,000,000 requests",
+        "fast_data_transfer_per_month": "100 GB",
+        "notes": "Personal, non-commercial use only",
+        "exhaustion_behaviour": "hard_stop"
+      },
+      "evidence_url": "https://vercel.com/docs/plans/hobby",
+      "evidence_selector": "vercel_hobby_plan row[3]"
+    },
+    {
+      "verification_state": "candidate",
+      "expect_valid": true,
+      "facts": {
+        "service": "Vercel Built-in CI/CD",
+        "offer_type": "always_free",
+        "requires_card": false,
+        "has_paid_dependencies": false,
+        "deployments_per_day": "100",
+        "notes": "Personal, non-commercial use only",
+        "exhaustion_behaviour": "deployment_blocked"
+      },
+      "evidence_url": "https://vercel.com/docs/plans/hobby",
+      "evidence_selector": "vercel_hobby_plan row[4]"
+    },
+    {
+      "verification_state": "candidate",
+      "expect_valid": true,
+      "facts": {
+        "service": "Vercel Monitoring and Logs",
+        "offer_type": "always_free",
+        "requires_card": false,
+        "has_paid_dependencies": false,
+        "analytics_events_per_month": "50,000 events / month included",
+        "runtime_log_retention": "1 hour",
+        "notes": "Personal, non-commercial use only",
+        "exhaustion_behaviour": "hard_stop"
+      },
+      "evidence_url": "https://vercel.com/docs/plans/hobby",
+      "evidence_selector": "vercel_hobby_plan row[5]"
+    },
+    {
+      "verification_state": "candidate",
+      "expect_valid": true,
+      "facts": {
+        "service": "Vercel Global Config",
+        "offer_type": "always_free",
+        "requires_card": false,
+        "has_paid_dependencies": false,
+        "config_reads_per_month": "First 100,000",
+        "config_writes_per_month": "First 100",
+        "notes": "Personal, non-commercial use only",
+        "exhaustion_behaviour": "hard_stop"
+      },
+      "evidence_url": "https://vercel.com/docs/plans/hobby",
+      "evidence_selector": "vercel_hobby_plan row[6]"
+    }
+  ]
+}

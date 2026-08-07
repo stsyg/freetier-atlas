@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <title>Vercel Pro plan trial</title>
+    <!--
+    Deliberate NON-Z0 control from official trial docs. Verbatim: "The trial
+    plan includes a $20 credit"; Active CPU "16 CPU-hrs"; Provisioned Memory
+    "1,440 GB-hrs"; Function Invocations "1,000,000/month"; and "Your trial
+    finishes after 14 days". Without a payment method the account reverts to
+    Hobby. Continuing Pro requires adding a payment method, and billing begins
+    after the trial ends.
+  --></head>
+  <body>
+    <table id="vercel-pro-trial">
+      <thead>
+        <tr>
+          <th>Service</th>
+          <th>Offer type</th>
+          <th>Card required</th>
+          <th>Paid dependencies</th>
+          <th>Trial Length Days</th>
+          <th>Trial Credit</th>
+          <th>Active CPU</th>
+          <th>Provisioned Memory</th>
+          <th>Function Invocations per month</th>
+          <th>Exhaustion behaviour</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Vercel Pro trial</td>
+          <td>trial</td>
+          <td>No</td>
+          <td>No</td>
+          <td>14</td>
+          <td>$20</td>
+          <td>16 CPU-hrs</td>
+          <td>1,440 GB-hrs</td>
+          <td>1,000,000/month</td>
+          <td>manual_upgrade_required</td>
+        </tr>
+      </tbody>
+    </table>
+  </body>
+</html>

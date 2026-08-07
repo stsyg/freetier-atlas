@@ -1,0 +1,11 @@
+{
+  "captured_by": "F008 P2 Vercel builder (manual official excerpt)",
+  "fetched_at": "2026-08-07T12:00:00Z",
+  "http_status": 200,
+  "robots_allowed": true,
+  "sha256_original": null,
+  "sha256_stored": "99aa3c99d822e5dd4e3f537a4af88f3d4ae9e3a4a726c872243d31f9698cea70",
+  "tos_note": "Official current Vercel Storage documentation on vercel.com; minimal deterministic excerpt for offline testing.",
+  "trim_method": "manual-excerpt: native Blob/Global Config versus Marketplace Postgres/KV/NoSQL provider boundary; no offer type or free allowance invented.",
+  "url": "https://vercel.com/docs/storage"
+}

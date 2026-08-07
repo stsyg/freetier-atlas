@@ -1,0 +1,24 @@
+{
+  "profile": "vercel_hobby_plan",
+  "mime": "text/html",
+  "source_url": "https://vercel.com/docs/plans/hobby",
+  "candidate_count": 1,
+  "candidates": [
+    {
+      "verification_state": "candidate",
+      "expect_valid": false,
+      "validate_contains": ["offer_type"],
+      "facts": {
+        "service": "Vercel App Hosting",
+        "offer_type": null,
+        "requires_card": false,
+        "has_paid_dependencies": false,
+        "projects": "200",
+        "deployments_per_day": "100",
+        "exhaustion_behaviour": "deployment_blocked"
+      },
+      "evidence_url": "https://vercel.com/docs/plans/hobby",
+      "evidence_selector": "vercel_hobby_plan row[1]"
+    }
+  ]
+}

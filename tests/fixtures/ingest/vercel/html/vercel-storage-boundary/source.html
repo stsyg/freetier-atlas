@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <title>Vercel Storage overview</title>
+    <!--
+    Current official storage boundary. Vercel lists native Blob and Global
+    Config, while Marketplace provides "Postgres, KV, NoSQL, and other
+    databases from providers like Neon, Upstash, and AWS". No Vercel-native
+    database allowance or offer type is stated, so offer_type is intentionally
+    absent and validation must reject this discovery row.
+  --></head>
+  <body>
+    <table id="vercel-marketplace-storage">
+      <thead>
+        <tr>
+          <th>Service</th>
+          <th>Marketplace Providers</th>
+          <th>Exhaustion behaviour</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Vercel Marketplace Postgres integrations</td>
+          <td>Neon, Upstash, and AWS</td>
+          <td>unknown</td>
+        </tr>
+      </tbody>
+    </table>
+  </body>
+</html>

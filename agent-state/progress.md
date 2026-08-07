@@ -2307,3 +2307,74 @@ Also recorded: CI's `Python lint, format, tests` job runs without
 `DATABASE_URL`, so this repo's entire integration suite -- including this
 slice's -- is skipped on every CI run. CI green is not evidence for an
 integration slice. Raised by the verifier and owned by them.
+
+## 2026-08-07 - F008 Wave 3 P2 Vercel provider
+
+Corrections first. My initial evidence rows normalized Vercel's "First
+1,000,000" and "Up to 1,000,000 requests" to bare numbers, and my first
+independent evaluation correctly rejected that loss of qualification. It also
+correctly found that Hobby's personal/non-commercial restriction was present
+in research prose but absent from extracted facts. The final fixtures preserve
+the official "First"/"Up to" phrases verbatim, and every Hobby candidate carries
+`notes: Personal, non-commercial use only`; unit and persisted-row assertions
+pin both. Z0 remains the classifier's billing/safe-stop verdict, not a claim of
+unrestricted commercial eligibility. A fresh evaluator then returned PASS with
+no implementation blockers.
+
+[M] Six official Vercel source captures produced six scans, ten valid
+candidates/evidence rows, nine published offers, one AI review and one rejected
+Marketplace-boundary row against real PostgreSQL. Seven Hobby/Blob offers
+classify Z0 only with explicit no-card, no-paid-dependency and safe-stop facts.
+The 14-day Pro trial classifies Z2; Queues remains UNKNOWN because exhaustion
+is unknown; the temporary AI Gateway promotion is withheld. Missing or malformed
+`offer_type` is rejected before classification, including the current
+Postgres/KV Marketplace boundary.
+
+[M] Coverage contains each canonical category exactly once. Nine categories
+have official `verified_free` or `offered_no_z0` backing; the other five are
+`not_offered` with rationales. Negative-claim observation window: current Vercel
+plans, limits, product and changelog pages captured 2026-08-07. Positive
+controls in the same query/corpus are Vercel-native Functions, Edge Network,
+App Hosting, Blob, CI/CD, monitoring and Global Config. The observed database
+and KV pages instead route to named Marketplace providers, so no historical
+first-party Postgres/KV allowance is published as Vercel-native.
+
+Q10-A choices are explicit: Functions maps to `serverless-functions` because
+the official product executes request-triggered functions; Edge Network maps
+to `networking-cdn-dns` because the cited allowance is edge requests/data
+transfer. Both are also arguable as `containers-app-hosting` capabilities and
+must remain disclosed in the PR. Blob remains Vercel-native; Marketplace
+Postgres/KV/NoSQL allowances remain provider-boundary evidence, not Vercel
+offers.
+
+[M] The five document fixture cases plus cross-scan withdrawn/stale exercise all
+seven required shapes. Changed, partial, malformed and contradictory paths
+assert persisted change materiality, withholding and pending review state.
+Module teardown copies the merged GitHub `VACUUM (FULL)` pattern exactly. Final
+fresh-database suite: **1357 passed, 2 skipped, 1 warning**; skips are exactly
+`tests/integration/test_stack_health.py:25` and `:32`. Alembic head remains
+`0011_provider_category_coverage`. `pwsh -File scripts/check.ps1 -NodeAudit`
+exits 0 with all checks passing and both dependency audits clean.
+
+[M] Contamination control: with the isolated stack healthy, stopping only
+`fta-p2-vercel-api-1` changed exactly API liveness, API readiness and the
+web-to-API proxy from pass to fail. Database, worker, scheduler, queue,
+heartbeat, web health and SPA checks stayed healthy; neighboring
+`freetier-atlas` API remained HTTP 200 before and during the stop. Restarting
+the Vercel API restored the complete smoke run. A later evaluator standalone
+run committed duplicate catalogue rows; the dirty database then measured 12
+scans instead of the six-source positive control. Recreating only the disposable
+`fta-p2-vercel` volume restored the targeted integration result to 9 passed and
+the full suite result above.
+
+[M] Self-invented mutation, prediction recorded before execution: rename the
+shared Hobby `Offer type` header to `Plan kind`; all six rows should extract
+`offer_type=None`, fail validation and never reach the classifier. Actual:
+six candidates, all six `offer_type=None`, all six with validation errors. The
+prediction was correct and the fail-open classifier is not relied upon.
+
+Scope stayed provider-local: new Vercel YAML/profile/fixtures/unit/integration
+tests, only the Vercel provider-doc section, this contract/handoff, and eleven
+`.secrets.baseline` entries that each map to a fixture `sha256_stored` digest.
+No migration, schema, classifier, publisher, workflow, dependency manifest,
+other provider, reconcile guard or feature-ledger change was made.

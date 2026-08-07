@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <title>Vercel Pro trial post-trial paths</title>
+    <!--
+  Both rows use facts published on the official trial page: without a payment
+  method the team reverts to Hobby; with a payment method billing begins after
+  the trial. Served as a second official source in integration, they exercise
+  cross-source contradiction handling without inventing a provider condition.
+-->
+  </head>
+  <body>
+    <table id="vercel-pro-trial">
+      <thead>
+        <tr>
+          <th>Service</th>
+          <th>Offer type</th>
+          <th>Card required</th>
+          <th>Paid dependencies</th>
+          <th>Trial Length Days</th>
+          <th>Trial Credit</th>
+          <th>Active CPU</th>
+          <th>Provisioned Memory</th>
+          <th>Function Invocations per month</th>
+          <th>Exhaustion behaviour</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Vercel Pro trial</td>
+          <td>trial</td>
+          <td>No</td>
+          <td>No</td>
+          <td>14</td>
+          <td>$20</td>
+          <td>16 CPU-hrs</td>
+          <td>1,440 GB-hrs</td>
+          <td>1,000,000/month</td>
+          <td>manual_upgrade_required</td>
+        </tr>
+        <tr>
+          <td>Vercel Pro trial</td>
+          <td>trial</td>
+          <td>Yes</td>
+          <td>No</td>
+          <td>14</td>
+          <td>$20</td>
+          <td>16 CPU-hrs</td>
+          <td>1,440 GB-hrs</td>
+          <td>1,000,000/month</td>
+          <td>automatic_billing</td>
+        </tr>
+      </tbody>
+    </table>
+  </body>
+</html>

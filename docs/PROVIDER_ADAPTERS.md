@@ -139,7 +139,29 @@ Use Microsoft Learn MCP, Azure free/pricing pages, Azure updates, Azure Retail P
 
 ## Vercel
 
-Use official Vercel MCP, plans/limits docs, changelog, and public APIs.
+The Vercel slice uses deterministic HTML profiles over minimal captures from
+official plans, pricing, limits, storage, and changelog pages. The Hobby plan is
+documented as free with no billing cycle; its native app hosting, Functions,
+Edge Network, built-in CI/CD, monitoring/logs, Global Config, and Blob
+allowances use safe-stop evidence before any Z0 publication.
+Hobby remains restricted to personal, non-commercial use; that condition is
+captured on every Hobby candidate and must accompany interpretation of the
+billing-only Z0 verdict.
+
+Current storage documentation is authoritative over historical packaging:
+Vercel Blob and Global Config are native products, while Postgres, KV, and
+NoSQL are provisioned from Marketplace providers such as Neon, Upstash, and
+AWS. Those partner products are not represented as Vercel-native free
+services. Vercel Queues is declared offered but not Z0 because its pricing page
+does not establish a safe no-billing exhaustion path. The AI Gateway changelog
+promotion is explicitly time-limited and therefore offered-no-Z0, never a
+perpetual free allowance.
+
+The two arguable mappings are explicit: Vercel Functions maps to
+`serverless-functions` because it is request-triggered managed compute, while
+Edge Network maps to `networking-cdn-dns` because its metered units are CDN
+requests and transfer even though both capabilities are bundled with hosted
+deployments.
 
 ## Oracle Cloud
 

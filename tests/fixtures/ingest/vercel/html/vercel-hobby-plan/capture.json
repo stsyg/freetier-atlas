@@ -1,0 +1,11 @@
+{
+  "captured_by": "F008 P2 Vercel builder (manual official excerpt)",
+  "fetched_at": "2026-08-07T12:00:00Z",
+  "http_status": 200,
+  "robots_allowed": true,
+  "sha256_original": null,
+  "sha256_stored": "c013a87a9150378ad815d752ab7c68261b1f740078ce41abbaf7dac8d809a04f",
+  "tos_note": "Official Vercel Hobby, plans, and limits documentation on vercel.com; minimal deterministic excerpt for offline testing.",
+  "trim_method": "manual-excerpt: free/no-billing-cycle and Hobby pause language plus verbatim allowances, re-expressed as canonical service rows; no unstated numeric value added.",
+  "url": "https://vercel.com/docs/plans/hobby"
+}

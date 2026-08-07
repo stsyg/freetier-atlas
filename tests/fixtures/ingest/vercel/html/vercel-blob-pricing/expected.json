@@ -1,0 +1,25 @@
+{
+  "profile": "vercel_blob_pricing",
+  "mime": "text/html",
+  "source_url": "https://vercel.com/pricing#vercel-blob",
+  "candidate_count": 1,
+  "candidates": [
+    {
+      "verification_state": "candidate",
+      "expect_valid": true,
+      "facts": {
+        "service": "Vercel Blob",
+        "offer_type": "always_free",
+        "requires_card": false,
+        "has_paid_dependencies": false,
+        "storage_per_month": "1 GB / month included",
+        "simple_operations_per_month": "10K / month included",
+        "advanced_operations_per_month": "2K / month included",
+        "data_transfer_per_month": "10 GB / month included",
+        "exhaustion_behaviour": "hard_stop"
+      },
+      "evidence_url": "https://vercel.com/pricing#vercel-blob",
+      "evidence_selector": "vercel_blob_pricing row[1]"
+    }
+  ]
+}

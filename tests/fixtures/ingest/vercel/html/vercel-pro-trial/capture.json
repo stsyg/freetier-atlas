@@ -1,0 +1,11 @@
+{
+  "captured_by": "F008 P2 Vercel builder (manual official excerpt)",
+  "fetched_at": "2026-08-07T12:00:00Z",
+  "http_status": 200,
+  "robots_allowed": true,
+  "sha256_original": null,
+  "sha256_stored": "32dc3e41e73998148cd0d4e71ed7c48fe2300e24b8e96868a79a8d9228387b42",
+  "tos_note": "Official Vercel Pro trial documentation on vercel.com; minimal deterministic excerpt for offline testing.",
+  "trim_method": "manual-excerpt: trial duration, credit, resource limits, no-payment-method fallback, and paid continuation condition in one canonical row.",
+  "url": "https://vercel.com/docs/plans/pro-plan/trials"
+}

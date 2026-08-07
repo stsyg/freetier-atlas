@@ -1,0 +1,11 @@
+{
+  "captured_by": "F008 P2 Vercel builder (manual official excerpt)",
+  "fetched_at": "2026-08-07T12:00:00Z",
+  "http_status": 200,
+  "robots_allowed": true,
+  "sha256_original": null,
+  "sha256_stored": "593f895a2b97318134aaa1806c282d0e177d7b870399104bbb7868b6da806116",
+  "tos_note": "Official Vercel pricing and Blob documentation on vercel.com; minimal deterministic excerpt for offline testing.",
+  "trim_method": "manual-excerpt: Hobby Blob allowances plus the official no-additional-payment and access-stop statements, re-expressed in one canonical offer row.",
+  "url": "https://vercel.com/pricing#vercel-blob"
+}

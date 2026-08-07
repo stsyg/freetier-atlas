@@ -1,0 +1,11 @@
+{
+  "captured_by": "F008 P2 Vercel builder (official excerpt variant)",
+  "fetched_at": "2026-08-07T12:00:00Z",
+  "http_status": 200,
+  "robots_allowed": true,
+  "sha256_original": null,
+  "sha256_stored": "6eb85b1077e0ddf4a9b8249c08f314cf4c1d3055e9571aaca54e5ef3b0f81e24",
+  "tos_note": "Official Vercel documentation on vercel.com; minimal deterministic excerpt for offline testing.",
+  "trim_method": "case-variant: official Pro deployment limit substituted for the Hobby value to model a changed allowance without inventing a number.",
+  "url": "https://vercel.com/docs/plans/hobby"
+}

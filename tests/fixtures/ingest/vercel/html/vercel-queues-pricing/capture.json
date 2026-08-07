@@ -1,0 +1,11 @@
+{
+  "captured_by": "F008 P2 Vercel builder (manual official excerpt)",
+  "fetched_at": "2026-08-07T12:00:00Z",
+  "http_status": 200,
+  "robots_allowed": true,
+  "sha256_original": null,
+  "sha256_stored": "05779994e6ca73ea442b5f834899867b3cfeda23d20b848476bc4995b55d717a",
+  "tos_note": "Official Vercel pricing documentation on vercel.com; minimal deterministic excerpt for offline testing.",
+  "trim_method": "manual-excerpt: Vercel Queues Hobby API-operation allowance; exhaustion remains unknown because the cited pricing excerpt does not state it.",
+  "url": "https://vercel.com/pricing#vercel-queues"
+}

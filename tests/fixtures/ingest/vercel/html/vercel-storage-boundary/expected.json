@@ -1,0 +1,21 @@
+{
+  "profile": "vercel_storage_boundary",
+  "mime": "text/html",
+  "source_url": "https://vercel.com/docs/storage",
+  "candidate_count": 1,
+  "candidates": [
+    {
+      "verification_state": "candidate",
+      "expect_valid": false,
+      "validate_contains": ["offer_type"],
+      "facts": {
+        "service": "Vercel Marketplace Postgres integrations",
+        "offer_type": null,
+        "marketplace_providers": "Neon, Upstash, and AWS",
+        "exhaustion_behaviour": "unknown"
+      },
+      "evidence_url": "https://vercel.com/docs/storage",
+      "evidence_selector": "vercel_storage_boundary row[1]"
+    }
+  ]
+}

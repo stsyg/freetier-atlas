@@ -1,0 +1,11 @@
+{
+  "captured_by": "F008 P2 Vercel builder (manual official excerpt)",
+  "fetched_at": "2026-08-07T12:00:00Z",
+  "http_status": 200,
+  "robots_allowed": true,
+  "sha256_original": null,
+  "sha256_stored": "fe32d88695db766d488e36e12f02d3474fd3ba1e378011c6f3b7fbb4d83c62a5",
+  "tos_note": "Official Vercel changelog on vercel.com; minimal deterministic excerpt for offline testing.",
+  "trim_method": "manual-excerpt: current changelog item naming AI Gateway, inclusionAI, and the three-week free promotion; unstated billing conditions remain blank.",
+  "url": "https://vercel.com/changelog"
+}
