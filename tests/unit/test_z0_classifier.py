@@ -343,6 +343,84 @@ def test_z3_nature_precedes_paid_dependency_gate() -> None:
 # --------------------------------------------------------------------------- #
 
 
+@pytest.mark.parametrize(
+    "offer_type",
+    ["unknown", "", "   ", "totally_made_up_xyz", "TRIAL", 17],
+)
+def test_unrecognised_offer_type_fails_closed_before_all_other_gates(offer_type: object) -> None:
+    result = classify(
+        OfferFacts(
+            offer_type=offer_type,  # type: ignore[arg-type] - runtime defense-in-depth
+            requires_card=False,
+            has_paid_dependencies=False,
+            exhaustion_behaviours=("hard_stop",),
+        ),
+        as_of=_TODAY,
+    )
+
+    assert result.zero_cost_class == UNKNOWN
+    assert result.zero_cost_class != Z0_TRUE_FREE
+    assert result.reasons
+    assert result.blocking_conditions
+    assert all("unrecognised offer type" in text.lower() for text in result.reasons)
+    assert all("safely classified" in text.lower() for text in result.blocking_conditions)
+
+
+@pytest.mark.parametrize(
+    ("facts", "expected"),
+    [
+        (
+            OfferFacts(
+                "always_free",
+                requires_card=False,
+                has_paid_dependencies=False,
+                exhaustion_behaviours=("hard_stop",),
+            ),
+            Z0_TRUE_FREE,
+        ),
+        (
+            OfferFacts(
+                "other",
+                requires_card=False,
+                has_paid_dependencies=False,
+                exhaustion_behaviours=("hard_stop",),
+            ),
+            Z0_TRUE_FREE,
+        ),
+        (
+            OfferFacts(
+                "trial",
+                requires_card=False,
+                has_paid_dependencies=False,
+                exhaustion_behaviours=("hard_stop",),
+            ),
+            Z2_TEMPORARY_OR_CONDITIONAL,
+        ),
+        (OfferFacts("self_hosted_open_source"), Z3_SELF_HOSTED_BUILDING_BLOCK),
+        (
+            OfferFacts(
+                "always_free",
+                requires_card=True,
+                has_paid_dependencies=False,
+                exhaustion_behaviours=("hard_stop",),
+            ),
+            Z1_BILLING_EXPOSURE,
+        ),
+        (
+            OfferFacts(
+                "always_free",
+                requires_card=None,
+                has_paid_dependencies=False,
+                exhaustion_behaviours=("hard_stop",),
+            ),
+            UNKNOWN,
+        ),
+    ],
+)
+def test_valid_offer_type_branch_controls(facts: OfferFacts, expected: str) -> None:
+    assert classify(facts, as_of=_TODAY).zero_cost_class == expected
+
+
 def test_unknown_when_card_requirement_unknown() -> None:
     result = classify(
         OfferFacts(

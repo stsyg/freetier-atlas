@@ -74,7 +74,8 @@ Adapters return source documents and candidate facts, never directly published o
 Automatic publication requires:
 
 - approved official source
-- schema-complete candidate
+- schema-complete candidate, including an exact case-sensitive `offer_type`
+  member from the canonical closed vocabulary
 - deterministic parsing of material numbers
 - reproducible fetch/extraction
 - evidence for material claims
@@ -94,6 +95,10 @@ never auto-published), or **withhold** (unofficial or unevidenced). On publish,
 insert), writes its `quota` rows, links the official `evidence` to the new
 version, and records a *published* `change_event`. Re-publishing identical
 facts is idempotent (no new version); a material change appends a new version.
+An invalid or non-string `offer_type` fails the `schema_complete` condition and,
+when official evidence-backed, is routed to human review before any offer row is
+resolved or inserted. The database CHECK remains a final defense, not the first
+validator.
 The confidence score and gate/classification reasons are stored inside the
 version's `material_facts` JSONB. Publication is invoked from the ingest runner
 (`run_provider_scans(..., publish=True)` / `python -m app.ingest.runner

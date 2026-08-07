@@ -68,6 +68,7 @@ from app.models.domain import (
     Service,
     Source,
 )
+from app.models.vocab import OFFER_TYPES
 
 from . import gate as gate_mod
 from .confidence import (
@@ -182,7 +183,9 @@ def _build_conditions(
         fresh_ratio = freshness_ratio(staleness.age, staleness.window)
 
     complete_ratio, _missing = completeness(facts, revalidation)
-    schema_complete = complete_ratio >= 1.0
+    offer_type = facts.get("offer_type")
+    offer_type_valid = isinstance(offer_type, str) and offer_type in OFFER_TYPES
+    schema_complete = complete_ratio >= 1.0 and offer_type_valid
 
     signals = ConfidenceSignals(
         official=official,
@@ -263,7 +266,7 @@ def _resolve_service(
 def _resolve_offer(
     session: Session, *, service_id: int, facts: Mapping[str, Any], now: datetime
 ) -> Offer:
-    offer_type = str(facts["offer_type"])
+    offer_type = facts["offer_type"]
     existing = session.execute(
         select(Offer).where(
             Offer.service_id == service_id,
@@ -377,7 +380,7 @@ def _do_publish(
         offer_id=offer.id,
         version_number=version_number,
         content_hash=content_hash,
-        offer_type=str(facts["offer_type"]),
+        offer_type=facts["offer_type"],
         zero_cost_class="UNKNOWN",
     )
     for revalidated in revalidation.quotas:
