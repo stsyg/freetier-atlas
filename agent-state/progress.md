@@ -2383,3 +2383,21 @@ not 1259 passed / 2 skipped. The CI-shaped run deliberately omits only
   `tests/integration/test_stack_health.py:25` and `:32`.
 - Independent Level-2 evaluation remains pending and is owned by the
   orchestrator. This builder did not flip a feature flag and will not merge.
+
+### Final CI and cleanup evidence
+
+- First pushed commit: `e3992308f9ad63580c09a61d5c2d5e6be40d334d`;
+  draft PR #51 was opened immediately after that push and remains unpromoted.
+- Python CI run 20371707078 matched that pushed head; all 13 steps succeeded,
+  including container initialization, migrations, Pytest, and container
+  shutdown. Summary: **1273 passed, 2 skipped in 62.36s**. The only skips were
+  `tests/integration/test_stack_health.py:25` and
+  `tests/integration/test_stack_health.py:32`.
+- The separate dependency-audit job failed on the unchanged web lockfile
+  because `nanoid <3.3.17` now has a high-severity advisory. Dependency
+  manifests are outside this contract's allowed scope, so no unrelated
+  dependency change was made.
+- The isolated `fta-offertype` containers and network were removed after
+  validation. The targeted `fta-offertype_atlas_pgdata` test volume was
+  preserved because deleting it would be irreversible without explicit
+  deletion approval.
