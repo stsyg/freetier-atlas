@@ -2378,3 +2378,12 @@ tests, only the Vercel provider-doc section, this contract/handoff, and eleven
 `.secrets.baseline` entries that each map to a fixture `sha256_stored` digest.
 No migration, schema, classifier, publisher, workflow, dependency manifest,
 other provider, reconcile guard or feature-ledger change was made.
+
+[M] Draft-PR CI on pushed head
+`90eb3079a88df922d581fa7ce8bec76420d9a099` was non-vacuous and green. The
+Python job had exactly 13 named steps, including `Initialize containers`,
+`Apply database migrations`, `Pytest` and `Stop containers`. Its raw log
+reported **1357 passed, 2 skipped, 1 warning in 23.68s** and exactly the same
+two skips: `tests/integration/test_stack_health.py:25` and `:32`. Python, Node,
+dependency-audit, secret-scan and GitGuardian checks all passed. The PR remained
+draft; no merge or feature-ledger promotion was performed.
