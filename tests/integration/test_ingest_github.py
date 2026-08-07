@@ -39,7 +39,7 @@ from app.models.domain import (
     Snapshot,
     Source,
 )
-from sqlalchemy import create_engine, func, select
+from sqlalchemy import create_engine, func, select, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session
 
@@ -78,7 +78,50 @@ def engine() -> Iterator[Engine]:
     try:
         yield eng
     finally:
+        _reclaim_dead_space(eng)
         eng.dispose()
+
+
+#: Tables this module inserts into before rolling back.
+_BLOATED_TABLES = (
+    "change_event",
+    "review_item",
+    "quota",
+    "offer_version",
+    "offer",
+    "evidence",
+    "candidate",
+    "snapshot",
+    "scan_run",
+    "source",
+)
+
+
+def _reclaim_dead_space(eng: Engine) -> None:
+    """Return the shared ingest tables to the append-only heap we found.
+
+    Every test here inserts rows and then rolls back, which leaves *dead tuples*
+    behind -- no live rows, but the heap pages stay allocated and their line
+    pointers become reusable. A later INSERT or UPDATE can then be placed into a
+    reclaimed mid-page slot instead of being appended, so the physical scan order
+    of a table stops matching its insertion order.
+
+    ``tests/integration/test_ingest_reconcile.py`` deliberately perturbs the heap
+    and guards that the perturbed row really did move last; that guard only holds
+    on a heap that has never recycled a slot. Measured on this branch: our bloat
+    moved a no-op-updated ``candidate`` row *backwards* from ``(3,33)`` to
+    ``(3,31)``, so the guard could no longer establish its precondition and that
+    test failed -- correctly refusing to report a vacuous pass.
+
+    ``VACUUM FULL`` rewrites each table, so an emptied one drops back to zero
+    pages and the next INSERT starts again at ``(0,1)``. Plain ``VACUUM`` is not
+    enough: it frees the slots for reuse but keeps the pages, which is the very
+    condition that breaks the guard.
+    """
+
+    with eng.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
+        for table in _BLOATED_TABLES:
+            conn.execute(text(f"VACUUM (FULL) {table}"))
 
 
 @pytest.fixture

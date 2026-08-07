@@ -98,6 +98,23 @@ at extraction, not in the classifier. A provider slice must therefore keep
 `github.blog` and cannot be cited from this repo without an allowlist change, so
 this slice deliberately has no changelog source rather than an unusable one.
 
+**Every provider slice must reclaim its heap bloat.** Integration tests here
+insert rows and roll back, which leaves no live rows but does leave *dead
+tuples*: the heap pages stay allocated and their line pointers become reusable.
+A later INSERT or UPDATE can then land in a recycled mid-page slot rather than
+being appended, so a table's physical scan order stops matching its insertion
+order. `tests/integration/test_ingest_reconcile.py` deliberately perturbs the
+`candidate` heap and guards that the perturbed row really did move last — a
+precondition that only holds on a heap which has never recycled a slot.
+Measured while building this slice: our bloat moved a no-op-updated row
+*backwards* from `(3,33)` to `(3,31)`, and that guard correctly failed rather
+than reporting a vacuous pass. `tests/integration/test_ingest_github.py`
+therefore runs `VACUUM (FULL)` over the ingest tables in its module teardown.
+Plain `VACUUM` is **not** sufficient — it frees the slots for reuse but keeps
+the pages, which is the very condition that breaks the guard. Any new provider
+slice whose integration file sorts before `test_ingest_reconcile.py` needs the
+same teardown.
+
 ## AWS
 
 Use:

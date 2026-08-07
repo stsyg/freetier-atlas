@@ -2024,6 +2024,7 @@ jobs can resolve different versions of the same package. Diff is 5 files:
 merge and did not open a PR; owner authorisation pending, and the starlette
 bump needs an explicit guardrail waiver.
 
+## ci: give the `python` job a real PostgreSQL so the integration suite actually executes (branch `stsyg-ci-real-postgres-for-python-job`)
 
 The job named "Python lint, format, tests" ran `pytest -q` against **no
 database**. No `services:` block, no `DATABASE_URL`, no migration step. Every
@@ -2153,6 +2154,8 @@ Recommended next: fold the same service-container treatment into any future job
 that runs the suite, and take the `concurrency:` slice, since a group that does
 not unify refs can cancel the very run being read for evidence.
 
+## F008 P1: the GitHub provider slice (branch `stsyg-f008-p1-github-provider`)
+
 Investigated GitHub across all fourteen canonical categories against official
 `docs.github.com` sources, captured offline. Five sources, five published
 services, one deliberate non-Z0 case. Draft PR #48, opened at the first commit
@@ -2262,3 +2265,45 @@ the entropy detector -- the same treatment the Cloudflare fixtures already
 receive. `detect-secrets scan --baseline` rewrote every path to Windows
 backslashes and would have broken CI on Linux, so that was reverted and only my
 ten entries were added: 90 lines added, 0 removed.
+
+## 2026-08-07 — F008 P1 GitHub slice: fixed cross-file heap-order bleed
+
+Verification of PR #48 found `test_ingest_reconcile.py::test_the_withdrawal_loop_is_ordered_by_candidate_id`
+failing in the full suite on this branch only, while passing in isolation.
+
+Reproduced deterministically (isolated Postgres 16, fresh DB): full suite on this
+branch 1 failed / 1258 passed; `origin/main` @ 9a36646 1156 passed / 0 failed.
+Bisected to `test_ingest_github.py` + `test_ingest_reconcile.py` alone, which
+reproduces; `test_ingest_reconcile.py` alone passes.
+
+Mechanism, measured via ctid rather than assumed. This module leaves **zero**
+committed rows (verified: all ingest tables count 0 afterwards), so the cause was
+not leftover rows. It leaves *dead tuples*: heap pages stay allocated and their
+line pointers become reusable. Before the perturbing UPDATE the rows sat at
+71->(3,9), 69->(3,32), 70->(3,33); afterwards row 70 was rewritten **backwards**
+into a recycled slot at (3,31), landing before 69 at (3,32). The reconcile
+guard's precondition -- "a no-op UPDATE appends the new tuple version at the end
+of the heap" -- only holds on a heap that has never recycled a slot, so the guard
+correctly refused to report a vacuous pass.
+
+Fix is scoped to this slice: `test_ingest_github.py` now runs `VACUUM (FULL)`
+over the ingest tables in module teardown, returning the heap to append-only.
+Plain `VACUUM` is insufficient -- it frees slots for reuse but keeps the pages,
+which is the breaking condition. The reconcile file is byte-identical to the
+pushed ref; the guard was not weakened, skipped, xfailed or loosened. Confirmed
+still adversarial after the fix: heap order [69, 71, 70] with lowest_id 70 last,
+so an unordered loop would visit the other duplicate first.
+
+Documented in `docs/PROVIDER_ADAPTERS.md` as a requirement for future provider
+slices: no other provider integration file exists yet, so this slice is the first
+to expose a latent landmine for every integration file sorting before
+`test_ingest_reconcile.py`.
+
+Results: full suite 1259 passed / 0 failed / 2 skipped on both a fresh and a
+dirty DB; `scripts/check.ps1 -NodeAudit` ALL CHECKS PASSED. Alembic head still
+0011; no dependency added; no network in tests.
+
+Also recorded: CI's `Python lint, format, tests` job runs without
+`DATABASE_URL`, so this repo's entire integration suite -- including this
+slice's -- is skipped on every CI run. CI green is not evidence for an
+integration slice. Raised by the verifier and owned by them.
