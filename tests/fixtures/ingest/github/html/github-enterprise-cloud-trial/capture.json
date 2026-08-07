@@ -1,0 +1,11 @@
+{
+  "captured_by": "F008 P1 GitHub builder (manual official excerpt)",
+  "fetched_at": "2026-08-07T01:30:00Z",
+  "http_status": 200,
+  "robots_allowed": true,
+  "sha256_original": null,
+  "sha256_stored": "ed1372f52ad8fe3164c0ea2207b6e2ec461b5e4d15a7a99981f23dfa76b32c8f",
+  "tos_note": "Official GitHub documentation (docs.github.com). https://docs.github.com/robots.txt was retrieved on 2026-08-07 and contains only 'User-agent: *' with no Disallow rules, so automated retrieval of this path is permitted. A minimal excerpt is committed here for offline, deterministic extraction testing; every value is reproduced verbatim from the cited page.",
+  "trim_method": "manual-excerpt: the official trial page's 'What is included in the trial', 'Do I need to provide a payment method?' and 'What happens when the trial ends?' sections. Re-expressed as the profile's canonical one-row offer table so the declared columns line up with the extraction profile; no value is altered, reordered within a cell, or invented, and a value the page does not publish is omitted rather than guessed. sha256_original is null because retrieval returned a text rendering of the page rather than retained raw bytes, so no honest digest of the untrimmed document exists; fetched_at is the retrieval session timestamp, accurate to the minute.",
+  "url": "https://docs.github.com/en/enterprise-cloud@latest/admin/overview/setting-up-a-trial-of-github-enterprise-cloud"
+}

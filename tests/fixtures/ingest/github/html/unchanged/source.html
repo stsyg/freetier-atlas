@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <title>GitHub Actions billing — free use (unchanged)</title>
+    <!--
+      Fixture-case-vocabulary variant derived from the official GitHub
+      Actions billing capture (github-actions-billing).
+
+      UNCHANGED: byte-for-byte the same published allowances as the
+      captured official row, so a re-scan must produce an identical
+      content hash and raise no change event.
+    -->
+  </head>
+  <body>
+    <h1>GitHub Actions billing</h1>
+    <p>
+      Free use of GitHub Actions, GitHub Free plan. Source:
+      https://docs.github.com/en/billing/concepts/product-billing/github-actions
+    </p>
+    <table id="github-actions-free-use">
+      <thead>
+        <tr>
+          <th>Service</th>
+          <th>Offer type</th>
+          <th>Card required</th>
+          <th>Paid dependencies</th>
+          <th>Minutes per month</th>
+          <th>Artifact storage</th>
+          <th>Cache storage per repository</th>
+          <th>Public repository usage</th>
+          <th>Exhaustion behaviour</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>GitHub Actions</td>
+          <td>always_free</td>
+          <td>No</td>
+          <td>No</td>
+          <td>2,000</td>
+          <td>500 MB</td>
+          <td>10 GB</td>
+          <td>Free</td>
+          <td>hard_stop</td>
+        </tr>
+      </tbody>
+    </table>
+  </body>
+</html>

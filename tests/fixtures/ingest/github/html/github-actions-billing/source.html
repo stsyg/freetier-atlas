@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <title>GitHub Actions billing — free use (GitHub Free)</title>
+    <!--
+      Minimal excerpt of the official GitHub Actions billing page.
+
+      Verbatim from the "Free use of GitHub Actions" table, GitHub Free row:
+      artifact storage "500 MB", minutes per month "2,000", cache storage
+      "10 GB" per repository.
+
+      Verbatim, on public repositories: "GitHub Actions usage is free for
+      standard GitHub-hosted runners in public repositories, and for self-hosted
+      runners."
+
+      PERPETUITY (why offer type is always_free, not a trial or an
+      introductory offer): the page publishes a monthly allowance attached to
+      the GitHub Free plan with no expiry date and no conversion to a paid plan.
+      Verbatim: "Your included minutes reset to the full amount at the start of
+      each billing cycle." There is no 12-month clock anywhere on this page.
+
+      EXHAUSTION (why hard_stop, not automatic_billing): verbatim, "If your
+      account does not have a valid payment method on file, usage is blocked
+      once you use up your quota." Automatic billing only applies to an account
+      that has already added a payment method ("Any usage beyond the included
+      amounts is billed to your account"), which is not the $0 path this row
+      describes.
+    -->
+  </head>
+  <body>
+    <h1>GitHub Actions billing</h1>
+    <p>
+      Free use of GitHub Actions, GitHub Free plan. Source:
+      https://docs.github.com/en/billing/concepts/product-billing/github-actions
+    </p>
+    <table id="github-actions-free-use">
+      <thead>
+        <tr>
+          <th>Service</th>
+          <th>Offer type</th>
+          <th>Card required</th>
+          <th>Paid dependencies</th>
+          <th>Minutes per month</th>
+          <th>Artifact storage</th>
+          <th>Cache storage per repository</th>
+          <th>Public repository usage</th>
+          <th>Exhaustion behaviour</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>GitHub Actions</td>
+          <td>always_free</td>
+          <td>No</td>
+          <td>No</td>
+          <td>2,000</td>
+          <td>500 MB</td>
+          <td>10 GB</td>
+          <td>Free</td>
+          <td>hard_stop</td>
+        </tr>
+      </tbody>
+    </table>
+  </body>
+</html>

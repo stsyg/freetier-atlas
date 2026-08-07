@@ -1,60 +1,72 @@
 {
-  "schema_version": 1,
-  "status": "approved",
-  "feature_id": "infra",
-  "increment": "CI: give the python job a real PostgreSQL, run migrations, and make the integration suite actually execute",
-  "builder": "Copilot CLI (Chief)",
-  "evaluator": "fresh independent reviewer; this is CI plumbing, not a ledger feature, so no passes flag is in play",
-  "approved_at": "2026-08-07",
-  "base_commit": "9a36646c55933c33e4bdd836796e8cde5aded934",
-  "approval_notes": [
-    "The .github/workflows/ci.yml job `python` ran `pytest -q` with no database: no services block, no DATABASE_URL, no migration step. Every integration test is guarded by pytest.mark.skipif(not DATABASE_URL), so the entire ingest, reconcile, read-API and provider layer skipped and the job still reported success.",
-    "This is not a test defect and not a product-behaviour change. tests/**, apps/** and scripts/** are zero diff. The only executable change is the workflow.",
-    "The failure mode this slice targets is a green tick that certifies nothing. Colour is therefore NOT acceptance evidence: a mis-scoped DATABASE_URL, a wrong variable name, or an unhealthy service all leave the job green and still skipping. Acceptance is by pytest count and by skip name, read from the CI log."
+  "feature_id": "F008",
+  "slice": "P1-github",
+  "title": "GitHub provider slice: fourteen-category investigation with official evidence and offline fixtures",
+  "branch": "stsyg-f008-p1-github-provider",
+  "base_commit": "9a36646",
+  "started_at": "2026-08-07T01:32:50Z",
+  "objective": "Investigate GitHub across all fourteen canonical service categories using OFFICIAL docs.github.com sources only, and land a provider-scoped slice: one declarative profiles module, one provider YAML with a complete 14-entry coverage declaration, captured official fixtures covering the full seven-case vocabulary, unit + integration tests, and the GitHub section of docs/PROVIDER_ADAPTERS.md.",
+  "advances_acceptance_steps": [1, 2, 3],
+  "decisions_cited": ["Q1-A", "Q2-A", "Q3-A", "Q4-A", "Q5-A", "Q6-A", "Q9-A", "Q10-A"],
+  "in_scope": [
+    "config/examples/providers/github.example.yaml (new)",
+    "apps/api/app/ingest/adapters/profiles/github.py (new, declarative data only)",
+    "tests/fixtures/ingest/github/html/** (new)",
+    "tests/unit/test_adapter_github.py (new)",
+    "tests/integration/test_ingest_github.py (new)",
+    "docs/PROVIDER_ADAPTERS.md GitHub section only",
+    "agent-state/progress.md (append only)",
+    "agent-state/current_contract.json (this file)"
   ],
-  "objective": "The CI `python` job stands up PostgreSQL, applies migrations, and executes the full test suite including the integration layer, so a regression in ingest, reconcile or the read API can fail CI.",
-  "scope": [
-    ".github/workflows/ci.yml, job `python` only: a postgres:16-alpine service container with a pg_isready health check; a job-scoped DATABASE_URL using the project's existing postgresql+psycopg scheme; a named `Apply database migrations` step running `alembic upgrade head` before pytest.",
-    "agent-state/current_contract.json: this contract.",
-    "agent-state/progress.md: append-only handoff entry."
-  ],
-  "out_of_scope": [
-    "tests/**: zero diff. No test weakened, no assertion changed, no skip marker added or removed, no xfail, no --maxfail, no continue-on-error, no `|| true`.",
-    "apps/api/app/classify/**: a confirmed fail-open on unrecognised offer_type is separately filed and is not touched.",
-    "scripts/check.ps1: its twin vacuous `npm audit --omit=dev` is separately filed and is not touched.",
-    "The ci.yml `concurrency:` block: the group does not unify push and PR refs; separately filed and not touched.",
-    "The other three CI jobs (node, secrets, dependencies): zero diff.",
-    "Any dependency pin, docker-compose.yml, migrations/**, agent-state/feature_list.json, agent-state/evaluation.json: zero diff.",
-    "Fixing any pre-existing integration failure that turning the suite on reveals. If one appears it is reported by name and stopped on, not silenced."
+  "out_of_scope_zero_diff": [
+    "config/examples/providers/cloudflare.example.yaml",
+    "apps/api/app/ingest/adapters/profiles/__init__.py",
+    "apps/api/app/ingest/adapters/profiles/cloudflare.py",
+    "apps/api/app/ingest/adapters/html.py",
+    "apps/api/app/ingest/adapters/structured.py",
+    "apps/api/app/ingest/adapters/__init__.py",
+    "apps/api/app/config/models.py",
+    "apps/api/app/publish/publisher.py",
+    "apps/api/app/publish/gate.py",
+    "apps/api/app/classify/engine.py",
+    "apps/api/app/read_api/**",
+    "apps/api/app/adviser/**",
+    "apps/api/alembic/**",
+    "apps/api/requirements.txt",
+    "pyproject.toml",
+    "scripts/**",
+    ".github/**",
+    "agent-state/feature_list.json"
   ],
   "acceptance_criteria": [
-    "A1. The CI `python` job runs a PostgreSQL service container of the SAME major version as docker-compose.yml (postgres:16-alpine), with a health check, and applies alembic migrations in a named step before pytest.",
-    "A2. DECISIVE, by count not by colour: the CI log's pytest summary line reads `1156 passed, 2 skipped` (the local base-commit measurement with a database). The same-tree CI baseline to beat is run 31136371103 on main at 9a36646: `1004 passed, 154 skipped, 1 warning in 10.08s`. The briefing's `1097 passed, 164 skipped` is from job 92751690454 on PR #48, whose branch carries an extra tests/integration/test_ingest_github.py that does not exist on main, so it is not the baseline for this tree; the correct figure for newly-executing tests here is 152, not 162.",
-    "A3. DECISIVE, by name: the only two SKIPPED lines in the CI log are tests/integration/test_stack_health.py:25 and :32, which need ATLAS_STACK_BASE_URL (a running full stack, not a database) and must stay skipped. Zero DATABASE_URL-reasoned skips.",
-    "A4. The job result is read from the step list by step name and conclusion, not from the summary tick. Every step is enumerated with its conclusion.",
-    "A5. The job is proved capable of going RED: a deliberately failing integration test is planted, CI fails at the step named `Pytest` while every earlier step still succeeds, and the revert is verified by git blob hash (git hash-object vs git rev-parse HEAD:path) rather than by git diff, since .gitattributes filters can make a diff read clean while bytes differ.",
-    "A6. No weakening anywhere in the diff: a grep for continue-on-error, `|| true`, --maxfail, xfail and skip over the changed workflow returns nothing.",
-    "A7. agent-state/progress.md is an exact append-only prefix extension of origin/main's copy, verified by comparing the first N lines byte-for-byte.",
-    "A8. The job's wall time is reported honestly against the ~9s baseline."
+    "A1: python -m app.ingest.runner config/examples/providers/github.example.yaml --fixtures tests/fixtures/ingest/github/html --publish runs OFFLINE against a real Postgres and persists scan_run / snapshot / candidate / official evidence, plus offer / offer_version / quota wherever the deterministic gate allows.",
+    "A2: every published offer's Z0 verdict is explainable, and at least one deliberate non-Z0 case proves a TIME-LIMITED TRIAL blocks Z0 even with no card required (GitHub Enterprise Cloud trial -> Z2), plus an UNKNOWN-material-condition case.",
+    "A3: all fourteen coverage entries present; every verified_free / offered_no_z0 traceable to an official docs.github.com source; every not_offered carries a rationale.",
+    "A4: Q9-A floor met (>=3 evidence-backed); no publicly-known GitHub free tier left unknown; no category declared unknown/not_offered while an offer is published in it.",
+    "A5: Q10-A met - every service->category assignment carries a one-line rationale in the YAML; every arguable assignment disclosed in the PR body.",
+    "A6: all seven fixture cases exercised (unchanged | changed | partial | malformed | contradictory | withdrawn | stale); the four step-3 cases assert on PERSISTED rows (change_event.change_type, materiality, gate withhold, pending review_item).",
+    "A7: alembic head still 0011; no new dependency; no network in tests; pwsh -File scripts/check.ps1 -NodeAudit exits 0.",
+    "A8: contamination control - stopping only this slice's API container moves the smoke count on exactly the API-dependent checks while an unrelated stack stays healthy.",
+    "A9: one self-invented mutation run, with the predicted result stated before running it, reported pass or fail."
   ],
   "verification_plan": [
-    "Local baseline on the base commit: an isolated postgres:16-alpine container, `alembic upgrade head`, then `pytest -q`; record the verbatim summary line and the skip list. This establishes the target numbers independently of CI.",
-    "Local guard replay: detect-secrets-hook over every tracked file against .secrets.baseline, and scripts/check_urls.py, so the new credential-shaped DATABASE_URL does not break the `secrets` job.",
-    "YAML parse of the changed workflow, printing the resolved service image, health options, job-scoped env and the ordered step names.",
-    "CI acceptance run on the draft PR: quote the pytest summary line and both SKIPPED lines verbatim from the downloaded log; enumerate the step list with conclusions via the Actions API.",
-    "CI red-proof round trip: plant, observe failure by step name, revert, verify by blob hash, observe green again.",
-    "Guardrail proof: git diff --numstat against the base commit for every guarded path."
+    "pytest tests/unit/test_adapter_github.py tests/integration/test_ingest_github.py",
+    "pytest tests/unit/test_capture_sidecar.py tests/unit/test_fixture_harness.py tests/unit/test_config_system.py (shared-file byte pins + sidecar completeness must still pass)",
+    "alembic heads == 0011",
+    "git diff --numstat origin/main...HEAD re-derived from the PUSHED ref for every do-not-touch path",
+    "pwsh -File scripts/check.ps1 -NodeAudit"
   ],
+  "isolation": {
+    "compose_project_name": "fta-p1-github",
+    "api_port": 8101,
+    "web_port": 8201,
+    "postgres_port": 5501,
+    "note": "Local .env is NOT committed. No global Docker sweep: unrelated freetier-atlas and garmin-ai stacks are live on this host."
+  },
   "risks": [
-    "Scope of DATABASE_URL is the whole defect in miniature. Set on the pytest step alone, the migration step would fall back to migrations/env.py's default host `postgres`, which does not resolve on a runner. Job scope is deliberate and is verified by the migration step succeeding.",
-    "A service container without a health check races the suite: pytest can connect before Postgres is accepting connections, and the resulting failure looks like a test defect. Mitigated by pg_isready with the same user and database as docker-compose.yml.",
-    "The DATABASE_URL literal is credential-shaped and could trip the `secrets` job's detect-secrets baseline. Mitigated with the same `# pragma: allowlist secret` marker docker-compose.yml already uses, and verified by running the hook locally over all tracked files.",
-    "Turning 162 never-executed tests on may reveal pre-existing failures. That is a finding, not a defect of this slice; it is reported by name and not fixed here.",
-    "Wall time rises from ~9s to the order of a minute or more. Accepted: a 9s job that tests nothing is not a saving.",
-    "The red-proof commits a deliberately failing test to the PR branch for one run. It is reverted in the next commit and the revert is proved by blob hash, so final HEAD is byte-identical to pre-plant."
+    "A time-limited or 12-month introductory offer misread as always-free would ship a false $0 claim (brief section A0). Mitigation: every verified_free capture must carry perpetuity or reset language verbatim; ambiguity stays unknown.",
+    "Training data about GitHub allowances is stale - GitHub Models was RETIRED on 2026-07-30. Only the captured official page is authority.",
+    "scripts/url-allowlist.txt (do-not-touch) permits only github.com / api.github.com / docs.github.com, so github.blog (the changelog the brief suggested) cannot be cited. Correction reported to the owner."
   ],
-  "required_evaluation_level": "Level 1 - CI infrastructure. No product code, no schema change, no Z0 logic, no security boundary. Level 2 is not triggered.",
-  "contract_review": [
-    "Written after reproducing the baseline numbers locally on the base commit and BEFORE the workflow was changed, per the coding-agent instructions. Every measured claim in the handoff entry is marked as measured and separated from inference."
-  ]
+  "status": "in_progress"
 }

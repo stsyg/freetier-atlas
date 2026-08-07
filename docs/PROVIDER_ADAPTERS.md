@@ -51,6 +51,70 @@ neutral default `"cloud"` (structural metadata, never an offer fact).
 
 Use official GitHub MCP, Docs, changelog, REST/GraphQL APIs, and plan/Actions/Pages documentation.
 
+**Implemented (F008 slice P1).** `config/examples/providers/github.example.yaml` +
+`apps/api/app/ingest/adapters/profiles/github.py` (declarative profiles only, no
+provider logic in adapter code) + `tests/fixtures/ingest/github/html/`.
+
+Five official `docs.github.com` sources, one captured excerpt each:
+
+| source id                       | service                       | category                | verdict |
+| ------------------------------- | ----------------------------- | ----------------------- | ------- |
+| `github-actions-billing`        | GitHub Actions                | `cicd-source-control`   | Z0      |
+| `github-packages-billing`       | GitHub Packages               | `object-file-storage`   | Z0      |
+| `github-codespaces-billing`     | GitHub Codespaces             | `secrets-config-devtools` | Z0    |
+| `github-pages-limits`           | GitHub Pages                  | `containers-app-hosting` | Z0     |
+| `github-enterprise-cloud-trial` | GitHub Enterprise Cloud trial | `cicd-source-control`   | **not Z0** |
+
+Three things about this slice are worth copying, and one is worth avoiding.
+
+**Perpetuity is checked, not assumed.** The last row is the deliberate non-Z0
+case and the reason it exists: GitHub's own trial page says *"You do not need to
+provide a payment method to start a trial"* and *"The trial lasts for 30 days"*
+on the same page. No card is required and it still must never be published as
+`$0` forever, so it is extracted with `offer_type: trial` and classifies
+`Z2_TEMPORARY_OR_CONDITIONAL`. Every row marked `always_free` instead carries a
+verbatim reset/perpetuity sentence in its fixture comment (for example, Actions:
+*"Your included minutes reset to the full amount at the start of each billing
+cycle."*). A page that is merely silent about expiry is not evidence of
+perpetuity.
+
+**`hard_stop`, not `automatic_billing`.** The Actions, Packages and Codespaces
+billing pages all state verbatim: *"If your account does not have a valid payment
+method on file, usage is blocked once you use up your quota."* That sentence is
+the whole basis for a Z0 verdict on those three services. Automatic billing
+applies only to an account that has already added a card, which is not the `$0`
+path being classified.
+
+**Only one material condition fails open.** `requires_card`,
+`has_paid_dependencies` and `exhaustion_behaviour` each block Z0 when unknown,
+but an unrecognised `offer_type` is treated as "not temporary" and still reaches
+`Z0_TRUE_FREE`. In practice the profiles' `required_fields=("service",
+"offer_type")` rejects such a candidate before it can be published — the guard is
+at extraction, not in the classifier. A provider slice must therefore keep
+`offer_type` required.
+
+**Constraint worth knowing:** `scripts/url-allowlist.txt` permits `github.com`,
+`api.github.com` and `docs.github.com` only. The GitHub changelog lives on
+`github.blog` and cannot be cited from this repo without an allowlist change, so
+this slice deliberately has no changelog source rather than an unusable one.
+
+**Every provider slice must reclaim its heap bloat.** Integration tests here
+insert rows and roll back, which leaves no live rows but does leave *dead
+tuples*: the heap pages stay allocated and their line pointers become reusable.
+A later INSERT or UPDATE can then land in a recycled mid-page slot rather than
+being appended, so a table's physical scan order stops matching its insertion
+order. `tests/integration/test_ingest_reconcile.py` deliberately perturbs the
+`candidate` heap and guards that the perturbed row really did move last — a
+precondition that only holds on a heap which has never recycled a slot.
+Measured while building this slice: our bloat moved a no-op-updated row
+*backwards* from `(3,33)` to `(3,31)`, and that guard correctly failed rather
+than reporting a vacuous pass. `tests/integration/test_ingest_github.py`
+therefore runs `VACUUM (FULL)` over the ingest tables in its module teardown.
+Plain `VACUUM` is **not** sufficient — it frees the slots for reuse but keeps
+the pages, which is the very condition that breaks the guard. Any new provider
+slice whose integration file sorts before `test_ingest_reconcile.py` needs the
+same teardown.
+
 ## AWS
 
 Use:

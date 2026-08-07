@@ -2153,3 +2153,157 @@ Draft PR #49, not merged: the owner verifies and merges, never the builder.
 Recommended next: fold the same service-container treatment into any future job
 that runs the suite, and take the `concurrency:` slice, since a group that does
 not unify refs can cancel the very run being read for evidence.
+
+## F008 P1: the GitHub provider slice (branch `stsyg-f008-p1-github-provider`)
+
+Investigated GitHub across all fourteen canonical categories against official
+`docs.github.com` sources, captured offline. Five sources, five published
+services, one deliberate non-Z0 case. Draft PR #48, opened at the first commit
+and left in draft.
+
+### What I got wrong
+
+**The changelog cannot be cited.** The task named the GitHub changelog as a
+source. It lives on `github.blog`, and `scripts/url-allowlist.txt` permits only
+`github.com`, `api.github.com` and `docs.github.com`. `scripts/check_urls.py`
+scans every tracked text file, so a changelog URL in a YAML, a fixture or even a
+comment fails the gate. Shipped no changelog source rather than an unusable one.
+
+**GitHub Models is retired.** It was named as a likely free tier, and model
+priors agree it exists. The official page records full retirement on 2026-07-30:
+playground, catalog, inference API and BYOK all gone. `ai-inference-embeddings`
+rests on Copilot Free instead, whose allowances are published as comparison
+icons rather than a table, so that category carries an evidence URL and **no
+published numbers**.
+
+**`offer_type` is the one material condition that fails open.** I assumed all
+four material facts block Z0 when unknown. Measured, `requires_card=None`,
+`has_paid_dependencies=None` and an empty or `unknown` exhaustion each yield
+`UNKNOWN`, but `offer_type='unknown'` classifies **`Z0_TRUE_FREE`**: the
+classifier tests membership of `TEMPORARY_CONDITIONAL_OFFER_TYPES`, so anything
+unrecognised reads as "not temporary". The only guard is `required_fields` at
+extraction. Not fixed here; the classifier is outside this slice.
+
+**My first contradictory fixture could never have contradicted anything.** It
+put two rows disagreeing on `offer_type` on one page. Two structural reasons it
+was inert: contradiction detection skips same-source pairs, and `_identity_of`
+is `(provider, service, offer_type)`, so rows differing on `offer_type` land in
+different identity groups and are never compared. `offer_type` is listed in
+`MATERIAL_FACT_FIELDS` but is unreachable there. **The single most dangerous
+disagreement -- one official page says perpetual, another says trial -- is
+structurally undetectable as a contradiction.** Rebuilt the case to conflict on
+`requires_card` across two official sources, and pinned the gap in a test.
+
+**A changed allowance is not `material`.** I asserted that editing 2,000 to
+3,000 minutes raises a `material` change event. Measured, it is `unknown`:
+`MATERIAL_FACT_FIELDS` covers only offer_type / requires_card /
+has_paid_dependencies / quotas, and these HTML profiles emit per-limit values as
+flat facts, not inside a `quotas` structure. The safe part holds -- it is never
+downgraded to `non_material` -- so the test now asserts that, with a positive
+control proving `material` is still reachable.
+
+**My integration tests depended on an empty database.** Two passed on a clean
+database and failed against one that had merely been used before, because they
+counted whole tables. Reproduced the failure against the dirty database first,
+then scoped every count to the run's own scan / candidate ids, and confirmed
+green against both. Fixing them also corrected two invented column names:
+`snapshot` and `change_event` have no `scan_run_id`.
+
+### Measured evidence
+
+Baseline green before starting: 1004 passed, 154 skipped, exit 0.
+
+Acceptance run, offline, real Postgres:
+`python -m app.ingest.runner config/examples/providers/github.example.yaml
+--fixtures tests/fixtures/ingest/github/html --publish` -> scanned=5 failed=0
+published=5 reviewed=0. Persisted: 5 scan_run, 5 snapshot, 5 candidate, 5
+official evidence, 5 offer, 5 offer_version, 20 quota, 10 change_event.
+Verdicts: Actions / Packages / Pages / Codespaces `Z0_TRUE_FREE`; GitHub
+Enterprise Cloud trial `Z2_TEMPORARY_OR_CONDITIONAL`.
+
+The trial is the §A0 control. Its own page says both "You do not need to provide
+a payment method to start a trial" and "The trial lasts for 30 days", so a
+card-requirement check alone would have published it as free. The four
+perpetual rows each carry a verbatim reset sentence; silence about expiry would
+have been `unknown`. They reach Z0 on one sentence repeated across all three
+billing pages: "If your account does not have a valid payment method on file,
+usage is blocked once you use up your quota" -- a hard stop, not automatic
+billing.
+
+Stack isolation: `COMPOSE_PROJECT_NAME=fta-p1-github`, API 8101 / web 8201 /
+Postgres 5501, `.env` uncommitted. Smoke 15/15 PASS.
+
+Contamination control, prediction stated first: stopping only my own API
+container should flip exactly the three API-dependent checks. Measured 15 -> 12
+PASS, failing on API liveness, API readiness and web-proxies-API, while
+`freetier-atlas-*` stayed healthy and answered 200 on :8000 throughout.
+Restarting my API returned the smoke to PASS, so the failures were signal, not a
+broken harness.
+
+Self-invented mutation: removed the `Offer type` column from the trial page, as
+a docs reformat would. Predicted beforehand that `required_fields` would reject
+the candidate and no offer_version would appear -- because if it did not, the
+`offer_type='unknown'` gap above would publish a 30-day trial as perpetually
+free. Measured: `candidates=0 errors=1`, nothing published, verdict table
+unchanged. The guard holds end-to-end.
+
+Docker build of the app images failed on every attempt over roughly twelve
+minutes with `SSLV3_ALERT_HANDSHAKE_FAILURE` to `files.pythonhosted.org`. DNS
+resolved and the base image pulled, so this is TLS interception on this host,
+not a repository defect. Ran the stack from the already-built images retagged
+into my own project namespace; the acceptance run itself used the host
+interpreter against the isolated database, so no claim depends on those images.
+
+`pwsh -File scripts/check.ps1 -NodeAudit` exits 0, all nine checks PASS: 1097
+passed, 164 skipped. Alembic head remains `0011`; no migration added, no
+dependency added, no network in tests.
+
+### Deviation from the declared file list
+
+`.secrets.baseline` needed the ten fixture `sha256_stored` hashes, which trip
+the entropy detector -- the same treatment the Cloudflare fixtures already
+receive. `detect-secrets scan --baseline` rewrote every path to Windows
+backslashes and would have broken CI on Linux, so that was reverted and only my
+ten entries were added: 90 lines added, 0 removed.
+
+## 2026-08-07 — F008 P1 GitHub slice: fixed cross-file heap-order bleed
+
+Verification of PR #48 found `test_ingest_reconcile.py::test_the_withdrawal_loop_is_ordered_by_candidate_id`
+failing in the full suite on this branch only, while passing in isolation.
+
+Reproduced deterministically (isolated Postgres 16, fresh DB): full suite on this
+branch 1 failed / 1258 passed; `origin/main` @ 9a36646 1156 passed / 0 failed.
+Bisected to `test_ingest_github.py` + `test_ingest_reconcile.py` alone, which
+reproduces; `test_ingest_reconcile.py` alone passes.
+
+Mechanism, measured via ctid rather than assumed. This module leaves **zero**
+committed rows (verified: all ingest tables count 0 afterwards), so the cause was
+not leftover rows. It leaves *dead tuples*: heap pages stay allocated and their
+line pointers become reusable. Before the perturbing UPDATE the rows sat at
+71->(3,9), 69->(3,32), 70->(3,33); afterwards row 70 was rewritten **backwards**
+into a recycled slot at (3,31), landing before 69 at (3,32). The reconcile
+guard's precondition -- "a no-op UPDATE appends the new tuple version at the end
+of the heap" -- only holds on a heap that has never recycled a slot, so the guard
+correctly refused to report a vacuous pass.
+
+Fix is scoped to this slice: `test_ingest_github.py` now runs `VACUUM (FULL)`
+over the ingest tables in module teardown, returning the heap to append-only.
+Plain `VACUUM` is insufficient -- it frees slots for reuse but keeps the pages,
+which is the breaking condition. The reconcile file is byte-identical to the
+pushed ref; the guard was not weakened, skipped, xfailed or loosened. Confirmed
+still adversarial after the fix: heap order [69, 71, 70] with lowest_id 70 last,
+so an unordered loop would visit the other duplicate first.
+
+Documented in `docs/PROVIDER_ADAPTERS.md` as a requirement for future provider
+slices: no other provider integration file exists yet, so this slice is the first
+to expose a latent landmine for every integration file sorting before
+`test_ingest_reconcile.py`.
+
+Results: full suite 1259 passed / 0 failed / 2 skipped on both a fresh and a
+dirty DB; `scripts/check.ps1 -NodeAudit` ALL CHECKS PASSED. Alembic head still
+0011; no dependency added; no network in tests.
+
+Also recorded: CI's `Python lint, format, tests` job runs without
+`DATABASE_URL`, so this repo's entire integration suite -- including this
+slice's -- is skipped on every CI run. CI green is not evidence for an
+integration slice. Raised by the verifier and owned by them.

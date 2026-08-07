@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <title>GitHub Actions billing — free use (changed)</title>
+    <!--
+      Fixture-case-vocabulary variant derived from the official GitHub
+      Actions billing capture (github-actions-billing).
+
+      CHANGED: the monthly minute allowance and the artifact storage
+      allowance differ from the captured official row (2,000 -> 3,000
+      minutes, 500 MB -> 1 GB). These are the GitHub Pro values from
+      the same official table, used here as a realistic 'the page was
+      edited' shape. A re-scan must raise a MATERIAL change event on a
+      published quota, not silently overwrite it.
+    -->
+  </head>
+  <body>
+    <h1>GitHub Actions billing</h1>
+    <p>
+      Free use of GitHub Actions, GitHub Free plan. Source:
+      https://docs.github.com/en/billing/concepts/product-billing/github-actions
+    </p>
+    <table id="github-actions-free-use">
+      <thead>
+        <tr>
+          <th>Service</th>
+          <th>Offer type</th>
+          <th>Card required</th>
+          <th>Paid dependencies</th>
+          <th>Minutes per month</th>
+          <th>Artifact storage</th>
+          <th>Cache storage per repository</th>
+          <th>Public repository usage</th>
+          <th>Exhaustion behaviour</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>GitHub Actions</td>
+          <td>always_free</td>
+          <td>No</td>
+          <td>No</td>
+          <td>3,000</td>
+          <td>1 GB</td>
+          <td>10 GB</td>
+          <td>Free</td>
+          <td>hard_stop</td>
+        </tr>
+      </tbody>
+    </table>
+  </body>
+</html>

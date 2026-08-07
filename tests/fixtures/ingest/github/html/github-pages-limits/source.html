@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <title>GitHub Pages limits — usage limits</title>
+    <!--
+      Minimal excerpt of the official GitHub Pages limits page.
+
+      Verbatim from the "Usage limits" list: "Published GitHub Pages sites may
+      be no larger than 1 GB."; "GitHub Pages source repositories have a
+      recommended limit of 1 GB."; "GitHub Pages sites have a soft bandwidth
+      limit of 100 GB per month."; "GitHub Pages sites have a soft limit of 10
+      builds per hour."; "GitHub Pages deployments will timeout if they take
+      longer than 10 minutes."; "You can only create one user or organization
+      site for each account on GitHub."
+
+      PERPETUITY (why always_free): the page publishes standing usage limits for
+      Pages with no expiry, no introductory period and no payment method; the
+      GitHub plans page lists "GitHub Pages" in public repositories as part of
+      GitHub Free.
+
+      EXHAUSTION (why throttled): verbatim, "In order to provide consistent
+      quality of service for all GitHub Pages sites, rate limits may apply...
+      If your request triggers rate limiting, you will receive an appropriate
+      response with an HTTP status code of 429". Exceeding the soft quotas
+      degrades or suspends service ("we may not be able to serve your site") and
+      never triggers a charge -- Pages has no metered paid tier to bill into.
+    -->
+  </head>
+  <body>
+    <h1>GitHub Pages limits</h1>
+    <p>
+      Usage limits for GitHub Pages sites. Source:
+      https://docs.github.com/en/pages/getting-started-with-github-pages/github-pages-limits
+    </p>
+    <table id="github-pages-usage-limits">
+      <thead>
+        <tr>
+          <th>Service</th>
+          <th>Offer type</th>
+          <th>Card required</th>
+          <th>Paid dependencies</th>
+          <th>Published site size</th>
+          <th>Source repository size</th>
+          <th>Bandwidth per month</th>
+          <th>Builds per hour</th>
+          <th>Deployment timeout</th>
+          <th>Sites per account</th>
+          <th>Exhaustion behaviour</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>GitHub Pages</td>
+          <td>always_free</td>
+          <td>No</td>
+          <td>No</td>
+          <td>1 GB</td>
+          <td>1 GB</td>
+          <td>100 GB</td>
+          <td>10</td>
+          <td>10 minutes</td>
+          <td>1</td>
+          <td>throttled</td>
+        </tr>
+      </tbody>
+    </table>
+  </body>
+</html>
