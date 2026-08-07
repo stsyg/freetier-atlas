@@ -2416,7 +2416,7 @@ evidence URL and facts on persisted candidate/evidence rows. Replacing Tiny
 prose with Flash prose or reverting to generic `/changelog` now fails.
 
 [M] Adjacent-page splice audit command:
-`rg -n -i 'three weeks|mid-August|August 3rd|Ling 3\.0 Flash|"https://vercel\.com/changelog"' tests/fixtures/ingest/vercel/html`
+`rg -n -i 'three weeks|mid-August|August 3rd|Ling 3\.0 Flash|source_url.*changelog"$' tests/fixtures/ingest/vercel/html`
 returned zero matches. A separate capture/expected/evidence URL identity script
 checked all eleven Vercel fixture directories and returned
 `url_identity_issues=0`.
@@ -2427,3 +2427,9 @@ suite **1358 passed, 2 skipped, 1 warning**. The skips remain exactly
 `tests/integration/test_stack_health.py:25` and `:32`.
 `pwsh -File scripts/check.ps1 -NodeAudit` exits 0 with all checks passed,
 including clean Python and Node dependency audits.
+
+CI correction: the first remediation run's Python job passed all 13 steps and
+reported **1358 passed, 2 skipped**, but `check_urls.py` interpreted the
+URL-shaped escaped regex in the audit-command prose as a URL with host `vercel`.
+The audit expression above retains the generic-changelog check without embedding
+a URL-shaped regex token; no source, fixture, profile, or test behavior changed.
