@@ -1,77 +1,53 @@
 {
-  "contract_id": "security-maintenance-nanoid-3.3.17",
-  "feature_id": "F001-maintenance",
-  "increment": "apps-web-transitive-nanoid-advisory",
-  "title": "Resolve the apps/web nanoid advisory with the smallest lockfile-only update",
-  "branch": "stsyg-fix-nanoid-advisory-eff",
+  "feature_id": "F003",
+  "slice": "fail-closed-offer-type",
+  "title": "Fail closed on invalid offer types before classification or persistence",
+  "branch": "stsyg-fix-offer-type-fail-closed",
   "base_commit": "cfdf1cd1d26f48dbce4fdbb43cf071ee77c06c41",
-  "started_at": "2026-08-10T14:08:44Z",
-  "status": "blocked",
-  "blocking_condition": "The pinned base fails apps/web's own npm run format:check on 22 unchanged files. Formatting them would violate this contract's mandatory lockfile-only product diff, so strict evaluation cannot pass without an owner-approved contract amendment or a separate base-format repair.",
-  "objective": "Use npm's configured package-manager resolution to move only apps/web's transitive node_modules/nanoid lock entry from 3.3.16 to 3.3.17, clearing GHSA-2v37-7h3g-55p8 without changing manifests, audit policy, application behavior, or feature acceptance.",
-  "base_reproduction": {
-    "command": "cd apps/web; npm audit --audit-level=high",
-    "exit_code": 1,
-    "advisories": [
-      "GHSA-2v37-7h3g-55p8"
-    ],
-    "affected_range": "nanoid <3.3.17",
-    "tool_total": "1 high severity vulnerability",
-    "locked_chain": "postcss@8.5.25 -> nanoid ^3.3.16 -> nanoid@3.3.16"
-  },
+  "started_at": "2026-08-07T21:42:01Z",
+  "objective": "Reject every offer_type that is not an exact member of app.models.vocab.OFFER_TYPES before Z0 classification or publication persistence, while routing official evidence-backed invalid candidates to an explainable pending human review.",
   "in_scope": [
-    "apps/web/package-lock.json: npm-resolved node_modules/nanoid entry only",
-    "agent-state/current_contract.json: this replacement contract",
-    "agent-state/progress.md: one append-only measured handoff"
+    "apps/api/app/classify/engine.py",
+    "apps/api/app/publish/publisher.py",
+    "tests/unit/test_z0_classifier.py",
+    "tests/unit/test_publish_gate.py",
+    "tests/integration/test_publish_pipeline.py",
+    "docs/ARCHITECTURE.md",
+    "agent-state/current_contract.json",
+    "agent-state/progress.md (append only)"
   ],
   "out_of_scope_zero_diff": [
-    "apps/web/package.json",
-    "root package.json and package-lock.json",
-    ".github/** including workflows and audit configuration",
-    "scripts/**",
-    "apps/web/src/** and all other application source",
-    "tests/**",
-    "migrations/**",
+    "provider configs, profiles, and fixtures",
+    "migrations and database schema constraints",
+    "dependency manifests",
+    "workflows",
     "agent-state/feature_list.json",
-    "agent-state/evaluation.json"
-  ],
-  "implementation_constraints": [
-    "Run npm update nanoid --package-lock-only from apps/web; do not hand-edit package JSON.",
-    "Resolve exactly nanoid 3.3.17, the approved registry's maximum available 3.x release.",
-    "Do not use a GitHub tarball, public-registry bypass, major override, audit suppression, forced audit fix, or internal-registry hardcoding.",
-    "Reject and reduce any unrelated lockfile churn.",
-    "Do not emit registry URLs, credentials, or internal hostnames in tracked files, commits, PR text, logs, or reports."
+    "quota parsing and eligibility logic",
+    "runner exception and exit-code semantics"
   ],
   "acceptance_criteria": [
-    "A1: The untouched base audit exits nonzero with exactly GHSA-2v37-7h3g-55p8 and the tool total '1 high severity vulnerability'; the fixed-lock audit uses the same command and exits 0 with zero high and zero critical vulnerabilities.",
-    "A2: The only product-file diff is apps/web/package-lock.json, and only the node_modules/nanoid package record changes from 3.3.16 to exactly 3.3.17.",
-    "A3: A clean npm ci after removing only this worktree's ignored apps/web/node_modules succeeds.",
-    "A4: npm explain nanoid proves postcss@8.5.25 requires nanoid ^3.3.16 and resolves nanoid@3.3.17.",
-    "A5: apps/web format check, ESLint, tests, and build all pass.",
-    "A6: pwsh -File scripts/check.ps1 -NodeAudit passes; if Python tests run with a database, exactly two stack-health tests skip.",
-    "A7: The pushed draft pull request remains draft and all five reported checks are green; Dependency audit contains fourteen steps and all five named audit steps conclude success.",
-    "A8: Base-ref blob/tree controls prove every out-of-scope path byte-identical; the progress append has zero deletions and an LF final byte; no secret or internal host is introduced.",
-    "A9: Temporary install, probe, and stack resources created by this session are removed without touching another session's resources."
+    "A1: classify(OfferFacts(...)) returns UNKNOWN with explicit nonempty unrecognised-offer-type reasons and blocking conditions for unknown, empty, whitespace, invented, uppercase, and non-string runtime values before every other classification branch.",
+    "A2: Exact canonical values preserve existing behavior: safe always_free and other can be Z0, trial is Z2, self_hosted_open_source is Z3, and known billing or unknown material conditions remain safe.",
+    "A3: Publication schema completeness requires offer_type to be a string and an exact member of app.models.vocab.OFFER_TYPES; no normalization, case folding, literal duplication, or string coercion is permitted.",
+    "A4: An official evidence-backed invalid candidate routes to pending human review with schema_complete in failed_conditions before _do_publish, _resolve_offer, or any Offer, OfferVersion, or Quota insert.",
+    "A5: On real PostgreSQL 16, one invalid and one valid candidate in the same source and ScanRun produce reviewed=1, published=1, publish_error=None, explicit CLI counts, a pending invalid review item, no invalid offer persistence, and a committed valid offer graph.",
+    "A6: Database CHECK constraints and migrations remain unchanged as defense in depth.",
+    "A7: Required truthiness mutation and one additional predicted mutation are each observed failing the focused tests, then restored byte-exactly.",
+    "A8: The full repository check passes; CI runs all 13 Python steps at the pushed head and reports exactly two permitted stack-health skips."
   ],
-  "verification_commands": [
-    "cd apps/web; npm audit --audit-level=high",
-    "cd apps/web; npm update nanoid --package-lock-only",
-    "cd apps/web; npm ci",
-    "cd apps/web; npm explain nanoid",
-    "cd apps/web; npm run format:check; npm run lint; npm test; npm run build",
+  "verification_plan": [
+    "pytest tests/unit/test_z0_classifier.py tests/unit/test_publish_gate.py tests/integration/test_publish_pipeline.py",
+    "pytest -q with DATABASE_URL pointing at isolated PostgreSQL 16",
+    "pwsh -File scripts/stack-smoke.ps1 against the isolated stack",
     "pwsh -File scripts/check.ps1 -NodeAudit",
-    "git diff --word-diff=porcelain cfdf1cd1d26f48dbce4fdbb43cf071ee77c06c41 -- apps/web/package-lock.json",
-    "git diff --numstat cfdf1cd1d26f48dbce4fdbb43cf071ee77c06c41 -- agent-state/progress.md",
-    "gh pr checks and GitHub Actions job-step inspection at the pushed SHA"
+    "git diff --check and exact do-not-touch diff inspection",
+    "GitHub Actions Python job log inspection by step name and pushed head SHA"
   ],
-  "data_and_migration_implications": "None. No schema, data, migration, runtime dependency manifest, or application source changes.",
-  "security_privacy_portability_z0": {
-    "security": "Removes one known high-severity build-time transitive advisory without suppressing audit findings.",
-    "privacy": "No user data, secrets, credentials, telemetry, or retention behavior changes.",
-    "portability": "The lockfile retains public portable resolved metadata; no machine-specific registry value is committed.",
-    "z0": "No free-tier, quota, cost, classification, evidence, or publication behavior changes."
-  },
-  "required_evaluation_level": 1,
-  "evaluation_plan": "Fresh-context read-only evaluator grades the measured diff and contract after local verification; no feature-ledger or evaluation-ledger mutation is authorized for this maintenance increment.",
-  "pr_policy": "Open a draft pull request at the first pushed commit; do not mark ready, merge, force-push, or alter main."
+  "data_implications": "No migration. Invalid candidates remain in candidate/evidence history and gain a pending ReviewItem; no Offer, OfferVersion, or Quota is created for that identity.",
+  "security_privacy": "No network or credential behavior changes. The change reduces success-shaped partial publication and unsupported Z0 claims.",
+  "portability": "Pure Python vocabulary membership checks only; no platform-specific code or new dependency.",
+  "z0_risk": "High-risk A3 slice: an invalid offer type currently falls through to Z0 and can reach a database constraint. Exact canonical membership must fail closed.",
+  "required_evaluation_level": 2,
+  "evaluator_disposition": "pending",
+  "status": "ready_for_evaluation"
 }

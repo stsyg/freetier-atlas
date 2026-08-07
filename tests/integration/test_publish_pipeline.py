@@ -35,7 +35,7 @@ from app.config.loader import load_and_validate
 from app.config.models import ProviderConfig, PublishingSection
 from app.ingest.config_sync import categorise_services
 from app.ingest.reconcile import reconcile_scan
-from app.ingest.runner import build_fixture_fetcher, run_provider_scans
+from app.ingest.runner import _format_result, build_fixture_fetcher, run_provider_scans
 from app.ingest.scan import _content_hash, _json_safe
 from app.models.domain import (
     Candidate,
@@ -390,6 +390,132 @@ def test_contradiction_routes_to_review_not_publish(session: Session) -> None:
         .where(ReviewItem.admin_disposition == "pending")
     ).scalar_one()
     assert pending_after >= 1
+
+
+# --- (d2) invalid offer type in a mixed batch -------------------------------
+
+
+@skip_without_db
+def test_runner_reviews_invalid_offer_type_and_publishes_valid_peer(
+    session: Session, monkeypatch
+) -> None:
+    provider = Provider(slug="mixed-offer-types", name="Mixed Offer Types", type="cloud")
+    session.add(provider)
+    session.flush()
+    _seed_source(session, provider, "mixed-offer-types-source", official=True)
+
+    config = _config().model_copy(
+        update={
+            "provider": _config().provider.model_copy(
+                update={"id": provider.slug, "name": provider.name}
+            )
+        }
+    )
+
+    invalid_facts = {
+        **_HIGH_CONFIDENCE_FACTS,
+        "service": "Invalid Type Service",
+        "offer_type": "FREE_FOREVER",
+    }
+    valid_facts = {
+        **_HIGH_CONFIDENCE_FACTS,
+        "service": "Valid Type Service",
+        "offer_type": "always_free",
+    }
+
+    def seed_mixed_scan(scanned_source: Source, _fetcher, active_session: Session) -> ScanRun:
+        scan_run = ScanRun(
+            source_id=scanned_source.id,
+            status="success",
+            documents_count=1,
+            candidates_count=2,
+        )
+        active_session.add(scan_run)
+        active_session.flush()
+
+        snapshot = active_session.execute(
+            select(Snapshot)
+            .where(Snapshot.source_id == scanned_source.id)
+            .order_by(Snapshot.id.desc())
+        ).scalar_one()
+        for facts in (invalid_facts, valid_facts):
+            candidate = Candidate(
+                scan_run_id=scan_run.id,
+                source_id=scanned_source.id,
+                provider=provider.slug,
+                source_url=scanned_source.endpoint,
+                verification_state="candidate",
+                candidate_facts=facts,
+                candidate_key=_content_hash(
+                    {
+                        "provider": provider.slug,
+                        "source_url": scanned_source.endpoint,
+                        "service": facts["service"],
+                        "offer_type": facts["offer_type"],
+                    }
+                ),
+                content_hash=_content_hash(facts),
+                official=True,
+            )
+            active_session.add(candidate)
+            active_session.flush()
+            active_session.add(
+                Evidence(
+                    source_id=scanned_source.id,
+                    candidate_id=candidate.id,
+                    snapshot_id=snapshot.id,
+                    official=True,
+                    url=scanned_source.endpoint,
+                    content_hash=f"evidence-{candidate.id}",
+                )
+            )
+        active_session.flush()
+        return scan_run
+
+    monkeypatch.setattr("app.ingest.runner.run_scan", seed_mixed_scan)
+    result = run_provider_scans(session, config, object(), sync=False, publish=True)
+
+    assert len(result.sources) == 1
+    outcome = result.sources[0]
+    assert outcome.publish_error is None
+    assert outcome.reviewed == 1
+    assert outcome.published == 1
+    assert result.total_reviewed == 1
+    assert result.total_published == 1
+    output = _format_result(result)
+    assert "published=1" in output
+    assert "reviewed=1" in output
+
+    review = session.execute(
+        select(ReviewItem).where(
+            ReviewItem.scan_run_id == outcome.scan_run_id,
+            ReviewItem.admin_disposition == "pending",
+        )
+    ).scalar_one()
+    assert review.candidate_facts["offer_type"] == "FREE_FOREVER"
+    assert review.evidence_conflict["failed_conditions"] == ["schema_complete"]
+
+    invalid_service = session.execute(
+        select(Service).where(Service.canonical_name == "Invalid Type Service")
+    ).scalar_one_or_none()
+    assert invalid_service is None
+
+    valid_service = session.execute(
+        select(Service).where(Service.canonical_name == "Valid Type Service")
+    ).scalar_one()
+    valid_offer = session.execute(
+        select(Offer).where(Offer.service_id == valid_service.id)
+    ).scalar_one()
+    valid_version = session.execute(
+        select(OfferVersion).where(OfferVersion.offer_id == valid_offer.id)
+    ).scalar_one()
+    valid_quotas = list(
+        session.execute(select(Quota).where(Quota.offer_version_id == valid_version.id)).scalars()
+    )
+    assert valid_offer.offer_type == "always_free"
+    assert valid_offer.zero_cost_class == Z0_TRUE_FREE
+    assert valid_version.offer_type == "always_free"
+    assert valid_quotas
 
 
 # --- (e) offer_version immutability (raw SQL) -------------------------------
