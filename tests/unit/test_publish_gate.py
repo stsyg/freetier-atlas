@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
+from types import SimpleNamespace
+
+from app.ingest.scan import _content_hash
 from app.publish.gate import (
     PUBLISH,
     REVIEW,
@@ -9,6 +13,8 @@ from app.publish.gate import (
     GateConditions,
     evaluate_gate,
 )
+from app.publish.publisher import _build_conditions
+from app.publish.revalidate import revalidate_quotas
 
 AUTO = 0.90
 UNCERTAIN = 0.70
@@ -78,6 +84,42 @@ def test_confidence_below_uncertain_is_withheld() -> None:
 def test_incomplete_schema_does_not_publish() -> None:
     cond = GateConditions(**{**_all_pass(0.95).__dict__, "schema_complete": False})
     assert _decide(cond).decision != PUBLISH
+
+
+def test_invalid_nonempty_offer_type_makes_publication_conditions_incomplete(
+    monkeypatch,
+) -> None:
+    facts = {
+        "service": "Invalid Type Service",
+        "offer_type": "FREE_FOREVER",
+        "requires_card": False,
+        "has_paid_dependencies": False,
+        "exhaustion_behaviour": "hard_stop",
+        "requests_per_day": "100/day",
+    }
+    candidate = SimpleNamespace(official=True, content_hash=_content_hash(facts), provider="test")
+    source = SimpleNamespace(official=True, id=1, schedule="daily")
+    revalidation = revalidate_quotas(facts, exhaustion_behaviour="hard_stop")
+    monkeypatch.setattr("app.publish.publisher._pending_conflict_exists", lambda *a, **k: False)
+    monkeypatch.setattr(
+        "app.publish.publisher._freshest_fetched_at",
+        lambda *a, **k: datetime.now(UTC),
+    )
+
+    conditions, _signals = _build_conditions(
+        object(),
+        candidate=candidate,
+        source=source,
+        facts=facts,
+        revalidation=revalidation,
+        evidence_backed=True,
+        now=datetime.now(UTC),
+    )
+    decision = _decide(conditions)
+
+    assert conditions.schema_complete is False
+    assert decision.decision == REVIEW
+    assert "schema_complete" in decision.failed_conditions
 
 
 def test_non_deterministic_does_not_publish() -> None:

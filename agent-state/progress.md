@@ -2307,3 +2307,105 @@ Also recorded: CI's `Python lint, format, tests` job runs without
 `DATABASE_URL`, so this repo's entire integration suite -- including this
 slice's -- is skipped on every CI run. CI green is not evidence for an
 integration slice. Raised by the verifier and owned by them.
+
+## 2026-08-07 - F003 prerequisite: fail closed on invalid offer types
+
+### What I got wrong
+
+I initially trusted the brief's merged-main test count without accounting for
+the live stack variables. With `DATABASE_URL` and `ATLAS_STACK_BASE_URL` both
+set, the two stack-health tests execute, so the baseline is **1261 passed**,
+not 1259 passed / 2 skipped. The CI-shaped run deliberately omits only
+`ATLAS_STACK_BASE_URL`; that is the run that correctly reports **1259 passed /
+2 skipped** before this slice.
+
+### Builder result
+
+- Reproduced both defects before editing: invalid values `unknown`, empty,
+  invented, uppercase `TRIAL` and other truthy values classified
+  `Z0_TRUE_FREE`; an official evidence-backed `FREE_FOREVER` candidate reached
+  PostgreSQL and failed `ck_offer_offer_type_valid`.
+- `classify()` now checks exact membership in the canonical `OFFER_TYPES`
+  tuple before self-hosted, billing, unknown-material, conditional or Z0 logic.
+  Every invalid runtime value returns `UNKNOWN` with an explicit reason and
+  nonempty blocking conditions. No case normalization or coercion is used.
+- Publication now folds the same exact vocabulary check into the existing
+  `schema_complete` hard condition. Official evidence-backed invalid input
+  routes to a pending review item before `_do_publish` or `_resolve_offer`;
+  the persistence path no longer converts `offer_type` with `str()`.
+- The real-PostgreSQL mixed-batch regression creates one invalid and one valid
+  candidate in the same source and scan. It asserts `reviewed=1`,
+  `published=1`, `publish_error is None`, both CLI counts, the invalid pending
+  review with failed condition `schema_complete`, no invalid Service/Offer
+  graph, and a persisted valid Offer/OfferVersion/Quota graph classified Z0.
+- Added 14 tests: six invalid runtime values, six valid branch controls, one
+  publication-condition unit test, and one PostgreSQL mixed-batch integration
+  test. Updated the publication-gate documentation. No migration, vocabulary,
+  schema constraint, provider fixture/profile/config, dependency, workflow,
+  runner behavior, feature ledger or evaluation ledger changed.
+
+### Mutation evidence
+
+- **Required prediction:** replacing exact vocabulary membership with
+  truthiness would let truthy invalids escape UNKNOWN. Result: **5 failed, 1
+  passed**; `unknown`, whitespace, invented, `TRIAL`, and integer `17` all
+  escaped to Z0. The empty-string case remained UNKNOWN only because it is
+  falsey.
+- **Additional prediction:** changing publication schema completeness from
+  `complete AND valid-offer-type` to `complete OR valid-offer-type` would let
+  `FREE_FOREVER` reach PostgreSQL and recreate success-shaped partial
+  publication. Result: **2 failed**; the unit condition became true and the
+  mixed batch recorded `IntegrityError` instead of reviewed=1/published=1.
+- Both mutations were restored byte-exactly before the green runs.
+
+### Measured validation
+
+- Isolated PostgreSQL 16 stack `fta-offertype`, ports 5647/8147/8247:
+  canonical stack smoke **15/15 PASS**.
+- Focused classifier/gate/publication suite: **111 passed**.
+- `pwsh -File scripts/check.ps1 -NodeAudit`: **ALL CHECKS PASSED**;
+  Pytest **1273 passed, 2 skipped, 1 warning**. The only skips are
+  `tests/integration/test_stack_health.py:25` and `:32`.
+- Independent Level-2 evaluation remains pending and is owned by the
+  orchestrator. This builder did not flip a feature flag and will not merge.
+
+### Final CI and cleanup evidence
+
+- First pushed commit: `e3992308f9ad63580c09a61d5c2d5e6be40d334d`;
+  draft PR #51 was opened immediately after that push and remains unpromoted.
+- Python CI run 20371707078 matched that pushed head; all 13 steps succeeded,
+  including container initialization, migrations, Pytest, and container
+  shutdown. Summary: **1273 passed, 2 skipped in 62.36s**. The only skips were
+  `tests/integration/test_stack_health.py:25` and
+  `tests/integration/test_stack_health.py:32`.
+- The separate dependency-audit job failed on the unchanged web lockfile
+  because `nanoid <3.3.17` now has a high-severity advisory. Dependency
+  manifests are outside this contract's allowed scope, so no unrelated
+  dependency change was made.
+- The isolated `fta-offertype` containers and network were removed after
+  validation. The targeted `fta-offertype_atlas_pgdata` test volume was
+  preserved because deleting it would be irreversible without explicit
+  deletion approval.
+
+### Level-2 remediation correction
+
+- The prior handoff cited CI run `20371707078`; that run ID does not belong to
+  this branch and is superseded by exact-head run `31223239617`. Run
+  `31223239617` matched head `93e6a2c847664faaf3773d5d566071f8aa4db274`;
+  its 13-step Python job succeeded with **1273 passed, 2 skipped, 1 warning in
+  23.65s**.
+- Level-2 evaluation found that tuple membership alone could invoke equality on
+  a non-string runtime object. A canonical-equality impostor reached Z0, and an
+  unhashable equality impostor raised `TypeError` after passing the tuple gate.
+  The classifier now short-circuits on `isinstance(offer_type, str)` before
+  exact vocabulary membership. Adversarial equality, unhashable, and
+  string-coercion impostors are covered explicitly.
+- The remediation mutation removed only the runtime type short-circuit.
+  Prediction: the canonical-equality impostor would again reach Z0, the
+  unhashable impostor would again raise, and the coercion impostor would remain
+  safely unknown. Result: **2 failed, 1 passed**, exactly as predicted; the
+  guard was restored.
+- Focused classifier suite: **90 passed**. Full real-PostgreSQL suite:
+  **1276 passed, 2 skipped, 1 warning**. `scripts/check.ps1 -NodeAudit`:
+  **ALL CHECKS PASSED**, including the same Pytest count, Python dependency
+  audit, and Node dependency audit.

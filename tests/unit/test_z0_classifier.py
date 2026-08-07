@@ -39,6 +39,40 @@ from app.models.vocab import EXHAUSTION_BEHAVIOURS, ZERO_COST_CLASSES
 _TODAY = date(2026, 1, 15)
 
 
+class _CanonicalEqualityImpostor:
+    def __init__(self) -> None:
+        self.eq_calls = 0
+        self.hash_calls = 0
+
+    def __eq__(self, other: object) -> bool:
+        self.eq_calls += 1
+        return other == "always_free"
+
+    def __hash__(self) -> int:
+        self.hash_calls += 1
+        return hash("always_free")
+
+
+class _UnhashableEqualityImpostor:
+    __hash__ = None  # type: ignore[assignment]
+
+    def __init__(self) -> None:
+        self.eq_calls = 0
+
+    def __eq__(self, other: object) -> bool:
+        self.eq_calls += 1
+        return other == "always_free"
+
+
+class _StringCoercionImpostor:
+    def __init__(self) -> None:
+        self.str_calls = 0
+
+    def __str__(self) -> str:
+        self.str_calls += 1
+        return "always_free"
+
+
 # --------------------------------------------------------------------------- #
 # Vocabulary / single-source-of-truth guards
 # --------------------------------------------------------------------------- #
@@ -341,6 +375,135 @@ def test_z3_nature_precedes_paid_dependency_gate() -> None:
 # --------------------------------------------------------------------------- #
 # UNKNOWN -- the safety invariant: no unknown material condition yields Z0
 # --------------------------------------------------------------------------- #
+
+
+@pytest.mark.parametrize(
+    "offer_type",
+    ["unknown", "", "   ", "totally_made_up_xyz", "TRIAL", 17],
+)
+def test_unrecognised_offer_type_fails_closed_before_all_other_gates(offer_type: object) -> None:
+    result = classify(
+        OfferFacts(
+            offer_type=offer_type,  # type: ignore[arg-type] - runtime defense-in-depth
+            requires_card=False,
+            has_paid_dependencies=False,
+            exhaustion_behaviours=("hard_stop",),
+        ),
+        as_of=_TODAY,
+    )
+
+    assert result.zero_cost_class == UNKNOWN
+    assert result.zero_cost_class != Z0_TRUE_FREE
+    assert result.reasons
+    assert result.blocking_conditions
+    assert all("unrecognised offer type" in text.lower() for text in result.reasons)
+    assert all("safely classified" in text.lower() for text in result.blocking_conditions)
+
+
+@pytest.mark.parametrize(
+    "offer_type",
+    [_CanonicalEqualityImpostor(), _UnhashableEqualityImpostor()],
+    ids=["canonical-equality-impostor", "unhashable-equality-impostor"],
+)
+def test_non_string_equality_impostors_fail_closed_without_protocol_calls(
+    offer_type: _CanonicalEqualityImpostor | _UnhashableEqualityImpostor,
+) -> None:
+    result = classify(
+        OfferFacts(
+            offer_type=offer_type,  # type: ignore[arg-type] - adversarial runtime value
+            requires_card=False,
+            has_paid_dependencies=False,
+            exhaustion_behaviours=("hard_stop",),
+        ),
+        as_of=_TODAY,
+    )
+
+    assert result.zero_cost_class == UNKNOWN
+    assert result.zero_cost_class != Z0_TRUE_FREE
+    assert offer_type.eq_calls == 0
+    if isinstance(offer_type, _CanonicalEqualityImpostor):
+        assert offer_type.hash_calls == 0
+    assert result.reasons
+    assert result.blocking_conditions
+    assert all("unrecognised offer type" in text.lower() for text in result.reasons)
+    assert all("safely classified" in text.lower() for text in result.blocking_conditions)
+
+
+def test_non_string_offer_type_is_not_coerced_to_a_canonical_string() -> None:
+    offer_type = _StringCoercionImpostor()
+
+    result = classify(
+        OfferFacts(
+            offer_type=offer_type,  # type: ignore[arg-type] - adversarial runtime value
+            requires_card=False,
+            has_paid_dependencies=False,
+            exhaustion_behaviours=("hard_stop",),
+        ),
+        as_of=_TODAY,
+    )
+
+    assert offer_type.str_calls == 0
+    assert result.zero_cost_class == UNKNOWN
+    assert result.zero_cost_class != Z0_TRUE_FREE
+    assert result.reasons
+    assert result.blocking_conditions
+    assert all("unrecognised offer type" in text.lower() for text in result.reasons)
+    assert all("safely classified" in text.lower() for text in result.blocking_conditions)
+
+
+@pytest.mark.parametrize(
+    ("facts", "expected"),
+    [
+        (
+            OfferFacts(
+                "always_free",
+                requires_card=False,
+                has_paid_dependencies=False,
+                exhaustion_behaviours=("hard_stop",),
+            ),
+            Z0_TRUE_FREE,
+        ),
+        (
+            OfferFacts(
+                "other",
+                requires_card=False,
+                has_paid_dependencies=False,
+                exhaustion_behaviours=("hard_stop",),
+            ),
+            Z0_TRUE_FREE,
+        ),
+        (
+            OfferFacts(
+                "trial",
+                requires_card=False,
+                has_paid_dependencies=False,
+                exhaustion_behaviours=("hard_stop",),
+            ),
+            Z2_TEMPORARY_OR_CONDITIONAL,
+        ),
+        (OfferFacts("self_hosted_open_source"), Z3_SELF_HOSTED_BUILDING_BLOCK),
+        (
+            OfferFacts(
+                "always_free",
+                requires_card=True,
+                has_paid_dependencies=False,
+                exhaustion_behaviours=("hard_stop",),
+            ),
+            Z1_BILLING_EXPOSURE,
+        ),
+        (
+            OfferFacts(
+                "always_free",
+                requires_card=None,
+                has_paid_dependencies=False,
+                exhaustion_behaviours=("hard_stop",),
+            ),
+            UNKNOWN,
+        ),
+    ],
+)
+def test_valid_offer_type_branch_controls(facts: OfferFacts, expected: str) -> None:
+    assert classify(facts, as_of=_TODAY).zero_cost_class == expected
 
 
 def test_unknown_when_card_requirement_unknown() -> None:
