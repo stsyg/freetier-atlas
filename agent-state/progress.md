@@ -2023,3 +2023,133 @@ jobs can resolve different versions of the same package. Diff is 5 files:
 `passes` flag was touched: this is CI plumbing, not a ledger feature. Did not
 merge and did not open a PR; owner authorisation pending, and the starlette
 bump needs an explicit guardrail waiver.
+
+## ci: give the `python` job a real PostgreSQL so the integration suite actually executes (branch `stsyg-ci-real-postgres-for-python-job`)
+
+The job named "Python lint, format, tests" ran `pytest -q` against **no
+database**. No `services:` block, no `DATABASE_URL`, no migration step. Every
+integration test is guarded by `pytest.mark.skipif(not DATABASE_URL)`, so the
+entire ingest, reconcile, read-API and provider layer skipped and the job
+reported success anyway. The tick was not a weak signal; it was an absent one
+that looked identical to a strong one.
+
+The before and after are measured on the **same tree**, which is what makes them
+comparable. CI run `31136371103`, job `92736533588`, `main` at `9a36646` — the
+commit this branch is based on — ends:
+
+```
+1004 passed, 154 skipped, 1 warning in 10.08s
+```
+
+CI run `31195274308`, job `92921842302`, this branch at `0c5e8ea`, ends:
+
+```
+1156 passed, 2 skipped, 1 warning in 20.56s
+```
+
+and its only two skips are the pair that must remain skipped:
+
+```
+SKIPPED [1] tests/integration/test_stack_health.py:25: ATLAS_STACK_BASE_URL not set; run scripts/stack-up then set it to enable.
+SKIPPED [1] tests/integration/test_stack_health.py:32: ATLAS_STACK_BASE_URL not set; run scripts/stack-up then set it to enable.
+```
+
+Those two need a running full stack rather than a database, so a database cannot
+and should not unskip them. **152 tests** that had never once executed in CI now
+execute: 1156 - 1004 = 152, and 154 - 2 = 152, two independent subtractions
+agreeing. The briefing put the figure at ~162 from job `92751690454`; that run is
+on PR #48, whose branch carries an additional `tests/integration/test_ingest_github.py`
+that does not exist on `main`. On this tree the number is 152. The correction is
+recorded because the number is the evidence, and an evidence figure carried over
+from a different tree is not evidence.
+
+The change is confined to the `python` job. A `postgres:16-alpine` service
+container matches `docker-compose.yml`'s postgres service exactly — a different
+major version would make CI's result inapplicable to the stack CI exists to
+guard — and is health-checked with the same `pg_isready -U atlas -d atlas`
+invocation the Compose service uses, so pytest cannot start against a database
+that is not yet accepting connections. `DATABASE_URL` uses the project's
+existing `postgresql+psycopg://` scheme and is set at **job** scope. That scope
+is the defect in miniature and was chosen deliberately: on the pytest step
+alone, the migration step would fall back to `migrations/env.py`'s default host
+`postgres`, which does not resolve on a runner. `alembic upgrade head` is its
+own named step so that a schema failure is reported as a schema failure rather
+than as a wall of failing tests.
+
+Because a fix that leaves CI green while still skipping is indistinguishable
+from the broken state by colour, the result was read **by step name** from the
+Actions API rather than from the tick. The `python` job has 13 steps; in run
+`31195274308` all 13 conclude `success`, in this order: `Set up job`,
+`Initialize containers`, `Run actions/checkout@v4`, `Run actions/setup-python@v5`,
+`Install Python runtime and dev dependencies`, `Ruff lint`, `Ruff format check`,
+`Apply database migrations`, `Pytest`, `Post Run actions/setup-python@v5`,
+`Post Run actions/checkout@v4`, `Stop containers`, `Complete job`.
+
+A job never observed failing is unproven, so it was made to fail on purpose. A
+false assertion was planted in `tests/integration/test_read_api.py` — chosen
+because it is DB-gated, so it exercises precisely the layer that could not fail
+CI before this change — and pushed as commit `a2f7051`. CI run `31195032921`,
+job `92921047409`, concluded `failure`, and the failure lands where it should:
+
+```
+FAILED tests/integration/test_read_api.py::test_providers_reflect_published_catalogue - AssertionError: assert 'ci-red-proof-provider-that-does-not-exist' in {'cloudflare'}
+1 failed, 1155 passed, 2 skipped, 1 warning in 20.03s
+##[error]Process completed with exit code 1.
+```
+
+Read by step name, step 9 `Pytest` is `failure` while steps 1-8, including
+`Apply database migrations`, are all `success` — so the red is the test, not the
+plumbing. The plant was reverted in `0c5e8ea` and the revert verified by **blob
+hash** rather than by diff, since `.gitattributes` filters can make a diff read
+clean while bytes differ: `git rev-parse 9a36646:tests/integration/test_read_api.py`,
+`git rev-parse HEAD:tests/integration/test_read_api.py` and
+`git hash-object tests/integration/test_read_api.py` are all
+`4d0e92fdc0ed9fba784f549a4a3d338496cbf408`. Green, red, green, on identical
+test bytes at both ends.
+
+Nothing was weakened to get there. `git diff --numstat 9a36646 HEAD` is two
+files: `.github/workflows/ci.yml` (+38/-0) and `agent-state/current_contract.json`.
+`tests/**`, `apps/**`, `scripts/**`, `docker-compose.yml`, `migrations/**`,
+`pyproject.toml`, `requirements-dev.txt`, `agent-state/feature_list.json` and
+`agent-state/evaluation.json` are each **zero diff**, verified per path. Grepping
+the whole diff for `continue-on-error`, `|| true`, `--maxfail`, `xfail`, `skipif`
+and `pytest.mark.skip` returns four hits, all of them prose in a comment or in
+the contract *describing* the defect, and none executable. No `passes` flag was
+touched: this is CI plumbing, not a ledger feature.
+
+Two guards that the new credential-shaped `DATABASE_URL` could have broken were
+replayed locally before pushing and then confirmed by CI: `detect-secrets-hook`
+against `.secrets.baseline` over all 418 tracked files exits 0 (the literal
+carries the same `# pragma: allowlist secret` marker `docker-compose.yml`
+already uses), and `scripts/check_urls.py` reports 858 URLs across 50 distinct
+hosts, all allowlisted — it inspects only `http(s)://`, so a
+`postgresql+psycopg://` URL is outside its scope by construction. The `Secret
+scan` job passes on every run of this branch.
+
+Cost, reported honestly and lower than predicted. The `python` job's wall time
+goes from 36s to 60s (+24s); the `Pytest` step itself from 10.08s to 20.56s, and
+`Initialize containers` plus `Apply database migrations` add ~13s between them.
+The briefing anticipated ~9s to ~80s+; the measured figure is 60s, because the
+brief's 9s was the pytest step in isolation rather than the job. Either way a
+job that tests nothing is not a saving.
+
+One observation, not a defect. The `Stop containers` step dumps the Postgres
+container log, which is full of `ERROR:` lines — immutability triggers,
+check-constraint violations, foreign-key rejections. These are the negative-path
+assertions the integration suite deliberately provokes; they are the tests
+working. They will, however, make a genuine database error harder to spot in
+that step, and anyone scanning CI logs for `ERROR` should know they are
+expected. Turning the 152 tests on revealed **no** pre-existing failure: the very
+first run on this branch was already 1156/2.
+
+Three defects were left untouched by instruction and remain open: the
+`apps/api/app/classify/**` fail-open on an unrecognised `offer_type`;
+`scripts/check.ps1`'s twin vacuous `npm audit --omit=dev`; and the `concurrency:`
+group at `ci.yml:13-15`, which does not unify push and PR refs. That last one is
+visible in this very branch's history, where `main` at `9a36646` produced two
+run IDs (`31136374064` and `31136371103`), only one of which carries jobs.
+
+Draft PR #49, not merged: the owner verifies and merges, never the builder.
+Recommended next: fold the same service-container treatment into any future job
+that runs the suite, and take the `concurrency:` slice, since a group that does
+not unify refs can cancel the very run being read for evidence.
