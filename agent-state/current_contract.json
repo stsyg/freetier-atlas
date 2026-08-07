@@ -26,7 +26,7 @@
     "runner exception and exit-code semantics"
   ],
   "acceptance_criteria": [
-    "A1: classify(OfferFacts(...)) returns UNKNOWN with explicit nonempty unrecognised-offer-type reasons and blocking conditions for unknown, empty, whitespace, invented, uppercase, and non-string runtime values before every other classification branch.",
+    "A1: classify(OfferFacts(...)) returns UNKNOWN with explicit nonempty unrecognised-offer-type reasons and blocking conditions for unknown, empty, whitespace, invented, uppercase, and non-string runtime values (including equality, hashing, and string-coercion impostors) before every other classification branch or protocol operation.",
     "A2: Exact canonical values preserve existing behavior: safe always_free and other can be Z0, trial is Z2, self_hosted_open_source is Z3, and known billing or unknown material conditions remain safe.",
     "A3: Publication schema completeness requires offer_type to be a string and an exact member of app.models.vocab.OFFER_TYPES; no normalization, case folding, literal duplication, or string coercion is permitted.",
     "A4: An official evidence-backed invalid candidate routes to pending human review with schema_complete in failed_conditions before _do_publish, _resolve_offer, or any Offer, OfferVersion, or Quota insert.",

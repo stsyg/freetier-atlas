@@ -2386,3 +2386,26 @@ not 1259 passed / 2 skipped. The CI-shaped run deliberately omits only
   validation. The targeted `fta-offertype_atlas_pgdata` test volume was
   preserved because deleting it would be irreversible without explicit
   deletion approval.
+
+### Level-2 remediation correction
+
+- The prior handoff cited CI run `20371707078`; that run ID does not belong to
+  this branch and is superseded by exact-head run `31223239617`. Run
+  `31223239617` matched head `93e6a2c847664faaf3773d5d566071f8aa4db274`;
+  its 13-step Python job succeeded with **1273 passed, 2 skipped, 1 warning in
+  23.65s**.
+- Level-2 evaluation found that tuple membership alone could invoke equality on
+  a non-string runtime object. A canonical-equality impostor reached Z0, and an
+  unhashable equality impostor raised `TypeError` after passing the tuple gate.
+  The classifier now short-circuits on `isinstance(offer_type, str)` before
+  exact vocabulary membership. Adversarial equality, unhashable, and
+  string-coercion impostors are covered explicitly.
+- The remediation mutation removed only the runtime type short-circuit.
+  Prediction: the canonical-equality impostor would again reach Z0, the
+  unhashable impostor would again raise, and the coercion impostor would remain
+  safely unknown. Result: **2 failed, 1 passed**, exactly as predicted; the
+  guard was restored.
+- Focused classifier suite: **90 passed**. Full real-PostgreSQL suite:
+  **1276 passed, 2 skipped, 1 warning**. `scripts/check.ps1 -NodeAudit`:
+  **ALL CHECKS PASSED**, including the same Pytest count, Python dependency
+  audit, and Node dependency audit.
