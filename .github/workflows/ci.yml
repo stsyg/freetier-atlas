@@ -18,6 +18,39 @@ jobs:
   python:
     name: Python lint, format, tests
     runs-on: ubuntu-latest
+    # This job previously ran `pytest` with no database at all. Every
+    # integration test is guarded by `skipif(not DATABASE_URL)`, so the whole
+    # ingest, reconcile, read-API and provider layer -- 162 tests -- silently
+    # skipped and the job still reported success. A green tick that certifies
+    # nothing is worse than a red one, because it is trusted. The service
+    # container below is what makes the tick mean something.
+    services:
+      postgres:
+        # Matches docker-compose.yml's postgres service exactly, so CI exercises
+        # the same major version the development stack runs. A different major
+        # would make CI's result inapplicable to the stack it is meant to guard.
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: atlas
+          POSTGRES_PASSWORD: atlas # pragma: allowlist secret
+          POSTGRES_DB: atlas
+        ports:
+          - 5432:5432
+        # Without a health check the job races the database: pytest can start
+        # before Postgres accepts connections, the connection fails, and the
+        # failure looks like a test defect rather than a startup order defect.
+        options: >-
+          --health-cmd "pg_isready -U atlas -d atlas"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    # Job scope, deliberately: `alembic upgrade head` and `pytest` BOTH need
+    # this. Setting it on the pytest step alone would leave the migration step
+    # falling back to migrations/env.py's local default host (`postgres`), which
+    # does not resolve on the runner. These are non-secret CI-local values for
+    # an ephemeral container that is destroyed with the job.
+    env:
+      DATABASE_URL: postgresql+psycopg://atlas:atlas@localhost:5432/atlas # pragma: allowlist secret
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -31,6 +64,11 @@ jobs:
         run: ruff check .
       - name: Ruff format check
         run: ruff format --check .
+      # A named step of its own, not folded into the pytest command: when the
+      # schema is the thing that broke, the job's step list says so directly
+      # instead of reporting a wall of failing tests.
+      - name: Apply database migrations
+        run: alembic upgrade head
       - name: Pytest
         run: pytest -q
 

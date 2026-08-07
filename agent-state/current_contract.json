@@ -2,60 +2,59 @@
   "schema_version": 1,
   "status": "approved",
   "feature_id": "infra",
-  "increment": "dev-environment correctness: derive DATABASE_URL from POSTGRES_*, and validate the Python interpreter by execution rather than by presence",
+  "increment": "CI: give the python job a real PostgreSQL, run migrations, and make the integration suite actually execute",
   "builder": "Copilot CLI (Chief)",
-  "evaluator": "fresh independent reviewer; this is developer-environment infrastructure, not a ledger feature, so no passes flag is in play",
-  "approved_at": "2026-08-06",
-  "base_commit": "ce2d58dc90220be3306a81108f66b28c573eb148",
+  "evaluator": "fresh independent reviewer; this is CI plumbing, not a ledger feature, so no passes flag is in play",
+  "approved_at": "2026-08-07",
+  "base_commit": "9a36646c55933c33e4bdd836796e8cde5aded934",
   "approval_notes": [
-    "Two dev-environment defects, one PR, both reproduced on ce2d58d BEFORE any fix. Neither is a product-behaviour change: apps/**, tests/** and .github/workflows/** are zero diff.",
-    "Defect A is worth fixing because its symptom misdirects: the stack dies with 'password authentication failed for user \"atlas\"' many frames down a SQLAlchemy traceback, which points at Postgres while the cause is in docker-compose.yml.",
-    "Defect B is NOT a broken CI gate. scripts/check-env.sh is not referenced by any workflow; it is referenced only by docs/LOCAL_DEVELOPMENT.md and docs/CODEX_ENVIRONMENT.md. Its cost is that it is the documented first step a fresh agent session runs, so it currently certifies a Python that cannot execute code."
+    "The .github/workflows/ci.yml job `python` ran `pytest -q` with no database: no services block, no DATABASE_URL, no migration step. Every integration test is guarded by pytest.mark.skipif(not DATABASE_URL), so the entire ingest, reconcile, read-API and provider layer skipped and the job still reported success.",
+    "This is not a test defect and not a product-behaviour change. tests/**, apps/** and scripts/** are zero diff. The only executable change is the workflow.",
+    "The failure mode this slice targets is a green tick that certifies nothing. Colour is therefore NOT acceptance evidence: a mis-scoped DATABASE_URL, a wrong variable name, or an unhealthy service all leave the job green and still skipping. Acceptance is by pytest count and by skip name, read from the CI log."
   ],
-  "objective": "A developer or agent who overrides only POSTGRES_USER / POSTGRES_PASSWORD / POSTGRES_DB gets a stack that comes up and passes smoke; and the environment scripts report Python honestly, failing loudly when no interpreter can actually run code.",
+  "objective": "The CI `python` job stands up PostgreSQL, applies migrations, and executes the full test suite including the integration layer, so a regression in ingest, reconcile or the read API can fail CI.",
   "scope": [
-    "docker-compose.yml (api, worker, scheduler): the DATABASE_URL default is DERIVED via nested interpolation from ${POSTGRES_USER:-atlas}, ${POSTGRES_PASSWORD:-atlas} and ${POSTGRES_DB:-atlas}, matching the postgres service's own environment and healthcheck. A whole-string DATABASE_URL override still wins over every part.",
-    "scripts/check-env.sh, scripts/bootstrap-dev.sh, scripts/init.sh, scripts/smoke.sh: select a Python interpreter by trying python3, python, py in turn and accepting one ONLY when it evaluates a trivial program and prints a sentinel on stdout. Validation is on OUTPUT, not on presence and not on exit status. Pattern adopted from the already-merged _stack_python in scripts/stack-env.sh.",
-    ".env.example: DATABASE_URL is commented out so that copying the file to .env leaves derivation in force; the escape-hatch semantics and the URL-reserved-character caveat are documented.",
-    "docs/LOCAL_DEVELOPMENT.md: replaces the note that told readers to set DATABASE_URL to match POSTGRES_USER/POSTGRES_DB (now false), and documents the execute-to-validate interpreter rule.",
+    ".github/workflows/ci.yml, job `python` only: a postgres:16-alpine service container with a pg_isready health check; a job-scoped DATABASE_URL using the project's existing postgresql+psycopg scheme; a named `Apply database migrations` step running `alembic upgrade head` before pytest.",
+    "agent-state/current_contract.json: this contract.",
     "agent-state/progress.md: append-only handoff entry."
   ],
   "out_of_scope": [
-    "apps/api/**, apps/web/**, tests/**, .github/workflows/**: zero diff, verified per path with git diff --numstat.",
-    "scripts/stack-env.sh, scripts/stack-env.ps1, scripts/stack-up.*, scripts/stack-smoke.*, scripts/stack-down.*, scripts/check_urls.py, scripts/url-allowlist.txt: zero diff.",
-    "agent-state/feature_list.json and agent-state/evaluation.json: zero diff. No passes flag is touched; this is infrastructure, not a ledger feature, following the precedent of the three preceding infrastructure slices.",
-    "The PowerShell siblings (check-env.ps1, bootstrap-dev.ps1, init.ps1, smoke.ps1) are NOT changed. They are reported as an observation, not fixed, to keep the diff reviewable.",
-    "No migration. No dependency change. No new service."
+    "tests/**: zero diff. No test weakened, no assertion changed, no skip marker added or removed, no xfail, no --maxfail, no continue-on-error, no `|| true`.",
+    "apps/api/app/classify/**: a confirmed fail-open on unrecognised offer_type is separately filed and is not touched.",
+    "scripts/check.ps1: its twin vacuous `npm audit --omit=dev` is separately filed and is not touched.",
+    "The ci.yml `concurrency:` block: the group does not unify push and PR refs; separately filed and not touched.",
+    "The other three CI jobs (node, secrets, dependencies): zero diff.",
+    "Any dependency pin, docker-compose.yml, migrations/**, agent-state/feature_list.json, agent-state/evaluation.json: zero diff.",
+    "Fixing any pre-existing integration failure that turning the suite on reveals. If one appears it is reported by name and stopped on, not silenced."
   ],
   "acceptance_criteria": [
-    "A1. Overriding only POSTGRES_USER / POSTGRES_PASSWORD / POSTGRES_DB brings the full stack up healthy and passes stack-smoke. This is the case that fails on ce2d58d.",
-    "A2. A whole-string DATABASE_URL override still reaches api, worker and scheduler unchanged, including when POSTGRES_* are also set (DATABASE_URL wins).",
-    "A3. With no overrides the resolved values are byte-identical to ce2d58d: atlas/atlas/atlas against host postgres.",
-    "A4. All three services resolve the SAME URL, and the postgres healthcheck uses the same user and database. No unresolved brace survives interpolation.",
-    "B1. DECISIVE: with stubs first on PATH for ALL of python3, python and py, each printing the Microsoft Store advertisement and exiting 0 so exit status carries no signal, ce2d58d's check-env.sh reports ENVIRONMENT CHECK PASSED / exit 0 and the fixed script reports ENVIRONMENT CHECK FAILED / exit 1. Old and new MUST diverge; a control where they agree proves nothing.",
-    "B2. With the real interpreter available, check-env.sh reports a genuine version and exits 0.",
-    "B3. init.sh and smoke.sh stop claiming 'Agent-state JSON syntax: ok' when the interpreter validated nothing.",
-    "C1. Contamination: verification runs under COMPOSE_PROJECT_NAME=ftadbfix on API_PORT=8071 / WEB_PORT=8171, and the smoke result is shown to MOVE when only this project's API is stopped, proving the probe reached this stack and not another session's."
+    "A1. The CI `python` job runs a PostgreSQL service container of the SAME major version as docker-compose.yml (postgres:16-alpine), with a health check, and applies alembic migrations in a named step before pytest.",
+    "A2. DECISIVE, by count not by colour: the CI log's pytest summary line reads `1156 passed, 2 skipped` (the local base-commit measurement with a database). The same-tree CI baseline to beat is run 31136371103 on main at 9a36646: `1004 passed, 154 skipped, 1 warning in 10.08s`. The briefing's `1097 passed, 164 skipped` is from job 92751690454 on PR #48, whose branch carries an extra tests/integration/test_ingest_github.py that does not exist on main, so it is not the baseline for this tree; the correct figure for newly-executing tests here is 152, not 162.",
+    "A3. DECISIVE, by name: the only two SKIPPED lines in the CI log are tests/integration/test_stack_health.py:25 and :32, which need ATLAS_STACK_BASE_URL (a running full stack, not a database) and must stay skipped. Zero DATABASE_URL-reasoned skips.",
+    "A4. The job result is read from the step list by step name and conclusion, not from the summary tick. Every step is enumerated with its conclusion.",
+    "A5. The job is proved capable of going RED: a deliberately failing integration test is planted, CI fails at the step named `Pytest` while every earlier step still succeeds, and the revert is verified by git blob hash (git hash-object vs git rev-parse HEAD:path) rather than by git diff, since .gitattributes filters can make a diff read clean while bytes differ.",
+    "A6. No weakening anywhere in the diff: a grep for continue-on-error, `|| true`, --maxfail, xfail and skip over the changed workflow returns nothing.",
+    "A7. agent-state/progress.md is an exact append-only prefix extension of origin/main's copy, verified by comparing the first N lines byte-for-byte.",
+    "A8. The job's wall time is reported honestly against the ~9s baseline."
   ],
   "verification_plan": [
-    "A-reproduction: ports-only .env -> stack healthy; then POSTGRES_USER/POSTGRES_DB/POSTGRES_PASSWORD overrides with the volume removed so Postgres initialises fresh -> quote the verbatim failure.",
-    "A-matrix: docker compose --env-file <case> config --format json for all four cases, decomposing the resolved URL into user/password/host/db per service and asserting brace count 0.",
-    "A-end-to-end: scripts/stack-up.sh then scripts/stack-smoke.sh with the overrides in force.",
-    "B-sabotage and B-positive as described in the acceptance criteria, comparing ce2d58d's scripts byte-for-byte (extracted with git show and length-verified) against the fixed scripts under one identical sabotaged PATH.",
-    "scripts/check.ps1 -NodeAudit: report exit code, PASS/FAIL counts, and the URL guard's URL and host counts.",
-    "Guardrail proof: git diff --numstat main -- <path> printed for every guarded path.",
-    "Cleanup: teardown scoped to COMPOSE_PROJECT_NAME=ftadbfix only; other sessions' stacks verified still running; probe .env deleted."
+    "Local baseline on the base commit: an isolated postgres:16-alpine container, `alembic upgrade head`, then `pytest -q`; record the verbatim summary line and the skip list. This establishes the target numbers independently of CI.",
+    "Local guard replay: detect-secrets-hook over every tracked file against .secrets.baseline, and scripts/check_urls.py, so the new credential-shaped DATABASE_URL does not break the `secrets` job.",
+    "YAML parse of the changed workflow, printing the resolved service image, health options, job-scoped env and the ordered step names.",
+    "CI acceptance run on the draft PR: quote the pytest summary line and both SKIPPED lines verbatim from the downloaded log; enumerate the step list with conclusions via the Actions API.",
+    "CI red-proof round trip: plant, observe failure by step name, revert, verify by blob hash, observe green again.",
+    "Guardrail proof: git diff --numstat against the base commit for every guarded path."
   ],
   "risks": [
-    "Compose's support for ${} nested inside a default value is version-dependent. Mitigated by verifying the RESOLVED value with docker compose config --format json across all four cases rather than assuming the syntax parses as intended, and by recording the Compose version the evidence was gathered on.",
-    "Deriving the URL from parts means a password containing URL-reserved characters (@ : / ? # %) would corrupt the URL, where the previous hardcoded default could not. Mitigated by documenting the constraint in .env.example and docs/LOCAL_DEVELOPMENT.md and by leaving the whole-string override available.",
-    ".env.example previously set DATABASE_URL explicitly, so anyone copying it to .env would have silently re-armed the defect. Mitigated by commenting the line out.",
-    "Behaviour change, intended and stated plainly: where no working interpreter exists, these scripts now FAIL where three of them previously reported success. On a machine whose only Python is a Store alias stub, check-env.sh goes from green to red. That is the point of the change, not a regression.",
-    "The interpreter helper is duplicated in four scripts rather than centralised, because each is a standalone entry point and the brief required their structure be preserved. Accepted and recorded.",
-    "Verification shares a Docker host with other sessions' stacks, one of which occupies 8000/8080. Mitigated by the ftadbfix project scoping and by the stop-my-API discrimination check."
+    "Scope of DATABASE_URL is the whole defect in miniature. Set on the pytest step alone, the migration step would fall back to migrations/env.py's default host `postgres`, which does not resolve on a runner. Job scope is deliberate and is verified by the migration step succeeding.",
+    "A service container without a health check races the suite: pytest can connect before Postgres is accepting connections, and the resulting failure looks like a test defect. Mitigated by pg_isready with the same user and database as docker-compose.yml.",
+    "The DATABASE_URL literal is credential-shaped and could trip the `secrets` job's detect-secrets baseline. Mitigated with the same `# pragma: allowlist secret` marker docker-compose.yml already uses, and verified by running the hook locally over all tracked files.",
+    "Turning 162 never-executed tests on may reveal pre-existing failures. That is a finding, not a defect of this slice; it is reported by name and not fixed here.",
+    "Wall time rises from ~9s to the order of a minute or more. Accepted: a 9s job that tests nothing is not a saving.",
+    "The red-proof commits a deliberately failing test to the PR branch for one run. It is reverted in the next commit and the revert is proved by blob hash, so final HEAD is byte-identical to pre-plant."
   ],
-  "required_evaluation_level": "Level 1 - developer-environment infrastructure. No product code, no schema, no Z0 logic, no security boundary. Level 2 is not triggered.",
+  "required_evaluation_level": "Level 1 - CI infrastructure. No product code, no schema change, no Z0 logic, no security boundary. Level 2 is not triggered.",
   "contract_review": [
-    "Written after reproducing both defects and BEFORE the fixes were committed, per the coding-agent instructions. Every measured claim in the ledger entry is marked as measured and separated from inference."
+    "Written after reproducing the baseline numbers locally on the base commit and BEFORE the workflow was changed, per the coding-agent instructions. Every measured claim in the handoff entry is marked as measured and separated from inference."
   ]
 }
