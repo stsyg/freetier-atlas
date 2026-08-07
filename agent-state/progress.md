@@ -2416,7 +2416,7 @@ evidence URL and facts on persisted candidate/evidence rows. Replacing Tiny
 prose with Flash prose or reverting to generic `/changelog` now fails.
 
 [M] Adjacent-page splice audit command:
-`rg -n -i 'three weeks|mid-August|August 3rd|Ling 3\.0 Flash|source_url.*changelog"$' tests/fixtures/ingest/vercel/html`
+`rg -n -i 'three weeks|mid-August|August 3rd|Ling 3\.0 Flash|vercel[.]com/changelog' tests/fixtures/ingest/vercel/html`
 returned zero matches. A separate capture/expected/evidence URL identity script
 checked all eleven Vercel fixture directories and returned
 `url_identity_issues=0`.
