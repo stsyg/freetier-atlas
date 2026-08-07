@@ -14,8 +14,11 @@
     "lint": "eslint . --no-error-on-unmatched-pattern"
   },
   "devDependencies": {
-    "@eslint/js": "9.15.0",
-    "eslint": "9.15.0",
+    "@eslint/js": "9.39.5",
+    "eslint": "9.39.5",
     "prettier": "3.4.1"
+  },
+  "overrides": {
+    "js-yaml": "^5.2.2"
   }
 }
