@@ -1,11 +1,11 @@
 {
   "captured_by": "F008 P2 Vercel builder (manual official excerpt)",
-  "fetched_at": "2026-08-07T12:00:00Z",
+  "fetched_at": "2026-08-07T18:59:28Z",
   "http_status": 200,
   "robots_allowed": true,
   "sha256_original": null,
-  "sha256_stored": "fe32d88695db766d488e36e12f02d3474fd3ba1e378011c6f3b7fbb4d83c62a5",
-  "tos_note": "Official Vercel changelog on vercel.com; minimal deterministic excerpt for offline testing.",
-  "trim_method": "manual-excerpt: current changelog item naming AI Gateway, inclusionAI, and the three-week free promotion; unstated billing conditions remain blank.",
-  "url": "https://vercel.com/changelog"
+  "sha256_stored": "f1be87b53f823a1935b28a221cdbc0f79964b06a0cd9696a1d2bdf5ebdb289d8",
+  "tos_note": "Canonical official Vercel Ling 3.0 Tiny changelog entry on vercel.com; minimal deterministic excerpt for offline testing.",
+  "trim_method": "manual-excerpt: fetched the canonical page at fetched_at and retained its published date, Tiny model identity, model identifier, and exact deadline wording; the original response body was not retained, no duration or absolute end date was derived, and unstated billing conditions remain blank.",
+  "url": "https://vercel.com/changelog/ling-3-0-tiny-is-now-available-on-ai-gateway"
 }

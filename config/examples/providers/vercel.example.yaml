@@ -45,7 +45,7 @@ sources:
   - id: vercel-ai-gateway-promotion
     type: html
     trust_level: official
-    url: https://vercel.com/changelog
+    url: https://vercel.com/changelog/ling-3-0-tiny-is-now-available-on-ai-gateway
     schedule_ref: official_pages
     extraction_profile: vercel_ai_gateway_promotion
 

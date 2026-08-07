@@ -153,8 +153,10 @@ Vercel Blob and Global Config are native products, while Postgres, KV, and
 NoSQL are provisioned from Marketplace providers such as Neon, Upstash, and
 AWS. Those partner products are not represented as Vercel-native free
 services. Vercel Queues is declared offered but not Z0 because its pricing page
-does not establish a safe no-billing exhaustion path. The AI Gateway changelog
-promotion is explicitly time-limited and therefore offered-no-Z0, never a
+does not establish a safe no-billing exhaustion path. The canonical Ling 3.0
+Tiny AI Gateway changelog says it is "free to use till 8:00am PT on 8/14";
+that exact wording and the page's August 6, 2026 publication date are retained
+without deriving a duration or absolute end date. It is offered-no-Z0, never a
 perpetual free allowance.
 
 The two arguable mappings are explicit: Vercel Functions maps to

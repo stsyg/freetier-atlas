@@ -2387,3 +2387,43 @@ reported **1357 passed, 2 skipped, 1 warning in 23.68s** and exactly the same
 two skips: `tests/integration/test_stack_health.py:25` and `:32`. Python, Node,
 dependency-audit, secret-scan and GitGuardian checks all passed. The PR remained
 draft; no merge or feature-ledger promotion was performed.
+
+## 2026-08-07 - Vercel AI Gateway evidence-authenticity remediation
+
+Level-2 correctly rejected the AI Gateway capture. The fixture paired Ling 3.0
+Tiny's identity with Ling 3.0 Flash's "three weeks" promotion wording. Safe
+downstream withholding did not cure false evidence. What allowed the splice
+through was a generic `/changelog` source plus tests that asserted only the
+resulting UNKNOWN verdict; no test coupled model identity, exact promotion text,
+and canonical page provenance.
+
+The source now uses only the canonical Tiny entry:
+`https://vercel.com/changelog/ling-3-0-tiny-is-now-available-on-ai-gateway`.
+It retains the page's `August 6, 2026` publication date, model identifier
+`inclusionai/ling-3.0-tiny-free`, and exact wording `free to use till 8:00am PT
+on 8/14`. No three-week duration or absolute end date is inferred. The capture
+sidecar states that the canonical page was fetched at the recorded timestamp,
+the original response body was not retained, and the committed file is a
+manual excerpt.
+
+The new unit regression
+`test_tiny_identity_and_exact_promotion_wording_share_the_canonical_source`
+asserts one canonical URL across fixture source, expected evidence, extracted
+candidate source and extracted evidence, then asserts the Tiny service identity,
+model identifier, page publication date and exact deadline wording survive
+together. The integration regression independently asserts the same canonical
+evidence URL and facts on persisted candidate/evidence rows. Replacing Tiny
+prose with Flash prose or reverting to generic `/changelog` now fails.
+
+[M] Adjacent-page splice audit command:
+`rg -n -i 'three weeks|mid-August|August 3rd|Ling 3\.0 Flash|"https://vercel\.com/changelog"' tests/fixtures/ingest/vercel/html`
+returned zero matches. A separate capture/expected/evidence URL identity script
+checked all eleven Vercel fixture directories and returned
+`url_identity_issues=0`.
+
+[M] Reverification: targeted offline evidence suite **129 passed**; Vercel unit
+plus real-PostgreSQL integration suite **43 passed**; full fresh PostgreSQL
+suite **1358 passed, 2 skipped, 1 warning**. The skips remain exactly
+`tests/integration/test_stack_health.py:25` and `:32`.
+`pwsh -File scripts/check.ps1 -NodeAudit` exits 0 with all checks passed,
+including clean Python and Node dependency audits.

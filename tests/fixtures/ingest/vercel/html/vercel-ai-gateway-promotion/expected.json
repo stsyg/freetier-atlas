@@ -1,7 +1,7 @@
 {
   "profile": "vercel_ai_gateway_promotion",
   "mime": "text/html",
-  "source_url": "https://vercel.com/changelog",
+  "source_url": "https://vercel.com/changelog/ling-3-0-tiny-is-now-available-on-ai-gateway",
   "candidate_count": 1,
   "candidates": [
     {
@@ -12,10 +12,12 @@
         "offer_type": "trial",
         "requires_card": null,
         "has_paid_dependencies": null,
-        "promotion_period": "three weeks",
+        "model_identifier": "inclusionai/ling-3.0-tiny-free",
+        "source_published_date": "August 6, 2026",
+        "promotion_wording": "free to use till 8:00am PT on 8/14",
         "exhaustion_behaviour": "unknown"
       },
-      "evidence_url": "https://vercel.com/changelog",
+      "evidence_url": "https://vercel.com/changelog/ling-3-0-tiny-is-now-available-on-ai-gateway",
       "evidence_selector": "vercel_ai_gateway_promotion row[1]"
     }
   ]

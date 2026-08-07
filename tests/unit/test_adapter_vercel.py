@@ -169,6 +169,34 @@ def test_queues_and_the_ai_promotion_do_not_fail_open_to_z0() -> None:
     assert _classification("vercel-ai-gateway-promotion").zero_cost_class == "UNKNOWN"
 
 
+def test_tiny_identity_and_exact_promotion_wording_share_the_canonical_source() -> None:
+    canonical_url = "https://vercel.com/changelog/ling-3-0-tiny-is-now-available-on-ai-gateway"
+    fixture = load_case(PROVIDER, ADAPTER, "vercel-ai-gateway-promotion")
+    assert fixture.source_url == canonical_url
+    (expected,) = fixture.expected_candidates
+    assert expected["evidence_url"] == canonical_url
+    assert expected["facts"] == {
+        "service": "Ling 3.0 Tiny via Vercel AI Gateway",
+        "offer_type": "trial",
+        "requires_card": None,
+        "has_paid_dependencies": None,
+        "model_identifier": "inclusionai/ling-3.0-tiny-free",
+        "source_published_date": "August 6, 2026",
+        "promotion_wording": "free to use till 8:00am PT on 8/14",
+        "exhaustion_behaviour": "unknown",
+    }
+    _, candidates = run_extraction_case(
+        PROVIDER,
+        ADAPTER,
+        "vercel-ai-gateway-promotion",
+        official_domains=("vercel.com",),
+    )
+    (candidate,) = candidates
+    assert candidate.source_url == canonical_url
+    assert {location.url for location in candidate.evidence} == {canonical_url}
+    assert candidate.facts == expected["facts"]
+
+
 def test_official_post_trial_paths_create_opposite_non_z0_verdicts() -> None:
     assert _classification("contradictory", 0).zero_cost_class == "Z2_TEMPORARY_OR_CONDITIONAL"
     assert _classification("contradictory", 1).zero_cost_class == "Z1_BILLING_EXPOSURE"

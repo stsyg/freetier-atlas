@@ -108,7 +108,9 @@ VERCEL_AI_GATEWAY_PROMOTION = register_html_profile(
         table_id="vercel-ai-gateway-promotion",
         columns={
             **_IDENTITY_COLUMNS,
-            "promotion period": HtmlColumn("promotion_period", "text"),
+            "model identifier": HtmlColumn("model_identifier", "text"),
+            "published date": HtmlColumn("source_published_date", "text"),
+            "promotion wording": HtmlColumn("promotion_wording", "text"),
             "exhaustion behaviour": HtmlColumn("exhaustion_behaviour", "text"),
         },
         required_fields=("service", "offer_type"),

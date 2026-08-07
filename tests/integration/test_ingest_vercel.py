@@ -147,6 +147,18 @@ def test_runner_persists_official_scans_candidates_and_evidence(session: Session
     assert len(candidates) == 10
     assert len(evidence) == 10
     assert all(row.url.startswith("https://vercel.com/") for row in evidence)
+    tiny = next(
+        row
+        for row in candidates
+        if row.candidate_facts.get("service") == "Ling 3.0 Tiny via Vercel AI Gateway"
+    )
+    tiny_evidence = next(row for row in evidence if row.candidate_id == tiny.id)
+    assert tiny_evidence.url == (
+        "https://vercel.com/changelog/ling-3-0-tiny-is-now-available-on-ai-gateway"
+    )
+    assert tiny.candidate_facts["model_identifier"] == "inclusionai/ling-3.0-tiny-free"
+    assert tiny.candidate_facts["source_published_date"] == "August 6, 2026"
+    assert tiny.candidate_facts["promotion_wording"] == "free to use till 8:00am PT on 8/14"
     hobby_candidates = [
         row for row in candidates if row.candidate_facts.get("service") in Z0_SERVICES
     ]
