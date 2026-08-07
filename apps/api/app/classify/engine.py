@@ -152,7 +152,7 @@ def classify(facts: OfferFacts, *, as_of: date | None = None) -> ClassificationR
     behaviours = facts.exhaustion_behaviours
 
     # Gate 1: the type itself must be recognised before any semantic branch.
-    if facts.offer_type not in OFFER_TYPES:
+    if not isinstance(facts.offer_type, str) or facts.offer_type not in OFFER_TYPES:
         reason = (
             f"Unrecognised offer type {facts.offer_type!r} cannot be safely classified "
             "against the closed offer-type vocabulary."

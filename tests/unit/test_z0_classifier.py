@@ -39,6 +39,40 @@ from app.models.vocab import EXHAUSTION_BEHAVIOURS, ZERO_COST_CLASSES
 _TODAY = date(2026, 1, 15)
 
 
+class _CanonicalEqualityImpostor:
+    def __init__(self) -> None:
+        self.eq_calls = 0
+        self.hash_calls = 0
+
+    def __eq__(self, other: object) -> bool:
+        self.eq_calls += 1
+        return other == "always_free"
+
+    def __hash__(self) -> int:
+        self.hash_calls += 1
+        return hash("always_free")
+
+
+class _UnhashableEqualityImpostor:
+    __hash__ = None  # type: ignore[assignment]
+
+    def __init__(self) -> None:
+        self.eq_calls = 0
+
+    def __eq__(self, other: object) -> bool:
+        self.eq_calls += 1
+        return other == "always_free"
+
+
+class _StringCoercionImpostor:
+    def __init__(self) -> None:
+        self.str_calls = 0
+
+    def __str__(self) -> str:
+        self.str_calls += 1
+        return "always_free"
+
+
 # --------------------------------------------------------------------------- #
 # Vocabulary / single-source-of-truth guards
 # --------------------------------------------------------------------------- #
@@ -358,6 +392,57 @@ def test_unrecognised_offer_type_fails_closed_before_all_other_gates(offer_type:
         as_of=_TODAY,
     )
 
+    assert result.zero_cost_class == UNKNOWN
+    assert result.zero_cost_class != Z0_TRUE_FREE
+    assert result.reasons
+    assert result.blocking_conditions
+    assert all("unrecognised offer type" in text.lower() for text in result.reasons)
+    assert all("safely classified" in text.lower() for text in result.blocking_conditions)
+
+
+@pytest.mark.parametrize(
+    "offer_type",
+    [_CanonicalEqualityImpostor(), _UnhashableEqualityImpostor()],
+    ids=["canonical-equality-impostor", "unhashable-equality-impostor"],
+)
+def test_non_string_equality_impostors_fail_closed_without_protocol_calls(
+    offer_type: _CanonicalEqualityImpostor | _UnhashableEqualityImpostor,
+) -> None:
+    result = classify(
+        OfferFacts(
+            offer_type=offer_type,  # type: ignore[arg-type] - adversarial runtime value
+            requires_card=False,
+            has_paid_dependencies=False,
+            exhaustion_behaviours=("hard_stop",),
+        ),
+        as_of=_TODAY,
+    )
+
+    assert result.zero_cost_class == UNKNOWN
+    assert result.zero_cost_class != Z0_TRUE_FREE
+    assert offer_type.eq_calls == 0
+    if isinstance(offer_type, _CanonicalEqualityImpostor):
+        assert offer_type.hash_calls == 0
+    assert result.reasons
+    assert result.blocking_conditions
+    assert all("unrecognised offer type" in text.lower() for text in result.reasons)
+    assert all("safely classified" in text.lower() for text in result.blocking_conditions)
+
+
+def test_non_string_offer_type_is_not_coerced_to_a_canonical_string() -> None:
+    offer_type = _StringCoercionImpostor()
+
+    result = classify(
+        OfferFacts(
+            offer_type=offer_type,  # type: ignore[arg-type] - adversarial runtime value
+            requires_card=False,
+            has_paid_dependencies=False,
+            exhaustion_behaviours=("hard_stop",),
+        ),
+        as_of=_TODAY,
+    )
+
+    assert offer_type.str_calls == 0
     assert result.zero_cost_class == UNKNOWN
     assert result.zero_cost_class != Z0_TRUE_FREE
     assert result.reasons
