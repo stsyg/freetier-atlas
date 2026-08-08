@@ -2371,3 +2371,12 @@ integration slice. Raised by the verifier and owned by them.
 - **Commit / CI:** Pending push and exact-head CI.
 
 ---
+
+## 2026-08-08 02:29 UTC - Builder - F008 separated-sign CI handoff
+
+- **Remediation commit [M]:** `40eef376a7958017b4dce86e8d8c10ab37d3666f`.
+- **CI evidence [M]:** GitHub Actions run `31234999524`, Python job `93045748527`, matched the remediation commit. The real-PostgreSQL Python job reported exactly **13 successful steps** and **1405 passed / exactly 2 stack-health skipped**.
+- **Other CI [M]:** Node format/lint and secret scan passed. All three Python dependency audits and root Node audit passed. Overall CI remained red only at the unchanged apps/web `nanoid <3.3.17` advisory; dependency files remain zero-diff and nanoid was not touched.
+- **Disposition:** Fresh Level-2 evaluator passed. Draft PR #52 remains open, draft, and unmerged.
+
+---
