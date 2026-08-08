@@ -89,6 +89,22 @@ def _is_supported_compact_unit(token: str) -> bool:
     return not all(ch in "KMB" for ch in token)
 
 
+def _is_sign_like(character: str) -> bool:
+    """Whether one code point semantically represents a numeric sign."""
+
+    normalized = unicodedata.normalize("NFKC", character)
+    for candidate in character + normalized:
+        name = unicodedata.name(candidate, "")
+        if (
+            candidate in {"+", "-", "\u2212"}
+            or "PLUS" in name
+            or "MINUS" in name
+            or name.endswith("HYPHEN")
+        ):
+            return True
+    return False
+
+
 @dataclass(frozen=True)
 class ParsedQuantity:
     """A single quota text value re-derived into structured numeric parts."""
@@ -173,7 +189,10 @@ def parse_quantity(raw: str | None, *, metric: str | None = None) -> ParsedQuant
     match = matches[0]
     amount: Decimal | None = None
     rest = text
+    prefix = text[: match.start()]
     before = text[match.start() - 1] if match.start() else ""
+    prefix_token = prefix.rstrip()
+    prefix_last = prefix_token[-1] if prefix_token else ""
     after_token = text[match.end() :]
     magnitude = match.group("magnitude")
     alpha_match = _ALPHA_TOKEN.match(after_token)
@@ -191,6 +210,7 @@ def parse_quantity(raw: str | None, *, metric: str | None = None) -> ParsedQuant
     # are outside the supported grammar and must not degrade to leading digits.
     if (
         (before and unicodedata.category(before)[0] in {"P", "S"})
+        or (prefix_last and _is_sign_like(prefix_last))
         or (before and before.isalnum())
         or (
             magnitude is not None

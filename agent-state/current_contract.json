@@ -49,7 +49,8 @@
     "A8: no provider-specific code, dependency, migration, fixture, configuration, feature-ledger, classifier, or model change is introduced.",
     "A9: any Unicode punctuation or symbol directly adjacent before the numeric token fails closed, including U+FE62, U+FE63, U+2795, and U+2796, while whitespace-separated qualifier prefixes remain supported.",
     "A10: compact multi-letter ordinary units such as ms, GB, Mbps, Kbps, and kB parse as units, while ambiguous KB/MB, IEC-looking KiB/MiB/GiB, single-letter unknowns, and repeated magnitude letters fail closed.",
-    "A11: text containing more than one numeric token fails closed, including versions, dates, malformed dotted sequences, and ranges; one-token qualifier text remains supported."
+    "A11: text containing more than one numeric token fails closed, including versions, dates, malformed dotted sequences, and ranges; one-token qualifier text remains supported.",
+    "A12: a semantic Unicode sign token immediately before arbitrary Unicode whitespace and the sole number fails closed, while generic separated qualifier punctuation such as colon, parenthesis, and tilde remains supported."
   ],
   "verification_plan": [
     ".venv/Scripts/pytest.exe -q tests/unit/test_publish_revalidate.py tests/integration/test_publish_pipeline.py with DATABASE_URL targeting isolated PostgreSQL 16",
@@ -64,7 +65,9 @@
     "M3 predicted RED: remove the Unicode category guard; sign and punctuation adversarial cases must fail.",
     "M4 predicted RED: reject every adjacent alphabetic token; compact ordinary-unit tests must fail.",
     "M5 predicted RED: accept the first numeric match when multiple exist; version/date/range tests must fail.",
-    "M6 predicted RED: accept every multi-letter adjacent token as a unit; ambiguous KB/MB, IEC, and repeated-magnitude tests must fail."
+    "M6 predicted RED: accept every multi-letter adjacent token as a unit; ambiguous KB/MB, IEC, and repeated-magnitude tests must fail.",
+    "M7 predicted RED: remove the trailing semantic sign-token guard; whitespace-separated sign tests must fail.",
+    "M8 predicted RED: inspect only ASCII-space separation or skip NFKC/name semantics; Unicode whitespace and normalized-sign tests must fail."
   ],
   "data_implications": "No schema or migration change. Corrected exact Decimal values change future Quota rows, OfferVersion material_facts, and content_hash for compact SI quota evidence. Existing immutable rows are not rewritten.",
   "security_privacy": "No network, secret, authentication, authorization, or user-controlled URL change.",

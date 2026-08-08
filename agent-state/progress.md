@@ -2358,3 +2358,16 @@ integration slice. Raised by the verifier and owned by them.
 - **Disposition:** Fresh Level-2 evaluator passed the remediation. Draft PR #52 remains open, draft, and unmerged.
 
 ---
+
+## 2026-08-08 02:00 UTC - Builder - F008 whitespace-separated sign remediation
+
+- **What I got wrong:** The previous Unicode-category guard inspected only the code point directly adjacent to the number. Whitespace hid an earlier sign, so `+ 10K`, `- 10K`, U+FE62, U+2212, U+2795, and U+2796 followed by whitespace still parsed and published as positive `10000` [M].
+- **Remediation:** The parser now inspects the last non-whitespace code point before the sole numeric match. Semantic sign detection applies NFKC normalization and Unicode-name checks for plus, minus, and hyphen sign forms; it is not another finite sign table. The adjacent `P`/`S` category guard remains defense-in-depth. Generic qualifier punctuation (`:`, `(`, `~`, `First:`) remains supported.
+- **Tests [M]:** The focused real-PostgreSQL parser/publisher suite passed **170 tests**. It covers six measured signs across ASCII space, tab, NBSP, thin space, and em space; programmatically discovered Unicode-name sign variants; qualifier punctuation controls; and graph-delta zero for unsupported live publications.
+- **Mutation evidence [M]:** Removing the trailing semantic sign-token guard produced **34 failed / 105 passed**. Removing NFKC and Unicode-name semantics produced **18 failed / 121 passed**. Both mutations were restored.
+- **Validation [M]:** Full PostgreSQL suite **1405 passed / exactly 2 stack-health skipped**. `scripts/check.ps1 -NodeAudit` passed all gates; offline pytest **1222 passed / 185 skipped**, Python audit clean, Node audit 0 vulnerabilities.
+- **Evaluator disposition:** Fresh-context Level 2 **PASS** after independent Unicode sign/whitespace probes, live PostgreSQL zero-graph checks, supported persistence controls, scope inspection, and the full suite.
+- **Scope:** No provider, fixture, configuration, classifier, model, migration, dependency, workflow, feature-ledger, eligibility, runner-exit, or dead-tuple change. PR #52 remains draft and unmerged.
+- **Commit / CI:** Pending push and exact-head CI.
+
+---
