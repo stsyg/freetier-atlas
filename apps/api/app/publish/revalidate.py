@@ -11,8 +11,10 @@ The parser is pure and standard-library only. It reads the per-limit text fields
 an HTML profile captured verbatim (e.g. ``"100,000/day"``, ``"10 ms"``,
 ``"1 build at a time"``) and re-derives:
 
-* ``amount`` -- the leading numeric value with thousands separators stripped,
-  kept as an exact :class:`decimal.Decimal` (``None`` when no number is present);
+* ``amount`` -- the numeric value with thousands separators stripped and an
+  optional unambiguous uppercase decimal count suffix (``K``, ``M``, ``B``)
+  applied, kept as an exact :class:`decimal.Decimal` (``None`` when no supported
+  number is present);
 * ``reset_period`` -- the divisor after a ``/`` (``"100,000/day"`` -> ``"day"``)
   or, failing that, a ``*_per_<period>`` field-name suffix
   (``builds_per_month`` -> ``"month"``);
@@ -52,9 +54,25 @@ NON_QUOTA_FIELDS: frozenset[str] = frozenset(
     }
 )
 
-# Leading numeric token: digits with optional thousands separators and an
-# optional decimal fraction. Anchored to the first digit run so "3 MB" -> "3".
-_NUMBER = re.compile(r"\d[\d,]*(?:\.\d+)?")
+# Numeric token: digits with optional thousands separators / decimal fraction
+# and an optional directly-adjacent uppercase decimal SI count suffix.
+_NUMBER = re.compile(r"\d[\d,]*(?:\.\d+)?(?P<magnitude>[KMB])?")
+# A separated single-letter count suffix is ambiguous with a unit and is not
+# part of the numeric token, so fail closed rather than treating it as a unit.
+# Multi-letter units such as "MB", "ms", and "MiB" remain ordinary units.
+_SEPARATED_MAGNITUDE = re.compile(
+    r"^[\W_]*[KMB](?=$|[\W_])",
+    re.IGNORECASE,
+)
+_GROUPED_NUMBER = re.compile(r"\d{1,3}(?:,\d{3})+(?:\.\d+)?")
+_UNSUPPORTED_SIGN_PREFIXES = frozenset(
+    {"+", "-", "\u00b1", "\u207a", "\u207b", "\u208a", "\u208b", "\u2212", "\uff0b", "\uff0d"}
+)
+_MAGNITUDE_MULTIPLIERS: Mapping[str, Decimal] = {
+    "K": Decimal("1000"),
+    "M": Decimal("1000000"),
+    "B": Decimal("1000000000"),
+}
 # A "<field>_per_<period>" suffix used to recover a reset period from the metric
 # name when the value text itself does not carry one.
 _PER_SUFFIX = re.compile(r"_per_([a-z]+)$")
@@ -141,11 +159,35 @@ def parse_quantity(raw: str | None, *, metric: str | None = None) -> ParsedQuant
     amount: Decimal | None = None
     rest = text
     if match is not None:
+        before = text[match.start() - 1] if match.start() else ""
+        after_token = text[match.end() :]
+        magnitude = match.group("magnitude")
+        # Searching rather than anchoring deliberately preserves supported
+        # qualifiers ("First 10K", "Up to 1M"). Token-adjacent letters, signs,
+        # scientific notation, binary-looking suffixes, and separated K/M/B are
+        # not in the supported grammar and must not degrade to the leading digits.
+        if (
+            (before and (before == "." or before in _UNSUPPORTED_SIGN_PREFIXES))
+            or (before and before.isalnum())
+            or (after_token and after_token[0].isalpha())
+            or (
+                magnitude is not None
+                and after_token
+                and not (after_token[0].isspace() or after_token[0] == "/")
+            )
+            or _SEPARATED_MAGNITUDE.match(after_token)
+        ):
+            return ParsedQuantity(raw=text, amount=None, unit=None, reset_period=None)
         try:
-            amount = Decimal(match.group(0).replace(",", ""))
+            numeric_text = match.group(0) if magnitude is None else match.group(0)[:-1]
+            if "," in numeric_text and _GROUPED_NUMBER.fullmatch(numeric_text) is None:
+                return ParsedQuantity(raw=text, amount=None, unit=None, reset_period=None)
+            amount = Decimal(numeric_text.replace(",", ""))
+            if magnitude is not None:
+                amount *= _MAGNITUDE_MULTIPLIERS[magnitude]
         except InvalidOperation:  # pragma: no cover - regex guarantees a valid number
             amount = None
-        rest = text[match.end() :].strip()
+        rest = after_token.strip()
 
     unit: str | None = None
     reset_period: str | None = None

@@ -1,72 +1,85 @@
 {
   "feature_id": "F008",
-  "slice": "P1-github",
-  "title": "GitHub provider slice: fourteen-category investigation with official evidence and offline fixtures",
-  "branch": "stsyg-f008-p1-github-provider",
-  "base_commit": "9a36646",
-  "started_at": "2026-08-07T01:32:50Z",
-  "objective": "Investigate GitHub across all fourteen canonical service categories using OFFICIAL docs.github.com sources only, and land a provider-scoped slice: one declarative profiles module, one provider YAML with a complete 14-entry coverage declaration, captured official fixtures covering the full seven-case vocabulary, unit + integration tests, and the GitHub section of docs/PROVIDER_ADAPTERS.md.",
-  "advances_acceptance_steps": [1, 2, 3],
-  "decisions_cited": ["Q1-A", "Q2-A", "Q3-A", "Q4-A", "Q5-A", "Q6-A", "Q9-A", "Q10-A"],
+  "slice": "prerequisite-quota-suffix-magnitudes",
+  "title": "Deterministically parse compact quota magnitudes without publishing false numbers",
+  "branch": "stsyg-fix-quota-suffix-magnitudes",
+  "base_commit": "cfdf1cd1d26f48dbce4fdbb43cf071ee77c06c41",
+  "started_at": "2026-08-07T23:38:23Z",
+  "objective": "Make the generic publication revalidator interpret only unambiguous directly-adjacent uppercase decimal SI count suffixes K, M, and B, while unsupported compact numeric forms fail the deterministic publication gate instead of persisting their leading digits as false quota amounts.",
+  "advances_acceptance_steps": [1, 3],
+  "autonomy_level": "A3",
+  "required_evaluation_level": 2,
   "in_scope": [
-    "config/examples/providers/github.example.yaml (new)",
-    "apps/api/app/ingest/adapters/profiles/github.py (new, declarative data only)",
-    "tests/fixtures/ingest/github/html/** (new)",
-    "tests/unit/test_adapter_github.py (new)",
-    "tests/integration/test_ingest_github.py (new)",
-    "docs/PROVIDER_ADAPTERS.md GitHub section only",
-    "agent-state/progress.md (append only)",
-    "agent-state/current_contract.json (this file)"
+    "apps/api/app/publish/revalidate.py",
+    "tests/unit/test_publish_revalidate.py",
+    "tests/integration/test_publish_pipeline.py",
+    "docs/ARCHITECTURE.md",
+    "docs/DATA_MODEL.md",
+    "agent-state/current_contract.json",
+    "agent-state/progress.md (strict append only)"
   ],
   "out_of_scope_zero_diff": [
-    "config/examples/providers/cloudflare.example.yaml",
-    "apps/api/app/ingest/adapters/profiles/__init__.py",
-    "apps/api/app/ingest/adapters/profiles/cloudflare.py",
-    "apps/api/app/ingest/adapters/html.py",
-    "apps/api/app/ingest/adapters/structured.py",
-    "apps/api/app/ingest/adapters/__init__.py",
-    "apps/api/app/config/models.py",
-    "apps/api/app/publish/publisher.py",
-    "apps/api/app/publish/gate.py",
-    "apps/api/app/classify/engine.py",
-    "apps/api/app/read_api/**",
-    "apps/api/app/adviser/**",
-    "apps/api/alembic/**",
+    "apps/api/app/ingest/adapters/**",
+    "tests/fixtures/**",
+    "config/**",
+    "apps/api/app/classify/**",
+    "apps/api/app/models/**",
+    "migrations/**",
     "apps/api/requirements.txt",
+    "requirements-dev.txt",
     "pyproject.toml",
-    "scripts/**",
+    "package.json",
+    "package-lock.json",
+    "apps/web/package.json",
+    "apps/web/package-lock.json",
     ".github/**",
-    "agent-state/feature_list.json"
+    "agent-state/feature_list.json",
+    "runner exit semantics",
+    "eligibility logic",
+    "dead-tuple tests"
   ],
   "acceptance_criteria": [
-    "A1: python -m app.ingest.runner config/examples/providers/github.example.yaml --fixtures tests/fixtures/ingest/github/html --publish runs OFFLINE against a real Postgres and persists scan_run / snapshot / candidate / official evidence, plus offer / offer_version / quota wherever the deterministic gate allows.",
-    "A2: every published offer's Z0 verdict is explainable, and at least one deliberate non-Z0 case proves a TIME-LIMITED TRIAL blocks Z0 even with no card required (GitHub Enterprise Cloud trial -> Z2), plus an UNKNOWN-material-condition case.",
-    "A3: all fourteen coverage entries present; every verified_free / offered_no_z0 traceable to an official docs.github.com source; every not_offered carries a rationale.",
-    "A4: Q9-A floor met (>=3 evidence-backed); no publicly-known GitHub free tier left unknown; no category declared unknown/not_offered while an offer is published in it.",
-    "A5: Q10-A met - every service->category assignment carries a one-line rationale in the YAML; every arguable assignment disclosed in the PR body.",
-    "A6: all seven fixture cases exercised (unchanged | changed | partial | malformed | contradictory | withdrawn | stale); the four step-3 cases assert on PERSISTED rows (change_event.change_type, materiality, gate withhold, pending review_item).",
-    "A7: alembic head still 0011; no new dependency; no network in tests; pwsh -File scripts/check.ps1 -NodeAudit exits 0.",
-    "A8: contamination control - stopping only this slice's API container moves the smoke count on exactly the API-dependent checks while an unrelated stack stays healthy.",
-    "A9: one self-invented mutation run, with the predicted result stated before running it, reported pass or fail."
+    "A1: parse_quantity maps directly-adjacent uppercase K, M, and B to exact Decimal multipliers 1000, 1000000, and 1000000000, including 2.5K, slash resets, trailing units, and qualifier prefixes.",
+    "A2: the recognized magnitude suffix is consumed as part of the numeric token and never persisted as a unit; remaining reset and unit text retain current semantics.",
+    "A3: lowercase suffixes, separated single-letter magnitude forms, adjacent binary-looking forms, unknown suffixes, multiple suffixes, signs, and scientific notation produce amount=None; revalidate_quotas records numeric-looking fields as unparsed and deterministic=False.",
+    "A4: existing behavior remains exact for 100,000/day, 128 MB, 50%, decimal fractions, 1 build at a time, and metric _per_month fallback; parsing remains search-based for supported qualifier prefixes and raw strings remain unchanged.",
+    "A5: a live PostgreSQL publication persists 10K, 2K, and 1M as exact Quota amounts 10000, 2000, and 1000000, with matching immutable material facts and content hash.",
+    "A6: a live PostgreSQL publication attempt containing an unsupported compact magnitude creates no Offer, OfferVersion, or Quota and never persists a truncated leading amount; it follows the existing review/withhold gate semantics.",
+    "A7: documentation states the supported suffix boundary and fail-closed behavior without claiming structured qualifier semantics the schema does not represent.",
+    "A8: no provider-specific code, dependency, migration, fixture, configuration, feature-ledger, classifier, or model change is introduced."
   ],
   "verification_plan": [
-    "pytest tests/unit/test_adapter_github.py tests/integration/test_ingest_github.py",
-    "pytest tests/unit/test_capture_sidecar.py tests/unit/test_fixture_harness.py tests/unit/test_config_system.py (shared-file byte pins + sidecar completeness must still pass)",
-    "alembic heads == 0011",
-    "git diff --numstat origin/main...HEAD re-derived from the PUSHED ref for every do-not-touch path",
-    "pwsh -File scripts/check.ps1 -NodeAudit"
+    ".venv/Scripts/pytest.exe -q tests/unit/test_publish_revalidate.py tests/integration/test_publish_pipeline.py with DATABASE_URL targeting isolated PostgreSQL 16",
+    ".venv/Scripts/pytest.exe -q with DATABASE_URL targeting isolated PostgreSQL 16; expect exactly two stack-health skips",
+    "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/check.ps1 -NodeAudit",
+    "git diff --exit-code origin/main -- dependency manifests and all out-of-scope zero-diff paths",
+    "fresh-context Level 2 evaluator: inspect parser boundaries, publication gate behavior, exact database rows, immutable material facts/content hash, regressions, and mutations"
   ],
-  "isolation": {
-    "compose_project_name": "fta-p1-github",
-    "api_port": 8101,
-    "web_port": 8201,
-    "postgres_port": 5501,
-    "note": "Local .env is NOT committed. No global Docker sweep: unrelated freetier-atlas and garmin-ai stacks are live on this host."
+  "mutation_plan": [
+    "M1 predicted RED: remove the magnitude multiplier application; K/M/B unit and live persistence tests must fail.",
+    "M2 predicted RED: relax the post-suffix token boundary so an adjacent binary-looking or multiple-suffix form is accepted; ambiguity tests must fail."
+  ],
+  "data_implications": "No schema or migration change. Corrected exact Decimal values change future Quota rows, OfferVersion material_facts, and content_hash for compact SI quota evidence. Existing immutable rows are not rewritten.",
+  "security_privacy": "No network, secret, authentication, authorization, or user-controlled URL change.",
+  "portability": "Pure standard-library parsing and Decimal arithmetic; no platform-specific behavior.",
+  "z0_risk": "High. False quota amounts can misstate capacity and recommendation fit. Unsupported forms must block automatic publication rather than guess.",
+  "baseline_evidence": {
+    "commit": "cfdf1cd1d26f48dbce4fdbb43cf071ee77c06c41",
+    "unit_reproduction": {
+      "10K": "10",
+      "2K": "2",
+      "1M": "1"
+    },
+    "postgres_reproduction": {
+      "decision": "publish",
+      "version_created": true,
+      "persisted_amounts": {
+        "blob_ops": "10",
+        "queue_ops": "2",
+        "requests_per_month": "1"
+      }
+    },
+    "full_db_suite": "1259 passed, 2 skipped"
   },
-  "risks": [
-    "A time-limited or 12-month introductory offer misread as always-free would ship a false $0 claim (brief section A0). Mitigation: every verified_free capture must carry perpetuity or reset language verbatim; ambiguity stays unknown.",
-    "Training data about GitHub allowances is stale - GitHub Models was RETIRED on 2026-07-30. Only the captured official page is authority.",
-    "scripts/url-allowlist.txt (do-not-touch) permits only github.com / api.github.com / docs.github.com, so github.blog (the changelog the brief suggested) cannot be cited. Correction reported to the owner."
-  ],
-  "status": "in_progress"
+  "status": "implemented_evaluated_pass"
 }
