@@ -46,7 +46,10 @@
     "A5: a live PostgreSQL publication persists 10K, 2K, and 1M as exact Quota amounts 10000, 2000, and 1000000, with matching immutable material facts and content hash.",
     "A6: a live PostgreSQL publication attempt containing an unsupported compact magnitude creates no Offer, OfferVersion, or Quota and never persists a truncated leading amount; it follows the existing review/withhold gate semantics.",
     "A7: documentation states the supported suffix boundary and fail-closed behavior without claiming structured qualifier semantics the schema does not represent.",
-    "A8: no provider-specific code, dependency, migration, fixture, configuration, feature-ledger, classifier, or model change is introduced."
+    "A8: no provider-specific code, dependency, migration, fixture, configuration, feature-ledger, classifier, or model change is introduced.",
+    "A9: any Unicode punctuation or symbol directly adjacent before the numeric token fails closed, including U+FE62, U+FE63, U+2795, and U+2796, while whitespace-separated qualifier prefixes remain supported.",
+    "A10: compact multi-letter ordinary units such as ms, GB, Mbps, Kbps, and kB parse as units, while ambiguous KB/MB, IEC-looking KiB/MiB/GiB, single-letter unknowns, and repeated magnitude letters fail closed.",
+    "A11: text containing more than one numeric token fails closed, including versions, dates, malformed dotted sequences, and ranges; one-token qualifier text remains supported."
   ],
   "verification_plan": [
     ".venv/Scripts/pytest.exe -q tests/unit/test_publish_revalidate.py tests/integration/test_publish_pipeline.py with DATABASE_URL targeting isolated PostgreSQL 16",
@@ -57,7 +60,11 @@
   ],
   "mutation_plan": [
     "M1 predicted RED: remove the magnitude multiplier application; K/M/B unit and live persistence tests must fail.",
-    "M2 predicted RED: relax the post-suffix token boundary so an adjacent binary-looking or multiple-suffix form is accepted; ambiguity tests must fail."
+    "M2 predicted RED: relax the post-suffix token boundary so an adjacent binary-looking or multiple-suffix form is accepted; ambiguity tests must fail.",
+    "M3 predicted RED: remove the Unicode category guard; sign and punctuation adversarial cases must fail.",
+    "M4 predicted RED: reject every adjacent alphabetic token; compact ordinary-unit tests must fail.",
+    "M5 predicted RED: accept the first numeric match when multiple exist; version/date/range tests must fail.",
+    "M6 predicted RED: accept every multi-letter adjacent token as a unit; ambiguous KB/MB, IEC, and repeated-magnitude tests must fail."
   ],
   "data_implications": "No schema or migration change. Corrected exact Decimal values change future Quota rows, OfferVersion material_facts, and content_hash for compact SI quota evidence. Existing immutable rows are not rewritten.",
   "security_privacy": "No network, secret, authentication, authorization, or user-controlled URL change.",

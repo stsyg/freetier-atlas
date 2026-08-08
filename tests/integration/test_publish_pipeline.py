@@ -619,9 +619,45 @@ def test_compact_decimal_suffixes_persist_exact_quota_amounts(session: Session) 
 
 
 @skip_without_db
+def test_compact_ordinary_units_persist_without_magnitude_conversion(session: Session) -> None:
+    provider = _seed_provider(session)
+    source = _seed_source(session, provider, "synthetic-compact-units", official=True)
+    facts = dict(_HIGH_CONFIDENCE_FACTS)
+    facts.update({"latency": "10ms", "storage": "10GB", "bandwidth": "10Mbps"})
+    candidate = _seed_candidate(session, source, facts)
+
+    outcome = publish_candidate(session, candidate, source, PUBLISHING)
+
+    assert outcome.decision == "publish"
+    quotas = {
+        quota.metric: quota
+        for quota in session.execute(
+            select(Quota).where(Quota.offer_version_id == outcome.offer_version_id)
+        ).scalars()
+    }
+    for metric, unit in (("latency", "ms"), ("storage", "GB"), ("bandwidth", "Mbps")):
+        assert quotas[metric].amount == Decimal("10")
+        assert quotas[metric].unit == unit
+
+
+@skip_without_db
 @pytest.mark.parametrize(
     "unsupported",
-    ["1MM", "10 k", "10 K, then paid", "10K10", "10\u200bK", "10\u00adK"],
+    [
+        "1MM",
+        "10 k",
+        "10 K, then paid",
+        "10K10",
+        "10\u200bK",
+        "10\u00adK",
+        "\ufe6210K",
+        "\ufe6310K",
+        "\u279510K",
+        "\u279610K",
+        "Version 2: 10K",
+        "2026-08-07 10K",
+        "1.2.3 10K",
+    ],
 )
 def test_unsupported_compact_magnitude_never_publishes_truncated_amount(
     session: Session,

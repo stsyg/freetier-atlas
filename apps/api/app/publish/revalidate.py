@@ -29,6 +29,7 @@ reproduces an identical, order-stable :class:`RevalidationResult`.
 from __future__ import annotations
 
 import re
+import unicodedata
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
@@ -59,15 +60,15 @@ NON_QUOTA_FIELDS: frozenset[str] = frozenset(
 _NUMBER = re.compile(r"\d[\d,]*(?:\.\d+)?(?P<magnitude>[KMB])?")
 # A separated single-letter count suffix is ambiguous with a unit and is not
 # part of the numeric token, so fail closed rather than treating it as a unit.
-# Multi-letter units such as "MB", "ms", and "MiB" remain ordinary units.
+# Unambiguous multi-letter units remain ordinary units; ambiguous magnitude
+# continuations and IEC-looking binary forms are rejected below.
 _SEPARATED_MAGNITUDE = re.compile(
     r"^[\W_]*[KMB](?=$|[\W_])",
     re.IGNORECASE,
 )
 _GROUPED_NUMBER = re.compile(r"\d{1,3}(?:,\d{3})+(?:\.\d+)?")
-_UNSUPPORTED_SIGN_PREFIXES = frozenset(
-    {"+", "-", "\u00b1", "\u207a", "\u207b", "\u208a", "\u208b", "\u2212", "\uff0b", "\uff0d"}
-)
+_ALPHA_TOKEN = re.compile(r"[^\W\d_]+")
+_BINARY_UNIT = re.compile(r"^[A-Za-z]iB$")
 _MAGNITUDE_MULTIPLIERS: Mapping[str, Decimal] = {
     "K": Decimal("1000"),
     "M": Decimal("1000000"),
@@ -76,6 +77,16 @@ _MAGNITUDE_MULTIPLIERS: Mapping[str, Decimal] = {
 # A "<field>_per_<period>" suffix used to recover a reset period from the metric
 # name when the value text itself does not carry one.
 _PER_SUFFIX = re.compile(r"_per_([a-z]+)$")
+
+
+def _is_supported_compact_unit(token: str) -> bool:
+    """Whether an adjacent alphabetic token is unambiguously an ordinary unit."""
+
+    if len(token) < 2:
+        return False
+    if _BINARY_UNIT.fullmatch(token):
+        return False
+    return not all(ch in "KMB" for ch in token)
 
 
 @dataclass(frozen=True)
@@ -155,39 +166,50 @@ def parse_quantity(raw: str | None, *, metric: str | None = None) -> ParsedQuant
     if not text:
         return ParsedQuantity(raw=text, amount=None, unit=None, reset_period=None)
 
-    match = _NUMBER.search(text)
+    matches = list(_NUMBER.finditer(text))
+    if len(matches) != 1:
+        return ParsedQuantity(raw=text, amount=None, unit=None, reset_period=None)
+
+    match = matches[0]
     amount: Decimal | None = None
     rest = text
-    if match is not None:
-        before = text[match.start() - 1] if match.start() else ""
-        after_token = text[match.end() :]
-        magnitude = match.group("magnitude")
-        # Searching rather than anchoring deliberately preserves supported
-        # qualifiers ("First 10K", "Up to 1M"). Token-adjacent letters, signs,
-        # scientific notation, binary-looking suffixes, and separated K/M/B are
-        # not in the supported grammar and must not degrade to the leading digits.
-        if (
-            (before and (before == "." or before in _UNSUPPORTED_SIGN_PREFIXES))
-            or (before and before.isalnum())
-            or (after_token and after_token[0].isalpha())
-            or (
-                magnitude is not None
-                and after_token
-                and not (after_token[0].isspace() or after_token[0] == "/")
-            )
-            or _SEPARATED_MAGNITUDE.match(after_token)
-        ):
+    before = text[match.start() - 1] if match.start() else ""
+    after_token = text[match.end() :]
+    magnitude = match.group("magnitude")
+    alpha_match = _ALPHA_TOKEN.match(after_token)
+    compact_unit: str | None = None
+    if alpha_match is not None:
+        compact_unit = (magnitude or "") + alpha_match.group(0)
+        if not _is_supported_compact_unit(compact_unit):
             return ParsedQuantity(raw=text, amount=None, unit=None, reset_period=None)
-        try:
-            numeric_text = match.group(0) if magnitude is None else match.group(0)[:-1]
-            if "," in numeric_text and _GROUPED_NUMBER.fullmatch(numeric_text) is None:
-                return ParsedQuantity(raw=text, amount=None, unit=None, reset_period=None)
-            amount = Decimal(numeric_text.replace(",", ""))
-            if magnitude is not None:
-                amount *= _MAGNITUDE_MULTIPLIERS[magnitude]
-        except InvalidOperation:  # pragma: no cover - regex guarantees a valid number
-            amount = None
-        rest = after_token.strip()
+        after_token = after_token[alpha_match.end() :]
+        magnitude = None
+
+    # Searching rather than anchoring deliberately preserves one-token qualifiers
+    # ("First 10K", "Up to 1M"). A symbol or punctuation directly before the
+    # number, adjacent letters, invalid suffix continuations, and separated K/M/B
+    # are outside the supported grammar and must not degrade to leading digits.
+    if (
+        (before and unicodedata.category(before)[0] in {"P", "S"})
+        or (before and before.isalnum())
+        or (
+            magnitude is not None
+            and after_token
+            and not (after_token[0].isspace() or after_token[0] == "/")
+        )
+        or _SEPARATED_MAGNITUDE.match(after_token)
+    ):
+        return ParsedQuantity(raw=text, amount=None, unit=None, reset_period=None)
+    try:
+        numeric_text = match.group(0) if match.group("magnitude") is None else match.group(0)[:-1]
+        if "," in numeric_text and _GROUPED_NUMBER.fullmatch(numeric_text) is None:
+            return ParsedQuantity(raw=text, amount=None, unit=None, reset_period=None)
+        amount = Decimal(numeric_text.replace(",", ""))
+        if magnitude is not None:
+            amount *= _MAGNITUDE_MULTIPLIERS[magnitude]
+    except InvalidOperation:  # pragma: no cover - regex guarantees a valid number
+        amount = None
+    rest = ((compact_unit or "") + after_token).strip()
 
     unit: str | None = None
     reset_period: str | None = None

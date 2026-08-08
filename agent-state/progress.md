@@ -2336,3 +2336,16 @@ integration slice. Raised by the verifier and owned by them.
 - **Recommended next action:** Owner reviews the draft and the external dependency-audit baseline separately; do not merge automatically.
 
 ---
+
+## 2026-08-08 02:08 UTC - Builder - F008 compact quota parser Level-2 remediation
+
+- **What I got wrong:** The prior parser's finite sign set still treated U+FE62, U+FE63, U+2795, and U+2796 as positive prefixes; its blanket adjacent-alpha rejection withheld ordinary compact units; and its search selected the first number from multi-number text. Before editing, all four signs parsed as `10000`, `10ms`/`10GB`/`10Mbps` returned no amount, and version/date/dotted examples returned `2`/`2026`/`1.2`. A live PostgreSQL 16 probe auto-published U+FE62 + `10K` as amount `10000` [M].
+- **Remediation:** Replaced the finite sign list with a Unicode-category `P`/`S` boundary guard; made exactly-one numeric match mandatory; and classified contiguous alphabetic text so unambiguous multi-letter units remain units while ambiguous `KB`/`MB`, IEC-looking `KiB`/`MiB`/`GiB`, unknown single letters, and repeated `KMB` sequences fail closed. `K/M/B` multipliers, resets, raw evidence, exact `Decimal`, and one-token qualifier searches remain intact.
+- **Persistence evidence [M]:** Focused parser/publisher suite **126 passed** against isolated PostgreSQL 16. Unsupported Unicode-signed and multi-number facts route to review and create no Offer/OfferVersion/Quota; `10ms`, `10GB`, and `10Mbps` persist amount `10` with exact units; existing `K/M/B` persistence remains exact. Fresh evaluator independently repeated live supported and unsupported publication probes and returned **PASS**.
+- **Mutation evidence [M]:** Removing the Unicode category guard produced **15 failures**; restoring blanket adjacent-alpha rejection produced **6 failures**; accepting the first of multiple numbers produced **8 failures**; accepting every multi-letter token as an ordinary unit produced **11 failures**. All mutations were restored before final validation.
+- **Validation [M]:** Full real-PostgreSQL suite **1361 passed / exactly 2 stack-health skipped**. `scripts/check.ps1 -NodeAudit` passed all gates with offline pytest **1184 passed / 179 skipped**, Python audit clean, and Node audit 0 vulnerabilities. Dependency manifests and all prohibited scope paths are zero-diff.
+- **Evaluator disposition:** Fresh-context Level 2 **PASS** after independent Unicode category sweep, compact-unit sibling matrix, multi-number adversarial matrix, full suite, and rolled-back PostgreSQL publication probes.
+- **Scope:** No provider, fixture, configuration, classifier, model, migration, dependency, workflow, feature-ledger, eligibility, runner-exit, or dead-tuple change. PR #52 remains draft and unmerged.
+- **Commit / CI:** Remediation commit and exact-head CI evidence pending push.
+
+---
