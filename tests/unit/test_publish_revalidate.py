@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from decimal import Decimal
 
+import pytest
 from app.publish.revalidate import (
     NON_QUOTA_FIELDS,
     parse_quantity,
@@ -67,6 +68,107 @@ def test_parse_textual_unit_is_kept_verbatim() -> None:
     assert q.unit == "build at a time"
 
 
+@pytest.mark.parametrize(
+    ("raw", "amount", "unit", "reset_period"),
+    [
+        ("10K", Decimal("10000"), None, None),
+        ("2.5K", Decimal("2500.0"), None, None),
+        ("1M/month", Decimal("1000000"), None, "month"),
+        ("3B requests", Decimal("3000000000"), "requests", None),
+        ("First 10K", Decimal("10000"), None, None),
+        ("Up to 1M", Decimal("1000000"), None, None),
+        ("first 100", Decimal("100"), None, None),
+    ],
+)
+def test_parse_compact_decimal_count_suffixes(
+    raw: str,
+    amount: Decimal,
+    unit: str | None,
+    reset_period: str | None,
+) -> None:
+    q = parse_quantity(raw)
+    assert q.raw == raw
+    assert q.amount == amount
+    assert q.unit == unit
+    assert q.reset_period == reset_period
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        "10m",
+        "10 m",
+        "10 k",
+        "10 K",
+        "10 M",
+        "10 B",
+        "10 K, then paid",
+        "10 K.",
+        "10 K)",
+        "10.K",
+        "10\u200bK",
+        "10\u00adK",
+        "10\u2060K",
+        "10\u2013K",
+        "10MiB",
+        "10KiB",
+        "10T",
+        "10Q",
+        "1MM",
+        "-10K",
+        "+10K",
+        "\u221210K",
+        "\uff0b10K",
+        "\u00b110K",
+        "1e3",
+        "1E3",
+        "10K10",
+        "10K+",
+        "1,5K",
+    ],
+)
+def test_parse_unsupported_compact_magnitudes_fails_closed(raw: str) -> None:
+    q = parse_quantity(raw)
+    assert q.raw == raw
+    assert q.amount is None
+    assert q.unit is None
+    assert q.reset_period is None
+
+
+@pytest.mark.parametrize(
+    ("raw", "amount", "unit", "reset_period"),
+    [
+        ("100,000/day", Decimal("100000"), None, "day"),
+        ("128 MB", Decimal("128"), "MB", None),
+        ("50%", Decimal("50"), "%", None),
+        ("0.125", Decimal("0.125"), None, None),
+        ("1 build at a time", Decimal("1"), "build at a time", None),
+    ],
+)
+def test_parse_existing_quantity_behaviour_is_preserved(
+    raw: str,
+    amount: Decimal,
+    unit: str | None,
+    reset_period: str | None,
+) -> None:
+    q = parse_quantity(raw)
+    assert q.amount == amount
+    assert q.unit == unit
+    assert q.reset_period == reset_period
+
+
+def test_compact_suffix_is_not_retained_as_a_unit() -> None:
+    q = parse_quantity("3B requests")
+    assert q.amount == Decimal("3000000000")
+    assert q.unit == "requests"
+
+
+def test_metric_reset_fallback_is_preserved_for_compact_suffix() -> None:
+    q = parse_quantity("1M", metric="requests_per_month")
+    assert q.amount == Decimal("1000000")
+    assert q.reset_period == "month"
+
+
 def test_unparseable_value_yields_none_never_guessed() -> None:
     q = parse_quantity("unlimited", metric="whatever")
     assert q.amount is None
@@ -107,6 +209,35 @@ def test_revalidate_reports_unparsed_numeric_field() -> None:
     # "about 3-5" contains a digit and parses a leading number, so it is parseable;
     # a value with a digit that cannot reduce to a number would be reported.
     assert result.parsed_count >= 1
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        "10m",
+        "10 m",
+        "10 k",
+        "10 K",
+        "10 K, then paid",
+        "10.K",
+        "10\u200bK",
+        "10\u00adK",
+        "10MiB",
+        "10T",
+        "1MM",
+        "-10K",
+        "\u221210K",
+        "1e3",
+        "10K10",
+        "1,5K",
+    ],
+)
+def test_unsupported_numeric_form_fails_deterministic_gate(raw: str) -> None:
+    facts = {"service": "x", "offer_type": "always_free", "ambiguous_metric": raw}
+    result = revalidate_quotas(facts, exhaustion_behaviour="unknown")
+    assert result.unparsed_fields == ("ambiguous_metric",)
+    assert result.quotas[0].amount is None
+    assert result.deterministic is False
 
 
 def test_revalidate_deterministic_false_without_any_number() -> None:

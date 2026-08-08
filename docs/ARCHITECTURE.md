@@ -85,6 +85,12 @@ Automatic publication requires:
 
 The gate is implemented in `apps/api/app/publish/` (F005): `revalidate.py`
 deterministically re-derives the material numbers from the persisted facts,
+including directly-adjacent uppercase decimal count suffixes (`K`, `M`, `B`).
+Unsupported compact forms (for example lowercase, separated, binary-looking,
+unknown, multiple, signed, or scientific suffixes) fail the deterministic gate
+instead of publishing their leading digits. Prefix qualifiers remain only in
+the retained raw evidence text; the quota schema does not represent qualifier
+semantics separately.
 `confidence.py` scores the signals above (weighted, deterministic) plus
 completeness/freshness, and `gate.py` routes each candidate to **publish**
 (all hard conditions met and confidence at/above the automatic threshold),

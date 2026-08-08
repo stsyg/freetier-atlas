@@ -136,6 +136,12 @@ Service, offer type, Z class, status, eligibility, commercial/personal condition
 ### Quota
 
 Metric, amount, unit, reset period, scope, region scope, hard/soft behaviour, exhaustion behaviour, retention/deletion/reclamation policy.
+Amounts are exact decimals re-derived before publication. The generic parser
+supports only directly-adjacent uppercase decimal count suffixes `K`, `M`, and
+`B`; an unsupported compact numeric form makes publication nondeterministic
+rather than persisting a truncated leading number. Qualifier wording remains
+in official evidence where captured and is not promoted to a structured quota
+claim.
 
 ### RegionAvailability
 
