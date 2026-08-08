@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import sys
+import unicodedata
 from decimal import Decimal
 
 import pytest
@@ -187,6 +189,34 @@ def test_one_numeric_token_with_qualifier_remains_supported() -> None:
     assert parse_quantity("First 10K").amount == Decimal("10000")
 
 
+@pytest.mark.parametrize("whitespace", [" ", "\t", "\u00a0", "\u2009", "\u2003"])
+@pytest.mark.parametrize("sign", ["+", "-", "\ufe62", "\u2212", "\u2795", "\u2796"])
+def test_whitespace_separated_signs_fail_closed(sign: str, whitespace: str) -> None:
+    q = parse_quantity(f"{sign}{whitespace}10K")
+    assert q.amount is None
+    assert q.unit is None
+    assert q.reset_period is None
+
+
+def test_unicode_named_sign_variants_fail_closed() -> None:
+    sign_variants = {
+        chr(codepoint)
+        for codepoint in range(sys.maxunicode + 1)
+        if any(
+            marker in unicodedata.name(chr(codepoint), "")
+            for marker in ("PLUS", "MINUS", "HYPHEN-MINUS")
+        )
+        and not chr(codepoint).isspace()
+    }
+    assert {"+", "-", "\ufe62", "\u2212", "\u2795", "\u2796"} <= sign_variants
+    assert all(parse_quantity(f"{sign}\u200310K").amount is None for sign in sign_variants)
+
+
+@pytest.mark.parametrize("raw", [": 10K", "( 10K", "~ 10K", "First: 10K"])
+def test_separated_qualifier_punctuation_remains_supported(raw: str) -> None:
+    assert parse_quantity(raw).amount == Decimal("10000")
+
+
 @pytest.mark.parametrize(
     ("raw", "amount", "unit", "reset_period"),
     [
@@ -283,6 +313,9 @@ def test_revalidate_reports_unparsed_numeric_field() -> None:
         "1e3",
         "10K10",
         "1,5K",
+        "+ 10K",
+        "\ufe62\u200910K",
+        "\u2796\t10K",
         "Version 2: 10K",
         "10K to 20K",
     ],
