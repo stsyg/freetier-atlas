@@ -2324,3 +2324,15 @@ integration slice. Raised by the verifier and owned by them.
 - **Recommended next action:** Review the draft PR and run its real-PostgreSQL CI; do not merge automatically.
 
 ---
+## 2026-08-08 01:21 UTC — Builder — F008 prerequisite CI handoff
+
+- **Objective:** Record first pushed-commit and draft-PR evidence for the compact quota magnitude prerequisite.
+- **Contract:** `agent-state/current_contract.json`
+- **Work completed [M]:** Pushed implementation commit `8871cbae8f67d6d6cdc8384250aabda2efe27d81` and opened the pull request as a draft. GitHub's real-PostgreSQL Python job ran **13 reported steps**, all successful, at matching head SHA `8871cbae8f67d6d6cdc8384250aabda2efe27d81`.
+- **Exact CI results [M]:** Python job **1325 passed / exactly 2 stack-health skipped**. Node format/lint, secret scan, GitGuardian, all three Python dependency audits, and root Node audit passed. The apps/web audit alone failed on the merged-main external `nanoid <3.3.17` advisory; dependency files are zero-diff in this slice and local `scripts/check.ps1 -NodeAudit` remained green against the configured registry.
+- **Evaluator disposition:** passed.
+- **Commit SHA:** `8871cbae8f67d6d6cdc8384250aabda2efe27d81` (implementation); this append is the final handoff commit.
+- **Known issues or risks:** Draft remains unmerged. The dependency-audit failure is unrelated baseline dependency state, not changed or suppressed here.
+- **Recommended next action:** Owner reviews the draft and the external dependency-audit baseline separately; do not merge automatically.
+
+---
