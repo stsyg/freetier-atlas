@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import sys
+import unicodedata
 from decimal import Decimal
 
+import pytest
 from app.publish.revalidate import (
     NON_QUOTA_FIELDS,
     parse_quantity,
@@ -67,6 +70,187 @@ def test_parse_textual_unit_is_kept_verbatim() -> None:
     assert q.unit == "build at a time"
 
 
+@pytest.mark.parametrize(
+    ("raw", "amount", "unit", "reset_period"),
+    [
+        ("10K", Decimal("10000"), None, None),
+        ("2.5K", Decimal("2500.0"), None, None),
+        ("1M/month", Decimal("1000000"), None, "month"),
+        ("3B requests", Decimal("3000000000"), "requests", None),
+        ("First 10K", Decimal("10000"), None, None),
+        ("Up to 1M", Decimal("1000000"), None, None),
+        ("first 100", Decimal("100"), None, None),
+    ],
+)
+def test_parse_compact_decimal_count_suffixes(
+    raw: str,
+    amount: Decimal,
+    unit: str | None,
+    reset_period: str | None,
+) -> None:
+    q = parse_quantity(raw)
+    assert q.raw == raw
+    assert q.amount == amount
+    assert q.unit == unit
+    assert q.reset_period == reset_period
+
+
+@pytest.mark.parametrize(
+    ("raw", "unit"),
+    [
+        ("10ms", "ms"),
+        ("10GB", "GB"),
+        ("10Mbps", "Mbps"),
+        ("10Kbps", "Kbps"),
+        ("10kB", "kB"),
+        ("10MBps", "MBps"),
+    ],
+)
+def test_parse_unambiguous_compact_ordinary_units(raw: str, unit: str) -> None:
+    q = parse_quantity(raw)
+    assert q.amount == Decimal("10")
+    assert q.unit == unit
+    assert q.reset_period is None
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        "10m",
+        "10 m",
+        "10 k",
+        "10 K",
+        "10 M",
+        "10 B",
+        "10 K, then paid",
+        "10 K.",
+        "10 K)",
+        "10.K",
+        "10\u200bK",
+        "10\u00adK",
+        "10\u2060K",
+        "10\u2013K",
+        "10MiB",
+        "10KiB",
+        "10T",
+        "10Q",
+        "1MM",
+        "-10K",
+        "+10K",
+        "\u221210K",
+        "\uff0b10K",
+        "\u00b110K",
+        "\ufe6210K",
+        "\ufe6310K",
+        "\u279510K",
+        "\u279610K",
+        "\u201410K",
+        "\u203010K",
+        "1e3",
+        "1E3",
+        "10K10",
+        "10K+",
+        "1,5K",
+        "10MB",
+        "10KB",
+        "10MiB",
+        "10KiB",
+        "10GiB",
+        "10KK",
+    ],
+)
+def test_parse_unsupported_compact_magnitudes_fails_closed(raw: str) -> None:
+    q = parse_quantity(raw)
+    assert q.raw == raw
+    assert q.amount is None
+    assert q.unit is None
+    assert q.reset_period is None
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        "Version 2: 10K",
+        "2026-08-07 10K",
+        "1.2.3 10K",
+        "3-5 requests",
+        "10K to 20K",
+    ],
+)
+def test_multiple_numeric_tokens_fail_closed(raw: str) -> None:
+    q = parse_quantity(raw)
+    assert q.raw == raw
+    assert q.amount is None
+    assert q.unit is None
+    assert q.reset_period is None
+
+
+def test_one_numeric_token_with_qualifier_remains_supported() -> None:
+    assert parse_quantity("First 10K").amount == Decimal("10000")
+
+
+@pytest.mark.parametrize("whitespace", [" ", "\t", "\u00a0", "\u2009", "\u2003"])
+@pytest.mark.parametrize("sign", ["+", "-", "\ufe62", "\u2212", "\u2795", "\u2796"])
+def test_whitespace_separated_signs_fail_closed(sign: str, whitespace: str) -> None:
+    q = parse_quantity(f"{sign}{whitespace}10K")
+    assert q.amount is None
+    assert q.unit is None
+    assert q.reset_period is None
+
+
+def test_unicode_named_sign_variants_fail_closed() -> None:
+    sign_variants = {
+        chr(codepoint)
+        for codepoint in range(sys.maxunicode + 1)
+        if any(
+            marker in unicodedata.name(chr(codepoint), "")
+            for marker in ("PLUS", "MINUS", "HYPHEN-MINUS")
+        )
+        and not chr(codepoint).isspace()
+    }
+    assert {"+", "-", "\ufe62", "\u2212", "\u2795", "\u2796"} <= sign_variants
+    assert all(parse_quantity(f"{sign}\u200310K").amount is None for sign in sign_variants)
+
+
+@pytest.mark.parametrize("raw", [": 10K", "( 10K", "~ 10K", "First: 10K"])
+def test_separated_qualifier_punctuation_remains_supported(raw: str) -> None:
+    assert parse_quantity(raw).amount == Decimal("10000")
+
+
+@pytest.mark.parametrize(
+    ("raw", "amount", "unit", "reset_period"),
+    [
+        ("100,000/day", Decimal("100000"), None, "day"),
+        ("128 MB", Decimal("128"), "MB", None),
+        ("50%", Decimal("50"), "%", None),
+        ("0.125", Decimal("0.125"), None, None),
+        ("1 build at a time", Decimal("1"), "build at a time", None),
+    ],
+)
+def test_parse_existing_quantity_behaviour_is_preserved(
+    raw: str,
+    amount: Decimal,
+    unit: str | None,
+    reset_period: str | None,
+) -> None:
+    q = parse_quantity(raw)
+    assert q.amount == amount
+    assert q.unit == unit
+    assert q.reset_period == reset_period
+
+
+def test_compact_suffix_is_not_retained_as_a_unit() -> None:
+    q = parse_quantity("3B requests")
+    assert q.amount == Decimal("3000000000")
+    assert q.unit == "requests"
+
+
+def test_metric_reset_fallback_is_preserved_for_compact_suffix() -> None:
+    q = parse_quantity("1M", metric="requests_per_month")
+    assert q.amount == Decimal("1000000")
+    assert q.reset_period == "month"
+
+
 def test_unparseable_value_yields_none_never_guessed() -> None:
     q = parse_quantity("unlimited", metric="whatever")
     assert q.amount is None
@@ -104,9 +288,44 @@ def test_revalidate_attaches_exhaustion_behaviour_to_every_quota() -> None:
 def test_revalidate_reports_unparsed_numeric_field() -> None:
     facts = {"service": "x", "offer_type": "always_free", "weird_metric": "about 3-5"}
     result = revalidate_quotas(facts, exhaustion_behaviour="unknown")
-    # "about 3-5" contains a digit and parses a leading number, so it is parseable;
-    # a value with a digit that cannot reduce to a number would be reported.
-    assert result.parsed_count >= 1
+    assert result.parsed_count == 0
+    assert result.unparsed_fields == ("weird_metric",)
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        "10m",
+        "10 m",
+        "10 k",
+        "10 K",
+        "10 K, then paid",
+        "10.K",
+        "10\u200bK",
+        "10\u00adK",
+        "10MiB",
+        "10T",
+        "1MM",
+        "-10K",
+        "\u221210K",
+        "\ufe6210K",
+        "\u279510K",
+        "1e3",
+        "10K10",
+        "1,5K",
+        "+ 10K",
+        "\ufe62\u200910K",
+        "\u2796\t10K",
+        "Version 2: 10K",
+        "10K to 20K",
+    ],
+)
+def test_unsupported_numeric_form_fails_deterministic_gate(raw: str) -> None:
+    facts = {"service": "x", "offer_type": "always_free", "ambiguous_metric": raw}
+    result = revalidate_quotas(facts, exhaustion_behaviour="unknown")
+    assert result.unparsed_fields == ("ambiguous_metric",)
+    assert result.quotas[0].amount is None
+    assert result.deterministic is False
 
 
 def test_revalidate_deterministic_false_without_any_number() -> None:

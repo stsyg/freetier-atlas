@@ -84,6 +84,17 @@ Automatic publication requires:
 
 The gate is implemented in `apps/api/app/publish/` (F005): `revalidate.py`
 deterministically re-derives the material numbers from the persisted facts,
+including directly-adjacent uppercase decimal count suffixes (`K`, `M`, `B`).
+Unsupported compact forms (for example lowercase, separated, binary-looking,
+unknown, repeated, signed, scientific, or multi-number text) fail the
+deterministic gate instead of publishing their leading digits. Multi-letter
+ordinary units remain supported in compact form (`ms`, `GB`, `Mbps`, `Kbps`,
+`kB`); two-letter all-uppercase `KB`/`MB`, IEC-looking `KiB`/`MiB`/`GiB`, and
+all-`KMB` repetitions are withheld as ambiguous. Sign forms are rejected both
+when adjacent and when separated from the number by Unicode whitespace; generic
+qualifier punctuation such as colons and parentheses remains supported. Prefix
+qualifiers remain only in retained raw evidence text; the quota schema does not
+represent qualifier semantics separately.
 `confidence.py` scores the signals above (weighted, deterministic) plus
 completeness/freshness, and `gate.py` routes each candidate to **publish**
 (all hard conditions met and confidence at/above the automatic threshold),
