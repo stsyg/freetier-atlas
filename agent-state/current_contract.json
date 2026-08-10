@@ -1,72 +1,77 @@
 {
-  "feature_id": "F008",
-  "slice": "P1-github",
-  "title": "GitHub provider slice: fourteen-category investigation with official evidence and offline fixtures",
-  "branch": "stsyg-f008-p1-github-provider",
-  "base_commit": "9a36646",
-  "started_at": "2026-08-07T01:32:50Z",
-  "objective": "Investigate GitHub across all fourteen canonical service categories using OFFICIAL docs.github.com sources only, and land a provider-scoped slice: one declarative profiles module, one provider YAML with a complete 14-entry coverage declaration, captured official fixtures covering the full seven-case vocabulary, unit + integration tests, and the GitHub section of docs/PROVIDER_ADAPTERS.md.",
-  "advances_acceptance_steps": [1, 2, 3],
-  "decisions_cited": ["Q1-A", "Q2-A", "Q3-A", "Q4-A", "Q5-A", "Q6-A", "Q9-A", "Q10-A"],
+  "contract_id": "security-maintenance-nanoid-3.3.17",
+  "feature_id": "F001-maintenance",
+  "increment": "apps-web-transitive-nanoid-advisory",
+  "title": "Resolve the apps/web nanoid advisory with the smallest lockfile-only update",
+  "branch": "stsyg-fix-nanoid-advisory-eff",
+  "base_commit": "cfdf1cd1d26f48dbce4fdbb43cf071ee77c06c41",
+  "started_at": "2026-08-10T14:08:44Z",
+  "status": "blocked",
+  "blocking_condition": "The pinned base fails apps/web's own npm run format:check on 22 unchanged files. Formatting them would violate this contract's mandatory lockfile-only product diff, so strict evaluation cannot pass without an owner-approved contract amendment or a separate base-format repair.",
+  "objective": "Use npm's configured package-manager resolution to move only apps/web's transitive node_modules/nanoid lock entry from 3.3.16 to 3.3.17, clearing GHSA-2v37-7h3g-55p8 without changing manifests, audit policy, application behavior, or feature acceptance.",
+  "base_reproduction": {
+    "command": "cd apps/web; npm audit --audit-level=high",
+    "exit_code": 1,
+    "advisories": [
+      "GHSA-2v37-7h3g-55p8"
+    ],
+    "affected_range": "nanoid <3.3.17",
+    "tool_total": "1 high severity vulnerability",
+    "locked_chain": "postcss@8.5.25 -> nanoid ^3.3.16 -> nanoid@3.3.16"
+  },
   "in_scope": [
-    "config/examples/providers/github.example.yaml (new)",
-    "apps/api/app/ingest/adapters/profiles/github.py (new, declarative data only)",
-    "tests/fixtures/ingest/github/html/** (new)",
-    "tests/unit/test_adapter_github.py (new)",
-    "tests/integration/test_ingest_github.py (new)",
-    "docs/PROVIDER_ADAPTERS.md GitHub section only",
-    "agent-state/progress.md (append only)",
-    "agent-state/current_contract.json (this file)"
+    "apps/web/package-lock.json: npm-resolved node_modules/nanoid entry only",
+    "agent-state/current_contract.json: this replacement contract",
+    "agent-state/progress.md: one append-only measured handoff"
   ],
   "out_of_scope_zero_diff": [
-    "config/examples/providers/cloudflare.example.yaml",
-    "apps/api/app/ingest/adapters/profiles/__init__.py",
-    "apps/api/app/ingest/adapters/profiles/cloudflare.py",
-    "apps/api/app/ingest/adapters/html.py",
-    "apps/api/app/ingest/adapters/structured.py",
-    "apps/api/app/ingest/adapters/__init__.py",
-    "apps/api/app/config/models.py",
-    "apps/api/app/publish/publisher.py",
-    "apps/api/app/publish/gate.py",
-    "apps/api/app/classify/engine.py",
-    "apps/api/app/read_api/**",
-    "apps/api/app/adviser/**",
-    "apps/api/alembic/**",
-    "apps/api/requirements.txt",
-    "pyproject.toml",
+    "apps/web/package.json",
+    "root package.json and package-lock.json",
+    ".github/** including workflows and audit configuration",
     "scripts/**",
-    ".github/**",
-    "agent-state/feature_list.json"
+    "apps/web/src/** and all other application source",
+    "tests/**",
+    "migrations/**",
+    "agent-state/feature_list.json",
+    "agent-state/evaluation.json"
+  ],
+  "implementation_constraints": [
+    "Run npm update nanoid --package-lock-only from apps/web; do not hand-edit package JSON.",
+    "Resolve exactly nanoid 3.3.17, the approved registry's maximum available 3.x release.",
+    "Do not use a GitHub tarball, public-registry bypass, major override, audit suppression, forced audit fix, or internal-registry hardcoding.",
+    "Reject and reduce any unrelated lockfile churn.",
+    "Do not emit registry URLs, credentials, or internal hostnames in tracked files, commits, PR text, logs, or reports."
   ],
   "acceptance_criteria": [
-    "A1: python -m app.ingest.runner config/examples/providers/github.example.yaml --fixtures tests/fixtures/ingest/github/html --publish runs OFFLINE against a real Postgres and persists scan_run / snapshot / candidate / official evidence, plus offer / offer_version / quota wherever the deterministic gate allows.",
-    "A2: every published offer's Z0 verdict is explainable, and at least one deliberate non-Z0 case proves a TIME-LIMITED TRIAL blocks Z0 even with no card required (GitHub Enterprise Cloud trial -> Z2), plus an UNKNOWN-material-condition case.",
-    "A3: all fourteen coverage entries present; every verified_free / offered_no_z0 traceable to an official docs.github.com source; every not_offered carries a rationale.",
-    "A4: Q9-A floor met (>=3 evidence-backed); no publicly-known GitHub free tier left unknown; no category declared unknown/not_offered while an offer is published in it.",
-    "A5: Q10-A met - every service->category assignment carries a one-line rationale in the YAML; every arguable assignment disclosed in the PR body.",
-    "A6: all seven fixture cases exercised (unchanged | changed | partial | malformed | contradictory | withdrawn | stale); the four step-3 cases assert on PERSISTED rows (change_event.change_type, materiality, gate withhold, pending review_item).",
-    "A7: alembic head still 0011; no new dependency; no network in tests; pwsh -File scripts/check.ps1 -NodeAudit exits 0.",
-    "A8: contamination control - stopping only this slice's API container moves the smoke count on exactly the API-dependent checks while an unrelated stack stays healthy.",
-    "A9: one self-invented mutation run, with the predicted result stated before running it, reported pass or fail."
+    "A1: The untouched base audit exits nonzero with exactly GHSA-2v37-7h3g-55p8 and the tool total '1 high severity vulnerability'; the fixed-lock audit uses the same command and exits 0 with zero high and zero critical vulnerabilities.",
+    "A2: The only product-file diff is apps/web/package-lock.json, and only the node_modules/nanoid package record changes from 3.3.16 to exactly 3.3.17.",
+    "A3: A clean npm ci after removing only this worktree's ignored apps/web/node_modules succeeds.",
+    "A4: npm explain nanoid proves postcss@8.5.25 requires nanoid ^3.3.16 and resolves nanoid@3.3.17.",
+    "A5: apps/web format check, ESLint, tests, and build all pass.",
+    "A6: pwsh -File scripts/check.ps1 -NodeAudit passes; if Python tests run with a database, exactly two stack-health tests skip.",
+    "A7: The pushed draft pull request remains draft and all five reported checks are green; Dependency audit contains fourteen steps and all five named audit steps conclude success.",
+    "A8: Base-ref blob/tree controls prove every out-of-scope path byte-identical; the progress append has zero deletions and an LF final byte; no secret or internal host is introduced.",
+    "A9: Temporary install, probe, and stack resources created by this session are removed without touching another session's resources."
   ],
-  "verification_plan": [
-    "pytest tests/unit/test_adapter_github.py tests/integration/test_ingest_github.py",
-    "pytest tests/unit/test_capture_sidecar.py tests/unit/test_fixture_harness.py tests/unit/test_config_system.py (shared-file byte pins + sidecar completeness must still pass)",
-    "alembic heads == 0011",
-    "git diff --numstat origin/main...HEAD re-derived from the PUSHED ref for every do-not-touch path",
-    "pwsh -File scripts/check.ps1 -NodeAudit"
+  "verification_commands": [
+    "cd apps/web; npm audit --audit-level=high",
+    "cd apps/web; npm update nanoid --package-lock-only",
+    "cd apps/web; npm ci",
+    "cd apps/web; npm explain nanoid",
+    "cd apps/web; npm run format:check; npm run lint; npm test; npm run build",
+    "pwsh -File scripts/check.ps1 -NodeAudit",
+    "git diff --word-diff=porcelain cfdf1cd1d26f48dbce4fdbb43cf071ee77c06c41 -- apps/web/package-lock.json",
+    "git diff --numstat cfdf1cd1d26f48dbce4fdbb43cf071ee77c06c41 -- agent-state/progress.md",
+    "gh pr checks and GitHub Actions job-step inspection at the pushed SHA"
   ],
-  "isolation": {
-    "compose_project_name": "fta-p1-github",
-    "api_port": 8101,
-    "web_port": 8201,
-    "postgres_port": 5501,
-    "note": "Local .env is NOT committed. No global Docker sweep: unrelated freetier-atlas and garmin-ai stacks are live on this host."
+  "data_and_migration_implications": "None. No schema, data, migration, runtime dependency manifest, or application source changes.",
+  "security_privacy_portability_z0": {
+    "security": "Removes one known high-severity build-time transitive advisory without suppressing audit findings.",
+    "privacy": "No user data, secrets, credentials, telemetry, or retention behavior changes.",
+    "portability": "The lockfile retains public portable resolved metadata; no machine-specific registry value is committed.",
+    "z0": "No free-tier, quota, cost, classification, evidence, or publication behavior changes."
   },
-  "risks": [
-    "A time-limited or 12-month introductory offer misread as always-free would ship a false $0 claim (brief section A0). Mitigation: every verified_free capture must carry perpetuity or reset language verbatim; ambiguity stays unknown.",
-    "Training data about GitHub allowances is stale - GitHub Models was RETIRED on 2026-07-30. Only the captured official page is authority.",
-    "scripts/url-allowlist.txt (do-not-touch) permits only github.com / api.github.com / docs.github.com, so github.blog (the changelog the brief suggested) cannot be cited. Correction reported to the owner."
-  ],
-  "status": "in_progress"
+  "required_evaluation_level": 1,
+  "evaluation_plan": "Fresh-context read-only evaluator grades the measured diff and contract after local verification; no feature-ledger or evaluation-ledger mutation is authorized for this maintenance increment.",
+  "pr_policy": "Open a draft pull request at the first pushed commit; do not mark ready, merge, force-push, or alter main."
 }
