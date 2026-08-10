@@ -9,23 +9,26 @@ yield Z0** (docs/PRODUCT_REQUIREMENTS.md "Zero-cost classes").
 
 The decision gates, in precedence order, are:
 
-1. **Z3 (self-hosted building block).** ``self_hosted_open_source`` offers are
+1. **UNKNOWN (unrecognised offer type).** Anything outside the exact closed
+   ``OFFER_TYPES`` vocabulary cannot be classified safely. This defense precedes
+   every semantic branch, including self-hosting and billing.
+2. **Z3 (self-hosted building block).** ``self_hosted_open_source`` offers are
    free software that require self-provided infrastructure. They only join a Z0
    architecture when hosted on verified Z0 infrastructure (composition is
    deferred to the hosting task), so the offer itself is classified Z3.
-2. **Z1 (billing exposure).** A required payment card, paid dependencies, or a
+3. **Z1 (billing exposure).** A required payment card, paid dependencies, or a
    quota whose exhaustion triggers ``automatic_billing`` is a definite billing
    exposure and can never be Z0.
-3. **UNKNOWN.** Any unknown material condition (card requirement, paid-dependency
+4. **UNKNOWN.** Any unknown material condition (card requirement, paid-dependency
    status, an ``unknown`` or unrecognised exhaustion behaviour, or the total
    absence of quota data) blocks Z0. Per the product safety rule an unknown
    material condition yields ``UNKNOWN`` rather than being guessed into a more
    specific class, so this gate precedes the Z2 temporary/conditional gate.
-4. **Z2 (temporary or conditional).** Trials, new-customer credits, time-bounded
+5. **Z2 (temporary or conditional).** Trials, new-customer credits, time-bounded
    availability windows, eligibility-gated programs, or a quota that requires a
    manual paid upgrade to continue are temporary/conditional, not true $0.
    Reached only when every material condition is known.
-5. **Z0 (true $0).** Only when every billing gate is explicitly clear *and*
+6. **Z0 (true $0).** Only when every billing gate is explicitly clear *and*
    every quota exhaustion behaviour is a safe stop-type.
 
 The closed vocabularies are imported from :mod:`app.models.vocab` so the engine
@@ -148,7 +151,19 @@ def classify(facts: OfferFacts, *, as_of: date | None = None) -> ClassificationR
     as_of = as_of or date.today()
     behaviours = facts.exhaustion_behaviours
 
-    # Gate 1: self-hosted building block -- determined by nature, before billing.
+    # Gate 1: the type itself must be recognised before any semantic branch.
+    if not isinstance(facts.offer_type, str) or facts.offer_type not in OFFER_TYPES:
+        reason = (
+            f"Unrecognised offer type {facts.offer_type!r} cannot be safely classified "
+            "against the closed offer-type vocabulary."
+        )
+        return ClassificationResult(
+            zero_cost_class=UNKNOWN,
+            reasons=(reason,),
+            blocking_conditions=(reason,),
+        )
+
+    # Gate 2: self-hosted building block -- determined by nature, before billing.
     if facts.offer_type in SELF_HOSTED_OFFER_TYPES:
         return ClassificationResult(
             zero_cost_class=Z3_SELF_HOSTED_BUILDING_BLOCK,
@@ -162,7 +177,7 @@ def classify(facts: OfferFacts, *, as_of: date | None = None) -> ClassificationR
             ),
         )
 
-    # Gate 2: definite billing exposure -> Z1 (dominates everything below).
+    # Gate 3: definite billing exposure -> Z1 (dominates everything below).
     billing: list[str] = []
     if facts.requires_card is True:
         billing.append("A payment card is required.")
@@ -177,7 +192,7 @@ def classify(facts: OfferFacts, *, as_of: date | None = None) -> ClassificationR
             blocking_conditions=tuple(billing),
         )
 
-    # Gate 3: any unknown material condition blocks Z0 -> UNKNOWN.
+    # Gate 4: any unknown material condition blocks Z0 -> UNKNOWN.
     # Per the safety rule this precedes the Z2 gate: an unknown condition must
     # yield UNKNOWN rather than being guessed into a temporary/conditional class.
     unknown: list[str] = []
@@ -202,7 +217,7 @@ def classify(facts: OfferFacts, *, as_of: date | None = None) -> ClassificationR
             blocking_conditions=tuple(unknown),
         )
 
-    # Gate 4: temporary or conditional -> Z2 (every material condition is known).
+    # Gate 5: temporary or conditional -> Z2 (every material condition is known).
     conditional: list[str] = []
     if facts.offer_type in TEMPORARY_CONDITIONAL_OFFER_TYPES:
         conditional.append(
@@ -218,7 +233,7 @@ def classify(facts: OfferFacts, *, as_of: date | None = None) -> ClassificationR
             blocking_conditions=tuple(conditional),
         )
 
-    # Gate 5: everything explicitly clear and every quota stops safely -> Z0.
+    # Gate 6: everything explicitly clear and every quota stops safely -> Z0.
     reasons = (
         "No payment card is required.",
         "The offer has no paid dependencies.",
