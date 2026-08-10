@@ -6,7 +6,8 @@
   "branch": "stsyg-fix-nanoid-advisory-eff",
   "base_commit": "cfdf1cd1d26f48dbce4fdbb43cf071ee77c06c41",
   "started_at": "2026-08-10T14:08:44Z",
-  "status": "in_progress",
+  "status": "blocked",
+  "blocking_condition": "The pinned base fails apps/web's own npm run format:check on 22 unchanged files. Formatting them would violate this contract's mandatory lockfile-only product diff, so strict evaluation cannot pass without an owner-approved contract amendment or a separate base-format repair.",
   "objective": "Use npm's configured package-manager resolution to move only apps/web's transitive node_modules/nanoid lock entry from 3.3.16 to 3.3.17, clearing GHSA-2v37-7h3g-55p8 without changing manifests, audit policy, application behavior, or feature acceptance.",
   "base_reproduction": {
     "command": "cd apps/web; npm audit --audit-level=high",
