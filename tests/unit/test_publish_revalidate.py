@@ -9,6 +9,7 @@ from decimal import Decimal
 import pytest
 from app.publish.revalidate import (
     NON_QUOTA_FIELDS,
+    invalid_optional_offer_fields,
     parse_quantity,
     revalidate_quotas,
 )
@@ -381,11 +382,81 @@ def test_empty_value_is_none() -> None:
 
 
 def test_revalidate_skips_non_quota_fields() -> None:
-    result = revalidate_quotas(WORKERS_FACTS, exhaustion_behaviour="request_rejected")
+    facts = {
+        **WORKERS_FACTS,
+        "eligibility": "Personal, non-commercial use only",
+        "commercial_use_allowed": False,
+        "personal_use_allowed": True,
+    }
+    result = revalidate_quotas(facts, exhaustion_behaviour="request_rejected")
     metrics = {q.metric for q in result.quotas}
     assert metrics.isdisjoint(NON_QUOTA_FIELDS)
     assert "requests_per_day" in metrics
     assert "service" not in metrics
+    assert "eligibility" not in metrics
+    assert "commercial_use_allowed" not in metrics
+    assert "personal_use_allowed" not in metrics
+
+
+class _ProtocolImpostor:
+    def __bool__(self) -> bool:
+        raise AssertionError("validation must not invoke truthiness")
+
+    def __eq__(self, other: object) -> bool:
+        raise AssertionError("validation must not invoke equality")
+
+    def __str__(self) -> str:
+        raise AssertionError("validation must not invoke string coercion")
+
+
+class _StringCoercionImpostor:
+    def __str__(self) -> str:
+        raise AssertionError("validation must not invoke string coercion")
+
+
+@pytest.mark.parametrize(
+    "facts",
+    [
+        {},
+        {"eligibility": None},
+        {"eligibility": "Personal use only"},
+        {"eligibility": "  Personal use only  "},
+        {"commercial_use_allowed": None},
+        {"commercial_use_allowed": False},
+        {"commercial_use_allowed": True},
+        {"personal_use_allowed": None},
+        {"personal_use_allowed": False},
+        {"personal_use_allowed": True},
+    ],
+)
+def test_optional_offer_field_validator_accepts_only_valid_structured_values(facts: dict) -> None:
+    assert invalid_optional_offer_fields(facts) == ()
+
+
+@pytest.mark.parametrize(
+    ("field_name", "value"),
+    [
+        ("eligibility", ""),
+        ("eligibility", " \t "),
+        ("eligibility", 0),
+        ("eligibility", True),
+        ("eligibility", _StringCoercionImpostor()),
+        ("eligibility", _ProtocolImpostor()),
+        ("commercial_use_allowed", "false"),
+        ("commercial_use_allowed", 0),
+        ("commercial_use_allowed", 1),
+        ("commercial_use_allowed", _ProtocolImpostor()),
+        ("personal_use_allowed", "true"),
+        ("personal_use_allowed", 0),
+        ("personal_use_allowed", 1),
+        ("personal_use_allowed", _ProtocolImpostor()),
+    ],
+)
+def test_optional_offer_field_validator_rejects_coercion_and_equality_impostors(
+    field_name: str,
+    value: object,
+) -> None:
+    assert invalid_optional_offer_fields({field_name: value}) == (field_name,)
 
 
 def test_revalidate_is_deterministic_and_order_stable() -> None:

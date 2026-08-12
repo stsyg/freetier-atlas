@@ -132,6 +132,12 @@ loss in the caller's scope.
 ### Offer
 
 Service, offer type, Z class, status, eligibility, commercial/personal conditions, card requirement, paid dependencies, dates, visibility, first-seen and last-verified timestamps.
+The publisher copies eligibility and commercial/personal usage rights only from
+explicit structured candidate facts. Missing values remain unknown (`NULL`);
+notes and arbitrary prose are never interpreted as structured rights. These
+three fields are also included in immutable offer-version material facts and
+the version content hash, so a rights change appends a new version while an
+identical republish remains idempotent.
 
 ### Quota
 

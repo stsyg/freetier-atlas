@@ -79,7 +79,12 @@ from .confidence import (
     signals_as_material_fact,
 )
 from .gate import GateConditions, GateDecision, evaluate_gate
-from .revalidate import RevalidatedQuota, RevalidationResult, revalidate_quotas
+from .revalidate import (
+    RevalidatedQuota,
+    RevalidationResult,
+    invalid_optional_offer_fields,
+    revalidate_quotas,
+)
 
 #: The default exhaustion behaviour attached to a quota when a candidate does not
 #: carry a known one. ``"unknown"`` is a valid vocabulary value and, per the Z0
@@ -185,7 +190,8 @@ def _build_conditions(
     complete_ratio, _missing = completeness(facts, revalidation)
     offer_type = facts.get("offer_type")
     offer_type_valid = isinstance(offer_type, str) and offer_type in OFFER_TYPES
-    schema_complete = complete_ratio >= 1.0 and offer_type_valid
+    optional_fields_valid = not invalid_optional_offer_fields(facts)
+    schema_complete = complete_ratio >= 1.0 and offer_type_valid and optional_fields_valid
 
     signals = ConfidenceSignals(
         official=official,
@@ -274,6 +280,9 @@ def _resolve_offer(
         )
     ).scalar_one_or_none()
     if existing is not None:
+        existing.eligibility = facts.get("eligibility")
+        existing.commercial_use_allowed = facts.get("commercial_use_allowed")
+        existing.personal_use_allowed = facts.get("personal_use_allowed")
         existing.requires_card = facts.get("requires_card")
         existing.has_paid_dependencies = facts.get("has_paid_dependencies")
         return existing
@@ -281,6 +290,9 @@ def _resolve_offer(
         service_id=service_id,
         offer_type=offer_type,
         zero_cost_class="UNKNOWN",
+        eligibility=facts.get("eligibility"),
+        commercial_use_allowed=facts.get("commercial_use_allowed"),
+        personal_use_allowed=facts.get("personal_use_allowed"),
         requires_card=facts.get("requires_card"),
         has_paid_dependencies=facts.get("has_paid_dependencies"),
         first_seen_at=now,
@@ -301,6 +313,9 @@ def _stable_material_facts(
 
     return {
         "offer_type": facts.get("offer_type"),
+        "eligibility": facts.get("eligibility"),
+        "commercial_use_allowed": facts.get("commercial_use_allowed"),
+        "personal_use_allowed": facts.get("personal_use_allowed"),
         "requires_card": facts.get("requires_card"),
         "has_paid_dependencies": facts.get("has_paid_dependencies"),
         "exhaustion_behaviour": _exhaustion_of(facts),
