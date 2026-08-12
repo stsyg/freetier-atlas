@@ -2518,3 +2518,15 @@ not 1259 passed / 2 skipped. The CI-shaped run deliberately omits only
 - **Dependency evidence [M]:** Dependency job `94180072895` reported exactly **14 successful steps**; all three Python audits and both Node audits passed. Dependency files remain zero-diff.
 - **Five-check rollup [M]:** Python lint/format/tests, Node format/lint, secret scan, dependency audit, and GitGuardian all passed at the exact implementation head.
 - **Disposition:** Fresh cross-vendor Level-2 evaluator passed. Draft PR #52 remains open and unmerged.
+
+---
+
+## 2026-08-12 17:51 UTC - Builder - F008 complete trailing-prefix token remediation
+
+- **What I got wrong:** The prior scanner continued only across an allowlist of separators, `Cf`, punctuation, and symbols. Combining marks (`Mn`/`Me`) and variation selectors therefore stopped the scan before an earlier sign, allowing measured inputs such as `+\u0301 10K`, `-\u20e0 10K`, `+\ufe0e 10K`, and mixed mark/control chains to publish positive `10000` [M].
+- **Remediation:** `_trailing_prefix_has_sign` now checks sign semantics first, stops at an alphanumeric qualifier-word boundary second, and continues across every other code point without a category allowlist. This also rejects sign-like alphanumeric code points while preserving honest later-word qualifiers such as `pre-paid First: 10K`.
+- **Tests [M]:** Focused real-PostgreSQL parser/publication suite **267 passed**. Full PostgreSQL suite **1518 passed / exactly 2 stack-health skipped**. `scripts/check.ps1 -NodeAudit` passed all gates; offline pytest **1318 passed / 202 skipped**, Python audit clean, Node audit clean.
+- **Mutation evidence [M]:** Stopping on `M*`/`C*` produced **30 failed / 169 passed**; swapping sign/alphanumeric order produced **1 failed / 198 passed**; restoring a one-code-point scan produced **72 failed / 127 passed**; removing the alphanumeric stop produced **1 failed / 198 passed**. Every mutation was restored.
+- **Evaluator disposition:** Fresh cross-vendor Level-2 evaluator **PASS** after code inspection, independent live probes, focused/full PostgreSQL runs, scope review, and qualifier-boundary mutation reasoning.
+- **Scope:** No provider, dependency, classifier, model, migration, workflow, feature-ledger, eligibility, runner-exit, or unrelated behavior change. PR #52 remains draft and unmerged.
+- **Commit / CI:** Pending push and exact-head CI.

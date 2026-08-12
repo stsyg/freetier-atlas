@@ -218,6 +218,19 @@ def test_unicode_named_sign_variants_fail_closed() -> None:
     )
 
 
+def test_sign_semantics_precede_alphanumeric_qualifier_boundary() -> None:
+    sign_like_alphanumeric = next(
+        chr(codepoint)
+        for codepoint in range(sys.maxunicode + 1)
+        if chr(codepoint).isalnum()
+        and any(
+            marker in unicodedata.name(chr(codepoint), "")
+            for marker in ("PLUS", "MINUS", "HYPHEN", "DASH")
+        )
+    )
+    assert parse_quantity(f"{sign_like_alphanumeric} 10K").amount is None
+
+
 @pytest.mark.parametrize(
     "raw",
     [
@@ -238,6 +251,12 @@ def test_unicode_named_sign_variants_fail_closed() -> None:
         "+ : 10K",
         "- ( 10K",
         "+\u200b\u2060:\u200e(\u200310K",
+        "+\u0301 10K",
+        "-\u20e0 10K",
+        "+\ufe0e 10K",
+        "-\ufe0f 10K",
+        "+\u0301\u20e0\ufe0f 10K",
+        "+\u0301\u200b\u2060\u200e 10K",
         "First - 10K",
     ],
 )
@@ -248,9 +267,37 @@ def test_trailing_prefix_sign_token_fails_closed(raw: str) -> None:
     assert q.reset_period is None
 
 
-@pytest.mark.parametrize("raw", [": 10K", "( 10K", "~ 10K", "First: 10K"])
+@pytest.mark.parametrize(
+    "raw",
+    [": 10K", "( 10K", "~ 10K", "First: 10K", "pre-paid First: 10K"],
+)
 def test_separated_qualifier_punctuation_remains_supported(raw: str) -> None:
     assert parse_quantity(raw).amount == Decimal("10000")
+
+
+@pytest.mark.parametrize(
+    "token_material",
+    [
+        "\u0301",  # Mn
+        "\u0903",  # Mc
+        "\u20e0",  # Me
+        "\u0001",  # Cc
+        "\u200b",  # Cf
+        "\ud800",  # Cs
+        "\ue000",  # Co
+        "\u0378",  # Cn
+        "\u0020",  # Zs
+        "\u2028",  # Zl
+        "\u2029",  # Zp
+    ],
+)
+def test_non_word_unicode_categories_cannot_hide_a_sign(token_material: str) -> None:
+    assert parse_quantity(f"+{token_material} 10K").amount is None
+
+
+@pytest.mark.parametrize("combining_mark", [chr(codepoint) for codepoint in range(0x0300, 0x0314)])
+def test_sampled_combining_marks_cannot_hide_a_sign(combining_mark: str) -> None:
+    assert parse_quantity(f"+{combining_mark} 10K").amount is None
 
 
 @pytest.mark.parametrize(

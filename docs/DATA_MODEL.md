@@ -145,6 +145,9 @@ ambiguous `KB`/`MB`, IEC-looking binary units, and repeated magnitude letters.
 If parsing has consumed an uppercase count magnitude, only the explicit compact
 rate units `Kbps`, `Mbps`, and `MBps` may reinterpret it as part of a unit;
 arbitrary alphabetic continuations fail publication determinism.
+Before the number, every trailing non-alphanumeric code point is token material
+that the parser scans through for semantic signs; an alphanumeric qualifier word
+ends that scan. Sign semantics take precedence over that word boundary.
 Qualifier wording remains in official evidence where captured and is not
 promoted to a structured quota claim.
 

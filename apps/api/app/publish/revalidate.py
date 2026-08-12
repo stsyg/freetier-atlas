@@ -110,16 +110,10 @@ def _trailing_prefix_has_sign(prefix: str) -> bool:
     """Scan the trailing non-word prefix token for a semantic sign."""
 
     for character in reversed(prefix):
-        category = unicodedata.category(character)
-        if character.isalnum():
-            return False
         if _is_sign_like(character):
             return True
-        if character.isspace() or category.startswith("Z") or category == "Cf":
-            continue
-        if category[0] in {"P", "S"}:
-            continue
-        return False
+        if character.isalnum():
+            return False
     return False
 
 

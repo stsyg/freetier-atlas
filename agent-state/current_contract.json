@@ -52,7 +52,8 @@
     "A11: text containing more than one numeric token fails closed, including versions, dates, malformed dotted sequences, and ranges; one-token qualifier text remains supported.",
     "A12: a semantic Unicode sign token immediately before arbitrary Unicode whitespace and the sole number fails closed, while generic separated qualifier punctuation such as colon, parenthesis, and tilde remains supported.",
     "A13: the entire trailing prefix token is scanned across Unicode separators, Cf controls, and non-sign punctuation; semantic plus, minus, hyphen, dash, and Pd forms fail closed before any number.",
-    "A14: when K, M, or B was consumed before an alphabetic continuation, only explicit rate-unit tokens Kbps, Mbps, and MBps are accepted as compact units; arbitrary Kfoo/Mfoo/Brequests forms fail closed."
+    "A14: when K, M, or B was consumed before an alphabetic continuation, only explicit rate-unit tokens Kbps, Mbps, and MBps are accepted as compact units; arbitrary Kfoo/Mfoo/Brequests forms fail closed.",
+    "A15: the trailing prefix scanner checks sign semantics before the alphanumeric qualifier boundary and scans across every other code point, so marks, controls, separators, formats, punctuation, symbols, and private-use characters cannot hide an earlier sign."
   ],
   "verification_plan": [
     ".venv/Scripts/pytest.exe -q tests/unit/test_publish_revalidate.py tests/integration/test_publish_pipeline.py with DATABASE_URL targeting isolated PostgreSQL 16",
@@ -72,7 +73,11 @@
     "M8 predicted RED: inspect only ASCII-space separation or skip NFKC/name semantics; Unicode whitespace and normalized-sign tests must fail.",
     "M9 predicted RED: stop the prefix scanner after one code point or stop skipping Cf controls; hidden-sign tests must fail.",
     "M10 predicted RED: remove Pd/dash-name semantics; Unicode dash tests must fail.",
-    "M11 predicted RED: accept arbitrary alphabetic continuations after consumed K/M/B; Kfoo/Mfoo/Brequests tests must fail."
+    "M11 predicted RED: accept arbitrary alphabetic continuations after consumed K/M/B; Kfoo/Mfoo/Brequests tests must fail.",
+    "M12 predicted RED: stop on Unicode M* or C* token material; combining-mark, variation-selector, and control-chain tests must fail.",
+    "M13 predicted RED: check the alphanumeric boundary before sign semantics; the generated sign-like alphanumeric control must fail.",
+    "M14 predicted RED: restore a one-code-point prefix scan; hidden-sign chain tests must fail.",
+    "M15 predicted RED: remove the alphanumeric qualifier boundary; the honest pre-paid First qualifier control must fail."
   ],
   "data_implications": "No schema or migration change. Corrected exact Decimal values change future Quota rows, OfferVersion material_facts, and content_hash for compact SI quota evidence. Existing immutable rows are not rewritten.",
   "security_privacy": "No network, secret, authentication, authorization, or user-controlled URL change.",
