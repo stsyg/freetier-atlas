@@ -58,5 +58,5 @@
   "security_privacy": "No network, secret, authentication, authorization, or user-controlled URL change.",
   "portability": "The integration regression intentionally targets supported PostgreSQL 16 behaviour; no dependency or runtime change.",
   "z0_risk": "None. Classification and product semantics are unchanged.",
-  "status": "builder_complete_pending_evaluation"
+  "status": "evaluator_passed_draft_pr"
 }
