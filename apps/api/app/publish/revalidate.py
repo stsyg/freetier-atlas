@@ -41,6 +41,9 @@ NON_QUOTA_FIELDS: frozenset[str] = frozenset(
     {
         "service",
         "offer_type",
+        "eligibility",
+        "commercial_use_allowed",
+        "personal_use_allowed",
         "requires_card",
         "has_paid_dependencies",
         "exhaustion_behaviour",
@@ -53,6 +56,11 @@ NON_QUOTA_FIELDS: frozenset[str] = frozenset(
         "error",
         "detail",
     }
+)
+
+_OPTIONAL_BOOLEAN_FIELDS: tuple[str, ...] = (
+    "commercial_use_allowed",
+    "personal_use_allowed",
 )
 
 # Numeric token: digits with optional thousands separators / decimal fraction
@@ -182,6 +190,28 @@ class RevalidationResult:
         return not self.unparsed_fields and self.parsed_count > 0
 
 
+def invalid_optional_offer_fields(facts: Mapping[str, Any]) -> tuple[str, ...]:
+    """Return explicit optional offer fields whose runtime types are invalid.
+
+    Exact runtime-type checks are intentional: values such as ``0``, ``"false"``,
+    or objects implementing truthiness/equality/string protocols must not be
+    coerced into structured publication facts.
+    """
+
+    invalid: list[str] = []
+    if "eligibility" in facts:
+        eligibility = facts["eligibility"]
+        if eligibility is not None and (type(eligibility) is not str or not eligibility.strip()):
+            invalid.append("eligibility")
+
+    for field_name in _OPTIONAL_BOOLEAN_FIELDS:
+        if field_name in facts:
+            value = facts[field_name]
+            if value is not None and type(value) is not bool:
+                invalid.append(field_name)
+    return tuple(invalid)
+
+
 def parse_quantity(raw: str | None, *, metric: str | None = None) -> ParsedQuantity:
     """Re-derive one quota text value into a :class:`ParsedQuantity`.
 
@@ -305,6 +335,7 @@ __all__: Sequence[str] = (
     "ParsedQuantity",
     "RevalidatedQuota",
     "RevalidationResult",
+    "invalid_optional_offer_fields",
     "parse_quantity",
     "revalidate_quotas",
 )

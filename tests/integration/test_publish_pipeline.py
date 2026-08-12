@@ -31,13 +31,18 @@ from pathlib import Path
 import pytest
 from alembic import command
 from alembic.config import Config
+from app.adviser.recommend import recommend
+from app.adviser.schema import RecommendationRequest
+from app.adviser.select import gather_candidates
 from app.classify.engine import Z0_TRUE_FREE
 from app.config.loader import load_and_validate
 from app.config.models import ProviderConfig, PublishingSection
+from app.db import get_session
 from app.ingest.config_sync import categorise_services
 from app.ingest.reconcile import reconcile_scan
 from app.ingest.runner import _format_result, build_fixture_fetcher, run_provider_scans
 from app.ingest.scan import _content_hash, _json_safe
+from app.main import app
 from app.models.domain import (
     Candidate,
     Category,
@@ -56,6 +61,7 @@ from app.models.domain import (
 from app.publish.publisher import publish_candidate
 from app.read_api import queries
 from app.read_api import service as read_service
+from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, func, select, text, update
 from sqlalchemy.engine import Engine
 from sqlalchemy.exc import IntegrityError
@@ -349,6 +355,195 @@ def test_material_change_appends_new_version_and_published_change_event(session:
     assert modified[0].new_version_id == versions[1].id
 
 
+@skip_without_db
+def test_structured_eligibility_is_versioned_idempotent_and_updates_offer(
+    session: Session,
+) -> None:
+    provider = _seed_provider(session)
+    source = _seed_source(session, provider, "synthetic-eligibility-versioning", official=True)
+    facts = {
+        **_HIGH_CONFIDENCE_FACTS,
+        "eligibility": "Personal, non-commercial use only",
+        "commercial_use_allowed": False,
+        "personal_use_allowed": True,
+    }
+
+    first = publish_candidate(
+        session,
+        _seed_candidate(session, source, facts),
+        source,
+        PUBLISHING,
+    )
+    identical = publish_candidate(
+        session,
+        _seed_candidate(session, source, dict(facts)),
+        source,
+        PUBLISHING,
+    )
+
+    assert first.version_created is True
+    assert identical.version_created is False
+    assert identical.offer_version_id == first.offer_version_id
+
+    changed_facts = {
+        **facts,
+        "eligibility": "Commercial and personal use allowed",
+        "commercial_use_allowed": True,
+    }
+    changed = publish_candidate(
+        session,
+        _seed_candidate(session, source, changed_facts),
+        source,
+        PUBLISHING,
+    )
+    assert changed.version_created is True
+    assert changed.offer_id == first.offer_id
+
+    offer = session.get(Offer, first.offer_id)
+    assert offer is not None
+    assert offer.eligibility == "Commercial and personal use allowed"
+    assert offer.commercial_use_allowed is True
+    assert offer.personal_use_allowed is True
+
+    versions = list(
+        session.execute(
+            select(OfferVersion)
+            .where(OfferVersion.offer_id == offer.id)
+            .order_by(OfferVersion.version_number)
+        ).scalars()
+    )
+    assert [version.version_number for version in versions] == [1, 2]
+    assert versions[0].content_hash != versions[1].content_hash
+    assert versions[0].material_facts["eligibility"] == "Personal, non-commercial use only"
+    assert versions[0].material_facts["commercial_use_allowed"] is False
+    assert versions[0].material_facts["personal_use_allowed"] is True
+    assert versions[1].material_facts["eligibility"] == "Commercial and personal use allowed"
+    assert versions[1].material_facts["commercial_use_allowed"] is True
+    assert versions[1].material_facts["personal_use_allowed"] is True
+
+
+@skip_without_db
+def test_personal_only_offer_round_trips_to_read_api_and_adviser(session: Session) -> None:
+    provider = _seed_provider(session)
+    source = _seed_source(session, provider, "synthetic-personal-only", official=True)
+    facts = {
+        **_HIGH_CONFIDENCE_FACTS,
+        "eligibility": "Personal, non-commercial use only",
+        "commercial_use_allowed": False,
+        "personal_use_allowed": True,
+        "storage": "10 GB",
+    }
+    outcome = publish_candidate(
+        session,
+        _seed_candidate(session, source, facts),
+        source,
+        PUBLISHING,
+        service_categories={"Synthetic Service": "object-file-storage"},
+    )
+
+    assert outcome.decision == "publish"
+    offer = session.get(Offer, outcome.offer_id)
+    version = session.get(OfferVersion, outcome.offer_version_id)
+    assert offer is not None
+    assert version is not None
+    assert offer.zero_cost_class == Z0_TRUE_FREE
+    assert offer.eligibility == "Personal, non-commercial use only"
+    assert offer.commercial_use_allowed is False
+    assert offer.personal_use_allowed is True
+    assert version.material_facts["eligibility"] == "Personal, non-commercial use only"
+    assert version.material_facts["commercial_use_allowed"] is False
+    assert version.material_facts["personal_use_allowed"] is True
+
+    quota_metrics = set(
+        session.execute(select(Quota.metric).where(Quota.offer_version_id == version.id)).scalars()
+    )
+    assert quota_metrics.isdisjoint(
+        {"eligibility", "commercial_use_allowed", "personal_use_allowed"}
+    )
+
+    detail = read_service.serialize_offer_detail(
+        offer,
+        queries.category_map(session, [offer.service.category_id]),
+    )
+    assert detail.eligibility == "Personal, non-commercial use only"
+    assert detail.commercial_use_allowed is False
+    assert detail.personal_use_allowed is True
+    app.dependency_overrides[get_session] = lambda: session
+    try:
+        response = TestClient(app).get(f"/catalogue/offers/{offer.id}")
+    finally:
+        app.dependency_overrides.clear()
+    assert response.status_code == 200
+    response_body = response.json()
+    assert response_body["eligibility"] == "Personal, non-commercial use only"
+    assert response_body["commercial_use_allowed"] is False
+    assert response_body["personal_use_allowed"] is True
+
+    def request(*, commercial_use: bool) -> RecommendationRequest:
+        return RecommendationRequest.model_validate(
+            {
+                "workload_name": "Personal eligibility regression",
+                "requirements": [
+                    {
+                        "category": "object-file-storage",
+                        "demands": [
+                            {
+                                "metric": "storage",
+                                "amount": "1",
+                                "unit": "GB",
+                            }
+                        ],
+                        "constraints": {
+                            "commercial_use": commercial_use,
+                            "personal_use_ok": True,
+                        },
+                    }
+                ],
+            }
+        )
+
+    pool = gather_candidates(session)
+    selected_candidate = next(candidate for candidate in pool.z0 if candidate.offer_id == offer.id)
+    assert selected_candidate.commercial_use_allowed is False
+    assert selected_candidate.personal_use_allowed is True
+    personal = recommend(request(commercial_use=False), pool)
+    assert personal.fully_zero_cost is True
+    assert [component.candidate.offer_id for component in personal.components] == [offer.id]
+
+    commercial = recommend(request(commercial_use=True), pool)
+    assert commercial.fully_zero_cost is False
+    assert commercial.components == ()
+    assert commercial.impossible
+    assert "commercial use" in commercial.impossible[0].blocking_reason.lower()
+
+
+@skip_without_db
+def test_notes_alone_do_not_infer_structured_eligibility(session: Session) -> None:
+    provider = _seed_provider(session)
+    source = _seed_source(session, provider, "synthetic-notes-only", official=True)
+    facts = {
+        **_HIGH_CONFIDENCE_FACTS,
+        "notes": "Personal, non-commercial use only",
+    }
+    outcome = publish_candidate(
+        session,
+        _seed_candidate(session, source, facts),
+        source,
+        PUBLISHING,
+    )
+
+    offer = session.get(Offer, outcome.offer_id)
+    version = session.get(OfferVersion, outcome.offer_version_id)
+    assert offer is not None
+    assert version is not None
+    assert offer.eligibility is None
+    assert offer.commercial_use_allowed is None
+    assert offer.personal_use_allowed is None
+    assert version.material_facts["eligibility"] is None
+    assert version.material_facts["commercial_use_allowed"] is None
+    assert version.material_facts["personal_use_allowed"] is None
+
+
 # --- (d) contradiction ------------------------------------------------------
 
 
@@ -423,6 +618,13 @@ def test_runner_reviews_invalid_offer_type_and_publishes_valid_peer(
         "service": "Valid Type Service",
         "offer_type": "always_free",
     }
+    invalid_eligibility_facts = {
+        **_HIGH_CONFIDENCE_FACTS,
+        "service": "Invalid Eligibility Service",
+        "eligibility": "   ",
+        "commercial_use_allowed": "false",
+        "personal_use_allowed": 1,
+    }
 
     def seed_mixed_scan(scanned_source: Source, _fetcher, active_session: Session) -> ScanRun:
         scan_run = ScanRun(
@@ -439,7 +641,7 @@ def test_runner_reviews_invalid_offer_type_and_publishes_valid_peer(
             .where(Snapshot.source_id == scanned_source.id)
             .order_by(Snapshot.id.desc())
         ).scalar_one()
-        for facts in (invalid_facts, valid_facts):
+        for facts in (invalid_facts, invalid_eligibility_facts, valid_facts):
             candidate = Candidate(
                 scan_run_id=scan_run.id,
                 source_id=scanned_source.id,
@@ -479,27 +681,39 @@ def test_runner_reviews_invalid_offer_type_and_publishes_valid_peer(
     assert len(result.sources) == 1
     outcome = result.sources[0]
     assert outcome.publish_error is None
-    assert outcome.reviewed == 1
+    assert outcome.reviewed == 2
     assert outcome.published == 1
-    assert result.total_reviewed == 1
+    assert result.total_reviewed == 2
     assert result.total_published == 1
     output = _format_result(result)
     assert "published=1" in output
-    assert "reviewed=1" in output
+    assert "reviewed=2" in output
 
-    review = session.execute(
-        select(ReviewItem).where(
-            ReviewItem.scan_run_id == outcome.scan_run_id,
-            ReviewItem.admin_disposition == "pending",
-        )
-    ).scalar_one()
-    assert review.candidate_facts["offer_type"] == "FREE_FOREVER"
-    assert review.evidence_conflict["failed_conditions"] == ["schema_complete"]
+    reviews = list(
+        session.execute(
+            select(ReviewItem).where(
+                ReviewItem.scan_run_id == outcome.scan_run_id,
+                ReviewItem.admin_disposition == "pending",
+            )
+        ).scalars()
+    )
+    assert len(reviews) == 2
+    reviews_by_service = {review.candidate_facts["service"]: review for review in reviews}
+    assert (
+        reviews_by_service["Invalid Type Service"].candidate_facts["offer_type"] == "FREE_FOREVER"
+    )
+    assert reviews_by_service["Invalid Type Service"].evidence_conflict["failed_conditions"] == [
+        "schema_complete"
+    ]
+    eligibility_review = reviews_by_service["Invalid Eligibility Service"]
+    assert eligibility_review.candidate_facts["commercial_use_allowed"] == "false"
+    assert eligibility_review.evidence_conflict["failed_conditions"] == ["schema_complete"]
 
-    invalid_service = session.execute(
-        select(Service).where(Service.canonical_name == "Invalid Type Service")
-    ).scalar_one_or_none()
-    assert invalid_service is None
+    for invalid_name in ("Invalid Type Service", "Invalid Eligibility Service"):
+        invalid_service = session.execute(
+            select(Service).where(Service.canonical_name == invalid_name)
+        ).scalar_one_or_none()
+        assert invalid_service is None
 
     valid_service = session.execute(
         select(Service).where(Service.canonical_name == "Valid Type Service")
@@ -735,6 +949,9 @@ def test_compact_decimal_suffixes_persist_exact_quota_amounts(session: Session) 
         key: version.material_facts[key]
         for key in (
             "offer_type",
+            "eligibility",
+            "commercial_use_allowed",
+            "personal_use_allowed",
             "requires_card",
             "has_paid_dependencies",
             "exhaustion_behaviour",

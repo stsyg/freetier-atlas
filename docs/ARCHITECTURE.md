@@ -76,6 +76,9 @@ Automatic publication requires:
 - approved official source
 - schema-complete candidate, including an exact case-sensitive `offer_type`
   member from the canonical closed vocabulary
+- optional structured eligibility facts are type-checked without coercion:
+  `eligibility` is absent, `null`, or a non-empty string, while commercial and
+  personal usage flags are absent, `null`, or exact booleans
 - deterministic parsing of material numbers
 - reproducible fetch/extraction
 - evidence for material claims
@@ -86,6 +89,9 @@ Automatic publication requires:
 The gate is implemented in `apps/api/app/publish/` (F005): `revalidate.py`
 deterministically re-derives the material numbers from the persisted facts,
 including directly-adjacent uppercase decimal count suffixes (`K`, `M`, `B`).
+Eligibility text and commercial/personal usage flags are explicitly excluded
+from quota revalidation. Invalid explicit types fail the schema gate; notes and
+other prose are never promoted into structured usage rights.
 Unsupported compact forms (for example lowercase, separated, binary-looking,
 unknown, repeated, signed, scientific, or multi-number text) fail the
 deterministic gate instead of publishing their leading digits. Multi-letter
