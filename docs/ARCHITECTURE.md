@@ -91,11 +91,15 @@ unknown, repeated, signed, scientific, or multi-number text) fail the
 deterministic gate instead of publishing their leading digits. Multi-letter
 ordinary units remain supported in compact form (`ms`, `GB`, `Mbps`, `Kbps`,
 `kB`); two-letter all-uppercase `KB`/`MB`, IEC-looking `KiB`/`MiB`/`GiB`, and
-all-`KMB` repetitions are withheld as ambiguous. Sign forms are rejected both
-when adjacent and when separated from the number by Unicode whitespace; generic
-qualifier punctuation such as colons and parentheses remains supported. Prefix
-qualifiers remain only in retained raw evidence text; the quota schema does not
-represent qualifier semantics separately.
+all-`KMB` repetitions are withheld as ambiguous. When the numeric matcher has
+already consumed `K`, `M`, or `B`, an alphabetic continuation is accepted only
+for the explicit rate-unit tokens `Kbps`, `Mbps`, and `MBps`; arbitrary forms
+such as `Kfoo`, `Mfoo`, and `Brequests` are withheld. Sign forms are rejected
+both when adjacent and when hidden in the trailing prefix token by Unicode
+separators, format controls, or qualifier punctuation; generic qualifier
+punctuation without a sign remains supported. Prefix qualifiers remain only in
+retained raw evidence text; the quota schema does not represent qualifier
+semantics separately.
 `confidence.py` scores the signals above (weighted, deterministic) plus
 completeness/freshness, and `gate.py` routes each candidate to **publish**
 (all hard conditions met and confidence at/above the automatic threshold),

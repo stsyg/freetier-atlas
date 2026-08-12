@@ -2497,3 +2497,16 @@ not 1259 passed / 2 skipped. The CI-shaped run deliberately omits only
 - **Disposition:** Fresh Level-2 evaluator passed. Draft PR #52 remains open, draft, and unmerged.
 
 ---
+
+## 2026-08-12 16:00 UTC - Builder - F008 bounded quota-token remediation
+
+- **What I got wrong:** The prior prefix check inspected only one trailing code point. Unicode `Cf` controls such as ZWSP, word joiner, bidi marks/embeddings/PDF, and BOM hid an earlier sign; Unicode `Pd` dashes also escaped the semantic-name check. The compact-unit fallback additionally reinterpreted arbitrary `K/M/B` continuations such as `Kfoo`, `Mfoo`, and `Brequests` as ordinary units. All measured forms reproduced as positive `10000` or amount `10` before editing [M].
+- **Remediation:** Added a bounded backward scan of the trailing prefix token. It crosses Unicode separators, `Cf` controls, and non-sign punctuation; stops at an alphanumeric qualifier word; and rejects NFKC-normalized plus/minus/hyphen/dash names or category `Pd`. Compact units now use two branches: ordinary multi-letter units retain existing behavior when no magnitude was consumed, while a consumed `K/M/B` accepts only explicit `Kbps`, `Mbps`, or `MBps` rate-unit tokens.
+- **Tests [M]:** Focused real-PostgreSQL parser/publication suite **225 passed**. Full PostgreSQL suite **1476 passed / exactly 2 stack-health skipped**. `scripts/check.ps1 -NodeAudit` passed all gates; offline pytest **1279 passed / 199 skipped**, Python audit clean, Node audit clean.
+- **Mutation evidence [M]:** Removing `Cf`/separator skipping produced **9 failed / 171 passed**; removing `Pd` and dash/hyphen-name semantics produced **5 failed / 175 passed**; stopping the scanner after one code point produced **54 failed / 126 passed**; accepting arbitrary alphabetic continuations after consumed `K/M/B` produced **22 failed / 158 passed**. Every mutation was restored before final validation.
+- **Adversarial additions:** Added combined `+\u200b\u2060:\u200e(\u200310K` and compact siblings `Krequests`/`Brequests`, plus measured hidden-sign families, compounds, punctuation wrappers, and programmatic Unicode-name/category samples. Live unsupported publications create no Offer, OfferVersion, or Quota.
+- **Evaluator disposition:** Fresh cross-vendor Level-2 evaluator **PASS** after independent sign/control/punctuation, unit-boundary, exact persistence, scope, documentation, mutation, focused, and full-suite checks.
+- **Scope:** No provider, dependency, classifier, model, migration, workflow, feature-ledger, eligibility, runner-exit, or unrelated behavior change. PR #52 remains draft and unmerged.
+- **Commit / CI:** Pending push and exact-head CI.
+
+---

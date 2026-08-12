@@ -202,19 +202,89 @@ def test_unicode_named_sign_variants_fail_closed() -> None:
     sign_variants = {
         chr(codepoint)
         for codepoint in range(sys.maxunicode + 1)
-        if any(
-            marker in unicodedata.name(chr(codepoint), "")
-            for marker in ("PLUS", "MINUS", "HYPHEN-MINUS")
+        if (
+            unicodedata.category(chr(codepoint)) == "Pd"
+            or any(
+                marker in unicodedata.name(chr(codepoint), "")
+                for marker in ("PLUS", "MINUS", "HYPHEN", "DASH")
+            )
         )
         and not chr(codepoint).isspace()
+        and not chr(codepoint).isalnum()
     }
     assert {"+", "-", "\ufe62", "\u2212", "\u2795", "\u2796"} <= sign_variants
-    assert all(parse_quantity(f"{sign}\u200310K").amount is None for sign in sign_variants)
+    assert all(
+        parse_quantity(f"{sign}\u200b\u2060\u200310K").amount is None for sign in sign_variants
+    )
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        "+\u200b 10K",
+        "-\u2060 10K",
+        "+\u200e 10K",
+        "-\u200f 10K",
+        "+\u202a\u202c 10K",
+        "-\ufeff 10K",
+        "\u2012 10K",
+        "\u2013 10K",
+        "\u2014 10K",
+        "+/- 10K",
+        "-/+ 10K",
+        "++ 10K",
+        "-- 10K",
+        "\u00b1 10K",
+        "+ : 10K",
+        "- ( 10K",
+        "+\u200b\u2060:\u200e(\u200310K",
+        "First - 10K",
+    ],
+)
+def test_trailing_prefix_sign_token_fails_closed(raw: str) -> None:
+    q = parse_quantity(raw)
+    assert q.amount is None
+    assert q.unit is None
+    assert q.reset_period is None
 
 
 @pytest.mark.parametrize("raw", [": 10K", "( 10K", "~ 10K", "First: 10K"])
 def test_separated_qualifier_punctuation_remains_supported(raw: str) -> None:
     assert parse_quantity(raw).amount == Decimal("10000")
+
+
+@pytest.mark.parametrize(
+    ("raw", "amount", "unit"),
+    [
+        ("10ms", Decimal("10"), "ms"),
+        ("10GB", Decimal("10"), "GB"),
+        ("10Mbps", Decimal("10"), "Mbps"),
+        ("10Kbps", Decimal("10"), "Kbps"),
+        ("10kB", Decimal("10"), "kB"),
+        ("10MBps", Decimal("10"), "MBps"),
+        ("10MB", None, None),
+        ("10KB", None, None),
+        ("10KiB", None, None),
+        ("10MiB", None, None),
+        ("10GiB", None, None),
+        ("10T", None, None),
+        ("10Q", None, None),
+        ("10MM", None, None),
+        ("10KK", None, None),
+        ("10Kfoo", None, None),
+        ("10Mfoo", None, None),
+        ("10Brequests", None, None),
+        ("10Krequests", None, None),
+    ],
+)
+def test_compact_unit_token_boundary(
+    raw: str,
+    amount: Decimal | None,
+    unit: str | None,
+) -> None:
+    q = parse_quantity(raw)
+    assert q.amount == amount
+    assert q.unit == unit
 
 
 @pytest.mark.parametrize(
@@ -316,6 +386,10 @@ def test_revalidate_reports_unparsed_numeric_field() -> None:
         "+ 10K",
         "\ufe62\u200910K",
         "\u2796\t10K",
+        "+\u200b\u2060:\u200e(\u200310K",
+        "\u2014 10K",
+        "10Kfoo",
+        "10Brequests",
         "Version 2: 10K",
         "10K to 20K",
     ],

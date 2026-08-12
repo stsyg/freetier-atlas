@@ -69,6 +69,7 @@ _SEPARATED_MAGNITUDE = re.compile(
 _GROUPED_NUMBER = re.compile(r"\d{1,3}(?:,\d{3})+(?:\.\d+)?")
 _ALPHA_TOKEN = re.compile(r"[^\W\d_]+")
 _BINARY_UNIT = re.compile(r"^[A-Za-z]iB$")
+_MAGNITUDE_CONTINUATION_UNITS = frozenset({"Kbps", "Mbps", "MBps"})
 _MAGNITUDE_MULTIPLIERS: Mapping[str, Decimal] = {
     "K": Decimal("1000"),
     "M": Decimal("1000000"),
@@ -79,9 +80,11 @@ _MAGNITUDE_MULTIPLIERS: Mapping[str, Decimal] = {
 _PER_SUFFIX = re.compile(r"_per_([a-z]+)$")
 
 
-def _is_supported_compact_unit(token: str) -> bool:
+def _is_supported_compact_unit(token: str, *, consumed_magnitude: bool) -> bool:
     """Whether an adjacent alphabetic token is unambiguously an ordinary unit."""
 
+    if consumed_magnitude:
+        return token in _MAGNITUDE_CONTINUATION_UNITS
     if len(token) < 2:
         return False
     if _BINARY_UNIT.fullmatch(token):
@@ -94,14 +97,29 @@ def _is_sign_like(character: str) -> bool:
 
     normalized = unicodedata.normalize("NFKC", character)
     for candidate in character + normalized:
+        category = unicodedata.category(candidate)
         name = unicodedata.name(candidate, "")
-        if (
-            candidate in {"+", "-", "\u2212"}
-            or "PLUS" in name
-            or "MINUS" in name
-            or name.endswith("HYPHEN")
+        if category == "Pd" or any(
+            marker in name for marker in ("PLUS", "MINUS", "HYPHEN", "DASH")
         ):
             return True
+    return False
+
+
+def _trailing_prefix_has_sign(prefix: str) -> bool:
+    """Scan the trailing non-word prefix token for a semantic sign."""
+
+    for character in reversed(prefix):
+        category = unicodedata.category(character)
+        if character.isalnum():
+            return False
+        if _is_sign_like(character):
+            return True
+        if character.isspace() or category.startswith("Z") or category == "Cf":
+            continue
+        if category[0] in {"P", "S"}:
+            continue
+        return False
     return False
 
 
@@ -191,15 +209,17 @@ def parse_quantity(raw: str | None, *, metric: str | None = None) -> ParsedQuant
     rest = text
     prefix = text[: match.start()]
     before = text[match.start() - 1] if match.start() else ""
-    prefix_token = prefix.rstrip()
-    prefix_last = prefix_token[-1] if prefix_token else ""
     after_token = text[match.end() :]
     magnitude = match.group("magnitude")
     alpha_match = _ALPHA_TOKEN.match(after_token)
     compact_unit: str | None = None
     if alpha_match is not None:
+        consumed_magnitude = magnitude is not None
         compact_unit = (magnitude or "") + alpha_match.group(0)
-        if not _is_supported_compact_unit(compact_unit):
+        if not _is_supported_compact_unit(
+            compact_unit,
+            consumed_magnitude=consumed_magnitude,
+        ):
             return ParsedQuantity(raw=text, amount=None, unit=None, reset_period=None)
         after_token = after_token[alpha_match.end() :]
         magnitude = None
@@ -210,7 +230,7 @@ def parse_quantity(raw: str | None, *, metric: str | None = None) -> ParsedQuant
     # are outside the supported grammar and must not degrade to leading digits.
     if (
         (before and unicodedata.category(before)[0] in {"P", "S"})
-        or (prefix_last and _is_sign_like(prefix_last))
+        or _trailing_prefix_has_sign(prefix)
         or (before and before.isalnum())
         or (
             magnitude is not None
