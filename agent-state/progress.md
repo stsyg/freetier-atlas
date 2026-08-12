@@ -2558,3 +2558,19 @@ not 1259 passed / 2 skipped. The CI-shaped run deliberately omits only
 - **Evaluator disposition:** pending owner-commissioned fresh Level-2 evaluation; builder did not modify `agent-state/evaluation.json`.
 - **Commit / PR / CI:** Pending builder commit, push, draft PR, exact remote SHA, and five-check CI rollup.
 - **Recommended next action:** Owner commissions the fresh Level-2 evaluation on the draft PR; do not merge.
+
+---
+
+## 2026-08-12 22:34 UTC - Builder - F008 deterministic reconcile heap-order prerequisite
+
+- **What I got wrong:** I accepted provider-owned `VACUUM FULL` teardown as load-bearing cleanup for a reconcile regression. The later plain-`VACUUM` pass showed that claim was unproven; the real defect was that the regression did not own a deterministic physical-order precondition. During this remediation I also first asserted that the lowest duplicate ID was last in the whole scan, overlooking an unrelated lower-ID candidate; the final guard separately proves the entire heap is descending and the relevant duplicate order [M].
+- **Remediation:** Replaced the no-op UPDATE relocation assumption with a uniquely named test-only index on `candidate (id DESC)` plus transactional `CLUSTER`. Both affected regressions assert the whole candidate heap is descending under a forced sequential scan and that the lower duplicate ID is visited after its higher-ID peer. Removed `_BLOATED_TABLES`, `_reclaim_dead_space`, `VACUUM FULL`, and the cross-module cleanup rationale from the GitHub integration module. Provider documentation now assigns the precondition to the reconcile regression and explicitly rejects heap order as product semantics.
+- **Old-failure proof [M]:** On PostgreSQL 16, the same no-op indexed UPDATE moved from `(99,4)` to `(100,1)` on a clean heap but from `(99,4)` backward to `(0,2)` after dead-slot priming and plain `VACUUM`.
+- **Repeated-order proof [M]:** On one dirty/shared PostgreSQL 16 database, GitHub -> reconcile passed **23/23** three times, reconcile -> GitHub passed **23/23** three times, and isolated reconcile passed **13/13** three times without provider cleanup.
+- **Rollback proof [M]:** Before and after the ordered-withdrawal regression, committed `candidate` rows remained **0 -> 0** and `ix_candidate_test_heap_*` indexes remained **() -> ()**.
+- **Mutation evidence [M]:** DESC -> ASC failed the whole-heap precondition; skipping the helper failed the precondition on a fresh database; an external production copy without the withdrawal loop's `ORDER BY Candidate.id` passed both preconditions then failed `previous_candidate_id`; ordering by parity before ID failed the whole-heap guard across unrelated candidates. Every tracked mutation was restored.
+- **Validation [M]:** Full real-database suite **1545 passed / exactly 2 stack-health skipped**. `scripts/check.ps1 -NodeAudit` passed Ruff lint/format, the same real-database suite, Prettier, ESLint, secret scan, URL allowlist, Python audit, and Node audit.
+- **Scope:** Production `apps/**`, migrations, config, fixtures, dependencies, workflows, and `agent-state/feature_list.json` are zero-diff.
+- **Evaluator disposition:** Fresh cross-vendor Level-1 evaluator **PASS** after independent PostgreSQL 16 order repetition, mutation-equivalent probes, rollback/index-residue inspection, planner/identifier/concurrency review, documentation grounding, and production zero-diff verification.
+- **Commit / PR:** Implementation commit `290e3d4a228007bca0514308bd671a083c972eee`; draft PR opened at the first push and remains unmerged.
+- **Recommended next action:** Keep the PR draft until all five CI checks are green; do not merge or promote.

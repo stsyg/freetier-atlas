@@ -36,6 +36,7 @@ import os
 from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from uuid import uuid4
 
 import pytest
 from alembic import command
@@ -393,28 +394,32 @@ def _duplicate_rows(session: Session, scan_run_id: int) -> list[Candidate]:
     return [row for row in rows if keys.count(row.candidate_key) > 1]
 
 
-def _relocate_candidate_tuple(session: Session, candidate_id: int) -> None:
-    """Force Postgres to rewrite a candidate row, moving it in the heap.
+def _order_candidate_heap_by_descending_id(session: Session) -> None:
+    """Rewrite the candidate heap into a known adversarial physical order.
 
-    A no-op UPDATE still writes a new tuple version at the end of the heap, so a
-    sequential scan afterwards returns the rows in a different physical order.
-    That is what turns an unordered ``select(Candidate)`` into a nondeterministic
-    one.
+    The index and ``CLUSTER`` rewrite are transactional in PostgreSQL. The test
+    fixture rolls both back, so this establishes its own precondition without
+    leaving schema or heap changes for another test module to repair.
     """
 
-    session.execute(
-        text("UPDATE candidate SET provider = provider || '' WHERE id = :candidate_id"),
-        {"candidate_id": candidate_id},
-    )
+    index_name = f"ix_candidate_test_heap_{uuid4().hex}"
+    session.execute(text(f"CREATE INDEX {index_name} ON candidate (id DESC)"))
+    session.execute(text(f"CLUSTER candidate USING {index_name}"))
     session.expire_all()
 
 
-def _heap_order(session: Session, scan_run_id: int) -> list[int]:
+def _heap_order(session: Session) -> list[int]:
+    session.execute(
+        text(
+            "SET LOCAL enable_indexscan = off; "
+            "SET LOCAL enable_indexonlyscan = off; "
+            "SET LOCAL enable_bitmapscan = off"
+        )
+    )
     return [
         row_id
         for (row_id,) in session.execute(
-            text("SELECT id FROM candidate WHERE scan_run_id = :scan_run_id"),
-            {"scan_run_id": scan_run_id},
+            text("SELECT id FROM candidate"),
         ).all()
     ]
 
@@ -428,8 +433,7 @@ def test_an_identity_listed_twice_in_one_scan_is_withdrawn_exactly_once(session:
     keyed on the candidate *row* rather than on the identity lets a re-invocation
     withdraw the same identity a second time through the other row -- doubling
     the change history for a single real event. Reproduced end to end: the heap
-    order is perturbed between the two reconciliations exactly as an ordinary row
-    UPDATE would.
+    order is made adversarial between the two reconciliations.
     """
 
     source = _make_source(session, endpoint=ENDPOINT_A)
@@ -452,7 +456,16 @@ def test_an_identity_listed_twice_in_one_scan_is_withdrawn_exactly_once(session:
     second = run_scan(source, _fetcher(ENDPOINT_A, _document(requires_card=False)), session)
     assert reconcile_scan(second, source, session).withdrawn == 1
 
-    _relocate_candidate_tuple(session, duplicates[0].id)
+    lowest_id = min(row.id for row in duplicates)
+    _order_candidate_heap_by_descending_id(session)
+    heap_order = _heap_order(session)
+    assert heap_order == sorted(heap_order, reverse=True), (
+        "expected descending-id CLUSTER to order the entire candidate heap"
+    )
+    duplicate_order = [row_id for row_id in heap_order if row_id in {row.id for row in duplicates}]
+    assert duplicate_order[-1] == lowest_id, (
+        "expected descending-id CLUSTER to put the lowest candidate id last"
+    )
 
     assert reconcile_scan(second, source, session).withdrawn == 0
 
@@ -493,10 +506,15 @@ def test_the_withdrawal_loop_is_ordered_by_candidate_id(session: Session) -> Non
     assert len(duplicates) == 2
     lowest_id = min(row.id for row in duplicates)
 
-    # Perturb the heap so an unordered scan would visit the *other* row first.
-    _relocate_candidate_tuple(session, lowest_id)
-    assert _heap_order(session, first.id)[-1] == lowest_id, (
-        "expected the updated tuple to be relocated to the end of the heap"
+    # Rewrite the heap so an unordered scan would visit the higher id first.
+    _order_candidate_heap_by_descending_id(session)
+    heap_order = _heap_order(session)
+    assert heap_order == sorted(heap_order, reverse=True), (
+        "expected descending-id CLUSTER to order the entire candidate heap"
+    )
+    duplicate_order = [row_id for row_id in heap_order if row_id in {row.id for row in duplicates}]
+    assert duplicate_order[-1] == lowest_id, (
+        "expected descending-id CLUSTER to put the lowest candidate id last"
     )
 
     second = run_scan(source, _fetcher(ENDPOINT_A, _document(requires_card=False)), session)
