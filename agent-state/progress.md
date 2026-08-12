@@ -2424,3 +2424,119 @@ not 1259 passed / 2 skipped. The CI-shaped run deliberately omits only
   **1276 passed, 2 skipped, 1 warning**. `scripts/check.ps1 -NodeAudit`:
   **ALL CHECKS PASSED**, including the same Pytest count, Python dependency
   audit, and Node dependency audit.
+## 2026-08-08 01:12 UTC — Builder — F008 prerequisite: compact quota magnitudes
+
+- **Objective:** Fix the generic deterministic quota parser so directly-adjacent uppercase decimal count suffixes `K`, `M`, and `B` persist exact magnitudes, while unsupported compact numeric forms block publication rather than publishing leading digits.
+- **Contract:** `agent-state/current_contract.json`
+- **Baseline defect reproduced [M]:** On untouched `origin/main` `cfdf1cd1d26f48dbce4fdbb43cf071ee77c06c41`, `parse_quantity("10K"|"2K"|"1M")` returned `10/2/1`. A real PostgreSQL 16 publisher probe persisted those exact false `Quota.amount` values while returning `decision=publish`; baseline full DB suite was **1259 passed / 2 skipped**.
+- **What I got wrong:** The first implementation guarded separated suffixes only before whitespace, `/`, or end-of-text, so `10 k`, `10 K, then paid`, and `10 K.` still published amount `10`. The first fresh Level-2 evaluator rejected it. The second guard still missed Unicode format separators such as ZWSP and soft hyphen that survive HTML extraction, and the second evaluator rejected it. Both findings were fixed before the passing evaluation.
+- **Work completed:** Added exact `Decimal` multipliers for adjacent uppercase `K/M/B`; consumed the suffix inside the numeric token before unit/reset parsing; retained search-based qualifier prefixes and raw text; rejected lowercase, separated, binary-looking, unknown, repeated, signed (ASCII and common Unicode), scientific, malformed-comma, and invalid token-continuation forms. Added Unicode-aware separated-suffix detection and exact live-publication assertions for persisted quotas, material facts, content hash, and unsupported no-publication behavior. Narrowly documented the parser boundary and the fact that qualifier semantics remain only in raw evidence.
+- **Files changed:** `apps/api/app/publish/revalidate.py`; `tests/unit/test_publish_revalidate.py`; `tests/integration/test_publish_pipeline.py`; `docs/ARCHITECTURE.md`; `docs/DATA_MODEL.md`; `agent-state/current_contract.json`; this strict-prefix append.
+- **Tests and checks run [M]:** focused PostgreSQL suite **90 passed**; full PostgreSQL suite **1325 passed / exactly 2 stack-health skipped**; `scripts/check.ps1 -NodeAudit` exited 0 with all gates passing (offline pytest **1156 passed / 171 skipped**, Ruff, Prettier, ESLint, secret scan, URL allowlist, pip-audit clean, npm audit 0). Dependency manifests and every contract out-of-scope path are zero-diff from `origin/main`.
+- **Mutation evidence [M]:** M1 removed multiplier application and produced **9 failed / 1 passed** in the focused selector, including live persisted `10` instead of `10000`. M2 relaxed the post-suffix token boundary and produced **13 failed / 7 passed**, accepting binary/unknown/multiple/scientific forms. Final evaluator additionally killed separated-guard, sign-guard, adjacent-letter, lowercase, and comma-grouping mutations.
+- **Evaluator disposition:** passed (fresh-context Level 2 after two fail/fix rounds).
+- **Evaluation evidence [M]:** Final evaluator independently ran focused **86 passed** before the final Unicode-sign hardening, full DB **1321 passed / 2 skipped**, a 0x20–0x30000 boundary sweep, live exact quota/material-fact/content-hash probes, live unsupported no-row probes, mutation checks, docs review, and zero-diff checks; strict verdict **PASS**. Builder reran after the final hardening: focused **90 passed**, full DB **1325 passed / 2 skipped**, all repository checks green.
+- **Commit SHA:** pending first commit.
+- **Known issues or risks:** Existing immutable bad rows are not rewritten; future publication produces corrected versions. Standard `check.ps1` has no `DATABASE_URL`, so its integration skips remain expected; the required real-DB evidence came from the isolated PostgreSQL run and CI must supply PostgreSQL. No feature-ledger pass flag was changed.
+- **Recommended next action:** Review the draft PR and run its real-PostgreSQL CI; do not merge automatically.
+
+---
+## 2026-08-08 01:21 UTC — Builder — F008 prerequisite CI handoff
+
+- **Objective:** Record first pushed-commit and draft-PR evidence for the compact quota magnitude prerequisite.
+- **Contract:** `agent-state/current_contract.json`
+- **Work completed [M]:** Pushed implementation commit `8871cbae8f67d6d6cdc8384250aabda2efe27d81` and opened the pull request as a draft. GitHub's real-PostgreSQL Python job ran **13 reported steps**, all successful, at matching head SHA `8871cbae8f67d6d6cdc8384250aabda2efe27d81`.
+- **Exact CI results [M]:** Python job **1325 passed / exactly 2 stack-health skipped**. Node format/lint, secret scan, GitGuardian, all three Python dependency audits, and root Node audit passed. The apps/web audit alone failed on the merged-main external `nanoid <3.3.17` advisory; dependency files are zero-diff in this slice and local `scripts/check.ps1 -NodeAudit` remained green against the configured registry.
+- **Evaluator disposition:** passed.
+- **Commit SHA:** `8871cbae8f67d6d6cdc8384250aabda2efe27d81` (implementation); this append is the final handoff commit.
+- **Known issues or risks:** Draft remains unmerged. The dependency-audit failure is unrelated baseline dependency state, not changed or suppressed here.
+- **Recommended next action:** Owner reviews the draft and the external dependency-audit baseline separately; do not merge automatically.
+
+---
+
+## 2026-08-08 02:08 UTC - Builder - F008 compact quota parser Level-2 remediation
+
+- **What I got wrong:** The prior parser's finite sign set still treated U+FE62, U+FE63, U+2795, and U+2796 as positive prefixes; its blanket adjacent-alpha rejection withheld ordinary compact units; and its search selected the first number from multi-number text. Before editing, all four signs parsed as `10000`, `10ms`/`10GB`/`10Mbps` returned no amount, and version/date/dotted examples returned `2`/`2026`/`1.2`. A live PostgreSQL 16 probe auto-published U+FE62 + `10K` as amount `10000` [M].
+- **Remediation:** Replaced the finite sign list with a Unicode-category `P`/`S` boundary guard; made exactly-one numeric match mandatory; and classified contiguous alphabetic text so unambiguous multi-letter units remain units while ambiguous `KB`/`MB`, IEC-looking `KiB`/`MiB`/`GiB`, unknown single letters, and repeated `KMB` sequences fail closed. `K/M/B` multipliers, resets, raw evidence, exact `Decimal`, and one-token qualifier searches remain intact.
+- **Persistence evidence [M]:** Focused parser/publisher suite **126 passed** against isolated PostgreSQL 16. Unsupported Unicode-signed and multi-number facts route to review and create no Offer/OfferVersion/Quota; `10ms`, `10GB`, and `10Mbps` persist amount `10` with exact units; existing `K/M/B` persistence remains exact. Fresh evaluator independently repeated live supported and unsupported publication probes and returned **PASS**.
+- **Mutation evidence [M]:** Removing the Unicode category guard produced **15 failures**; restoring blanket adjacent-alpha rejection produced **6 failures**; accepting the first of multiple numbers produced **8 failures**; accepting every multi-letter token as an ordinary unit produced **11 failures**. All mutations were restored before final validation.
+- **Validation [M]:** Full real-PostgreSQL suite **1361 passed / exactly 2 stack-health skipped**. `scripts/check.ps1 -NodeAudit` passed all gates with offline pytest **1184 passed / 179 skipped**, Python audit clean, and Node audit 0 vulnerabilities. Dependency manifests and all prohibited scope paths are zero-diff.
+- **Evaluator disposition:** Fresh-context Level 2 **PASS** after independent Unicode category sweep, compact-unit sibling matrix, multi-number adversarial matrix, full suite, and rolled-back PostgreSQL publication probes.
+- **Scope:** No provider, fixture, configuration, classifier, model, migration, dependency, workflow, feature-ledger, eligibility, runner-exit, or dead-tuple change. PR #52 remains draft and unmerged.
+- **Commit / CI:** Remediation commit and exact-head CI evidence pending push.
+
+---
+
+## 2026-08-08 02:45 UTC - Builder - F008 parser remediation CI handoff
+
+- **Remediation commit [M]:** `c0b68da2207966b9a84329fb5ee5b9b1de26665e`.
+- **CI evidence [M]:** GitHub Actions run `31233263715`, Python job `93041089122`, matched commit `c0b68da2207966b9a84329fb5ee5b9b1de26665e`. The real-PostgreSQL Python job reported exactly **13 steps**, all successful, and pytest reported **1361 passed / exactly 2 stack-health skipped**.
+- **Other CI [M]:** Node format/lint and secret scan passed. All three Python dependency audits and the root Node audit passed. Overall CI remained red only at the unchanged apps/web `nanoid <3.3.17` advisory; dependency files remain zero-diff and the prohibited nanoid dependency was not touched.
+- **Disposition:** Fresh Level-2 evaluator passed the remediation. Draft PR #52 remains open, draft, and unmerged.
+
+---
+
+## 2026-08-08 02:00 UTC - Builder - F008 whitespace-separated sign remediation
+
+- **What I got wrong:** The previous Unicode-category guard inspected only the code point directly adjacent to the number. Whitespace hid an earlier sign, so `+ 10K`, `- 10K`, U+FE62, U+2212, U+2795, and U+2796 followed by whitespace still parsed and published as positive `10000` [M].
+- **Remediation:** The parser now inspects the last non-whitespace code point before the sole numeric match. Semantic sign detection applies NFKC normalization and Unicode-name checks for plus, minus, and hyphen sign forms; it is not another finite sign table. The adjacent `P`/`S` category guard remains defense-in-depth. Generic qualifier punctuation (`:`, `(`, `~`, `First:`) remains supported.
+- **Tests [M]:** The focused real-PostgreSQL parser/publisher suite passed **170 tests**. It covers six measured signs across ASCII space, tab, NBSP, thin space, and em space; programmatically discovered Unicode-name sign variants; qualifier punctuation controls; and graph-delta zero for unsupported live publications.
+- **Mutation evidence [M]:** Removing the trailing semantic sign-token guard produced **34 failed / 105 passed**. Removing NFKC and Unicode-name semantics produced **18 failed / 121 passed**. Both mutations were restored.
+- **Validation [M]:** Full PostgreSQL suite **1405 passed / exactly 2 stack-health skipped**. `scripts/check.ps1 -NodeAudit` passed all gates; offline pytest **1222 passed / 185 skipped**, Python audit clean, Node audit 0 vulnerabilities.
+- **Evaluator disposition:** Fresh-context Level 2 **PASS** after independent Unicode sign/whitespace probes, live PostgreSQL zero-graph checks, supported persistence controls, scope inspection, and the full suite.
+- **Scope:** No provider, fixture, configuration, classifier, model, migration, dependency, workflow, feature-ledger, eligibility, runner-exit, or dead-tuple change. PR #52 remains draft and unmerged.
+- **Commit / CI:** Pending push and exact-head CI.
+
+---
+
+## 2026-08-08 02:29 UTC - Builder - F008 separated-sign CI handoff
+
+- **Remediation commit [M]:** `40eef376a7958017b4dce86e8d8c10ab37d3666f`.
+- **CI evidence [M]:** GitHub Actions run `31234999524`, Python job `93045748527`, matched the remediation commit. The real-PostgreSQL Python job reported exactly **13 successful steps** and **1405 passed / exactly 2 stack-health skipped**.
+- **Other CI [M]:** Node format/lint and secret scan passed. All three Python dependency audits and root Node audit passed. Overall CI remained red only at the unchanged apps/web `nanoid <3.3.17` advisory; dependency files remain zero-diff and nanoid was not touched.
+- **Disposition:** Fresh Level-2 evaluator passed. Draft PR #52 remains open, draft, and unmerged.
+
+---
+
+## 2026-08-12 16:00 UTC - Builder - F008 bounded quota-token remediation
+
+- **What I got wrong:** The prior prefix check inspected only one trailing code point. Unicode `Cf` controls such as ZWSP, word joiner, bidi marks/embeddings/PDF, and BOM hid an earlier sign; Unicode `Pd` dashes also escaped the semantic-name check. The compact-unit fallback additionally reinterpreted arbitrary `K/M/B` continuations such as `Kfoo`, `Mfoo`, and `Brequests` as ordinary units. All measured forms reproduced as positive `10000` or amount `10` before editing [M].
+- **Remediation:** Added a bounded backward scan of the trailing prefix token. It crosses Unicode separators, `Cf` controls, and non-sign punctuation; stops at an alphanumeric qualifier word; and rejects NFKC-normalized plus/minus/hyphen/dash names or category `Pd`. Compact units now use two branches: ordinary multi-letter units retain existing behavior when no magnitude was consumed, while a consumed `K/M/B` accepts only explicit `Kbps`, `Mbps`, or `MBps` rate-unit tokens.
+- **Tests [M]:** Focused real-PostgreSQL parser/publication suite **225 passed**. Full PostgreSQL suite **1476 passed / exactly 2 stack-health skipped**. `scripts/check.ps1 -NodeAudit` passed all gates; offline pytest **1279 passed / 199 skipped**, Python audit clean, Node audit clean.
+- **Mutation evidence [M]:** Removing `Cf`/separator skipping produced **9 failed / 171 passed**; removing `Pd` and dash/hyphen-name semantics produced **5 failed / 175 passed**; stopping the scanner after one code point produced **54 failed / 126 passed**; accepting arbitrary alphabetic continuations after consumed `K/M/B` produced **22 failed / 158 passed**. Every mutation was restored before final validation.
+- **Adversarial additions:** Added combined `+\u200b\u2060:\u200e(\u200310K` and compact siblings `Krequests`/`Brequests`, plus measured hidden-sign families, compounds, punctuation wrappers, and programmatic Unicode-name/category samples. Live unsupported publications create no Offer, OfferVersion, or Quota.
+- **Evaluator disposition:** Fresh cross-vendor Level-2 evaluator **PASS** after independent sign/control/punctuation, unit-boundary, exact persistence, scope, documentation, mutation, focused, and full-suite checks.
+- **Scope:** No provider, dependency, classifier, model, migration, workflow, feature-ledger, eligibility, runner-exit, or unrelated behavior change. PR #52 remains draft and unmerged.
+- **Commit / CI:** Pending push and exact-head CI.
+
+---
+
+## 2026-08-12 16:22 UTC - Builder - F008 bounded quota-token CI handoff
+
+- **Remediation commit [M]:** `427aa6f5538814232f015d7c9ee1de9e6a135906`.
+- **CI evidence [M]:** GitHub Actions run `31616371516`, Python job `94180072795`, matched the remediation commit. The real-PostgreSQL Python job reported exactly **13 successful steps** and **1476 passed / exactly 2 stack-health skipped**.
+- **Dependency evidence [M]:** Dependency job `94180072895` reported exactly **14 successful steps**; all three Python audits and both Node audits passed. Dependency files remain zero-diff.
+- **Five-check rollup [M]:** Python lint/format/tests, Node format/lint, secret scan, dependency audit, and GitGuardian all passed at the exact implementation head.
+- **Disposition:** Fresh cross-vendor Level-2 evaluator passed. Draft PR #52 remains open and unmerged.
+
+---
+
+## 2026-08-12 17:51 UTC - Builder - F008 complete trailing-prefix token remediation
+
+- **What I got wrong:** The prior scanner continued only across an allowlist of separators, `Cf`, punctuation, and symbols. Combining marks (`Mn`/`Me`) and variation selectors therefore stopped the scan before an earlier sign, allowing measured inputs such as `+\u0301 10K`, `-\u20e0 10K`, `+\ufe0e 10K`, and mixed mark/control chains to publish positive `10000` [M].
+- **Remediation:** `_trailing_prefix_has_sign` now checks sign semantics first, stops at an alphanumeric qualifier-word boundary second, and continues across every other code point without a category allowlist. This also rejects sign-like alphanumeric code points while preserving honest later-word qualifiers such as `pre-paid First: 10K`.
+- **Tests [M]:** Focused real-PostgreSQL parser/publication suite **267 passed**. Full PostgreSQL suite **1518 passed / exactly 2 stack-health skipped**. `scripts/check.ps1 -NodeAudit` passed all gates; offline pytest **1318 passed / 202 skipped**, Python audit clean, Node audit clean.
+- **Mutation evidence [M]:** Stopping on `M*`/`C*` produced **30 failed / 169 passed**; swapping sign/alphanumeric order produced **1 failed / 198 passed**; restoring a one-code-point scan produced **72 failed / 127 passed**; removing the alphanumeric stop produced **1 failed / 198 passed**. Every mutation was restored.
+- **Evaluator disposition:** Fresh cross-vendor Level-2 evaluator **PASS** after code inspection, independent live probes, focused/full PostgreSQL runs, scope review, and qualifier-boundary mutation reasoning.
+- **Scope:** No provider, dependency, classifier, model, migration, workflow, feature-ledger, eligibility, runner-exit, or unrelated behavior change. PR #52 remains draft and unmerged.
+- **Commit / CI:** Pending push and exact-head CI.
+
+---
+
+## 2026-08-12 17:54 UTC - Builder - F008 complete token scanner CI handoff
+
+- **Remediation commit [M]:** `35eebbfe5dc98270b23206c7d03c714e02c79b57`.
+- **CI evidence [M]:** GitHub Actions run `31624790730`, Python job `94208307279`, matched the remediation commit. The real-PostgreSQL Python job reported exactly **13 successful steps** and **1518 passed / exactly 2 stack-health skipped**.
+- **Dependency evidence [M]:** Dependency job `94208307155` reported exactly **14 successful steps**; all three Python audits and both Node audits passed.
+- **Five-check rollup [M]:** Python lint/format/tests, Node format/lint, secret scan, dependency audit, and GitGuardian all passed at the exact implementation head.
+- **Disposition:** Fresh cross-vendor Level-2 evaluator passed. Draft PR #52 remains open and unmerged.

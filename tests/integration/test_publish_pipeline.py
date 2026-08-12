@@ -25,6 +25,7 @@ from __future__ import annotations
 import os
 from collections.abc import Iterator
 from datetime import UTC, datetime
+from decimal import Decimal
 from pathlib import Path
 
 import pytest
@@ -693,3 +694,140 @@ def test_category_matrix_reports_no_uncategorized_for_the_real_catalogue(
         if p.provider_slug == "cloudflare" and p.published_offer_count
     }
     assert covered == set(config.service_categories.values())
+
+
+@skip_without_db
+def test_compact_decimal_suffixes_persist_exact_quota_amounts(session: Session) -> None:
+    provider = _seed_provider(session)
+    source = _seed_source(session, provider, "synthetic-suffixes", official=True)
+    facts = dict(_HIGH_CONFIDENCE_FACTS)
+    facts.update(
+        {
+            "blob_operations": "10K",
+            "queue_operations": "2K",
+            "requests_per_month": "1M/month",
+        }
+    )
+    candidate = _seed_candidate(session, source, facts)
+
+    outcome = publish_candidate(session, candidate, source, PUBLISHING)
+
+    assert outcome.decision == "publish"
+    assert outcome.version_created is True
+    version = session.get(OfferVersion, outcome.offer_version_id)
+    assert version is not None
+    quotas = {
+        quota.metric: quota
+        for quota in session.execute(
+            select(Quota).where(Quota.offer_version_id == version.id)
+        ).scalars()
+    }
+    assert quotas["blob_operations"].amount == Decimal("10000")
+    assert quotas["queue_operations"].amount == Decimal("2000")
+    assert quotas["requests_per_month"].amount == Decimal("1000000")
+    assert quotas["requests_per_month"].reset_period == "month"
+
+    material_quotas = {quota["metric"]: quota for quota in version.material_facts["quotas"]}
+    assert material_quotas["blob_operations"]["amount"] == "10000"
+    assert material_quotas["queue_operations"]["amount"] == "2000"
+    assert material_quotas["requests_per_month"]["amount"] == "1000000"
+    stable = {
+        key: version.material_facts[key]
+        for key in (
+            "offer_type",
+            "requires_card",
+            "has_paid_dependencies",
+            "exhaustion_behaviour",
+            "quotas",
+        )
+    }
+    assert version.content_hash == _content_hash(stable)
+
+
+@skip_without_db
+def test_compact_ordinary_units_persist_without_magnitude_conversion(session: Session) -> None:
+    provider = _seed_provider(session)
+    source = _seed_source(session, provider, "synthetic-compact-units", official=True)
+    facts = dict(_HIGH_CONFIDENCE_FACTS)
+    facts.update({"latency": "10ms", "storage": "10GB", "bandwidth": "10Mbps"})
+    candidate = _seed_candidate(session, source, facts)
+
+    outcome = publish_candidate(session, candidate, source, PUBLISHING)
+
+    assert outcome.decision == "publish"
+    quotas = {
+        quota.metric: quota
+        for quota in session.execute(
+            select(Quota).where(Quota.offer_version_id == outcome.offer_version_id)
+        ).scalars()
+    }
+    for metric, unit in (("latency", "ms"), ("storage", "GB"), ("bandwidth", "Mbps")):
+        assert quotas[metric].amount == Decimal("10")
+        assert quotas[metric].unit == unit
+
+
+@skip_without_db
+@pytest.mark.parametrize(
+    "unsupported",
+    [
+        "1MM",
+        "10 k",
+        "10 K, then paid",
+        "10K10",
+        "10\u200bK",
+        "10\u00adK",
+        "\ufe6210K",
+        "\ufe6310K",
+        "\u279510K",
+        "\u279610K",
+        "+ 10K",
+        "-\u00a010K",
+        "\ufe62\u200910K",
+        "\u2212\u200310K",
+        "\u2795\t10K",
+        "\u2796 10K",
+        "+\u200b 10K",
+        "-\u2060 10K",
+        "+\u200e 10K",
+        "-\u200f 10K",
+        "+\u202a\u202c 10K",
+        "-\ufeff 10K",
+        "\u2012 10K",
+        "\u2013 10K",
+        "\u2014 10K",
+        "+\u200b\u2060:\u200e(\u200310K",
+        "+\u0301 10K",
+        "\u2212\ufe0f 10K",
+        "+\u0301\u200b\u2060\u200e 10K",
+        "10Kfoo",
+        "10Mfoo",
+        "10Brequests",
+        "Version 2: 10K",
+        "2026-08-07 10K",
+        "1.2.3 10K",
+    ],
+)
+def test_unsupported_compact_magnitude_never_publishes_truncated_amount(
+    session: Session,
+    unsupported: str,
+) -> None:
+    provider = _seed_provider(session)
+    source = _seed_source(session, provider, "synthetic-unsupported-suffix", official=True)
+    facts = dict(_HIGH_CONFIDENCE_FACTS)
+    facts["requests_per_month"] = unsupported
+    candidate = _seed_candidate(session, source, facts)
+
+    outcome = publish_candidate(session, candidate, source, PUBLISHING)
+
+    assert outcome.decision in {"review", "withhold"}
+    assert outcome.version_created is False
+    assert "deterministic" in outcome.failed_conditions
+    assert session.execute(select(func.count()).select_from(Offer)).scalar_one() == 0
+    assert session.execute(select(func.count()).select_from(OfferVersion)).scalar_one() == 0
+    assert session.execute(select(func.count()).select_from(Quota)).scalar_one() == 0
+    assert (
+        session.execute(
+            select(func.count()).select_from(Quota).where(Quota.amount == 1)
+        ).scalar_one()
+        == 0
+    )

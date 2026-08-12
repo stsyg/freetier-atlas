@@ -85,6 +85,24 @@ Automatic publication requires:
 
 The gate is implemented in `apps/api/app/publish/` (F005): `revalidate.py`
 deterministically re-derives the material numbers from the persisted facts,
+including directly-adjacent uppercase decimal count suffixes (`K`, `M`, `B`).
+Unsupported compact forms (for example lowercase, separated, binary-looking,
+unknown, repeated, signed, scientific, or multi-number text) fail the
+deterministic gate instead of publishing their leading digits. Multi-letter
+ordinary units remain supported in compact form (`ms`, `GB`, `Mbps`, `Kbps`,
+`kB`); two-letter all-uppercase `KB`/`MB`, IEC-looking `KiB`/`MiB`/`GiB`, and
+all-`KMB` repetitions are withheld as ambiguous. When the numeric matcher has
+already consumed `K`, `M`, or `B`, an alphabetic continuation is accepted only
+for the explicit rate-unit tokens `Kbps`, `Mbps`, and `MBps`; arbitrary forms
+such as `Kfoo`, `Mfoo`, and `Brequests` are withheld. Sign forms are rejected
+both when adjacent and when hidden in the trailing prefix token by any non-word
+code point, including punctuation, symbols, separators, formats, combining
+marks, controls, and private-use characters. The scan tests sign semantics
+before treating an alphanumeric character as the boundary of a qualifier word;
+it stops at that word boundary, so earlier punctuation in an honest qualifier
+such as `pre-paid First: 10K` does not invalidate the quota. Prefix qualifiers
+remain only in retained raw evidence text; the quota schema does not represent
+qualifier semantics separately.
 `confidence.py` scores the signals above (weighted, deterministic) plus
 completeness/freshness, and `gate.py` routes each candidate to **publish**
 (all hard conditions met and confidence at/above the automatic threshold),
