@@ -2530,3 +2530,13 @@ not 1259 passed / 2 skipped. The CI-shaped run deliberately omits only
 - **Evaluator disposition:** Fresh cross-vendor Level-2 evaluator **PASS** after code inspection, independent live probes, focused/full PostgreSQL runs, scope review, and qualifier-boundary mutation reasoning.
 - **Scope:** No provider, dependency, classifier, model, migration, workflow, feature-ledger, eligibility, runner-exit, or unrelated behavior change. PR #52 remains draft and unmerged.
 - **Commit / CI:** Pending push and exact-head CI.
+
+---
+
+## 2026-08-12 17:54 UTC - Builder - F008 complete token scanner CI handoff
+
+- **Remediation commit [M]:** `35eebbfe5dc98270b23206c7d03c714e02c79b57`.
+- **CI evidence [M]:** GitHub Actions run `31624790730`, Python job `94208307279`, matched the remediation commit. The real-PostgreSQL Python job reported exactly **13 successful steps** and **1518 passed / exactly 2 stack-health skipped**.
+- **Dependency evidence [M]:** Dependency job `94208307155` reported exactly **14 successful steps**; all three Python audits and both Node audits passed.
+- **Five-check rollup [M]:** Python lint/format/tests, Node format/lint, secret scan, dependency audit, and GitGuardian all passed at the exact implementation head.
+- **Disposition:** Fresh cross-vendor Level-2 evaluator passed. Draft PR #52 remains open and unmerged.
