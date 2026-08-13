@@ -2706,3 +2706,10 @@ not 1259 passed / 2 skipped. The CI-shaped run deliberately omits only
 - **Whitespace-only source proof [M]:** A positive-control `git diff --numstat -- apps/web` returned rows. After stripping all whitespace, three of the largest mechanically reformatted source files had identical base/formatted SHA-256 values: `src/catalogue/testFixtures.ts` = `8F180D6342ABE6BEA5D80F048D5D6B56EEB260827061FCC8F863C4A03E2E9F05`; `src/adviser/AssistedForm.tsx` = `BD834F2414D362642190BCA09AD70F4554CFF2F38195A3C9BD3082560CDE69A8`; `src/admin/AdminApp.tsx` = `EDE6DF390548F7FC940A25055AC15990CD68007FC110E2B2DAEEE28EB6E75EB2`.
 - **Protected state [M]:** `recurring_quota` values have zero changed diff lines. `apps/web/package-lock.json` remains blob `f492053a91df9a977f6fda838ee82c6c38f5eda7`, identical to `origin/main`.
 - **Boundary:** This is formatting-only A1 maintenance. F001 remains passing; no feature-ledger change is needed. Draft PR creation and exact-head CI evidence are pending; do not merge.
+
+### 2026-08-13 20:36 UTC - Draft PR CI blocker
+
+- **Commit / PR [M]:** Formatting commit `9814edf86ff7746e73c5cffd5afeb260686f5aa3` was pushed and draft PR #59 opened immediately from exact base `071bd59515f3ba2a91d53f08bb7c93dccc9b53bd`.
+- **CI [M]:** Four of five checks passed. Python passed with `1601 passed, 2 skipped`; both skips are exactly `tests/integration/test_stack_health.py` because `ATLAS_STACK_BASE_URL` is unset. Node format/lint, secret scan, and GitGuardian also passed.
+- **Concrete blocker [M]:** Dependency audit failed on the unchanged `apps/web/package-lock.json`: the live advisory now rejects `nanoid <3.3.18`, while exact `origin/main` still pins `3.3.17` in blob `f492053a91df9a977f6fda838ee82c6c38f5eda7`. Local `npm audit --audit-level=high` independently exits 1 for the same advisory. The approved scope explicitly forbids changing the lockfile, so the fifth check cannot be made green in this formatting-only PR without owner-approved dependency remediation.
+- **Boundary:** Draft PR #59 remains draft and unmerged. Do not change the lockfile in this slice and do not merge while the dependency audit is red.
