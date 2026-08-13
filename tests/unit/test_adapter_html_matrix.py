@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
+from pathlib import Path
 
 import pytest
 from app.ingest import (
@@ -16,6 +17,15 @@ from app.ingest import (
 from app.ingest.scan import _content_hash
 
 URL = "https://example.com/pricing"
+VERCEL_FIXTURE = (
+    Path(__file__).resolve().parents[1]
+    / "fixtures"
+    / "ingest"
+    / "vercel"
+    / "html"
+    / "vercel-sandbox-pricing"
+    / "source.html"
+)
 
 
 def _profile(
@@ -363,6 +373,22 @@ def test_profile_rejects_untrusted_assertions() -> None:
         HtmlExtractionProfile(name="unsafe", assertions=(_assertion(),))
 
 
+@pytest.mark.parametrize(
+    ("field", "value"),
+    (
+        ("offer_type", "free_forever"),
+        ("exhaustion_behaviour", "pauses_safely"),
+        ("requires_card", "false"),
+        ("has_paid_dependencies", 0),
+    ),
+)
+def test_profile_rejects_assertion_values_outside_closed_field_vocabulary(
+    field: str, value: object
+) -> None:
+    with pytest.raises(ValueError, match=f"Assertion field '{field}' requires one of"):
+        _profile(assertions=(_assertion(field=field, value=value),))
+
+
 def test_second_document_cannot_complete_first_document() -> None:
     profile = _profile(assertions=(_assertion(),))
     _, _, matrix_only = _extract(_html(_table()), profile)
@@ -391,3 +417,25 @@ def test_old_synthetic_table_id_is_absent_and_not_required() -> None:
     legacy = HtmlExtractionProfile(name="old-synthetic", table_id="free-tier")
     _, _, rejected = _extract(html, legacy)
     _assert_rejected(rejected, "table_not_found")
+
+
+def test_vercel_fixture_retains_the_complete_real_matrix_and_sibling_shape() -> None:
+    html = VERCEL_FIXTURE.read_text(encoding="utf-8")
+
+    assert "<th>Region</th>" not in html
+    assert "<th>Availability</th>" not in html
+    assert "<th>Maximum vCPUs</th>" in html
+    assert "<th>Maximum memory</th>" in html
+    assert "<th>Maximum open ports</th>" in html
+    assert "<th>Disk size</th>" in html
+    for row_label in (
+        "Sandbox Active CPU",
+        "Sandbox Provisioned Memory",
+        "Sandbox Creations",
+        "Sandbox Data Transfer",
+        "Snapshot Storage",
+        "Concurrent Sandboxes",
+        "Max Runtime Duration",
+        "vCPU Allocation Rate",
+    ):
+        assert html.count(f"<td>{row_label}</td>") == 1

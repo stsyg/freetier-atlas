@@ -25,7 +25,13 @@ VERCEL_SANDBOX_MATRIX = register_html_profile(
             "Sandbox Provisioned Memory": HtmlMatrixRow("provisioned_memory"),
             "Sandbox Creations": HtmlMatrixRow("sandbox_creations"),
         },
-        ignored_matrix_rows=("Sandbox Data Transfer",),
+        ignored_matrix_rows=(
+            "Sandbox Data Transfer",
+            "Snapshot Storage",
+            "Concurrent Sandboxes",
+            "Max Runtime Duration",
+            "vCPU Allocation Rate",
+        ),
         trusted_assertions=True,
         assertions=(
             HtmlTextAssertion(
@@ -69,7 +75,12 @@ VERCEL_SANDBOX_MATRIX = register_html_profile(
                     "since you first used the feature."
                 ),
                 field="notes",
-                value="No additional usage charge; creation resumes after 30 days.",
+                value=(
+                    "Vercel sends you notifications as you approach your usage quotas. "
+                    "You will not be charged for any additional usage. Once you exceed "
+                    "the quotas, sandbox creation is paused until 30 days have passed "
+                    "since you first used the feature."
+                ),
             ),
         ),
         required_fields=("service", "offer_type"),

@@ -4,8 +4,8 @@
   "http_status": 200,
   "robots_allowed": true,
   "sha256_original": "17edbc203e0b72f467e46bd345706f9a7a1a3f29f0f1028a0bc2297d8e666cd7",
-  "sha256_stored": "d3fbb9b4a47edf8cd0eac76b8dd1ffa055fb918ff01c25b3d9f976968d9b71d5",
+  "sha256_stored": "9c41fd883e372715592485b13574e004f800130090af03e7ac0aa04a3233db0a",
   "tos_note": "Official Vercel documentation. robots.txt allows /docs/sandbox/pricing and declares search=yes, ai-input=yes, ai-train=no. The public Terms of Service were reviewed on 2026-08-12 before this minimal factual excerpt was retained for deterministic offline testing.",
-  "trim_method": "manual byte-minimized excerpt from the fetched server-rendered HTML: retained the exact title/H1, one unrelated sibling table, the pricing matrix headers and four verbatim rows, and three verbatim same-document pricing/exhaustion paragraphs; removed scripts, navigation, styling, and unrelated documentation.",
+  "trim_method": "manual byte-minimized excerpt from the fetched server-rendered HTML: retained the exact title/H1, one real resource-limits sibling table, all eight pricing-matrix data rows without deleting content inside the target table, and three verbatim same-document pricing/exhaustion paragraphs; removed scripts, navigation, styling, prose outside the asserted blocks, and the other five unrelated tables.",
   "url": "https://vercel.com/docs/sandbox/pricing"
 }

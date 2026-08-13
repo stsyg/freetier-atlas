@@ -175,6 +175,10 @@ cannot supply regex. A required missing or duplicate match rejects the
 candidate; an optional missing match emits no field. Canonical mappings such as
 `offer_type`, eligibility, boolean gates, or exhaustion behavior therefore
 exist only behind reviewable source wording in the same captured document.
+Profile construction also validates mapped offer types, exhaustion behaviours,
+and boolean gates against their closed field vocabularies. Free-text values that
+reach the UI, such as `notes`, must reproduce the asserted source wording
+verbatim rather than paraphrase it.
 
 Each matrix cell and assertion adds a field-specific `EvidenceLocation`
 selector (for example, `matrix row[...] column[...] -> fact[...]`), so the

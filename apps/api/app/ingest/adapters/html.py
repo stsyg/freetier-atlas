@@ -50,9 +50,16 @@ from app.ingest.base import (
     SourceDocument,
 )
 from app.ingest.fetch import Fetcher, FetchError, FetchResult
+from app.models.vocab import EXHAUSTION_BEHAVIOURS, OFFER_TYPES
 
 _EXCERPT_LIMIT = 280
 _LIST_SEPARATORS = (",", ";")
+_ASSERTION_CLOSED_VALUES: Mapping[str, tuple[object, ...]] = {
+    "offer_type": OFFER_TYPES,
+    "exhaustion_behaviour": EXHAUSTION_BEHAVIOURS,
+    "requires_card": (False, True),
+    "has_paid_dependencies": (False, True),
+}
 
 
 class UnknownProfileError(ValueError):
@@ -165,6 +172,16 @@ class HtmlExtractionProfile:
         bad_scopes = sorted({a.scope for a in assertions} - {"title", "heading", "document"})
         if bad_scopes:
             raise ValueError(f"Unsupported assertion scope(s): {bad_scopes}.")
+        for assertion in assertions:
+            allowed = _ASSERTION_CLOSED_VALUES.get(assertion.field)
+            if allowed is not None and not any(
+                type(assertion.value) is type(value) and assertion.value == value
+                for value in allowed
+            ):
+                raise ValueError(
+                    f"Assertion field '{assertion.field}' requires one of {allowed}; "
+                    f"got {assertion.value!r}."
+                )
 
 
 #: Registry of extraction profiles keyed by name. This stands in for the

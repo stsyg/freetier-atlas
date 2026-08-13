@@ -131,7 +131,12 @@ def test_matrix_candidate_persists_fact_locations_and_is_held_for_review(
         "offer_type": "always_free",
         "eligibility": "Hobby plan",
         "exhaustion_behaviour": "hard_stop",
-        "notes": "No additional usage charge; creation resumes after 30 days.",
+        "notes": (
+            "Vercel sends you notifications as you approach your usage quotas. "
+            "You will not be charged for any additional usage. Once you exceed "
+            "the quotas, sandbox creation is paused until 30 days have passed "
+            "since you first used the feature."
+        ),
     }
     assert "requires_card" not in candidate.candidate_facts
     assert "has_paid_dependencies" not in candidate.candidate_facts
