@@ -98,6 +98,11 @@ if ($NodeAudit) {
         }
     }
 }
+else {
+    Write-Host ""
+    Write-Host "    SKIP: Audit Node dependencies (repo root tooling) - not run; pass -NodeAudit to include Node dependency audits." -ForegroundColor Yellow
+    Write-Host "    SKIP: Audit Node dependencies (apps/web) - not run; pass -NodeAudit to include Node dependency audits." -ForegroundColor Yellow
+}
 
 Write-Host ""
 if ($script:Failures.Count -gt 0) {
