@@ -307,8 +307,8 @@
     "schema_version": 1,
     "feature_id": "F008",
     "increment": "p2-vercel-provider-rebuild",
-    "evaluated_commit": "staged pre-commit tree",
-    "commit_sha_evaluated": "staged pre-commit tree",
+    "evaluated_commit": "4d26c65a577b23f2ff2a85c9671dee0739c923d3",
+    "commit_sha_evaluated": "4d26c65a577b23f2ff2a85c9671dee0739c923d3",
     "evaluator": "fresh independent Level 2 evaluator (Claude Opus 4.6)",
     "evaluated_at": "2026-08-13T21:30:45Z",
     "harness": {
