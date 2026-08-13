@@ -16,6 +16,7 @@ still rejected.
 from __future__ import annotations
 
 import re
+from collections import Counter
 from typing import Annotated, Literal, Self, get_args
 
 from pydantic import (
@@ -255,7 +256,10 @@ class CoverageDeclaration(_Base):
 
 class ProviderConfig(_Base):
     provider: ProviderSection
-    sources: list[Source] = Field(min_length=1)
+    # Explicitly empty is valid for coverage-only providers whose current
+    # official evidence cannot yet be represented by an ingest adapter. The
+    # field remains required so an accidental omission is still actionable.
+    sources: list[Source]
     publishing: PublishingSection
 
     #: Explicit provider x category coverage (F008 slice S2). **Mandatory**, and
@@ -296,6 +300,20 @@ class ProviderConfig(_Base):
                     f"Valid slugs (apps/api/app/read_api/taxonomy.py): "
                     f"{', '.join(canonical_slugs())}"
                 )
+        return self
+
+    @model_validator(mode="after")
+    def _check_unique_source_ids(self) -> Self:
+        """Reject ambiguous source references before building the lookup set."""
+
+        counts = Counter(source.id for source in self.sources)
+        duplicates = sorted(source_id for source_id, count in counts.items() if count > 1)
+        if duplicates:
+            raise ValueError(
+                f"provider {self.provider.id!r}: sources contains duplicate source ids: "
+                f"{', '.join(duplicates)}. Every sources[].id must be unique; remove or "
+                "rename the duplicate entries."
+            )
         return self
 
     @model_validator(mode="after")
@@ -344,7 +362,7 @@ class ProviderConfig(_Base):
                 raise ValueError(
                     f"provider {self.provider.id!r}: coverage[{slug!r}] references "
                     f"source {entry.source!r}, which is not declared in this file. "
-                    f"Declared sources: {', '.join(sorted(source_ids))}"
+                    f"Declared sources: {', '.join(sorted(source_ids)) or 'none'}"
                 )
         return self
 

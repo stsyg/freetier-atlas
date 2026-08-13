@@ -170,6 +170,7 @@ class RunnerResult:
     """Summary of one :func:`run_provider_scans` invocation."""
 
     provider_slug: str
+    configured_sources: int | None = None
     sync: SyncResult | None = None
     sources: list[SourceScanOutcome] = field(default_factory=list)
 
@@ -274,17 +275,23 @@ def run_provider_scans(
     provider = session.execute(
         select(Provider).where(Provider.slug == config.provider.id)
     ).scalar_one()
-    sources = (
-        session.execute(
-            select(Source)
-            .where(Source.provider_id == provider.id, Source.enabled.is_(True))
-            .order_by(Source.slug)
-        )
-        .scalars()
-        .all()
+    source_query = select(Source).where(
+        Source.provider_id == provider.id,
+        Source.enabled.is_(True),
     )
+    if sync:
+        # A synchronized run scans exactly what the current config declares.
+        # Historical rows are retained by additive source sync but cannot leak
+        # into a coverage-only provider run. With sync=False, callers explicitly
+        # opt into scanning already-seeded database sources.
+        source_query = source_query.where(Source.slug.in_(source.id for source in config.sources))
+    sources = session.execute(source_query.order_by(Source.slug)).scalars().all()
 
-    result = RunnerResult(provider_slug=config.provider.id, sync=sync_result)
+    result = RunnerResult(
+        provider_slug=config.provider.id,
+        configured_sources=len(config.sources),
+        sync=sync_result,
+    )
     # Phase 1: scan + reconcile every source (isolated per-source savepoints).
     scanned: list[tuple[Source, ScanRun, int]] = []
     for source in sources:
@@ -428,6 +435,8 @@ def _format_result(result: RunnerResult) -> str:
             f"sources created={result.sync.created} updated={result.sync.updated} "
             f"unchanged={result.sync.unchanged}"
         )
+    if result.configured_sources == 0:
+        lines.append("  scans: zero configured sources; sync and coverage completed")
     for outcome in result.sources:
         if outcome.status == "scanned":
             line = (

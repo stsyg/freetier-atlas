@@ -59,7 +59,10 @@ def detect_family(data: dict[str, Any]) -> str:
         return "schedules"
     if "llm" in keys:
         return "llm-providers"
-    if {"provider", "sources"} <= keys:
+    # ``sources`` is required by ProviderConfig, but family detection must not
+    # require it or an omitted field would fail as an unclassified file instead
+    # of producing the actionable ``sources: Field required`` schema error.
+    if "provider" in keys:
         return "provider"
     raise ValueError(
         "could not determine configuration family from top-level keys "

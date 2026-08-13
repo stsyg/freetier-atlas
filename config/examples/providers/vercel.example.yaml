@@ -1,0 +1,138 @@
+provider:
+  id: vercel
+  name: Vercel
+  official_domains:
+    - vercel.com
+
+# Coverage-only prerequisite. Current official Vercel facts span live matrices
+# and prose that the one-row HTML adapter cannot compose safely. No official
+# page explicitly proves that a card is unnecessary, so this config declares
+# catalogue coverage without creating a source, candidate, or offer.
+sources: []
+
+publishing:
+  automatic_threshold: 0.90
+  uncertain_threshold: 0.70
+  require_official_source: true
+  require_deterministic_numeric_validation: true
+
+# Every offered category remains offered_no_z0. "Free", "will not be charged",
+# "no billing cycles", and upgrade-only card instructions do not prove no-card
+# eligibility and therefore cannot support verified_free.
+coverage:
+  compute-vms:
+    state: offered_no_z0
+    evidence_url: https://vercel.com/docs/sandbox/pricing
+    rationale: >-
+      Vercel Sandbox provides isolated Linux microVMs using Firecracker, with
+      Hobby usage allowances and pause-at-limit behavior. This is distinct from
+      Vercel application hosting, but no Vercel official page proves that the
+      eligible path requires no payment card, so no Z0 offer is produced.
+  containers-app-hosting:
+    state: offered_no_z0
+    evidence_url: https://vercel.com/docs/plans/hobby
+    rationale: >-
+      The Hobby plan provides free projects and deployments. Deployments are
+      Vercel's application-hosting surface and also consume Functions and Edge
+      Network capabilities; the required allowance, eligibility, dependency,
+      exhaustion, and no-card facts are not composable by the current adapter.
+  serverless-functions:
+    state: offered_no_z0
+    evidence_url: https://vercel.com/docs/functions/usage-and-pricing
+    rationale: >-
+      Vercel publishes monthly Hobby allowances for Functions. Functions execute
+      as part of deployments and are a dependency for several other Vercel
+      products, while the official documentation does not prove the complete
+      no-card and safe-exhaustion path needed for Z0.
+  relational-databases:
+    state: not_offered
+    evidence_url: https://vercel.com/docs/marketplace-storage
+    rationale: >-
+      Vercel's current Postgres choices are partner Marketplace integrations,
+      including Neon, Supabase, and Amazon Aurora, rather than a Vercel-native
+      relational database service.
+  nosql-key-value:
+    state: not_offered
+    evidence_url: https://vercel.com/docs/marketplace-storage
+    rationale: >-
+      Vercel's current key-value and NoSQL choices are partner Marketplace
+      integrations such as Upstash and AWS services. Global Config is a native
+      configuration service, not a general-purpose NoSQL database.
+  object-file-storage:
+    state: offered_no_z0
+    evidence_url: https://vercel.com/docs/vercel-blob/usage-and-pricing
+    rationale: >-
+      Vercel Blob is native object storage with Hobby allowances. Blob delivery
+      uses Vercel's network/CDN surface, and the current adapter cannot compose
+      the complete allowance, dependency, exhaustion, eligibility, and no-card
+      evidence required to publish an offer.
+  networking-cdn-dns:
+    state: offered_no_z0
+    evidence_url: https://vercel.com/docs/plans/hobby
+    rationale: >-
+      Hobby includes Edge Requests, domains, and DDoS mitigation for deployed
+      applications. This supports a networking/CDN declaration but is not a
+      claim that Vercel provides independent DNS registration, and no-card
+      eligibility remains unproved.
+  queues-messaging-jobs:
+    state: offered_no_z0
+    evidence_url: https://vercel.com/docs/workflows/pricing
+    rationale: >-
+      Vercel Workflows publishes Hobby allowances of 50,000 events per month and
+      1 GB of data written. Retained workflow data is unavailable on Hobby, and
+      completed runs are retained for one day. Workflows uses Vercel Queues and
+      Functions; Queue usage is billed at standard rates and Functions are
+      charged separately. Cron Jobs are included in all plans but invoke
+      Functions and inherit their limits and pricing. The combined category is
+      offered, but its dependencies, complete exhaustion behavior, and no-card
+      path are not represented as a Z0 offer.
+  auth-identity:
+    state: unknown
+    evidence_url: https://vercel.com/docs/deployment-protection/methods-to-protect-deployments/vercel-authentication
+    rationale: >-
+      Vercel Authentication protects deployments, and Vercel also documents
+      Passport and Connect capabilities, but whether those constitute an
+      application-user identity service under this taxonomy remains unresolved.
+      Unknown is deliberate after research, not an unchecked absence.
+  cicd-source-control:
+    state: offered_no_z0
+    evidence_url: https://vercel.com/docs/deployments
+    rationale: >-
+      Git commits and pull requests can automatically trigger Vercel builds and
+      deployments. This is the CI/CD aspect of the same deployment product, not
+      a claim that Vercel is a source-control provider; complete no-card and
+      exhaustion evidence is not yet composable.
+  monitoring-logs-tracing:
+    state: offered_no_z0
+    evidence_url: https://vercel.com/docs/observability
+    rationale: >-
+      Vercel Observability is available on all plans at no extra cost. Analytics
+      can enter a grace period and then pause after limits are exceeded, but the
+      current adapter cannot compose that caveat with eligibility, allowance,
+      dependency, and no-card evidence into a publishable offer.
+  ai-inference-embeddings:
+    state: offered_no_z0
+    evidence_url: https://vercel.com/docs/ai-gateway/pricing
+    rationale: >-
+      Every Vercel team gets both a free tier and a paid tier for AI Gateway
+      Credits. The free tier includes only a subset of models; free requests have
+      lower per-model rate limits and return 429 when exceeded. Free credits
+      start on the team's first AI Gateway request. Purchasing credits
+      transitions the account to paid, after which the monthly free credit no
+      longer applies. The page does not prove a no-card path, so no Z0 offer is
+      produced.
+  email-notifications-comms:
+    state: not_offered
+    evidence_url: https://vercel.com/docs/notifications
+    rationale: >-
+      Vercel notifications are platform and account alerts sent on Vercel's own
+      behalf, not a first-party transactional email, SMS, or application
+      messaging API that customers can use to contact their users.
+  secrets-config-devtools:
+    state: offered_no_z0
+    evidence_url: https://vercel.com/docs/global-config/global-config-limits
+    rationale: >-
+      Global Config is a native low-latency configuration service with Hobby
+      limits. It belongs under configuration and developer tooling rather than
+      NoSQL, and no offer is produced until allowance, completeness,
+      safe-exhaustion, dependency, and no-card facts can be composed.
