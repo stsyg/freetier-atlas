@@ -20,6 +20,8 @@ from .html import (
     HtmlColumn,
     HtmlDocAdapter,
     HtmlExtractionProfile,
+    HtmlMatrixRow,
+    HtmlTextAssertion,
     UnknownProfileError,
     resolve_profile,
 )
@@ -59,6 +61,8 @@ __all__ = (
     "RssFeedAdapter",
     "HtmlDocAdapter",
     "HtmlColumn",
+    "HtmlMatrixRow",
+    "HtmlTextAssertion",
     "HtmlExtractionProfile",
     "HTML_EXTRACTION_PROFILES",
     "resolve_profile",

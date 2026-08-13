@@ -147,6 +147,46 @@ Evidence-backed declarations cite official pages directly with `evidence_url`;
 the offered categories remain `offered_no_z0` until a generic same-document
 composition path can prove every material fact.
 
+### Generic same-document HTML matrices
+
+`HtmlExtractionProfile` supports a provider-agnostic matrix mode for official
+HTML pages whose stable structure is the visible table headers rather than an
+`id` or durable class. A profile declares an order-insensitive normalized
+`header_signature`; extraction requires exactly one matching table. Zero
+matches return `table_not_found` with the required and observed headers, while
+multiple matches return `ambiguous_table`. Legacy `table_id` / `table_class`
+row profiles retain their original first-match behavior.
+
+Matrix mode resolves one exact metric-label header and one exact tier header,
+then maps exact normalized row labels into one candidate. Required rows,
+columns, and row widths are fail-closed. Duplicate labels, duplicate tier
+columns, conflicting values, and undeclared rows reject the candidate.
+Non-material rows may be ignored only when the profile names them explicitly.
+Selected cell text is preserved after the adapter's existing whitespace/entity
+normalization; qualifiers such as `First`, `Up to`, units, and reset periods are
+not parsed or discarded.
+
+Trusted static profiles may also declare exact same-document text assertions.
+The supported scopes are the complete normalized `<title>`, complete normalized
+heading (`h1`-`h6`), and complete normalized body block (`p`/`li`). Equality is
+whole-block and case-sensitive after whitespace normalization: substring,
+near-match, and fuzzy inference are not accepted, and runtime/config users
+cannot supply regex. A required missing or duplicate match rejects the
+candidate; an optional missing match emits no field. Canonical mappings such as
+`offer_type`, eligibility, boolean gates, or exhaustion behavior therefore
+exist only behind reviewable source wording in the same captured document.
+
+Each matrix cell and assertion adds a field-specific `EvidenceLocation`
+selector (for example, `matrix row[...] column[...] -> fact[...]`), so the
+existing evidence schema persists per-fact provenance without a migration.
+There is deliberately no source-set or cross-document composition API.
+
+The production-shape Vercel Sandbox fixture exercises this generic mechanism in
+tests only. It has no synthetic table id, includes a sibling table and
+build-hashed classes, and leaves `requires_card` and paid-dependency facts
+unknown. It proves extraction infrastructure, not a publishable Vercel offer.
+Full Vercel P2 remains incomplete.
+
 **Full Vercel P2 remains incomplete.** This coverage-only prerequisite does not
 satisfy P2's ingestion, evidence, non-Z0-control, or seven-case acceptance
 criteria and does not change F008 `passes:false`. Full P2 remains blocked until
