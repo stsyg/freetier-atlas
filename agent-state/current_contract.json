@@ -67,5 +67,5 @@
   "portability": "No dependency or runtime change. PostgreSQL 16 is used for integration validation; zero-source control flow is database-portable SQLAlchemy behavior.",
   "z0_risk": "High product-truth sensitivity but fail-closed output: all existing Vercel categories are offered_no_z0 because no-card proof is absent; no candidate or offer can be produced by this slice.",
   "known_boundary": "Full Vercel P2 remains incomplete and blocked on generic same-document prose/matrix composition. Cross-document composition is explicitly forbidden.",
-  "status": "evaluator_passed_draft_pr"
+  "status": "draft_pr_ci_green"
 }

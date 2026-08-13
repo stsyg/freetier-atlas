@@ -2592,3 +2592,10 @@ not 1259 passed / 2 skipped. The CI-shaped run deliberately omits only
 - **Known boundary:** Full Vercel P2 remains incomplete and blocked on generic same-document prose/matrix composition. Cross-document composition is not introduced.
 - **Commit / PR / CI:** Pending implementation commit, first push, draft PR, and exact-head five-check CI rollup.
 - **Recommended next action:** Keep the pull request draft and unmerged while generic same-document composition is built separately.
+
+### 2026-08-13 03:15 UTC - Draft PR CI and cleanup
+
+- **Commit / PR [M]:** Implementation commit `f07e26ca64642cba6eca493ad8dd7c4f609444cb`; draft PR #56 opened at the first push against exact base `7d7a4dfcdda1a86d4becf2227b6bcbfed075c4ce` and remains open, draft, clean, and unmerged.
+- **Exact-head CI [M]:** All five checks passed on `f07e26ca64642cba6eca493ad8dd7c4f609444cb`: Python lint/format/tests (13 steps), Node format/lint (9 steps), secret scan including URL allowlist (9 steps), dependency audit (14 steps; Python API/worker/dev plus root/web Node), and GitGuardian.
+- **Cleanup [M]:** Removed only Compose project `fta_f008_vercel_coverage`, including container `fta_f008_vercel_coverage-postgres-1`, network `fta_f008_vercel_coverage_default`, and volume `fta_f008_vercel_coverage_atlas_pgdata`; exact label-scoped container and volume checks returned empty.
+- **Boundary:** F008 remains `passes:false`; full Vercel P2 remains incomplete and blocked on generic same-document prose/matrix composition.
