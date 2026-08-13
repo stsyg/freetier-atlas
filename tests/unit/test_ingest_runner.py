@@ -21,6 +21,7 @@ from app.ingest.runner import (
     RunnerResult,
     SourceScanOutcome,
     _fetcher_for,
+    _format_result,
     build_fixture_fetcher,
     fetch_policy_for,
     fixture_mime_for,
@@ -83,6 +84,16 @@ def test_runner_result_accounting() -> None:
     assert result.scanned == 2
     assert result.failed == 1
     assert result.total_candidates == 2
+
+
+def test_zero_source_result_is_an_explicit_success() -> None:
+    result = RunnerResult(provider_slug="vercel", configured_sources=0)
+
+    output = _format_result(result)
+
+    assert "zero configured sources; sync and coverage completed" in output
+    assert "totals: scanned=0 failed=0 published=0 reviewed=0" in output
+    assert "[error]" not in output
 
 
 def test_main_without_database_url_errors(monkeypatch, capsys) -> None:

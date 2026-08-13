@@ -255,7 +255,10 @@ class CoverageDeclaration(_Base):
 
 class ProviderConfig(_Base):
     provider: ProviderSection
-    sources: list[Source] = Field(min_length=1)
+    # Explicitly empty is valid for coverage-only providers whose current
+    # official evidence cannot yet be represented by an ingest adapter. The
+    # field remains required so an accidental omission is still actionable.
+    sources: list[Source]
     publishing: PublishingSection
 
     #: Explicit provider x category coverage (F008 slice S2). **Mandatory**, and
@@ -344,7 +347,7 @@ class ProviderConfig(_Base):
                 raise ValueError(
                     f"provider {self.provider.id!r}: coverage[{slug!r}] references "
                     f"source {entry.source!r}, which is not declared in this file. "
-                    f"Declared sources: {', '.join(sorted(source_ids))}"
+                    f"Declared sources: {', '.join(sorted(source_ids)) or 'none'}"
                 )
         return self
 

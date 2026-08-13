@@ -136,6 +136,25 @@ Use Microsoft Learn MCP, Azure free/pricing pages, Azure updates, Azure Retail P
 
 Use official Vercel MCP, plans/limits docs, changelog, and public APIs.
 
+**Coverage-only prerequisite (F008 P2 prerequisite).** Vercel currently declares
+all fourteen canonical categories in
+`config/examples/providers/vercel.example.yaml`, but deliberately configures
+`sources: []`. Current official Vercel facts are split across live matrices and
+prose that the one-row HTML adapter cannot legally compose, and the official
+documentation does not prove that a payment card is unnecessary. The config
+therefore creates no candidate or offer and makes no `verified_free` claim.
+Evidence-backed declarations cite official pages directly with `evidence_url`;
+the offered categories remain `offered_no_z0` until a generic same-document
+composition path can prove every material fact.
+
+An explicitly empty `sources` list is valid; omitting the field is still a
+config error. Source sync remains additive/upsert-only and does not delete a
+previously persisted source merely because a later config omits it. The runner
+therefore treats the current config's source ids as the authoritative scan set:
+a retained historical source is not scanned by a coverage-only config. This
+preserves existing sync semantics without allowing stale source rows to
+fabricate ingestion activity.
+
 ## Oracle Cloud
 
 Use Oracle free-tier and service docs, changelogs/release notes, APIs, and database-specific MCP only where relevant.

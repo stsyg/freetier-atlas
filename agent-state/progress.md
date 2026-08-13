@@ -2574,3 +2574,21 @@ not 1259 passed / 2 skipped. The CI-shaped run deliberately omits only
 - **Evaluator disposition:** Fresh cross-vendor Level-1 evaluator **PASS** after independent PostgreSQL 16 order repetition, mutation-equivalent probes, rollback/index-residue inspection, planner/identifier/concurrency review, documentation grounding, and production zero-diff verification.
 - **Commit / PR:** Implementation commit `290e3d4a228007bca0514308bd671a083c972eee`; draft PR opened at the first push and remains unmerged.
 - **Recommended next action:** Keep the PR draft until all five CI checks are green; do not merge or promote.
+
+---
+
+## 2026-08-13 02:40 UTC - Builder - F008 Vercel coverage-only prerequisite
+
+- **What I got wrong:** I initially applied the current-config source filter to `sync=False`, which broke callers that intentionally pre-seed database sources. The full suite caught it: `test_runner_reviews_invalid_offer_type_and_publishes_valid_peer` returned zero source outcomes. The corrected runner treats the config as authoritative only when sync is enabled; `sync=False` retains its existing database-driven behavior [M].
+- **Coverage declaration [M]:** Added `config/examples/providers/vercel.example.yaml` with explicit `sources: []`, no service mappings, profile, fixture, candidate, or offer. All fourteen canonical categories are declared with current official Vercel URLs: exactly 10 `offered_no_z0`, 3 `not_offered`, and 1 deliberate `unknown`; there is no `verified_free` because official no-card proof is absent.
+- **Generic zero-source support:** `ProviderConfig.sources` now accepts an explicitly empty list while omission remains an actionable schema error. The Q9-A floor and exact source-reference validation are unchanged. Existing nonempty Cloudflare and GitHub configs load identically.
+- **Persistence and CLI proof [M]:** Two real CLI runs against isolated PostgreSQL 16 reported explicit zero-configured-source success. The first created and the second left unchanged exactly 1 Vercel Provider, 0 Vercel Sources, and 14 coverage rows; ScanRun, Snapshot, Candidate, Evidence, Offer, OfferVersion, Quota, ChangeEvent, DiscoveryCandidate, and ReviewItem counts remained zero.
+- **Stale-source semantics [M]:** Source sync was measured and documented as additive/upsert-only, so this slice does not silently introduce pruning. A seeded historical Vercel source remains persisted, but synchronized runner selection uses only current config source ids and executes zero scans; an independent `sync=False` control still scans the pre-seeded source.
+- **Read API proof [M]:** The real `/catalogue/categories` path returns all fourteen Vercel declarations with exact state, rationale, evidence URL, derived `unknown`, and zero published/free offers. `/catalogue/providers/vercel/offers` returns an empty list.
+- **Mutation evidence [M]:** Restoring `Field(min_length=1)`, removing required provenance, adding a synthetic source/profile, removing the synchronized runner filter, and suppressing declaration serialization each made its targeted test fail. Every mutation was restored before final validation.
+- **Validation [M]:** Focused config/runner tests passed 79; focused PostgreSQL sync/runner/read tests passed 31. Full real-PostgreSQL suite passed **1554 / exactly 2 stack-health skipped**. `scripts/check.ps1 -NodeAudit` passed Ruff lint/format, the full suite, Prettier, ESLint, secret scan, URL allowlist, Python dependency audit, and Node dependency audit.
+- **Evaluator disposition:** Fresh cross-vendor Level-2 evaluator **PASS** on A1-A10 after independent PostgreSQL CLI, database, API, stale-source, mutation-equivalent, and prohibited-scope inspection.
+- **Scope:** No migration, domain model, adapter/profile, fixture, publisher, classifier, quota, dependency, workflow, `.secrets.baseline`, or feature-ledger change. F008 remains `passes:false`.
+- **Known boundary:** Full Vercel P2 remains incomplete and blocked on generic same-document prose/matrix composition. Cross-document composition is not introduced.
+- **Commit / PR / CI:** Pending implementation commit, first push, draft PR, and exact-head five-check CI rollup.
+- **Recommended next action:** Keep the pull request draft and unmerged while generic same-document composition is built separately.
