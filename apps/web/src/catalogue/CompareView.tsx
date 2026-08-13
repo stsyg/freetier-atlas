@@ -1,5 +1,11 @@
 import type { CompareOffer, CompareResponse, NormalizedQuota } from "../api";
-import { confidenceMeaning, formatSignal, formatTriState, humanizeToken, orUnknown } from "./format";
+import {
+  confidenceMeaning,
+  formatSignal,
+  formatTriState,
+  humanizeToken,
+  orUnknown,
+} from "./format";
 import { Z0Badge } from "./Z0Badge";
 
 /**
@@ -62,7 +68,9 @@ export function CompareView({ data }: { data: CompareResponse }) {
             <tr>
               <th scope="row">Category</th>
               {offers.map((offer) => (
-                <td key={offer.offer_id}>{offer.category ? offer.category.name : "Uncategorised"}</td>
+                <td key={offer.offer_id}>
+                  {offer.category ? offer.category.name : "Uncategorised"}
+                </td>
               ))}
             </tr>
             <tr>

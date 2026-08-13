@@ -15,6 +15,4 @@ if (!rootElement) {
 // dependency-free (no router library).
 const isAdmin = window.location.pathname.replace(/\/+$/, "") === "/admin";
 
-createRoot(rootElement).render(
-  <StrictMode>{isAdmin ? <AdminApp /> : <App />}</StrictMode>,
-);
+createRoot(rootElement).render(<StrictMode>{isAdmin ? <AdminApp /> : <App />}</StrictMode>);

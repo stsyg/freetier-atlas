@@ -99,7 +99,9 @@ describe("App — catalogue browser routing + landmarks (F006 slice 2)", () => {
     );
     const table = await screen.findByTestId("compare-table");
     expect(within(table).getByRole("columnheader", { name: /cloudflare/i })).toBeInTheDocument();
-    expect(within(table).getByRole("columnheader", { name: /northwind cloud/i })).toBeInTheDocument();
+    expect(
+      within(table).getByRole("columnheader", { name: /northwind cloud/i }),
+    ).toBeInTheDocument();
   });
 
   it("prompts to pick offers when fewer than two are selected", async () => {

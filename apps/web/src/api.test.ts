@@ -163,9 +163,9 @@ describe("adviser recommendation client (F006 slice 4)", () => {
 
   it("maps a 422 rejection to an actionable, credential-free message", async () => {
     stubFetch(async () => new Response("secret detail", { status: 422 }));
-    await expect(
-      fetchRecommendation({ requirements: [] }),
-    ).rejects.toThrow(/rejected by the API. Please review the values/i);
+    await expect(fetchRecommendation({ requirements: [] })).rejects.toThrow(
+      /rejected by the API. Please review the values/i,
+    );
   });
 
   it("surfaces a friendly message when the adviser API is unreachable", async () => {

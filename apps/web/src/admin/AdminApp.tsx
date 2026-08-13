@@ -176,8 +176,9 @@ function SourceHealthPanel() {
     let active = true;
     fetchSourceHealth()
       .then((result) => active && setData(result))
-      .catch((err: unknown) =>
-        active && setError(err instanceof Error ? err.message : "Failed to load source health."),
+      .catch(
+        (err: unknown) =>
+          active && setError(err instanceof Error ? err.message : "Failed to load source health."),
       );
     return () => {
       active = false;
@@ -248,9 +249,8 @@ function ConfigDiffPanel({ csrfToken }: { csrfToken: string }) {
     <section aria-labelledby="configdiff-heading" className="admin-panel">
       <h2 id="configdiff-heading">Config diff (validate only)</h2>
       <p>
-        Paste a candidate YAML configuration. It is validated with the same
-        validators used at load time and diffed against the running config. This
-        view never writes configuration.
+        Paste a candidate YAML configuration. It is validated with the same validators used at load
+        time and diffed against the running config. This view never writes configuration.
       </p>
       {error && <ErrorNotice message={error} />}
       <form onSubmit={(event) => void submit(event)} aria-label="Validate a candidate config">

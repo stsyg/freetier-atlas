@@ -671,14 +671,16 @@ function buildSearchResponse(url: URL): SearchResponse {
   const offerType = params.get("offer_type");
   const commercialParam = params.get("commercial_use");
   const status = params.get("status");
-  const commercialUse =
-    commercialParam === null ? null : commercialParam === "true";
+  const commercialUse = commercialParam === null ? null : commercialParam === "true";
   const page = Math.max(1, Number(params.get("page") ?? "1") || 1);
 
   // Search over the truly-free subset when a keyword is present so the results
   // reflect the query; every filter below composes with AND semantics.
   let matches = searchIndex.filter((item) => {
-    if (q && !`${item.service_name} ${item.provider_name}`.toLowerCase().includes(q.toLowerCase())) {
+    if (
+      q &&
+      !`${item.service_name} ${item.provider_name}`.toLowerCase().includes(q.toLowerCase())
+    ) {
       return false;
     }
     if (provider && item.provider_slug !== provider) return false;
@@ -728,7 +730,9 @@ function buildCompareResponse(url: URL): CompareResponse {
     .split(",")
     .map((value) => Number(value.trim()))
     .filter((value) => Number.isFinite(value) && value > 0);
-  const offers = ids.map((id) => compareOffers[id]).filter((offer): offer is CompareOffer => Boolean(offer));
+  const offers = ids
+    .map((id) => compareOffers[id])
+    .filter((offer): offer is CompareOffer => Boolean(offer));
   return { offer_ids: ids, offers };
 }
 

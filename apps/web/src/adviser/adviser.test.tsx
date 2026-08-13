@@ -143,9 +143,7 @@ describe("RecommendationView — impossible workload flow (F006 slice 4)", () =>
     // Document order is exactly 1 → 2 → 3 → 4.
     const order = [blocking, reduction, recalculation, selfhosting];
     for (let i = 0; i < order.length - 1; i += 1) {
-      expect(order[i].compareDocumentPosition(order[i + 1])).toBe(
-        Node.DOCUMENT_POSITION_FOLLOWING,
-      );
+      expect(order[i].compareDocumentPosition(order[i + 1])).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
     }
 
     expect(blocking).toHaveTextContent(/no free \(z0\) relational database/i);
@@ -158,7 +156,9 @@ describe("RecommendationView — impossible workload flow (F006 slice 4)", () =>
 
   it("still renders fitting components even when the workload is not fully $0", () => {
     render(<RecommendationView data={mixedRecommendation} />);
-    expect(screen.getByRole("heading", { name: /components that fit at \$0/i })).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: /components that fit at \$0/i }),
+    ).toBeInTheDocument();
     expect(screen.getByText("Northwind Functions")).toBeInTheDocument();
     const badge = screen.getByTestId("zero-cost-badge");
     expect(badge.className).toMatch(/badge--warn/);
@@ -170,8 +170,9 @@ describe("RecommendationView — impossible workload flow (F006 slice 4)", () =>
     expect(notFree).toHaveTextContent(/not \$0/i);
     // The paid option lives ONLY inside the not-free section, never in the architecture.
     expect(within(notFree).getByText("Acme SQL")).toBeInTheDocument();
-    const architecture = screen.getByRole("heading", { name: /components that fit at \$0/i })
-      .parentElement!;
+    const architecture = screen.getByRole("heading", {
+      name: /components that fit at \$0/i,
+    }).parentElement!;
     expect(within(architecture).queryByText("Acme SQL")).not.toBeInTheDocument();
   });
 

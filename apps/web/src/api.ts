@@ -588,7 +588,9 @@ async function postJson<T>(path: string, body: unknown, signal?: AbortSignal): P
   }
 
   if (response.status === 422) {
-    throw new Error("The requirements were rejected by the API. Please review the values and retry.");
+    throw new Error(
+      "The requirements were rejected by the API. Please review the values and retry.",
+    );
   }
   if (!response.ok) {
     throw new Error(`The adviser API returned HTTP ${response.status}.`);
@@ -621,14 +623,8 @@ export function fetchCategoryStates(
   );
 }
 
-export function fetchProviderOffers(
-  slug: string,
-  signal?: AbortSignal,
-): Promise<OfferSummary[]> {
-  return getJson<OfferSummary[]>(
-    `/catalogue/providers/${encodeURIComponent(slug)}/offers`,
-    signal,
-  );
+export function fetchProviderOffers(slug: string, signal?: AbortSignal): Promise<OfferSummary[]> {
+  return getJson<OfferSummary[]>(`/catalogue/providers/${encodeURIComponent(slug)}/offers`, signal);
 }
 
 export function fetchOffer(offerId: number, signal?: AbortSignal): Promise<OfferDetail> {
@@ -662,7 +658,10 @@ export function fetchProviders(signal?: AbortSignal): Promise<ProviderSummary[]>
  * slugs, enum filters, page). No value is ever treated as a URL/host or fetched,
  * so there is no SSRF surface. Empty/absent inputs are simply omitted.
  */
-export function fetchSearch(query: SearchQuery = {}, signal?: AbortSignal): Promise<SearchResponse> {
+export function fetchSearch(
+  query: SearchQuery = {},
+  signal?: AbortSignal,
+): Promise<SearchResponse> {
   const params = new URLSearchParams();
   const add = (key: string, value: string | null | undefined) => {
     if (value !== null && value !== undefined && value !== "") params.set(key, value);

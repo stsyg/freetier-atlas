@@ -160,10 +160,7 @@ function SiteHeader({ route, compareCount }: { route: Route; compareCount: numbe
 
 // --- Async view wrapper -------------------------------------------------------
 
-type Async<T> =
-  | { kind: "loading" }
-  | { kind: "ok"; data: T }
-  | { kind: "error"; message: string };
+type Async<T> = { kind: "loading" } | { kind: "ok"; data: T } | { kind: "error"; message: string };
 
 function useAsync<T>(
   loader: (signal: AbortSignal) => Promise<T>,
@@ -396,7 +393,9 @@ function AdviserView() {
       <div
         id="adviser-mode-panel"
         role="tabpanel"
-        aria-labelledby={mode === "structured" ? "adviser-mode-structured" : "adviser-mode-assisted"}
+        aria-labelledby={
+          mode === "structured" ? "adviser-mode-structured" : "adviser-mode-assisted"
+        }
       >
         {mode === "structured" ? <StructuredAdviser /> : <AssistedAdviser />}
       </div>
