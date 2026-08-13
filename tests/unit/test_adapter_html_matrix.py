@@ -419,15 +419,14 @@ def test_old_synthetic_table_id_is_absent_and_not_required() -> None:
     _assert_rejected(rejected, "table_not_found")
 
 
-def test_vercel_fixture_retains_the_complete_real_matrix_and_sibling_shape() -> None:
+def test_vercel_fixture_retains_the_complete_real_target_matrix() -> None:
     html = VERCEL_FIXTURE.read_text(encoding="utf-8")
 
     assert "<th>Region</th>" not in html
     assert "<th>Availability</th>" not in html
-    assert "<th>Maximum vCPUs</th>" in html
-    assert "<th>Maximum memory</th>" in html
-    assert "<th>Maximum open ports</th>" in html
-    assert "<th>Disk size</th>" in html
+    assert "<th>Hobby (Included)</th>" in html
+    assert "<th>Pro (Per month)</th>" in html
+    assert "<th>Enterprise (Per month)</th>" in html
     for row_label in (
         "Sandbox Active CPU",
         "Sandbox Provisioned Memory",

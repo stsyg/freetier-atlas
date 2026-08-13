@@ -1,0 +1,13 @@
+{
+  "captured_by": "F008 P2 Vercel rebuild",
+  "fetched_at": "2026-08-13T19:42:00Z",
+  "http_status": 200,
+  "robots_allowed": true,
+  "sha256_original": "937ab4d0fc0c40815196578b7fbf7d06f72ff8cdcda2554f5df23909937245a4",
+  "sha256_stored": "186694911796ff002574d8c353fab25ec05a17ca37587444800284516f39d1b2",
+  "tos_note": "Controlled ambiguity case derived from the official Sandbox table signature.",
+  "trim_method": "Duplicated the exact live target header and omitted data rows to prove multiple matching tables fail closed. This is a negative structural fixture, not a factual Vercel claim.",
+  "target_table_rows_removed": ["all 8 target rows from both duplicate shells"],
+  "target_table_cells_removed": ["all data cells from both duplicate shells"],
+  "url": "https://vercel.com/docs/sandbox/pricing"
+}

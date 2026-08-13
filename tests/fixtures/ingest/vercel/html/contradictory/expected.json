@@ -1,0 +1,18 @@
+{
+  "profile": "vercel_sandbox_pricing",
+  "mime": "text/html",
+  "source_url": "https://vercel.com/docs/sandbox/pricing",
+  "candidate_count": 1,
+  "candidates": [
+    {
+      "verification_state": "rejected",
+      "expect_valid": false,
+      "facts": {
+        "error": "ambiguous_table",
+        "detail": "required_headers=['enterprise (per month)', 'hobby (included)', 'pro (per month)']; matches=[0, 1]"
+      },
+      "evidence_url": "https://vercel.com/docs/sandbox/pricing",
+      "evidence_selector": null
+    }
+  ]
+}

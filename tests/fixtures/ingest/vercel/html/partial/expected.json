@@ -1,0 +1,15 @@
+{
+  "profile": "vercel_sandbox_pricing",
+  "mime": "text/html",
+  "source_url": "https://vercel.com/docs/sandbox/pricing",
+  "candidate_count": 1,
+  "candidates": [
+    {
+      "verification_state": "rejected",
+      "expect_valid": false,
+      "facts": { "error": "missing_matrix_rows", "detail": "rows=['sandbox active cpu']" },
+      "evidence_url": "https://vercel.com/docs/sandbox/pricing",
+      "evidence_selector": null
+    }
+  ]
+}

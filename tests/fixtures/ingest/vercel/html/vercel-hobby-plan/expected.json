@@ -1,0 +1,33 @@
+{
+  "profile": "vercel_hobby_plan",
+  "mime": "text/html",
+  "source_url": "https://vercel.com/docs/plans/hobby",
+  "candidate_count": 1,
+  "candidates": [
+    {
+      "verification_state": "candidate",
+      "expect_valid": true,
+      "facts": {
+        "global_config_reads": "First 100,000",
+        "global_config_writes": "First 100",
+        "active_cpu": "4 CPU-hrs",
+        "provisioned_memory": "360 GB-hrs",
+        "function_invocations": "First 1,000,000",
+        "image_transformations": "First 5,000",
+        "image_cache_reads": "First 300,000",
+        "image_cache_writes": "First 100,000",
+        "speed_insights_events": "First 10,000 events",
+        "speed_insights_projects": "1 Project",
+        "web_analytics_events": "50,000 events / month included",
+        "workflow_events": "50,000 events / month included",
+        "workflow_data_written": "1 GB",
+        "service": "Vercel Hobby",
+        "offer_type": "always_free",
+        "exhaustion_behaviour": "hard_stop",
+        "notes": "As stated in the fair use guidelines, the Hobby plan restricts users to non-commercial, personal use only."
+      },
+      "evidence_url": "https://vercel.com/docs/plans/hobby",
+      "evidence_selector": "vercel_hobby_plan matrix row[1:Global Config Reads] column[Hobby Included Usage] -> fact[global_config_reads]"
+    }
+  ]
+}

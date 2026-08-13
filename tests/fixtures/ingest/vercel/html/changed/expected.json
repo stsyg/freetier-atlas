@@ -8,7 +8,7 @@
       "verification_state": "candidate",
       "expect_valid": true,
       "facts": {
-        "sandbox_active_cpu": "5 hours/month",
+        "sandbox_active_cpu": "6 hours/month",
         "sandbox_provisioned_memory": "420 GB-hours/month",
         "sandbox_creations": "5,000/month",
         "sandbox_data_transfer": "20 GB/month",

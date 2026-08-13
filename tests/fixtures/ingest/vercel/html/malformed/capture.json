@@ -1,0 +1,13 @@
+{
+  "captured_by": "F008 P2 Vercel rebuild",
+  "fetched_at": "2026-08-13T19:42:00Z",
+  "http_status": 200,
+  "robots_allowed": true,
+  "sha256_original": "937ab4d0fc0c40815196578b7fbf7d06f72ff8cdcda2554f5df23909937245a4",
+  "sha256_stored": "db69bdb9772d10e5d4f8788856f9e40519d0bff9e2d150603e1163747329744c",
+  "tos_note": "Controlled malformed-case mutation of the official Sandbox page.",
+  "trim_method": "Deliberately removed the complete target table to prove table-not-found failure. This is a negative test fixture, not a claimed complete capture.",
+  "target_table_rows_removed": ["all 8 target rows"],
+  "target_table_cells_removed": ["all target cells"],
+  "url": "https://vercel.com/docs/sandbox/pricing"
+}

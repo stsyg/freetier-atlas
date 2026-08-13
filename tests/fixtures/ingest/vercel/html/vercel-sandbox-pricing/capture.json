@@ -1,11 +1,33 @@
 {
-  "captured_by": "F008 generic matrix extraction builder",
-  "fetched_at": "2026-08-13T04:58:00Z",
+  "captured_by": "F008 P2 Vercel rebuild",
+  "fetched_at": "2026-08-13T19:42:00Z",
   "http_status": 200,
   "robots_allowed": true,
-  "sha256_original": "17edbc203e0b72f467e46bd345706f9a7a1a3f29f0f1028a0bc2297d8e666cd7",
-  "sha256_stored": "9c41fd883e372715592485b13574e004f800130090af03e7ac0aa04a3233db0a",
-  "tos_note": "Official Vercel documentation. robots.txt allows /docs/sandbox/pricing and declares search=yes, ai-input=yes, ai-train=no. The public Terms of Service were reviewed on 2026-08-12 before this minimal factual excerpt was retained for deterministic offline testing.",
-  "trim_method": "manual byte-minimized excerpt from the fetched server-rendered HTML: retained the exact title/H1, one real resource-limits sibling table, all eight pricing-matrix data rows without deleting content inside the target table, and three verbatim same-document pricing/exhaustion paragraphs; removed scripts, navigation, styling, prose outside the asserted blocks, and the other five unrelated tables.",
-  "url": "https://vercel.com/docs/sandbox/pricing"
+  "sha256_original": "937ab4d0fc0c40815196578b7fbf7d06f72ff8cdcda2554f5df23909937245a4",
+  "sha256_stored": "3db0664a288d0f138b5248b3977b12506bddcc55205eb0c029511364d9020a7d",
+  "tos_note": "Official Vercel documentation retained as a minimal factual excerpt for deterministic offline testing.",
+  "trim_method": "Removed scripts, navigation, styling, unrelated prose, and six unrelated tables. Removed zero rows and zero cells from inside the extracted Hobby/Pro/Enterprise pricing table. Retained all 8 target data rows and every target cell.",
+  "target_table_rows_removed": [],
+  "target_table_cells_removed": [],
+  "ignored_extraction_rows": [],
+  "url": "https://vercel.com/docs/sandbox/pricing",
+  "structure": {
+    "headers": ["", "Hobby (Included)", "Pro (Per month)", "Enterprise (Per month)"],
+    "rows": [
+      ["Sandbox Active CPU", "5 hours/month", "$0.128/hour", "$0.128/hour"],
+      ["Sandbox Provisioned Memory", "420 GB-hours/month", "$0.0212/GB-hour", "$0.0212/GB-hour"],
+      ["Sandbox Creations", "5,000/month", "$0.60/1M", "$0.60/1M"],
+      ["Sandbox Data Transfer", "20 GB/month", "$0.15/GB", "$0.15/GB"],
+      ["Snapshot Storage", "15 GB (lifetime)", "$0.08/GB-month", "$0.08/GB-month"],
+      ["Max Runtime Duration", "45 minutes", "24 hours", "24 hours"],
+      ["Concurrent Sandboxes", "10", "10,000", "10,000"],
+      ["vCPU Allocation Rate", "40/min", "5,000/min", "5,000/min"]
+    ],
+    "asserted_block_sha256": [
+      "805dacb596c28fb7bd8a2d2d9e681c2b5f98a741907a7997cc8e08c7b013b140",
+      "0e853e5cc1bc5c1e925bda3dcc5943baeb15fadf402d3122da8df343ba11da44",
+      "157c565c3d8834eee978702ce89598d1f40d4242d8d7e82ba6ce126fe8b7d781",
+      "0fce379396f7a950bfd72c17465713da9f93a300e0e4bb76e1d964f267aa3cf1"
+    ]
+  }
 }

@@ -1,0 +1,30 @@
+{
+  "profile": "vercel_pro_trial",
+  "mime": "text/html",
+  "source_url": "https://vercel.com/docs/plans/pro-plan/trials",
+  "candidate_count": 1,
+  "candidates": [
+    {
+      "verification_state": "candidate",
+      "expect_valid": true,
+      "facts": {
+        "owner_members": "1",
+        "team_members": "10",
+        "projects": "200",
+        "active_cpu": "16 CPU-hrs",
+        "provisioned_memory": "1,440 GB-hrs",
+        "function_invocations": "1,000,000/month",
+        "image_transformations": "Max. 10K/month",
+        "image_cache_reads": "Max. 600K/month",
+        "image_cache_writes": "Max. 200K/month",
+        "domains_per_project": "50",
+        "service": "Vercel Pro Trial",
+        "offer_type": "trial",
+        "exhaustion_behaviour": "hard_stop",
+        "notes": "Your trial finishes after 14 days or once your team exceeds the usage limits, whichever happens first. After which, you can opt for one of two paths:"
+      },
+      "evidence_url": "https://vercel.com/docs/plans/pro-plan/trials",
+      "evidence_selector": "vercel_pro_trial matrix row[1:Owner Members] column[Pro Trial Limits] -> fact[owner_members]"
+    }
+  ]
+}

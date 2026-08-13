@@ -136,16 +136,24 @@ Use Microsoft Learn MCP, Azure free/pricing pages, Azure updates, Azure Retail P
 
 Use official Vercel MCP, plans/limits docs, changelog, and public APIs.
 
-**Coverage-only prerequisite (F008 P2 prerequisite).** Vercel currently declares
-all fourteen canonical categories in
-`config/examples/providers/vercel.example.yaml`, but deliberately configures
-`sources: []`. Current official Vercel facts are split across live matrices and
-prose that the one-row HTML adapter cannot legally compose, and the official
-documentation does not prove that a payment card is unnecessary. The config
-therefore creates no candidate or offer and makes no `verified_free` claim.
-Evidence-backed declarations cite official pages directly with `evidence_url`;
-the offered categories remain `offered_no_z0` until a generic same-document
-composition path can prove every material fact.
+F008 P2 configures three canonical official pages: Hobby, Sandbox pricing, and
+the Pro Trial. Each production profile selects a real table by normalized header
+signature, pivots one published tier column, and maps exact title or prose blocks
+from that same captured document. The captures retain every row and cell in each
+target table. Their `capture.json` sidecars disclose target-table omissions
+explicitly (none in the production captures) and pin the observed headers, rows,
+cells, and asserted-block hashes.
+
+No official Vercel page in this slice proves that a payment card is unnecessary
+or that the offer has no paid dependency. The profiles therefore map neither
+`requires_card` nor `has_paid_dependencies`. "Free", "no billing cycles", "will
+not be charged", "you will not get charged", and instructions to add a payment
+method only when upgrading are not treated as no-card evidence. All three
+official candidates are routed to review as schema-incomplete; zero Vercel
+offers, offer versions, or quotas are published. The Pro Trial is the deliberate
+non-Z0 control: its page states a 14-day or usage-limit end condition and the
+profile records `offer_type=trial`, but unknown material gates still prevent
+publication.
 
 ### Generic same-document HTML matrices
 
@@ -185,25 +193,18 @@ selector (for example, `matrix row[...] column[...] -> fact[...]`), so the
 existing evidence schema persists per-fact provenance without a migration.
 There is deliberately no source-set or cross-document composition API.
 
-The production-shape Vercel Sandbox fixture exercises this generic mechanism in
-tests only. It has no synthetic table id, includes a sibling table and
-build-hashed classes, and leaves `requires_card` and paid-dependency facts
-unknown. It proves extraction infrastructure, not a publishable Vercel offer.
-Full Vercel P2 remains incomplete.
+The complete Vercel fixture vocabulary covers unchanged, changed, partial,
+malformed, and structurally ambiguous documents offline. Withdrawn and stale
+remain cross-scan behaviours and use the shared real-PostgreSQL harness. A
+partial table, duplicate matching table, missing assertion, undeclared row, or
+irregular row width fails closed rather than producing a friendlier subset.
 
-**Full Vercel P2 remains incomplete.** This coverage-only prerequisite does not
-satisfy P2's ingestion, evidence, non-Z0-control, or seven-case acceptance
-criteria and does not change F008 `passes:false`. Full P2 remains blocked until
-the separately reviewed generic same-document matrix/prose composition path can
-create production-real candidates without cross-page fact fabrication.
-
-An explicitly empty `sources` list is valid; omitting the field is still a
-config error. Source sync remains additive/upsert-only and does not delete a
-previously persisted source merely because a later config omits it. The runner
-therefore treats the current config's source ids as the authoritative scan set:
-a retained historical source is not scanned by a coverage-only config. This
-preserves existing sync semantics without allowing stale source rows to
-fabricate ingestion activity.
+The three declared service-category mappings are intentionally explicit:
+Vercel Hobby and the Pro Trial map to application hosting, while Vercel Sandbox
+maps to compute VMs. Each is arguable because the plans span multiple products;
+the YAML records the rationale instead of inferring category from quota units.
+All fourteen provider-category states remain explicitly declared and none is
+`verified_free`.
 
 ## Oracle Cloud
 

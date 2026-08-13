@@ -1,0 +1,35 @@
+{
+  "captured_by": "F008 P2 Vercel rebuild",
+  "fetched_at": "2026-08-13T19:42:00Z",
+  "http_status": 200,
+  "robots_allowed": true,
+  "sha256_original": "eaccbbf4c9eea161b39a0f47af8a6888f4ab567a06845e7c0a9a86dda9bd9185",
+  "sha256_stored": "7634f3442d41aaa94e060f2525f0e1367a65271c45756b6d894cb9516b382648",
+  "tos_note": "Official Vercel documentation retained as a minimal factual excerpt for deterministic offline testing.",
+  "trim_method": "Removed scripts, navigation, styling, images, lists, and prose not used by extraction. Removed zero rows and zero cells from inside the extracted Pro Trial Limits table. Retained all 10 target data rows and every target cell.",
+  "target_table_rows_removed": [],
+  "target_table_cells_removed": [],
+  "ignored_extraction_rows": [],
+  "url": "https://vercel.com/docs/plans/pro-plan/trials",
+  "structure": {
+    "headers": ["", "Pro Trial Limits"],
+    "rows": [
+      ["Owner Members", "1"],
+      ["Team Members (total, including Owners)", "10"],
+      ["Projects", "200"],
+      ["Active CPU", "16 CPU-hrs"],
+      ["Provisioned Memory", "1,440 GB-hrs"],
+      ["Function Invocations", "1,000,000/month"],
+      ["Image transformations", "Max. 10K/month"],
+      ["Image cache reads", "Max. 600K/month"],
+      ["Image cache writes", "Max. 200K/month"],
+      ["Domains per Project", "50"]
+    ],
+    "asserted_block_sha256": [
+      "3b8f91f5450cbf43692d63f184e23d4505ea7a4130e293c34dcd56e97c1bc386",
+      "1e85a8473eb6377faa58482fe61b6910a22788024ad757a1f88266433aa236a8",
+      "5294cb04b424864faf569eb388d983a54df75a4400a797921dd4c2b37b585538",
+      "af70416f4671d42f99a8db881f3d46a2733c19286def8e9f345773f6e54d8d69"
+    ]
+  }
+}
