@@ -5,9 +5,10 @@
 .DESCRIPTION
     Runs Ruff lint, Ruff format check, pytest, Prettier check, ESLint, a
     detect-secrets scan against the committed baseline, a URL host allowlist
-    check, and a Python dependency audit. Resolves the repository root from this
-    script's own path so it can be invoked from any working directory. Prefers
-    tools from a local .venv when present and falls back to tools on PATH.
+    check, and Python dependency audits. With -NodeAudit, also audits the root
+    Node tooling and the separate apps/web install. Resolves the repository root
+    from this script's own path so it can be invoked from any working directory.
+    Prefers tools from a local .venv when present and falls back to tools on PATH.
 .NOTES
     Exit code 0 when all checks pass; non-zero when any check fails.
 #>
@@ -69,10 +70,38 @@ Invoke-Check "Secret scan" {
     & $detectHook --baseline .secrets.baseline @($files)
 }
 Invoke-Check "URL host allowlist" { & $python scripts/check_urls.py }
-Invoke-Check "Python dependency audit" { & $pipAudit -r requirements-dev.txt }
+Invoke-Check "Audit Python production dependencies (apps/api)" {
+    & $pipAudit -r apps/api/requirements.txt
+}
+Invoke-Check "Audit Python production dependencies (apps/worker)" {
+    & $pipAudit -r apps/worker/requirements.txt
+}
+Invoke-Check "Audit Python development dependencies" {
+    & $pipAudit -r requirements-dev.txt
+}
 
 if ($NodeAudit) {
-    Invoke-Check "Node dependency audit" { & npm audit --omit=dev --audit-level=high }
+    Invoke-Check "Audit Node dependencies (repo root tooling)" {
+        & npm audit --audit-level=high
+    }
+    Invoke-Check "Audit Node dependencies (apps/web)" {
+        Push-Location (Join-Path $RepoRoot "apps/web")
+        try {
+            & npm audit --audit-level=high
+            $auditExit = $LASTEXITCODE
+        }
+        finally {
+            Pop-Location
+        }
+        if ($auditExit -ne 0) {
+            throw "exit code $auditExit"
+        }
+    }
+}
+else {
+    Write-Host ""
+    Write-Host "    SKIP: Audit Node dependencies (repo root tooling) - not run; pass -NodeAudit to include Node dependency audits." -ForegroundColor Yellow
+    Write-Host "    SKIP: Audit Node dependencies (apps/web) - not run; pass -NodeAudit to include Node dependency audits." -ForegroundColor Yellow
 }
 
 Write-Host ""
