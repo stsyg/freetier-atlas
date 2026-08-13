@@ -147,6 +147,12 @@ Evidence-backed declarations cite official pages directly with `evidence_url`;
 the offered categories remain `offered_no_z0` until a generic same-document
 composition path can prove every material fact.
 
+**Full Vercel P2 remains incomplete.** This coverage-only prerequisite does not
+satisfy P2's ingestion, evidence, non-Z0-control, or seven-case acceptance
+criteria and does not change F008 `passes:false`. Full P2 remains blocked until
+the separately reviewed generic same-document matrix/prose composition path can
+create production-real candidates without cross-page fact fabrication.
+
 An explicitly empty `sources` list is valid; omitting the field is still a
 config error. Source sync remains additive/upsert-only and does not delete a
 previously persisted source merely because a later config omits it. The runner

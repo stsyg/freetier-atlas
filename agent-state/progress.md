@@ -2609,3 +2609,10 @@ not 1259 passed / 2 skipped. The CI-shaped run deliberately omits only
 - **Verification [M]:** Focused offline config/runner tests passed 83. Focused real-PostgreSQL sync/runner/read-API tests passed 31. The full real-PostgreSQL suite passed **1558 / exactly 2 stack-health skipped**. `scripts/check.ps1 -NodeAudit` passed Ruff lint/format, the same full suite, Prettier, ESLint, secret scan, URL allowlist, Python audit, and Node audit.
 - **Evaluator disposition:** Level-2 recheck pending on the corrected draft head; all criteria must be restarted, including fresh live official URLs.
 - **Boundary:** No source-sync, runner, read-API, migration, adapter/profile, fixture, publication, classification, quota, dependency, workflow, or feature-ledger behavior changed. F008 remains `passes:false`; full Vercel P2 remains incomplete.
+
+### 2026-08-13 04:45 UTC - Level-2 documentation-boundary correction
+
+- **Evaluator finding:** The corrected technical slice passed every criterion, but the Vercel provider guide did not state the full-P2 boundary strongly enough as a standalone product-status declaration.
+- **Correction:** `docs/PROVIDER_ADAPTERS.md` now states explicitly that full Vercel P2 remains incomplete; this coverage-only prerequisite does not satisfy P2 ingestion, evidence, non-Z0-control, or seven-case acceptance criteria; F008 remains `passes:false`; and the next blocker is separately reviewed generic same-document matrix/prose composition without cross-page fact fabrication.
+- **Scope:** Documentation and append-only evaluation state only. Code, config, tests, evidence claims, source behavior, and feature ledger are unchanged.
+- **Evaluator disposition:** Exact-head Level-2 documentation-boundary verification pending.
