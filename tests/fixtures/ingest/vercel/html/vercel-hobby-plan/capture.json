@@ -1,0 +1,38 @@
+{
+  "captured_by": "F008 P2 Vercel rebuild",
+  "fetched_at": "2026-08-13T19:42:00Z",
+  "http_status": 200,
+  "robots_allowed": true,
+  "sha256_original": "75e3a96395dbe0ca9e2d07a83b760de5dba5ff8226108cdad71e2cc9d534846e",
+  "sha256_stored": "72b7494eb7fc2f14a7292441b91cd8997b2a120871e355c73e69f32b617ea8c4",
+  "tos_note": "Official Vercel documentation retained as a minimal factual excerpt for deterministic offline testing.",
+  "trim_method": "Removed scripts, navigation, styling, unrelated prose, and the separate 23-row Hobby-vs-Pro comparison table. Removed zero rows and zero cells from inside the extracted Resource | Hobby Included Usage table. Retained all 13 target data rows and every target cell.",
+  "target_table_rows_removed": [],
+  "target_table_cells_removed": [],
+  "ignored_extraction_rows": [],
+  "url": "https://vercel.com/docs/plans/hobby",
+  "structure": {
+    "headers": ["Resource", "Hobby Included Usage"],
+    "rows": [
+      ["Global Config Reads", "First 100,000"],
+      ["Global Config Writes", "First 100"],
+      ["Active CPU", "4 CPU-hrs"],
+      ["Provisioned Memory", "360 GB-hrs"],
+      ["Function Invocations", "First 1,000,000"],
+      ["Image Transformations", "First 5,000"],
+      ["Image Cache Reads", "First 300,000"],
+      ["Image Cache Writes", "First 100,000"],
+      ["Speed Insights Events", "First 10,000 events"],
+      ["Speed Insights Projects", "1 Project"],
+      ["Web Analytics Events", "50,000 events / month included"],
+      ["Workflow Events", "50,000 events / month included"],
+      ["Workflow Data Written", "1 GB"]
+    ],
+    "asserted_block_sha256": [
+      "e87cdf5137574d75ae6c89400dbed6e292b774ed0e05cbce37837b0eedad26c8",
+      "45199f5397208b1e063c4aaa71f79412a7b61a9bb0ca9c6eba899e01a018c41a",
+      "6c11be5f2391cf96036a475450a2d45d6573b2c35c1f624bcb8861390ab10bf9",
+      "ecf2df5eac0e5a4abdffe089ea0365e37a2938853a2459e607ebaf4cce0642da"
+    ]
+  }
+}

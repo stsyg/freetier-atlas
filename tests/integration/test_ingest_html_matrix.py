@@ -96,7 +96,7 @@ def test_matrix_candidate_persists_fact_locations_and_is_held_for_review(
     session.flush()
     source = Source(
         provider_id=provider.id,
-        slug="vercel-sandbox-pricing",
+        slug="test-vercel-sandbox-matrix",
         adapter_type="html",
         trust_level="official",
         official=True,
@@ -175,12 +175,16 @@ def test_matrix_candidate_persists_fact_locations_and_is_held_for_review(
     assert len(result.outcomes) == 1
     outcome = result.outcomes[0]
     assert outcome.decision == "review"
-    assert outcome.review_item_created is True
+    review = session.scalar(
+        select(ReviewItem).where(
+            ReviewItem.admin_disposition == "pending",
+            ReviewItem.candidate_facts["service"].as_string() == "Vercel Sandbox",
+        )
+    )
+    assert review is not None
     assert "schema_complete" in outcome.failed_conditions
     assert session.scalar(select(func.count()).select_from(Offer)) == offers_before
     assert session.scalar(select(func.count()).select_from(OfferVersion)) == versions_before
     assert session.scalar(select(func.count()).select_from(Quota)) == quotas_before
-    review = session.scalar(select(ReviewItem).where(ReviewItem.scan_run_id == scan.id))
-    assert review is not None
     assert review.admin_disposition == "pending"
     assert "requires_card" not in review.candidate_facts

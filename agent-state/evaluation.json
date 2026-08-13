@@ -302,5 +302,74 @@
       "Real LLM providers and real GitHub OAuth/CAPTCHA never networked; used the fake adapter + offline OAuth mock per the Q1/N1 posture."
     ],
     "recommendation": "Accept F007 as passing at commit c6d509116bf60c040ab54efa3ce52fb9c8f6c68b. All four acceptance steps (model consent/failure/quota-exhaustion/deterministic-fallback; ZIP validated/secret-free/not-persisted; allowlisted-only GitHub admin; negative-security + audit) plus the global invariants are independently and adversarially verified at the required Level 2 over BOTH direct API and nginx bases on a live stack, honouring the documented Q1/N1/Q6/Q9 posture as constraints. F007.passes set to true. This agent-state-only ledger change is committed on branch stsyg-stsyg-f007-fullepic-closeout for the orchestrator to open + merge (evaluator does not open or merge the PR)."
+  },
+  {
+    "schema_version": 1,
+    "feature_id": "F008",
+    "increment": "p2-vercel-provider-rebuild",
+    "evaluated_commit": "staged pre-commit tree",
+    "commit_sha_evaluated": "staged pre-commit tree",
+    "evaluator": "fresh independent Level 2 evaluator (Claude Opus 4.6)",
+    "evaluated_at": "2026-08-13T21:30:45Z",
+    "harness": {
+      "version": "2026-08-12.1",
+      "content_hash": "7209c820e7833b8a",
+      "loaded_first": true
+    },
+    "required_evaluation_level": 2,
+    "evaluation_level": 2,
+    "disposition": "passed",
+    "overall_disposition": "passed",
+    "blocking_issues": [],
+    "summary": "Independent Level-2 evaluation passed the F008 P2 Vercel rebuild. Three official same-document profiles select complete real target tables by header signature, preserve exact asserted prose and quota qualifiers, omit unsupported requires_card and has_paid_dependencies facts, and route all three candidates to review with zero published offers. The evaluator found no fabrication by omission, no cross-document composition, and no prohibited-scope change.",
+    "acceptance_steps": [
+      {
+        "step": 1,
+        "name": "official_same_document_extraction",
+        "passed": true,
+        "evidence": [
+          "Hobby, Sandbox, and Pro Trial sources use canonical vercel.com URLs and real header signatures.",
+          "Production profiles map every target-table row and use no ignored_matrix_rows.",
+          "Capture sidecars disclose zero removed target rows and zero removed target cells and pin complete retained structures."
+        ]
+      },
+      {
+        "step": 2,
+        "name": "unknown_card_gate_blocks_publication",
+        "passed": true,
+        "evidence": [
+          "No Vercel profile maps requires_card or has_paid_dependencies.",
+          "Real-PostgreSQL integration produced three official candidates and three review outcomes with zero Offer, OfferVersion, or Quota rows for Vercel.",
+          "The Pro Trial remains an evidence-backed non-Z0 trial control."
+        ]
+      },
+      {
+        "step": 3,
+        "name": "seven_case_and_adversarial_coverage",
+        "passed": true,
+        "evidence": [
+          "Offline cases cover unchanged, changed, partial, malformed, and contradictory extraction.",
+          "Real-PostgreSQL tests cover withdrawn and stale as cross-scan behaviours.",
+          "Negative synthetic-ID control and seven predicted structural mutations passed."
+        ]
+      },
+      {
+        "step": 4,
+        "name": "scope_and_regression",
+        "passed": true,
+        "evidence": [
+          "Focused Vercel and matrix suite passed 85 tests.",
+          "Full fresh PostgreSQL suite passed 1672 with exactly two test_stack_health.py skips.",
+          "Alembic head remains 0011_provider_category_coverage; feature ledger, migrations, dependencies, workflows, and other providers are unchanged."
+        ]
+      }
+    ],
+    "known_issues_or_risks": [
+      "Header selection intentionally accepts extra columns because required headers are a subset signature.",
+      "Reordered columns remain accepted because tier lookup follows the matched header position.",
+      "The app-web dependency audit is externally red solely for widened GHSA-2v37-7h3g-55p8 against nanoid <3.3.18; no dependency files changed in this increment.",
+      "Draft-PR CI and live-fetch session artifacts remain builder-level evidence to verify after the first push."
+    ],
+    "recommendation": "Accept this provider increment for owner review while keeping F008 passes:false. Do not merge automatically; verify the draft PR head and CI, including exact dependency-audit failure attribution."
   }
 ]

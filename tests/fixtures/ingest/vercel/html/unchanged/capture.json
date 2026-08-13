@@ -1,0 +1,13 @@
+{
+  "captured_by": "F008 P2 Vercel rebuild",
+  "fetched_at": "2026-08-13T19:42:00Z",
+  "http_status": 200,
+  "robots_allowed": true,
+  "sha256_original": "937ab4d0fc0c40815196578b7fbf7d06f72ff8cdcda2554f5df23909937245a4",
+  "sha256_stored": "ec38969f7ce0944f218edc5f09358ef88eb3ecb1d419e37132837dff8dfc174c",
+  "tos_note": "Derived unchanged case from the complete official Sandbox target table.",
+  "trim_method": "Whitespace-minimized copy of the complete 8-row official target table; zero target rows or cells removed.",
+  "target_table_rows_removed": [],
+  "target_table_cells_removed": [],
+  "url": "https://vercel.com/docs/sandbox/pricing"
+}

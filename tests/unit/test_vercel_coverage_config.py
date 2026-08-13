@@ -53,14 +53,26 @@ def _load_vercel() -> ProviderConfig:
     return model
 
 
-def test_vercel_loads_with_explicit_empty_sources() -> None:
+def test_vercel_loads_with_three_official_sources() -> None:
     model = _load_vercel()
     raw = yaml.safe_load(VERCEL_CONFIG.read_text(encoding="utf-8"))
 
     assert "sources" in raw
-    assert raw["sources"] == []
-    assert model.sources == []
-    assert model.service_categories == {}
+    assert [source["id"] for source in raw["sources"]] == [
+        "vercel-hobby-plan",
+        "vercel-sandbox-pricing",
+        "vercel-pro-trial",
+    ]
+    assert [source.id for source in model.sources] == [
+        "vercel-hobby-plan",
+        "vercel-sandbox-pricing",
+        "vercel-pro-trial",
+    ]
+    assert set(model.service_categories) == {
+        "Vercel Hobby",
+        "Vercel Sandbox",
+        "Vercel Pro Trial",
+    }
 
 
 def test_provider_sources_field_remains_required(tmp_path: Path) -> None:
@@ -155,7 +167,7 @@ def test_source_ids_remain_lowercase_slugs(tmp_path: Path) -> None:
     assert "string_pattern_mismatch" in problems
 
 
-def test_empty_sources_rejects_a_coverage_source_reference(tmp_path: Path) -> None:
+def test_coverage_rejects_an_undeclared_source_reference(tmp_path: Path) -> None:
     raw = yaml.safe_load(VERCEL_CONFIG.read_text(encoding="utf-8"))
     declaration = raw["coverage"]["compute-vms"]
     declaration.pop("evidence_url")
@@ -240,5 +252,13 @@ def test_vercel_rationales_pin_product_truth_and_taxonomy_boundaries() -> None:
     assert "rather than nosql" in rationales["secrets-config-devtools"].lower()
     assert "/ling-" not in evidence_urls
     assert "/changelog/" not in evidence_urls
-    assert "extraction_profile" not in str(raw)
-    assert "service_categories" not in raw
+    assert {source["extraction_profile"] for source in raw["sources"]} == {
+        "vercel_hobby_plan",
+        "vercel_sandbox_pricing",
+        "vercel_pro_trial",
+    }
+    assert set(raw["service_categories"]) == {
+        "Vercel Hobby",
+        "Vercel Sandbox",
+        "Vercel Pro Trial",
+    }

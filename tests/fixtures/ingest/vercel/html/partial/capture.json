@@ -1,0 +1,13 @@
+{
+  "captured_by": "F008 P2 Vercel rebuild",
+  "fetched_at": "2026-08-13T19:42:00Z",
+  "http_status": 200,
+  "robots_allowed": true,
+  "sha256_original": "937ab4d0fc0c40815196578b7fbf7d06f72ff8cdcda2554f5df23909937245a4",
+  "sha256_stored": "fa9d03ee379d55e7f191c8f65b0d427f9842bae2bfff3280f34cdc6d6845baec",
+  "tos_note": "Controlled partial-case mutation of the official Sandbox target table.",
+  "trim_method": "Deliberately removed the Sandbox Active CPU row to prove required-row failure. This is a negative test fixture, not a claimed complete capture.",
+  "target_table_rows_removed": ["Sandbox Active CPU"],
+  "target_table_cells_removed": [],
+  "url": "https://vercel.com/docs/sandbox/pricing"
+}

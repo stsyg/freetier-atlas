@@ -4,17 +4,49 @@ provider:
   official_domains:
     - vercel.com
 
-# Coverage-only prerequisite. Current official Vercel facts span live matrices
-# and prose that the one-row HTML adapter cannot compose safely. No official
-# page explicitly proves that a card is unnecessary, so this config declares
-# catalogue coverage without creating a source, candidate, or offer.
-sources: []
+# Official pages captured as complete production tables plus exact same-document
+# prose. None proves either no-card eligibility or absence of paid dependencies,
+# so these sources create review candidates but cannot publish offers.
+sources:
+  - id: vercel-hobby-plan
+    type: html
+    trust_level: official
+    url: https://vercel.com/docs/plans/hobby
+    schedule_ref: official_pages
+    extraction_profile: vercel_hobby_plan
+
+  - id: vercel-sandbox-pricing
+    type: html
+    trust_level: official
+    url: https://vercel.com/docs/sandbox/pricing
+    schedule_ref: official_pages
+    extraction_profile: vercel_sandbox_pricing
+
+  - id: vercel-pro-trial
+    type: html
+    trust_level: official
+    url: https://vercel.com/docs/plans/pro-plan/trials
+    schedule_ref: official_pages
+    extraction_profile: vercel_pro_trial
 
 publishing:
   automatic_threshold: 0.90
   uncertain_threshold: 0.70
   require_official_source: true
   require_deterministic_numeric_validation: true
+
+# Declared service-to-category assignments. These are taxonomy decisions, not
+# inferences from quota units.
+service_categories:
+  # ARGUABLE: Hobby spans hosting, functions, analytics, workflows, and config.
+  # Application hosting wins because the plan's primary unit is a deployed project.
+  Vercel Hobby: containers-app-hosting
+  # ARGUABLE: Sandbox executes code, but it provisions isolated Firecracker
+  # microVMs with vCPU, memory, disk, runtime, and concurrency limits.
+  Vercel Sandbox: compute-vms
+  # ARGUABLE: the trial covers the whole Pro platform; application hosting is the
+  # least misleading single category for its project/deployment plan.
+  Vercel Pro Trial: containers-app-hosting
 
 # Every offered category remains offered_no_z0. "Free", "will not be charged",
 # "no billing cycles", and upgrade-only card instructions do not prove no-card

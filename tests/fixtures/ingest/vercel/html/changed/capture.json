@@ -1,0 +1,13 @@
+{
+  "captured_by": "F008 P2 Vercel rebuild",
+  "fetched_at": "2026-08-13T19:42:00Z",
+  "http_status": 200,
+  "robots_allowed": true,
+  "sha256_original": "937ab4d0fc0c40815196578b7fbf7d06f72ff8cdcda2554f5df23909937245a4",
+  "sha256_stored": "bc32e805711c4ac4831a47427c5c7be07d9f96151f9b37ea8691f1cb71b51f58",
+  "tos_note": "Controlled changed-case mutation of the complete official Sandbox target table.",
+  "trim_method": "Complete 8-row target table retained; Sandbox Active CPU changed from 5 to 6 hours/month solely to exercise change detection. Zero target rows or cells removed.",
+  "target_table_rows_removed": [],
+  "target_table_cells_removed": [],
+  "url": "https://vercel.com/docs/sandbox/pricing"
+}

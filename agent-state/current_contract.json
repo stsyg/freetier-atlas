@@ -1,55 +1,109 @@
 {
-  "feature_id": "F001",
-  "slice": "local-dependency-audit-parity",
-  "title": "Audit every shipped dependency set in the local PowerShell gate",
-  "branch": "stsyg-fix-local-audit-gate",
-  "base_commit": "53feaf14352ba18853516bb17b61293c7a9c320c",
-  "started_at": "2026-08-13T06:25:00Z",
-  "objective": "Make scripts/check.ps1 mirror the dependency-audit job in .github/workflows/ci.yml so local success covers both shipped Python requirement sets, development Python dependencies, root Node tooling, and the separate apps/web Node install.",
+  "feature_id": "F008",
+  "slice": "p2-vercel-provider-rebuild",
+  "title": "Rebuild the Vercel provider from production document structures",
+  "branch": "stsyg-f008-p2-vercel-rebuild",
+  "base_commit": "071bd59515f3ba2a91d53f08bb7c93dccc9b53bd",
+  "started_at": "2026-08-13T19:35:25Z",
+  "objective": "Ingest official Vercel Hobby, Sandbox, and Pro Trial documents through header-signature matrix profiles and exact same-document assertions while making Z0 unreachable whenever the no-card condition is unknown.",
   "materiality": "[M]",
-  "autonomy_level": "A1",
-  "required_evaluation_level": 1,
+  "autonomy_level": "A3",
+  "required_evaluation_level": 2,
   "in_scope": [
-    "scripts/check.ps1",
+    "config/examples/providers/vercel.example.yaml",
+    "apps/api/app/ingest/adapters/profiles/vercel.py",
+    "tests/fixtures/ingest/vercel/html/**",
+    "tests/unit/test_adapter_vercel.py",
+    "tests/unit/test_adapter_html_matrix.py",
+    "tests/integration/test_ingest_html_matrix.py",
+    "tests/unit/test_ingest_runner.py",
+    "tests/unit/test_vercel_coverage_config.py",
+    "tests/integration/test_ingest_vercel.py",
+    "tests/integration/test_ingest_vercel_coverage.py",
+    "docs/PROVIDER_ADAPTERS.md (Vercel section only)",
     "agent-state/current_contract.json",
     "agent-state/progress.md (strict append only)"
   ],
   "out_of_scope_zero_diff": [
-    "dependency manifests and lockfiles",
-    ".github/workflows/ci.yml",
-    "application source and tests",
     "agent-state/feature_list.json",
-    "agent-state/evaluation.json",
+    "other provider profiles, configs, fixtures, and tests",
+    "migrations; Alembic head remains 0011",
+    "publisher, classifier, quota parser, fetch MIME behavior, and shared extraction machinery",
+    "dependency manifests and lockfiles",
+    "workflows",
     "promotion or merge of the draft pull request"
   ],
   "acceptance_criteria": [
-    "A1: With -NodeAudit, scripts/check.ps1 runs five separately named dependency checks matching CI: apps/api Python production, apps/worker Python production, Python development, repo-root Node, and apps/web Node.",
-    "A2: Python commands exactly match CI's pip-audit -r invocation shape and requirement paths.",
-    "A3: Both Node commands are npm audit --audit-level=high with development dependencies included; the apps/web command runs with apps/web as its working directory.",
-    "A4: The NodeAudit switch retains its existing semantics: all Python audits always run, while both Node audits run only when the switch is supplied; a bare run prints visually distinct skip notices naming both omitted Node audits.",
-    "A5: A scoped audit restores the prior working directory in a finally block even when npm audit fails, while Invoke-Check continues accumulating failures and preserves the script's existing exit semantics.",
-    "A6: Against the pre-fix vulnerable apps/web lock blob 62ece10e283a1765c751c712553b4135650f7018, the old gate exits 0 while the new gate exits non-zero and names Audit Node dependencies (apps/web); the tracked lock restores byte-exactly to f492053a91df9a977f6fda838ee82c6c38f5eda7.",
-    "A7: Planted failures in apps/api/requirements.txt, apps/worker/requirements.txt, and apps/web/package-lock.json each fail under the exact named check and every file restores to its original blob hash.",
-    "A8: The clean full local gate exits 0, prints all five audit names separately, and reports every audit clean.",
-    "A9: Draft PR CI has all five checks green; the Dependency audit job has fourteen successful steps including all five named audit steps.",
-    "A10: The diff is limited to scripts/check.ps1, this contract, and an append-only agent-state/progress.md entry; progress remains a strict base-prefix append ending in LF."
+    "A1: Vercel config declares canonical official HTML sources for Hobby, Sandbox, and Pro Trial, with all fourteen coverage states retained unless live official evidence requires a documented correction.",
+    "A2: Every production Vercel profile selects exactly one real table by normalized header signature, pivots a real tier column, and maps only exact same-document title, heading, paragraph, or list-item blocks. Mapped plus explicitly ignored row labels equal the pinned live row-label set exactly; every mapped row is required.",
+    "A3: Every retained target table includes every live data row and cell; capture.json explicitly states that no target-table row or cell was removed, records the live table header and row count, lists each ignored extraction row with a one-line non-materiality rationale, and carries an offline structural sidecar derived from the pinned live capture.",
+    "A4: Every Vercel candidate omits requires_card and has_paid_dependencies. No registered Vercel profile may assert either field: 'free', 'no billing cycles', 'will not be charged', 'you will not get charged', and upgrade-only payment instructions are not evidence for either gate. The publication gate must record decision=review with schema_complete failed, create a review item, and create zero Offer, OfferVersion, and Quota rows.",
+    "A5: The Pro Trial candidate is an evidence-backed deliberate non-Z0 control. Its trial duration, quota qualifiers, and hard-stop behavior remain verbatim; no no-card fact is asserted without owner ruling.",
+    "A6: Offline tests exercise unchanged, changed, partial, malformed, contradictory, withdrawn, and stale behaviors; withdrawn and stale use the shared cross-scan harness.",
+    "A7: Offline live-to-fixture controls compare every pinned structural-sidecar target-table header, row label, and cell to the retained fixture, and every asserted same-document prose block to its pinned hash.",
+    "A8: A session-only, uncommitted live uncontrolled fetch is run through each Vercel production profile and the exact candidate or rejection result is reported without reshaping fixtures to force acceptance.",
+    "A9: The old PR #50 synthetic ids, including vercel-hobby-offers and vercel-blob-hobby, appear nowhere in Vercel profiles or fixtures.",
+    "A10: Q9-A remains satisfied and every declared service-category mapping has a one-line rationale; every arguable mapping is disclosed in the draft PR body.",
+    "A11: Before execution, predictions are recorded for extra column, reordered columns, renamed tier header, duplicated table, rowspan, mapped-row removal, and entity/whitespace mutations. Observation must match prediction; any fail-open axis is disclosed in the draft PR body.",
+    "A12: A real PostgreSQL run persists scan_run, snapshot, candidate, official evidence, and review items for all configured sources while publishing zero offers. Each candidate records decision=review, schema_complete among failed_conditions, and SQL-scoped zero counts for Vercel Offer, OfferVersion, and Quota.",
+    "A13: Full isolated PostgreSQL tests pass with exactly two test_stack_health.py skips, Alembic head 0011, no network in tests, and no dependency or workflow change.",
+    "A14: Draft PR CI has all five checks green; Dependency audit has fourteen successful steps and all five named audit steps succeed."
   ],
   "verification_plan": [
-    "Run the pre-fix vulnerable-lock control and retain old/new gate logs plus blob hashes in session artifacts.",
-    "Run planted-failure controls for apps/api, apps/worker, and apps/web with restoration in finally blocks and verify byte-exact hashes.",
-    "Run the gate without -NodeAudit and require two named Node skip notices; run with -NodeAudit and require neither notice.",
-    "Run scripts/check.ps1 -NodeAudit end to end on the clean tree and inspect all five named audit checks.",
-    "Run a fresh Level 1 evaluator against this contract, the implementation diff, and control evidence.",
-    "Commit, push, open a draft pull request, wait for CI, and inspect exact dependency-job step names and conclusions."
+    "Run targeted Vercel unit tests and fixture extraction tests offline.",
+    "Run live uncontrolled Vercel bytes through production profiles and retain structural output in session artifacts.",
+    "Run the invented mutation after recording its prediction.",
+    "Run the Vercel integration suite and full pytest suite against the isolated PostgreSQL service.",
+    "Run scripts/test.ps1 and scripts/check.ps1 -NodeAudit.",
+    "Run Alembic head and migration-drift checks.",
+    "Run a fresh Level 2 evaluator against the contract, live artifacts, implementation diff, database rows, negative controls, and publication counts.",
+    "Commit, push, open a draft pull request at the first pushed commit, wait for CI, and inspect exact check and dependency-step names."
   ],
   "negative_tests": [
-    "A known vulnerable apps/web dev dependency must fail the apps/web audit but was invisible to the old gate.",
-    "A known vulnerable requirement in each production Python set must fail only its exact named audit.",
-    "A failing apps/web audit must leave the caller in the repository root."
+    "Removing or changing a required live matrix row must reject rather than silently truncate the candidate.",
+    "Adding an undeclared matrix row must reject with unknown_matrix_rows.",
+    "Duplicating a matching table must reject with ambiguous_table.",
+    "No Vercel assertion may map requires_card or has_paid_dependencies, and persisted Vercel candidates must contain neither key.",
+    "A changed asserted qualifier such as First, Up to, monthly, lifetime, or since you first used the feature must reject or remain changed verbatim.",
+    "A stale or unmatched ignored_matrix_rows label must fail the profile completeness test.",
+    "Synthetic PR #50 table ids must have zero matches across apps/api/app/ingest/adapters/profiles/vercel.py and tests/fixtures/ingest/vercel/html."
   ],
-  "data_implications": "None. No schema, migration, application data, manifest, or lockfile change is permitted.",
-  "security_privacy": "This closes a local supply-chain audit blind spot. No suppression, ignore flag, threshold reduction, force flag, secret, credential, or new network behavior is added.",
-  "portability": "The implementation remains PowerShell 5.1-compatible, resolves paths from PSScriptRoot, prefers local .venv tools, and uses try/finally for working-directory restoration.",
-  "z0_risk": "None. No provider, offer, quota, pricing, or classification behavior changes.",
+  "live_grounding": {
+    "captured_at": "2026-08-13T19:42:00Z",
+    "sandbox": {
+      "url": "https://vercel.com/docs/sandbox/pricing",
+      "target_headers": [
+        "",
+        "Hobby (Included)",
+        "Pro (Per month)",
+        "Enterprise (Per month)"
+      ],
+      "target_data_rows": 8,
+      "sha256_live": "937ab4d0fc0c40815196578b7fbf7d06f72ff8cdcda2554f5df23909937245a4"
+    },
+    "hobby": {
+      "url": "https://vercel.com/docs/plans/hobby",
+      "target_headers": [
+        "Resource",
+        "Hobby Included Usage"
+      ],
+      "target_data_rows": 13,
+      "sha256_live": "75e3a96395dbe0ca9e2d07a83b760de5dba5ff8226108cdad71e2cc9d534846e"
+    },
+    "pro_trial": {
+      "url": "https://vercel.com/docs/plans/pro-plan/trials",
+      "target_headers": [
+        "",
+        "Pro Trial Limits"
+      ],
+      "target_data_rows": 10,
+      "sha256_live": "eaccbbf4c9eea161b39a0f47af8a6888f4ab567a06845e7c0a9a86dda9bd9185"
+    }
+  },
+  "data_implications": "Adds source, scan, snapshot, candidate, evidence, and review rows through existing schema only. No Vercel offer, offer_version, or quota row may be created under the approved evidence set.",
+  "security_privacy": "Only canonical vercel.com URLs are configured. Tests remain fixture-only and offline. No secrets, credentials, user-controlled URLs, or new egress path are introduced.",
+  "portability": "Uses existing standard-library HTML extraction and existing PostgreSQL integration paths; no managed-cloud dependency or new package is added.",
+  "z0_risk": "Critical. Unknown requires_card and has_paid_dependencies facts must block publication. Free, no billing cycles, will not be charged, you will not get charged, and upgrade-only card instructions are not no-card or no-paid-dependency evidence.",
+  "cost_estimate": "Local development and CI use existing resources; expected incremental service cost is $0. Live reads are public official documentation requests only.",
   "status": "approved"
 }
