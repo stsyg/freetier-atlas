@@ -1,0 +1,24 @@
+{
+  "profile": "test_vercel_sandbox_matrix",
+  "mime": "text/html",
+  "source_url": "https://vercel.com/docs/sandbox/pricing",
+  "candidate_count": 1,
+  "candidates": [
+    {
+      "verification_state": "candidate",
+      "expect_valid": true,
+      "facts": {
+        "sandbox_active_cpu": "5 hours/month",
+        "provisioned_memory": "420 GB-hours/month",
+        "sandbox_creations": "5,000/month",
+        "service": "Vercel Sandbox",
+        "offer_type": "always_free",
+        "eligibility": "Hobby plan",
+        "exhaustion_behaviour": "hard_stop",
+        "notes": "Vercel sends you notifications as you approach your usage quotas. You will not be charged for any additional usage. Once you exceed the quotas, sandbox creation is paused until 30 days have passed since you first used the feature."
+      },
+      "evidence_url": "https://vercel.com/docs/sandbox/pricing",
+      "evidence_selector": "test_vercel_sandbox_matrix matrix row[1:Sandbox Active CPU] column[Hobby (Included)] -> fact[sandbox_active_cpu]"
+    }
+  ]
+}

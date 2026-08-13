@@ -36,6 +36,7 @@ from app.ingest.adapters.structured import JSON_EXTRACTION_PROFILES
 from app.ingest.runner import fixture_mime_for
 
 from tests.support import fixtures as harness
+from tests.support import html_profiles as _html_profiles  # noqa: F401
 
 # Adapters whose fixtures declare their own extraction profile in expected.json.
 _PROFILE_OVERRIDES = {("example", "structured"): "offer_api"}

@@ -87,3 +87,4 @@ the attribution row below, and write `expected.json`.
 | --- | --- | --- |
 | `cloudflare/html/cloudflare-workers-limits/` | <https://developers.cloudflare.com/workers/platform/limits/> | Cloudflare, Inc. |
 | `cloudflare/html/cloudflare-pages-limits/` | <https://developers.cloudflare.com/pages/platform/limits/> | Cloudflare, Inc. |
+| `vercel/html/vercel-sandbox-pricing/` | <https://vercel.com/docs/sandbox/pricing> | Vercel Inc. |
