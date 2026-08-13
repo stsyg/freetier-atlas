@@ -70,8 +70,12 @@ describe("SearchControls", () => {
       />,
     );
     const providerSelect = screen.getByLabelText(/provider/i);
-    expect(within(providerSelect).getByRole("option", { name: "Northwind Cloud" })).toBeInTheDocument();
-    expect(within(providerSelect).getByRole("option", { name: "Acme Serverless" })).toBeInTheDocument();
+    expect(
+      within(providerSelect).getByRole("option", { name: "Northwind Cloud" }),
+    ).toBeInTheDocument();
+    expect(
+      within(providerSelect).getByRole("option", { name: "Acme Serverless" }),
+    ).toBeInTheDocument();
     const categorySelect = screen.getByLabelText(/category/i);
     expect(
       within(categorySelect).getByRole("option", { name: "Serverless functions" }),
@@ -192,13 +196,19 @@ describe("CategoryMatrix", () => {
   it("renders an accessible table with all 14 categories and every provider column", () => {
     render(<CategoryMatrix data={categoryMatrix} />);
     const table = screen.getByTestId("matrix-table");
-    expect(within(table).getByText("Free-tier coverage by category and provider")).toBeInTheDocument();
+    expect(
+      within(table).getByText("Free-tier coverage by category and provider"),
+    ).toBeInTheDocument();
     // Column header per provider (+ the row-label column).
     const colHeaders = within(table).getAllByRole("columnheader");
     expect(colHeaders[0]).toHaveTextContent(/category/i);
     expect(within(table).getByRole("columnheader", { name: "Cloudflare" })).toBeInTheDocument();
-    expect(within(table).getByRole("columnheader", { name: "Northwind Cloud" })).toBeInTheDocument();
-    expect(within(table).getByRole("columnheader", { name: "Acme Serverless" })).toBeInTheDocument();
+    expect(
+      within(table).getByRole("columnheader", { name: "Northwind Cloud" }),
+    ).toBeInTheDocument();
+    expect(
+      within(table).getByRole("columnheader", { name: "Acme Serverless" }),
+    ).toBeInTheDocument();
     expect(screen.getAllByTestId("matrix-row")).toHaveLength(14);
   });
 
@@ -273,7 +283,9 @@ describe("CategoryMatrix", () => {
   it("renders an accessible legend explaining all seven states", () => {
     render(<CategoryMatrix data={categoryMatrix} />);
     const legend = screen.getByTestId("coverage-legend");
-    expect(within(legend).getByRole("heading", { name: /what the states mean/i })).toBeInTheDocument();
+    expect(
+      within(legend).getByRole("heading", { name: /what the states mean/i }),
+    ).toBeInTheDocument();
     for (const state of COVERAGE_STATE_ORDER) {
       const item = legend.querySelector(`[data-legend-state="${state}"]`);
       expect(item).not.toBeNull();
@@ -310,9 +322,13 @@ describe("CompareView", () => {
   it("renders an accessible side-by-side table across providers", () => {
     render(<CompareView data={compareResponse([1, 3, 4])} />);
     const table = screen.getByTestId("compare-table");
-    expect(within(table).getByText("Side-by-side comparison of the selected offers")).toBeInTheDocument();
+    expect(
+      within(table).getByText("Side-by-side comparison of the selected offers"),
+    ).toBeInTheDocument();
     expect(within(table).getByRole("columnheader", { name: /cloudflare/i })).toBeInTheDocument();
-    expect(within(table).getByRole("columnheader", { name: /northwind cloud/i })).toBeInTheDocument();
+    expect(
+      within(table).getByRole("columnheader", { name: /northwind cloud/i }),
+    ).toBeInTheDocument();
     expect(within(table).getByRole("rowheader", { name: /zero-cost class/i })).toBeInTheDocument();
     expect(within(table).getByRole("rowheader", { name: /quotas/i })).toBeInTheDocument();
   });

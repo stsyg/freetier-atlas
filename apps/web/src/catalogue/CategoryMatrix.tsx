@@ -57,9 +57,7 @@ export function CategoryMatrix({ data }: { data: CategoryMatrixResponse }) {
 
       <div className="matrix__scroll">
         <table className="matrix-table" data-testid="matrix-table">
-          <caption className="sr-only">
-            Free-tier coverage by category and provider
-          </caption>
+          <caption className="sr-only">Free-tier coverage by category and provider</caption>
           <thead>
             <tr>
               <th scope="col">Category</th>

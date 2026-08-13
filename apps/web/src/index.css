@@ -31,7 +31,6 @@ body {
   min-height: 100vh;
 }
 
-
 /* --- Private admin surface (F007 slice 4) --- */
 .admin-root {
   max-width: 60rem;

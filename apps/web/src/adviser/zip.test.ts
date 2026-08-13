@@ -40,7 +40,10 @@ function readStoredZip(bytes: Uint8Array): { path: string; content: string; crc:
 
 const SAMPLE: ZipEntry[] = [
   { path: "docker-compose.yml", content: "services:\n  app:\n    image: nginx:1.27-alpine\n" },
-  { path: ".env.example", content: "APP_PORT=8080\nPOSTGRES_PASSWORD=${POSTGRES_PASSWORD:-REPLACE_ME}\n" },
+  {
+    path: ".env.example",
+    content: "APP_PORT=8080\nPOSTGRES_PASSWORD=${POSTGRES_PASSWORD:-REPLACE_ME}\n",
+  },
   { path: "README.md", content: "# Scaffold\n" },
 ];
 

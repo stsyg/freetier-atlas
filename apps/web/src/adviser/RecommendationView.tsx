@@ -231,9 +231,7 @@ function QuotaMathTable({ component, level }: { component: AdviserComponent; lev
               </td>
               <td>
                 {demand.covered ? (
-                  <span className="pill pill--ok">
-                    {demand.boundary ? "Yes (exact)" : "Yes"}
-                  </span>
+                  <span className="pill pill--ok">{demand.boundary ? "Yes (exact)" : "Yes"}</span>
                 ) : (
                   <span className="pill pill--warn">No</span>
                 )}

@@ -86,7 +86,9 @@ export function DeploymentDownload({ request }: { request: RecommendationRequest
       {state.kind === "error" ? (
         <div className="status status--error" role="alert">
           <p>Unable to generate the deployment bundle: {state.message}</p>
-          <p className="muted">Nothing was written on the server. Adjust your workload and retry.</p>
+          <p className="muted">
+            Nothing was written on the server. Adjust your workload and retry.
+          </p>
         </div>
       ) : null}
 
@@ -115,8 +117,8 @@ export function DeploymentDownload({ request }: { request: RecommendationRequest
             <ul className="deployment-download__checks">
               {Object.entries(state.data.manifest.validation).map(([check, passed]) => (
                 <li key={check}>
-                  <span aria-hidden="true">{passed ? "✓" : "✕"}</span>{" "}
-                  {check.replace(/_/g, " ")}: {passed ? "passed" : "failed"}
+                  <span aria-hidden="true">{passed ? "✓" : "✕"}</span> {check.replace(/_/g, " ")}:{" "}
+                  {passed ? "passed" : "failed"}
                 </li>
               ))}
             </ul>

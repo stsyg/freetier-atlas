@@ -130,7 +130,10 @@ export function AdviserForm({ onSubmit, disabled = false }: AdviserFormProps) {
   const validate = (): string[] => {
     const found: string[] = [];
     requirements.forEach((req, ri) => {
-      const where = req.label.trim() || CATEGORY_OPTIONS.find((c) => c.value === req.category)?.label || `Requirement ${ri + 1}`;
+      const where =
+        req.label.trim() ||
+        CATEGORY_OPTIONS.find((c) => c.value === req.category)?.label ||
+        `Requirement ${ri + 1}`;
       req.demands.forEach((demand, di) => {
         const hasAny =
           demand.metric.trim() !== "" || demand.amount.trim() !== "" || demand.unit.trim() !== "";

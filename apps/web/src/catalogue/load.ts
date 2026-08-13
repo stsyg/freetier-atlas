@@ -23,10 +23,7 @@ export interface CatalogueView {
  * then loads each offer's detail + evidence + history. All calls go through the
  * same-origin `/api` client; nothing here writes or touches the database.
  */
-export async function loadCatalogue(
-  slug: string,
-  signal?: AbortSignal,
-): Promise<CatalogueView> {
+export async function loadCatalogue(slug: string, signal?: AbortSignal): Promise<CatalogueView> {
   const [provider, categoryStates, offerList] = await Promise.all([
     fetchProvider(slug, signal),
     fetchCategoryStates(slug, signal),

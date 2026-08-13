@@ -73,8 +73,8 @@ export function AssistedForm({
           Describe your workload
         </label>
         <p id={counterId} className="field__hint muted">
-          Plain words only — no URLs, secrets, credentials, or personal data. For example: “A
-          small API with a Postgres database and about 100,000 requests per month.”
+          Plain words only — no URLs, secrets, credentials, or personal data. For example: “A small
+          API with a Postgres database and about 100,000 requests per month.”
         </p>
         <textarea
           id={textareaId}
@@ -190,13 +190,13 @@ function ConsentModal({ onConsent, onCancel }: ConsentModalProps) {
         <div id={bodyId} className="modal__body">
           <p>
             To interpret your description an operator may route it to the configured{" "}
-            <strong>external AI provider</strong> (a third-party hosted model). This happens only
-            if you opt in here, and only for this one request.
+            <strong>external AI provider</strong> (a third-party hosted model). This happens only if
+            you opt in here, and only for this one request.
           </p>
           <p className="modal__warning">
             <strong>Do not include secrets, credentials, or personal or confidential data.</strong>{" "}
-            Your description will leave this service and be processed by the third party under
-            their terms.
+            Your description will leave this service and be processed by the third party under their
+            terms.
           </p>
           <p>
             Review the provider’s policy before continuing:{" "}

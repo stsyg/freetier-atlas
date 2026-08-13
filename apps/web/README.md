@@ -28,22 +28,22 @@ confidence rating, it displays exactly what the API returns.
 
 ## Layout
 
-| Path                          | Purpose                                                              |
-| ----------------------------- | ------------------------------------------------------------------- |
-| `src/main.tsx`                | React entry point.                                                  |
-| `src/App.tsx`                 | Hash router + landing; Browse / Categories / Compare / provider views.|
-| `src/api.ts`                  | Read-only catalogue client (typed `GET` fetchers over `/api`).      |
-| `src/catalogue/SearchControls.tsx` | Search box + composable filter form (typed query, no fetch).   |
-| `src/catalogue/ResultsList.tsx`    | Paged results list with compare selection + pagination.        |
-| `src/catalogue/CategoryMatrix.tsx` | Accessible 14-category × provider coverage table.              |
-| `src/catalogue/CompareView.tsx`    | Accessible side-by-side comparison table (normalized quotas).  |
-| `src/catalogue/vocab.ts`      | Closed filter vocabularies + coverage-state labels.                 |
-| `src/catalogue/`              | Provider-page components + `format.ts` plain-language helpers.      |
-| `src/App.test.tsx`            | Routing + multi-provider + a11y integration tests (mocked `fetch`). |
-| `src/api.test.ts`             | API-client tests (fixed paths, param encoding, error handling).     |
-| `src/catalogue/*.test.*`      | Component + formatter unit tests (a11y, honest "Unknown").          |
-| `nginx.conf`                  | Runtime server: SPA fallback, `/healthz`, `/api/` proxy.            |
-| `Dockerfile`                  | Multi-stage build (Node build → nginx runtime).                    |
+| Path                               | Purpose                                                                |
+| ---------------------------------- | ---------------------------------------------------------------------- |
+| `src/main.tsx`                     | React entry point.                                                     |
+| `src/App.tsx`                      | Hash router + landing; Browse / Categories / Compare / provider views. |
+| `src/api.ts`                       | Read-only catalogue client (typed `GET` fetchers over `/api`).         |
+| `src/catalogue/SearchControls.tsx` | Search box + composable filter form (typed query, no fetch).           |
+| `src/catalogue/ResultsList.tsx`    | Paged results list with compare selection + pagination.                |
+| `src/catalogue/CategoryMatrix.tsx` | Accessible 14-category × provider coverage table.                      |
+| `src/catalogue/CompareView.tsx`    | Accessible side-by-side comparison table (normalized quotas).          |
+| `src/catalogue/vocab.ts`           | Closed filter vocabularies + coverage-state labels.                    |
+| `src/catalogue/`                   | Provider-page components + `format.ts` plain-language helpers.         |
+| `src/App.test.tsx`                 | Routing + multi-provider + a11y integration tests (mocked `fetch`).    |
+| `src/api.test.ts`                  | API-client tests (fixed paths, param encoding, error handling).        |
+| `src/catalogue/*.test.*`           | Component + formatter unit tests (a11y, honest "Unknown").             |
+| `nginx.conf`                       | Runtime server: SPA fallback, `/healthz`, `/api/` proxy.               |
+| `Dockerfile`                       | Multi-stage build (Node build → nginx runtime).                        |
 
 ## Accessibility
 

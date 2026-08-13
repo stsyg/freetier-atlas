@@ -39,9 +39,7 @@ function EvidenceRow({ row }: { row: Evidence }) {
           <span className="badge__icon" aria-hidden="true">
             {row.official ? "✓" : "?"}
           </span>
-          <span className="badge__label">
-            {row.official ? "Official evidence" : "Unofficial"}
-          </span>
+          <span className="badge__label">{row.official ? "Official evidence" : "Unofficial"}</span>
         </span>
         <span className="evidence__title">{orUnknown(row.title)}</span>
       </div>

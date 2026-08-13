@@ -7,7 +7,10 @@ const downloadZip = vi.fn();
 
 vi.mock("../api", async () => {
   const actual = await vi.importActual<typeof import("../api")>("../api");
-  return { ...actual, fetchDeploymentExport: (...args: unknown[]) => fetchDeploymentExport(...args) };
+  return {
+    ...actual,
+    fetchDeploymentExport: (...args: unknown[]) => fetchDeploymentExport(...args),
+  };
 });
 
 vi.mock("./zip", () => ({
@@ -94,7 +97,9 @@ describe("DeploymentDownload — browser-side ZIP control (F007 slice 3)", () =>
   });
 
   it("surfaces an error without claiming server persistence", async () => {
-    fetchDeploymentExport.mockRejectedValue(new Error("The requirements were rejected by the API."));
+    fetchDeploymentExport.mockRejectedValue(
+      new Error("The requirements were rejected by the API."),
+    );
     render(<DeploymentDownload request={REQUEST} />);
 
     fireEvent.click(screen.getByRole("button", { name: /download deployment/i }));

@@ -1,109 +1,60 @@
 {
-  "feature_id": "F008",
-  "slice": "p2-vercel-provider-rebuild",
-  "title": "Rebuild the Vercel provider from production document structures",
-  "branch": "stsyg-f008-p2-vercel-rebuild",
+  "feature_id": "F001",
+  "slice": "format-web-baseline",
+  "title": "Bring the existing apps/web baseline into compliance with its own Prettier configuration",
+  "branch": "stsyg-chore-format-web-baseline",
   "base_commit": "071bd59515f3ba2a91d53f08bb7c93dccc9b53bd",
-  "started_at": "2026-08-13T19:35:25Z",
-  "objective": "Ingest official Vercel Hobby, Sandbox, and Pro Trial documents through header-signature matrix profiles and exact same-document assertions while making Z0 unreachable whenever the no-card condition is unknown.",
+  "started_at": "2026-08-13T20:00:00Z",
+  "objective": "Apply only apps/web's pinned Prettier 3.4.1 formatting output so its package-local format:check gate passes without changing behavior, tooling, configuration, or dependency state.",
   "materiality": "[M]",
-  "autonomy_level": "A3",
-  "required_evaluation_level": 2,
+  "autonomy_level": "A1",
+  "required_evaluation_level": 0,
   "in_scope": [
-    "config/examples/providers/vercel.example.yaml",
-    "apps/api/app/ingest/adapters/profiles/vercel.py",
-    "tests/fixtures/ingest/vercel/html/**",
-    "tests/unit/test_adapter_vercel.py",
-    "tests/unit/test_adapter_html_matrix.py",
-    "tests/integration/test_ingest_html_matrix.py",
-    "tests/unit/test_ingest_runner.py",
-    "tests/unit/test_vercel_coverage_config.py",
-    "tests/integration/test_ingest_vercel.py",
-    "tests/integration/test_ingest_vercel_coverage.py",
-    "docs/PROVIDER_ADAPTERS.md (Vercel section only)",
+    "apps/web files changed by npm run format",
     "agent-state/current_contract.json",
     "agent-state/progress.md (strict append only)"
   ],
   "out_of_scope_zero_diff": [
+    "apps/web/package.json and apps/web/package-lock.json",
+    "root package.json and package-lock.json",
+    ".prettierignore and all Prettier or ESLint configuration",
+    ".github/workflows/**",
+    "apps/api/**",
+    "tests/**",
+    "migrations/**",
+    "config/**",
+    "docs/DATA_MODEL.md",
     "agent-state/feature_list.json",
-    "other provider profiles, configs, fixtures, and tests",
-    "migrations; Alembic head remains 0011",
-    "publisher, classifier, quota parser, fetch MIME behavior, and shared extraction machinery",
-    "dependency manifests and lockfiles",
-    "workflows",
+    "application logic, string values, renames, and manual import reordering",
     "promotion or merge of the draft pull request"
   ],
   "acceptance_criteria": [
-    "A1: Vercel config declares canonical official HTML sources for Hobby, Sandbox, and Pro Trial, with all fourteen coverage states retained unless live official evidence requires a documented correction.",
-    "A2: Every production Vercel profile selects exactly one real table by normalized header signature, pivots a real tier column, and maps only exact same-document title, heading, paragraph, or list-item blocks. Mapped plus explicitly ignored row labels equal the pinned live row-label set exactly; every mapped row is required.",
-    "A3: Every retained target table includes every live data row and cell; capture.json explicitly states that no target-table row or cell was removed, records the live table header and row count, lists each ignored extraction row with a one-line non-materiality rationale, and carries an offline structural sidecar derived from the pinned live capture.",
-    "A4: Every Vercel candidate omits requires_card and has_paid_dependencies. No registered Vercel profile may assert either field: 'free', 'no billing cycles', 'will not be charged', 'you will not get charged', and upgrade-only payment instructions are not evidence for either gate. The publication gate must record decision=review with schema_complete failed, create a review item, and create zero Offer, OfferVersion, and Quota rows.",
-    "A5: The Pro Trial candidate is an evidence-backed deliberate non-Z0 control. Its trial duration, quota qualifiers, and hard-stop behavior remain verbatim; no no-card fact is asserted without owner ruling.",
-    "A6: Offline tests exercise unchanged, changed, partial, malformed, contradictory, withdrawn, and stale behaviors; withdrawn and stale use the shared cross-scan harness.",
-    "A7: Offline live-to-fixture controls compare every pinned structural-sidecar target-table header, row label, and cell to the retained fixture, and every asserted same-document prose block to its pinned hash.",
-    "A8: A session-only, uncommitted live uncontrolled fetch is run through each Vercel production profile and the exact candidate or rejection result is reported without reshaping fixtures to force acceptance.",
-    "A9: The old PR #50 synthetic ids, including vercel-hobby-offers and vercel-blob-hobby, appear nowhere in Vercel profiles or fixtures.",
-    "A10: Q9-A remains satisfied and every declared service-category mapping has a one-line rationale; every arguable mapping is disclosed in the draft PR body.",
-    "A11: Before execution, predictions are recorded for extra column, reordered columns, renamed tier header, duplicated table, rowspan, mapped-row removal, and entity/whitespace mutations. Observation must match prediction; any fail-open axis is disclosed in the draft PR body.",
-    "A12: A real PostgreSQL run persists scan_run, snapshot, candidate, official evidence, and review items for all configured sources while publishing zero offers. Each candidate records decision=review, schema_complete among failed_conditions, and SQL-scoped zero counts for Vercel Offer, OfferVersion, and Quota.",
-    "A13: Full isolated PostgreSQL tests pass with exactly two test_stack_health.py skips, Alembic head 0011, no network in tests, and no dependency or workflow change.",
-    "A14: Draft PR CI has all five checks green; Dependency audit has fourteen successful steps and all five named audit steps succeed."
+    "A1: apps/web npm run format:check fails before the change with its exact package-local failing-file list and exits 0 after npm run format.",
+    "A2: apps/web npm test passes before and after with identical test-file and test counts.",
+    "A3: apps/web npm run lint and npm run build both pass before and after.",
+    "A4: The formatter changes only the files selected by apps/web's pinned Prettier and introduces no semantically risky whitespace change.",
+    "A5: A positive-control diff returns rows before at least three of the largest reformatted files each produce an empty git diff --ignore-all-space result.",
+    "A6: apps/web/package-lock.json remains byte-identical to origin/main by Git blob hash.",
+    "A7: The diff stays within approved scope; progress.md is a strict base-prefix append ending in LF.",
+    "A8: The pull request is opened as draft on the first pushed commit, remains draft and unmerged, and all five CI checks pass with exactly two test_stack_health.py skips in the Python job."
   ],
   "verification_plan": [
-    "Run targeted Vercel unit tests and fixture extraction tests offline.",
-    "Run live uncontrolled Vercel bytes through production profiles and retain structural output in session artifacts.",
-    "Run the invented mutation after recording its prediction.",
-    "Run the Vercel integration suite and full pytest suite against the isolated PostgreSQL service.",
-    "Run scripts/test.ps1 and scripts/check.ps1 -NodeAudit.",
-    "Run Alembic head and migration-drift checks.",
-    "Run a fresh Level 2 evaluator against the contract, live artifacts, implementation diff, database rows, negative controls, and publication counts.",
-    "Commit, push, open a draft pull request at the first pushed commit, wait for CI, and inspect exact check and dependency-step names."
+    "Capture package-local format, test, lint, and production-build results before formatting.",
+    "Run npm run format from apps/web using the lockfile-pinned local Prettier.",
+    "Inspect the complete formatter diff for risky whitespace-sensitive constructs and prohibited value changes.",
+    "Capture package-local format, test, lint, and production-build results after formatting.",
+    "Run a positive-control diff, identify the largest reformatted files, and prove at least three have empty ignore-all-space diffs.",
+    "Compare origin/main and HEAD lockfile blob hashes.",
+    "Verify strict progress prefix and final LF, commit, push, open a draft pull request, and inspect all five CI checks."
   ],
   "negative_tests": [
-    "Removing or changing a required live matrix row must reject rather than silently truncate the candidate.",
-    "Adding an undeclared matrix row must reject with unknown_matrix_rows.",
-    "Duplicating a matching table must reject with ambiguous_table.",
-    "No Vercel assertion may map requires_card or has_paid_dependencies, and persisted Vercel candidates must contain neither key.",
-    "A changed asserted qualifier such as First, Up to, monthly, lifetime, or since you first used the feature must reject or remain changed verbatim.",
-    "A stale or unmatched ignored_matrix_rows label must fail the profile completeness test.",
-    "Synthetic PR #50 table ids must have zero matches across apps/api/app/ingest/adapters/profiles/vercel.py and tests/fixtures/ingest/vercel/html."
+    "Any non-whitespace difference in a reformatted source file blocks shipment pending investigation.",
+    "Any package or lockfile blob change blocks shipment.",
+    "Any changed recurring_quota string value or whitespace-sensitive template literal blocks shipment."
   ],
-  "live_grounding": {
-    "captured_at": "2026-08-13T19:42:00Z",
-    "sandbox": {
-      "url": "https://vercel.com/docs/sandbox/pricing",
-      "target_headers": [
-        "",
-        "Hobby (Included)",
-        "Pro (Per month)",
-        "Enterprise (Per month)"
-      ],
-      "target_data_rows": 8,
-      "sha256_live": "937ab4d0fc0c40815196578b7fbf7d06f72ff8cdcda2554f5df23909937245a4"
-    },
-    "hobby": {
-      "url": "https://vercel.com/docs/plans/hobby",
-      "target_headers": [
-        "Resource",
-        "Hobby Included Usage"
-      ],
-      "target_data_rows": 13,
-      "sha256_live": "75e3a96395dbe0ca9e2d07a83b760de5dba5ff8226108cdad71e2cc9d534846e"
-    },
-    "pro_trial": {
-      "url": "https://vercel.com/docs/plans/pro-plan/trials",
-      "target_headers": [
-        "",
-        "Pro Trial Limits"
-      ],
-      "target_data_rows": 10,
-      "sha256_live": "eaccbbf4c9eea161b39a0f47af8a6888f4ab567a06845e7c0a9a86dda9bd9185"
-    }
-  },
-  "data_implications": "Adds source, scan, snapshot, candidate, evidence, and review rows through existing schema only. No Vercel offer, offer_version, or quota row may be created under the approved evidence set.",
-  "security_privacy": "Only canonical vercel.com URLs are configured. Tests remain fixture-only and offline. No secrets, credentials, user-controlled URLs, or new egress path are introduced.",
-  "portability": "Uses existing standard-library HTML extraction and existing PostgreSQL integration paths; no managed-cloud dependency or new package is added.",
-  "z0_risk": "Critical. Unknown requires_card and has_paid_dependencies facts must block publication. Free, no billing cycles, will not be charged, you will not get charged, and upgrade-only card instructions are not no-card or no-paid-dependency evidence.",
-  "cost_estimate": "Local development and CI use existing resources; expected incremental service cost is $0. Live reads are public official documentation requests only.",
+  "data_implications": "None. No schema, migration, data, evidence, offer, quota, or provider behavior changes are permitted.",
+  "security_privacy": "None. No dependency, workflow, secret, credential, network, authentication, or authorization change is permitted.",
+  "portability": "Formatting is produced only by apps/web's declared script and lockfile-pinned Prettier 3.4.1.",
+  "z0_risk": "None. Existing vocabulary strings may be reformatted around but their values must remain byte-for-byte unchanged.",
   "status": "approved"
 }

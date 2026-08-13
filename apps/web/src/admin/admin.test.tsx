@@ -114,7 +114,10 @@ describe("AdminApp — private admin surface (F007 slice 4)", () => {
   it("validates a candidate config (validate-only) and sends the CSRF token", async () => {
     installFetch([
       ["GET /admin/session", () => json(200, SESSION)],
-      ["GET /admin/kill-switch", () => json(200, { enabled: false, env_override: false, effective: false })],
+      [
+        "GET /admin/kill-switch",
+        () => json(200, { enabled: false, env_override: false, effective: false }),
+      ],
       ["GET /admin/review-queue", () => json(200, { items: [], valid_actions: ["approved"] })],
       ["GET /admin/source-health", () => json(200, { sources: [] })],
       [
