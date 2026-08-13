@@ -65,5 +65,5 @@
   "portability": "Standard-library HTML parsing only; no new dependency or managed service. PostgreSQL 16 is isolated test infrastructure and remains the existing mandatory stateful service.",
   "z0_risk": "High product-truth sensitivity. The fixture must not emit requires_card=false or guess any absent material fact. Unknown material conditions must keep publication reviewed/withheld and prevent a Z0 offer.",
   "known_boundary": "Full Vercel P2 remains incomplete. This slice is generic infrastructure only and never composes facts across documents.",
-  "status": "implementation_complete_evaluation_passed_pr_pending"
+  "status": "draft_pr_open_implementation_head_ci_passed"
 }

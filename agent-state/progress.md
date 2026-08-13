@@ -2630,3 +2630,10 @@ not 1259 passed / 2 skipped. The CI-shaped run deliberately omits only
 - **Evaluator disposition:** Fresh independent Level-2 evaluator **PASS** after reproducing focused and legacy tests, the full PostgreSQL suite, aggregate audits, exact candidate/evidence/database state, publication withholding, fixture/live-artifact hashes, mutation logs, deterministic behavior, and prohibited-scope zero diff.
 - **Scope and boundary:** No production Vercel profile/config, MIME/Markdown, publisher/classifier/quota parser, model/migration, dependency/workflow, feature-ledger, or cross-document API changed. F008 remains `passes:false`. Full Vercel P2 remains incomplete, and this prerequisite does not compose facts across documents.
 - **Commit / PR / CI:** Pending focused commit, first push, draft pull request, exact-head five-check CI rollup, and isolated-container cleanup.
+
+### 2026-08-13 06:11 UTC - Draft PR implementation-head CI and cleanup
+
+- **Commit / PR [M]:** Focused implementation commit `4e0833c8891d1eed422ca1b0853d5174b241381a` was pushed once and opened immediately as draft PR #57 against exact base `53feaf14352ba18853516bb17b61293c7a9c320c`. The pull request remains open, draft, and unmerged.
+- **Implementation-head CI [M]:** All five checks passed on `4e0833c8891d1eed422ca1b0853d5174b241381a`: Python lint/format/tests (13 steps), Node format/lint (9 steps), secret scan including URL allowlist (9 steps), dependency audit (14 steps), and GitGuardian.
+- **Cleanup [M]:** Removed only isolated PostgreSQL 16 container `fta-matrix-pg-335eda32` and its attached anonymous volume `7e077dbc21919452589eb788ae7e749cf1ba23b51ee0b1896fdf45e550b51632`; exact-name container and volume checks returned empty.
+- **Boundary:** F008 remains `passes:false`; full Vercel P2 remains incomplete; no cross-document composition is introduced.
