@@ -16,6 +16,7 @@ still rejected.
 from __future__ import annotations
 
 import re
+from collections import Counter
 from typing import Annotated, Literal, Self, get_args
 
 from pydantic import (
@@ -299,6 +300,20 @@ class ProviderConfig(_Base):
                     f"Valid slugs (apps/api/app/read_api/taxonomy.py): "
                     f"{', '.join(canonical_slugs())}"
                 )
+        return self
+
+    @model_validator(mode="after")
+    def _check_unique_source_ids(self) -> Self:
+        """Reject ambiguous source references before building the lookup set."""
+
+        counts = Counter(source.id for source in self.sources)
+        duplicates = sorted(source_id for source_id, count in counts.items() if count > 1)
+        if duplicates:
+            raise ValueError(
+                f"provider {self.provider.id!r}: sources contains duplicate source ids: "
+                f"{', '.join(duplicates)}. Every sources[].id must be unique; remove or "
+                "rename the duplicate entries."
+            )
         return self
 
     @model_validator(mode="after")

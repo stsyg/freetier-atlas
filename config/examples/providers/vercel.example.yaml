@@ -76,12 +76,16 @@ coverage:
       eligibility remains unproved.
   queues-messaging-jobs:
     state: offered_no_z0
-    evidence_url: https://vercel.com/docs/queues/pricing
+    evidence_url: https://vercel.com/docs/workflows/pricing
     rationale: >-
-      Vercel Queues publishes a Hobby allowance. Cron Jobs and Workflows also map
-      to this category but depend on Functions and, for workflow messaging,
-      Queues; the complete dependency, exhaustion, and no-card facts are not yet
-      represented by a single generic extraction.
+      Vercel Workflows publishes Hobby allowances of 50,000 events per month and
+      1 GB of data written. Retained workflow data is unavailable on Hobby, and
+      completed runs are retained for one day. Workflows uses Vercel Queues and
+      Functions; Queue usage is billed at standard rates and Functions are
+      charged separately. Cron Jobs are included in all plans but invoke
+      Functions and inherit their limits and pricing. The combined category is
+      offered, but its dependencies, complete exhaustion behavior, and no-card
+      path are not represented as a Z0 offer.
   auth-identity:
     state: unknown
     evidence_url: https://vercel.com/docs/deployment-protection/methods-to-protect-deployments/vercel-authentication
@@ -110,10 +114,13 @@ coverage:
     state: offered_no_z0
     evidence_url: https://vercel.com/docs/ai-gateway/pricing
     rationale: >-
-      The live AI Gateway pricing matrix publishes a permanent five-dollar
-      monthly Free Tier. Temporary model promotions are not used as coverage
-      evidence, and the official page does not prove every no-card, dependency,
-      and safe-exhaustion condition required for Z0.
+      Every Vercel team gets both a free tier and a paid tier for AI Gateway
+      Credits. The free tier includes only a subset of models; free requests have
+      lower per-model rate limits and return 429 when exceeded. Free credits
+      start on the team's first AI Gateway request. Purchasing credits
+      transitions the account to paid, after which the monthly free credit no
+      longer applies. The page does not prove a no-card path, so no Z0 offer is
+      produced.
   email-notifications-comms:
     state: not_offered
     evidence_url: https://vercel.com/docs/notifications
