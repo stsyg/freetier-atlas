@@ -2649,3 +2649,10 @@ not 1259 passed / 2 skipped. The CI-shaped run deliberately omits only
 - **Regression and validation [M]:** Added a fixture-shape guard that rejects the fabricated headers and requires the real sibling headers plus all eight target row labels exactly once. Added closed-domain assertion tests. Focused fixture/remediation tests passed **136**. The full isolated-PostgreSQL suite passed **1601 / exactly 2 stack-health skipped / 1 warning**. `scripts/check.ps1 -NodeAudit` passed Ruff lint/format, pytest (**1396 / 207 database-gated skips**), Prettier, ESLint, secret scan, URL allowlist, Python audit, and Node audit.
 - **PR state:** Draft PR #57 remains draft and unmerged. Remediation commit, exact-head CI, evaluator re-verification, and isolated PostgreSQL cleanup are pending.
 - **Independent evaluator disposition:** Fresh Level-2 remediation evaluator **PASS** after independently matching the real sibling and all eight target rows to the retained canonical bytes, recomputing both hashes, rerunning live extraction and PostgreSQL gate proof, confirming the append-only correction, and finding no prohibited-scope change.
+
+### 2026-08-13 07:41 UTC - Fixture-remediation CI and cleanup
+
+- **Remediation commit / PR [M]:** Commit `fc52b4d817ba1130738c18611e02e06e5f74f090` was pushed to draft PR #57. The pull request remains open, draft, clean, mergeable, and based on exact `53feaf14352ba18853516bb17b61293c7a9c320c`.
+- **Remediation-head CI [M]:** All five checks passed on `fc52b4d817ba1130738c18611e02e06e5f74f090`: Python lint/format/tests (13 steps), Node format/lint (9 steps), secret scan including URL allowlist (9 steps), dependency audit (14 steps), and GitGuardian.
+- **Cleanup [M]:** Removed only isolated PostgreSQL 16 container `fta-matrix-pg-335eda32` and attached anonymous volume `86c87824ed2c5b7cd84be9e17b6de63636753f6b7e871b0006276d3be7c82581`; exact-name checks returned empty.
+- **Boundary:** F008 remains `passes:false`; full Vercel P2 remains incomplete; no cross-document composition was added; do not merge.
