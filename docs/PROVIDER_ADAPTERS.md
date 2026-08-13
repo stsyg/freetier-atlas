@@ -85,13 +85,13 @@ the whole basis for a Z0 verdict on those three services. Automatic billing
 applies only to an account that has already added a card, which is not the `$0`
 path being classified.
 
-**Only one material condition fails open.** `requires_card`,
-`has_paid_dependencies` and `exhaustion_behaviour` each block Z0 when unknown,
-but an unrecognised `offer_type` is treated as "not temporary" and still reaches
-`Z0_TRUE_FREE`. In practice the profiles' `required_fields=("service",
-"offer_type")` rejects such a candidate before it can be published — the guard is
-at extraction, not in the classifier. A provider slice must therefore keep
-`offer_type` required.
+**Offer type fails closed at both gates.** `requires_card`,
+`has_paid_dependencies` and `exhaustion_behaviour` each block Z0 when unknown.
+An unrecognised `offer_type` also yields `UNKNOWN` in the classifier, while the
+publication schema gate rejects a value outside the exact closed vocabulary
+before resolving or inserting an offer. Profiles must still keep `offer_type`
+required so malformed candidates fail during extraction rather than relying on
+those later defenses.
 
 **Constraint worth knowing:** `scripts/url-allowlist.txt` permits `github.com`,
 `api.github.com` and `docs.github.com` only. The GitHub changelog lives on

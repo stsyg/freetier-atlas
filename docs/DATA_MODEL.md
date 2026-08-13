@@ -220,8 +220,16 @@ community source can surface a coverage gap but can never establish a fact.
 
 ### Offer types
 
-- `always_free`
-- `recurring_quota`
+- `always_free` — an offer attached to an explicitly zero-priced plan, tier, or
+  SKU with no stated end date. The plan may still impose metered allowances that
+  reset (for example, requests per day or transfer per month), as well as static
+  capacity or rate limits. A reset cadence does not by itself make the offer a
+  `recurring_quota`.
+- `recurring_quota` — a periodically replenished free grant attached to an
+  account, plan, or service that is not itself an explicitly zero-priced plan,
+  tier, or SKU. Examples include monthly free units granted to an otherwise
+  pay-as-you-go account. The recurring grant must be the offer; do not use this
+  type for a quota that merely limits an `always_free` plan.
 - `new_customer_credit`
 - `trial`
 - `startup_program`
@@ -231,6 +239,76 @@ community source can surface a coverage gap but can never establish a fact.
 - `personal_use_free`
 - `self_hosted_open_source`
 - `other`
+
+#### Choosing between `always_free` and `recurring_quota`
+
+Apply this rule from official evidence, in order:
+
+1. If the provider identifies an indefinitely available zero-priced plan, tier,
+   or SKU and the allowance belongs to it, use `always_free`, whether the limits
+   are static or reset on a schedule.
+2. Otherwise, if the provider identifies a free allowance that replenishes on a
+   schedule while the containing account, plan, or service is not itself
+   zero-priced, use `recurring_quota`.
+3. If official evidence does not establish which commercial structure applies,
+   do not infer it from words such as "monthly", "included", or "free". Use
+   `other` and route the candidate for review until the structure is evidenced.
+
+The unit of classification is the commercial offer, not an individual quota.
+One `always_free` plan does not become multiple offer types because it has both a
+static storage cap and a monthly transfer allowance.
+
+This rule matches every merged production provider profile:
+
+| Offer | Evidence shape | Type |
+| --- | --- | --- |
+| GitHub Actions | Minutes reset each billing cycle inside the GitHub Free plan | `always_free` |
+| GitHub Packages | Storage and monthly transfer belong to the GitHub Free plan | `always_free` |
+| GitHub Codespaces | Monthly compute and storage allowances belong to GitHub Free for personal accounts | `always_free` |
+| GitHub Pages | Monthly bandwidth and hourly build limits apply to GitHub Free | `always_free` |
+| Cloudflare Workers | Daily requests are a limit of the Workers Free plan | `always_free` |
+| Cloudflare Pages | Monthly builds are a limit of the Pages Free plan | `always_free` |
+
+The distinction describes offer structure; it does **not** determine the
+zero-cost class. The classifier recognizes both values, includes neither in
+`TEMPORARY_CONDITIONAL_OFFER_TYPES`, and applies the same independent card,
+paid-dependency, availability, and exhaustion gates to both. Either type can
+reach `Z0_TRUE_FREE`, and either can instead become Z1, Z2, or UNKNOWN when
+another material fact requires it. Changing only between these two labels does
+not change the current Z0 verdict.
+
+This is a written contract for provider authors and evaluators, not a semantic
+validator. The closed vocabulary and database constraints reject unknown
+strings, but no machinery checks source text to prove that an author selected
+the correct one.
+
+The public catalogue exposes both values as filters. No merged production
+provider profile currently emits `recurring_quota`, so the **Recurring quota**
+filter can return no real provider offers. Synthetic adviser fixtures use the
+value, but they do not populate the public catalogue. That empty result is an
+honest consequence of the narrower meaning, not evidence that monthly
+allowances on free plans are misclassified.
+
+#### Alternatives considered
+
+**Split by meter reset.** Defining `always_free` as unmetered/static-only and
+`recurring_quota` as any replenishing allowance would be easy to observe, but it
+would classify the plan's quota rather than the commercial offer. It would also
+require a separate approved provider-data slice to reclassify six merged
+production profiles: four GitHub offers (Actions, Packages, Codespaces, and
+Pages) and two Cloudflare offers (Workers and Pages). The classifier treats the
+two values identically, so those changes would populate the filter without
+changing any Z0 verdict.
+
+**Remove `recurring_quota`.** Removal would eliminate the currently empty public
+filter, but it would discard a useful distinction for recurring grants on
+non-free base accounts. It is not a documentation-only change. A separate
+schema slice would have to remove the value from `OFFER_TYPES`, replace both the
+`offer` and `offer_version` `CHECK` constraints through a new migration, remove
+the web filter and its tests, update adviser/unit/integration/security fixtures,
+and define a migration policy for any persisted `offer` and immutable
+`offer_version` rows already using the value. Deployed rows must be inventoried;
+repository fixtures cannot prove that none exist.
 
 ### Exhaustion behaviours
 
