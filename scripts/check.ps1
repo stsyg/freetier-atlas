@@ -65,9 +65,26 @@ Invoke-Check "Ruff format check" { & $ruff format --check . }
 Invoke-Check "Pytest" { & $pytest -q }
 Invoke-Check "Prettier check" { & npm run --silent format:check }
 Invoke-Check "ESLint" { & npm run --silent lint }
+Invoke-Check "Secrets baseline shape" { & $python scripts/check_secrets_baseline.py }
+# Runs after the shape check on purpose: detect-secrets-hook REWRITES the baseline
+# when it updates it, so scanning first would repair the file in place and hide the
+# state that was actually committed.
 Invoke-Check "Secret scan" {
     $files = git ls-files -co --exclude-standard
     & $detectHook --baseline .secrets.baseline @($files)
+    $code = $LASTEXITCODE
+    # 0 clean, 1 findings, 3 the baseline was REWRITTEN. Exit 3 is not a finding,
+    # and a builder has already misread it as one.
+    switch ($code) {
+        0 { }
+        1 { throw "a secret that is not in the baseline was found" }
+        3 {
+            throw ("detect-secrets REWROTE .secrets.baseline; this is NOT a secret finding. " +
+                "Restore it with 'git checkout -- .secrets.baseline', then refresh with " +
+                "'python scripts/refresh_secrets_baseline.py', which keeps keys posix.")
+        }
+        default { throw "detect-secrets exited $code" }
+    }
 }
 Invoke-Check "URL host allowlist" { & $python scripts/check_urls.py }
 Invoke-Check "Audit Python production dependencies (apps/api)" {

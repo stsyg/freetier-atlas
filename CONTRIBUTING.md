@@ -67,8 +67,48 @@ scripts/check.sh
 ```
 
 These run: Ruff lint, Ruff format check, pytest, Prettier check, ESLint, a
-detect-secrets scan, and a dependency audit. See `docs/AGENT_HARNESS.md` if you
-are an automated agent.
+secrets baseline shape check, a detect-secrets scan, and a dependency audit. See
+`docs/AGENT_HARNESS.md` if you are an automated agent.
+
+## Changing `.secrets.baseline`
+
+Never refresh the baseline by running `detect-secrets` directly. Use:
+
+```bash
+python scripts/refresh_secrets_baseline.py
+```
+
+**Why this is not optional.** `detect-secrets` keys its results by OS-native path.
+It converts `/` to `os.sep` when it loads a baseline and when it scans a file, but
+it never converts back when it saves. The asymmetry is one-way, so on Windows
+*every* write path emits `tests\fixtures\...` where the committed file holds
+`tests/fixtures/...`. This has corrupted the baseline four times, in three
+different disguises:
+
+- entries silently **deleted** instead of updated, because a refresh keyed by
+  native path does not match the committed posix keys;
+- every filename **rewritten with backslashes**, which the pre-commit hook does
+  automatically, and which `detect-secrets scan --baseline` does at exit 0 with no
+  output at all;
+- **exit code 3 misread as a finding**. It is not. `detect-secrets-hook` exits `0`
+  clean, `1` when it finds a secret that is not in the baseline, and `3` *after it
+  has already rewritten the baseline file*. If you see 3, the file on disk has
+  changed; restore it with `git checkout -- .secrets.baseline` and refresh through
+  the wrapper.
+
+The wrapper runs the same scan, then normalises keys back to posix, writes LF,
+keeps the committed filter set stable, and **refuses to write** if a tracked file
+would vanish or an entry count would drop, restoring the original bytes instead.
+Pass `--allow-removals` only when a scanned file was deliberately deleted, so that
+losing an entry is always a decision rather than an accident.
+
+`scripts/check_secrets_baseline.py` enforces the result in CI, in
+`scripts/check.ps1` / `scripts/check.sh`, and as a pre-commit hook that runs
+immediately after `detect-secrets`. It fails the build on a non-posix key, a
+per-file entry count that decreased, a tracked file that disappeared, a malformed
+digest, or a stale entry naming a deleted file. It deliberately does **not** fail
+on `generated_at` churn: a legitimate refresh always updates it, and a check that
+fires on correct work only teaches people to bypass it.
 
 ## Development environment
 
