@@ -860,15 +860,20 @@ def test_the_opener_still_omits_redirect_error_and_proxy_handlers() -> None:
 
 # --- A real TLS handshake, pinned to an IP, verified against the name ------
 #
-# `cryptography` is NOT a declared test dependency of this repository and is not
-# pulled in by `pip install -e ".[dev]"` (measured: pip-audit 2.9.0 does not
-# require it), so these two tests SKIP in CI and run only where a developer
-# happens to have it. They are an additional end-to-end proof, deliberately not
-# the load-bearing one: the property they demonstrate is enforced everywhere by
-# `test_tls_is_negotiated_for_the_hostname_not_the_pinned_address` and
-# `test_the_default_tls_context_still_verifies_certificates`, which need nothing
-# beyond the standard library. Adding a dependency just to run them would cost
-# more than it buys.
+# `cryptography` IS a declared test dependency (requirements-dev.txt and the
+# pyproject dev extra, which are mirrored and enforced by
+# tests/unit/test_requirements_sync.py), so these two tests EXECUTE in CI.
+#
+# They were previously skipped there, and the skip was rationalised on the
+# grounds that the property is enforced by the standard-library-only tests
+# above. That reasoning was measured and found wrong. Those tests assert
+# `server_hostname`, `check_hostname` and `CERT_REQUIRED` and INFER the rest
+# from the stdlib contract; two plausible defects satisfy every one of those
+# assertions while defeating certificate verification completely -- weakening
+# the injected context, and retrying unverified when an SSL error is raised.
+# Both stayed green in CI. Only a real handshake catches them. The
+# `importorskip` guards remain so a developer without the extra installed still
+# gets a clean skip rather than a collection error.
 
 
 def _tls_chain(tmp_path, hostname: str) -> tuple[str, str, str]:
@@ -1001,9 +1006,9 @@ def test_https_certificate_is_verified_against_the_hostname_end_to_end(
     """The connection dials 127.0.0.1; the certificate names only ``pinned.test``.
 
     It carries no IP SAN, so this handshake could not succeed if pinning had
-    moved verification onto the address that was dialled. Skipped in CI (see the
-    section comment above); the same property is enforced there by the
-    standard-library-only tests.
+    moved verification onto the address that was dialled. This runs in CI: it is
+    the only test here that catches a weakened or bypassed TLS context, because
+    such a defect leaves every standard-library-only assertion above intact.
     """
 
     pytest.importorskip("cryptography")

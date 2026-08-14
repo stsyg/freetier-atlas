@@ -6,3 +6,12 @@ pytest==9.0.3
 detect-secrets==1.5.0
 pip-audit==2.9.0
 httpx==0.28.1
+# Test-only. It is what makes the two end-to-end TLS tests in
+# tests/unit/test_ingest_fetch.py EXECUTE rather than skip: they mint a
+# throwaway CA and leaf into a temporary directory and drive a real handshake.
+# Without it those tests skipped in CI, and a Level-2 evaluator demonstrated by
+# mutation that certificate verification could be fully defeated while every
+# standard-library-only assertion stayed green. Deliberately absent from
+# apps/api/requirements.txt and apps/worker/requirements.txt: it must not reach
+# a shipped image.
+cryptography==50.0.0
