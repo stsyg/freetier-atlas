@@ -1,0 +1,17 @@
+{
+  "captured_by": "F008 P4 AWS provider slice (synthetic scaffold)",
+  "fetched_at": "2026-08-14T18:05:00Z",
+  "http_status": null,
+  "synthetic": true,
+  "negative_fixture_note": "NEGATIVE TEST FIXTURE, NOT A CLAIMED COMPLETE CAPTURE. It is not a record of anything AWS publishes and must never be cited as evidence.",
+  "derived_from": "tests/fixtures/ingest/aws/html/aws-free-tier-plan/source.html",
+  "mutation": "the tier column header was renamed 'Free plan' -> 'Free plans' so the declared header signature no longer selects any table. The adapter must reject with table_not_found rather than scrape whatever table it can find and publish values from the wrong column.",
+  "mutation_intent": "Proves the profile is pinned to the live header text, not to column position.",
+  "extraction_profile": "aws_free_tier_plan",
+  "sha256_original": null,
+  "sha256_stored": "51e3f3fe90f8a02315e0981977c0b3952fc4123af6858f86ab7dfe6ec2123e2b",
+  "robots_allowed": true,
+  "tos_note": "No provider bytes were retrieved for this fixture. It is a NEGATIVE test scaffold produced locally; the official AWS Free Tier capture it derives from carries the retrieval provenance and terms note.",
+  "trim_method": "not a capture: this document was produced locally by applying one named mutation to the committed official AWS Free Tier capture. Mutation: the tier column header was renamed 'Free plan' -> 'Free plans' so the declared header signature no longer selects any table. The adapter must reject with table_not_found rather than scrape whatever table it can find and publish values from the wrong column.",
+  "url": "https://aws.amazon.com/free/"
+}

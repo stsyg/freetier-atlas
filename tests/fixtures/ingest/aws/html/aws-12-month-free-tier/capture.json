@@ -1,0 +1,43 @@
+{
+  "captured_by": "F008 P4 AWS provider slice (live capture, generated from the live parse)",
+  "fetched_at": "2026-08-14T18:05:00Z",
+  "http_status": 200,
+  "robots_allowed": true,
+  "sha256_original": "de8e8c18276ce630fde87b1bc0227291a1b6b86e6de17e2c81e3b466b6794b1e",
+  "sha256_original_note": "sha256_original is the digest of the exact live bytes this capture was derived from on 2026-08-14. It is NOT reproducible across fetches: aws.amazon.com serves per-build markup and rotating inline tokens, so a later fetch of an unchanged page yields a different digest. STRUCTURE, not digest, is the invariant.",
+  "sha256_stored": "c1e1d7a9ce7a3300ae2f250d738d2999469153e7de70f151d4b40f7a0d63fdff",
+  "sha256_stored_note": "sha256_stored attests the COMMITTED BYTES ONLY. It is a tamper-evidence seal on this file, not a link to the live page, and it must never be read as a fidelity control.",
+  "tos_note": "Official AWS pages (aws.amazon.com). https://aws.amazon.com/robots.txt has a single 'User-agent: *' group; its only /free/ Disallow rules are '/free/cloud-computing-free-tier/' and '/free/databases-free-tier/', and neither this path nor /dynamodb/pricing/ is disallowed, so automated retrieval of this path is permitted. A minimal excerpt is committed for offline, deterministic extraction testing; every retained value and every pinned block is reproduced verbatim from the cited live page.",
+  "trim_method": "Removed scripts, navigation, styling and unrelated prose. This capture was GENERATED from the live document's own parse: every retained block is the exact normalised string the engine collected from the live page, and (where a table is retained) the headers and cells are the exact normalised strings the engine collected from the live target table. Inline markup inside those blocks and cells was flattened to plain text; the engine normalises a block or cell to its text content, so every retained normalised string is identical to live. This is a deliberate minimal excerpt, not a complete copy of the page.",
+  "live_table_count": 0,
+  "live_table_present": false,
+  "live_table_note": "ASSERTION-ONLY. MEASURED: the live document contains ZERO <table> elements. The AWS Free Tier Terms are published entirely as prose, so this profile declares no table selector and none was synthesized.",
+  "non_target_tables_removed": 0,
+  "non_target_tables_removed_note": "MEASURED: no non-target table feeds this profile's outcome, so none is retained and none is synthesized.",
+  "target_table_rows_removed": [],
+  "target_table_cells_removed": [],
+  "unpivoted_target_table_columns": [],
+  "ignored_extraction_rows": [],
+  "duplicate_live_blocks_retained": [
+    "document: If you have not used the AWS resources provided under an Offer during the previous 3 month",
+    "document: Unused usage amounts remaining at the end of the month under any Offers do not roll over t",
+    "document: We may terminate any Offer on the AWS Free Tier page at any time.",
+    "document: When calculating your use of AWS Services under any Offers, we will aggregate your use acr"
+  ],
+  "duplicate_live_blocks_not_retained": [],
+  "live_reconciliation": "LIVE -> FIXTURE (primary): all 5 pinned block(s) occur EXACTLY ONCE in the live document and EXACTLY ONCE in this capture; all 0 live target-table row(s) are present, none removed, none added. FIXTURE -> LIVE (supporting only): every block in this capture occurs in the live document.",
+  "url": "https://aws.amazon.com/free/terms/",
+  "structure": {
+    "asserted_block_sha256": [
+      "a50d263e10846650a2384274822b7fd9d8d6c8a74edd803e6c23c9a017038646",
+      "a50d263e10846650a2384274822b7fd9d8d6c8a74edd803e6c23c9a017038646",
+      "980d5d40b7ad12340c8b01c865ee4ff9acd6b047167c98ed39be768ae2e0cfb1",
+      "980d5d40b7ad12340c8b01c865ee4ff9acd6b047167c98ed39be768ae2e0cfb1",
+      "098e33d7f3a44108a2cefb738c2a6362eb430e69731b43eb65026b05062d02cd",
+      "23094b4934ba459f1495970bea8bc57edfc8317ec00a8dc23d8e1dc7935fa48c",
+      "f82969147857aba71d36fb77e00028018a4f0681ff93e44bfc3f6030f8da7ca2"
+    ],
+    "headers": [],
+    "rows": []
+  }
+}

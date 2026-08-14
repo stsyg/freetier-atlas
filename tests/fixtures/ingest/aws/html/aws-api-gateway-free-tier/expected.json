@@ -1,0 +1,23 @@
+{
+  "profile": "aws_api_gateway_free_tier",
+  "mime": "text/html",
+  "source_url": "https://aws.amazon.com/api-gateway/pricing/",
+  "candidate_count": 1,
+  "candidates": [
+    {
+      "verification_state": "candidate",
+      "expect_valid": true,
+      "facts": {
+        "service": "Amazon API Gateway",
+        "offer_type": "trial",
+        "trial_length_months": "12",
+        "exhaustion_behaviour": "automatic_billing",
+        "quota_basis": "The Amazon API Gateway free tier includes one million API calls received for REST APIs, one million API calls received for HTTP APIs, and one million messages and 750,000 connection minutes for WebSocket APIs per month for up to 12 months. If you exceed this number of calls per month, you will be charged the API Gateway usage rates.",
+        "eligibility": "These free tier offers are only available to new AWS customers, and are available for 12 months following your AWS sign-up date. When your 12 month free usage term expires or if your application use exceeds the tiers, you simply pay standard, pay-as-you-go service rates.",
+        "notes": "These free tier offers are only available to new AWS customers, and are available for 12 months following your AWS sign-up date. When your 12 month free usage term expires or if your application use exceeds the tiers, you simply pay standard, pay-as-you-go service rates."
+      },
+      "evidence_url": "https://aws.amazon.com/api-gateway/pricing/",
+      "evidence_selector": "aws_api_gateway_free_tier assertion[0] title[0] -> fact[service]"
+    }
+  ]
+}

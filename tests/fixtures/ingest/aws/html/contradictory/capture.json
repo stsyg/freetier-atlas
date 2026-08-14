@@ -1,0 +1,17 @@
+{
+  "captured_by": "F008 P4 AWS provider slice (synthetic scaffold)",
+  "fetched_at": "2026-08-14T18:05:00Z",
+  "http_status": null,
+  "synthetic": true,
+  "negative_fixture_note": "NEGATIVE TEST FIXTURE, NOT A CLAIMED COMPLETE CAPTURE. It is not a record of anything AWS publishes and must never be cited as evidence.",
+  "derived_from": null,
+  "mutation": "two synthetic rows for one offer identity disagree on requires_card, on paid dependencies and on exhaustion behaviour. Read with the pre-existing GENERIC quota_document profile, because every AWS profile pins those facts to verbatim prose and cannot express an intra-page disagreement about them.",
+  "mutation_intent": "Proves a disagreement is surfaced for reconciliation rather than silently merged.",
+  "extraction_profile": "quota_document",
+  "sha256_original": null,
+  "sha256_stored": "7088fdf64e0f01620587f402b0c7515c8cb0aef38bc14ce5bf03dd319f1d1004",
+  "robots_allowed": true,
+  "tos_note": "No provider bytes were retrieved for this fixture. It is a wholly SYNTHETIC document written locally to exercise intra-document contradiction; no AWS page has this shape.",
+  "trim_method": "not a capture: this document was authored locally and declares its synthetic provenance in its own visible body text.",
+  "url": "https://aws.amazon.com/free/"
+}

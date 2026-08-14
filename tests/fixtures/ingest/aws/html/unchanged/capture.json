@@ -1,0 +1,17 @@
+{
+  "captured_by": "F008 P4 AWS provider slice (synthetic scaffold)",
+  "fetched_at": "2026-08-14T18:05:00Z",
+  "http_status": null,
+  "synthetic": true,
+  "negative_fixture_note": "NEGATIVE TEST FIXTURE, NOT A CLAIMED COMPLETE CAPTURE. It is not a record of anything AWS publishes and must never be cited as evidence.",
+  "derived_from": "tests/fixtures/ingest/aws/html/aws-free-tier-plan/source.html",
+  "mutation": "none: byte-identical to the official AWS Free Tier plan-comparison capture, so a re-scan must produce an identical content hash and raise no change event",
+  "mutation_intent": "Positive control. If this case ever fails, a failure reported by the other four means nothing.",
+  "extraction_profile": "aws_free_tier_plan",
+  "sha256_original": null,
+  "sha256_stored": "406725f0ab1f58f0b7a7e15df92fad018620a37617bf3b192af95c2a8fef63f8",
+  "robots_allowed": true,
+  "tos_note": "No provider bytes were retrieved for this fixture. It is a NEGATIVE test scaffold produced locally; the official AWS Free Tier capture it derives from carries the retrieval provenance and terms note.",
+  "trim_method": "not a capture: this document was produced locally by applying one named mutation to the committed official AWS Free Tier capture. Mutation: none: byte-identical to the official AWS Free Tier plan-comparison capture, so a re-scan must produce an identical content hash and raise no change event",
+  "url": "https://aws.amazon.com/free/"
+}

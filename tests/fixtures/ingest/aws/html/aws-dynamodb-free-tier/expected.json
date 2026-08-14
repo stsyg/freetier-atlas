@@ -1,0 +1,26 @@
+{
+  "profile": "aws_dynamodb_free_tier",
+  "mime": "text/html",
+  "source_url": "https://aws.amazon.com/dynamodb/pricing/",
+  "candidate_count": 1,
+  "candidates": [
+    {
+      "verification_state": "candidate",
+      "expect_valid": true,
+      "facts": {
+        "service": "Amazon DynamoDB",
+        "offer_type": "recurring_quota",
+        "quota_basis": "The DynamoDB free tier is enough for about 200M requests/month (depending on item size) and can be used for personal apps, prototypes, or learning/certification needs. It uses provisioned capacity and the DynamoDB Standard table class. The DynamoDB free tier offers the following benefits each month on a per Region, per-payer account basis:",
+        "billing_basis": "DynamoDB offers two table classes, with different pricing for data storage, reads, and writes. Both table classes offer similar performance but allow you to optimize costs based on your access patterns. The DynamoDB Standard table class is the default and recommended for most workloads. The DynamoDB Standard-Infrequent Access (Standard-IA) table class is best suited for data that is accessed infrequently and storage is the dominant cost. Learn more about DynamoDB table classes.",
+        "provisioned_capacity": "25 WCUs, 25 RCUs",
+        "global_table_replicated_writes": "25 rWCUs for global tables, deployed across two AWS Regions",
+        "data_storage": "25 GB of data storage",
+        "stream_read_requests": "2.5 million stream read requests from DynamoDB Streams",
+        "data_transfer_out": "1 GB of data transfer out (15 GB for your first 12 months), aggregated across AWS services",
+        "notes": "In addition to the DynamoDB free tier, you can get up to $200 USD in credits with the AWS Free Tier to experience the full set of DynamoDB features for up to 6 months. Access your DynamoDB free tier."
+      },
+      "evidence_url": "https://aws.amazon.com/dynamodb/pricing/",
+      "evidence_selector": "aws_dynamodb_free_tier assertion[0] title[0] -> fact[service]"
+    }
+  ]
+}

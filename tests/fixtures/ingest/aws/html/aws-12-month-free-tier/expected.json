@@ -1,0 +1,23 @@
+{
+  "profile": "aws_12_month_free_tier",
+  "mime": "text/html",
+  "source_url": "https://aws.amazon.com/free/terms/",
+  "candidate_count": 1,
+  "candidates": [
+    {
+      "verification_state": "candidate",
+      "expect_valid": true,
+      "facts": {
+        "service": "AWS 12 Month Free Tier",
+        "offer_type": "trial",
+        "trial_length_months": "12",
+        "eligibility": "The 12 Month Free Tier is only available to new AWS customers, and is available for 12 months following your AWS sign-up date. The Other Offers are available to both existing and new AWS customers, and may be limited in duration (such as for trials) or in available free usage (such as the amount of free storage for a database Offer). You will not be eligible for any Offers if you or your entity create(s) more than one account to receive additional benefits under the Offers. An Organization (under AWS Organizations) can only benefit from Offers from one account in the Organization, and to calculate the Organization’s use of AWS Services under any Offers, we will aggregate the usage across all accounts in the Organization. You will be charged standard rates for use of AWS Services if we determine that you are not eligible for an Offer.",
+        "notes": "New benefits added to the 12 Month Free Tier will be available to you for the remainder of your one year term but will not extend it. If your one year term has already expired, then you will not be entitled to any such new benefits.",
+        "applicability": "Applicable to AWS customers with 12-month free tier offers.",
+        "terms_last_updated": "August 14, 2018"
+      },
+      "evidence_url": "https://aws.amazon.com/free/terms/",
+      "evidence_selector": "aws_12_month_free_tier assertion[0] document[11] -> fact[service]"
+    }
+  ]
+}

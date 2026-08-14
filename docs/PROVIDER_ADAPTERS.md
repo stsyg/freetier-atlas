@@ -173,6 +173,80 @@ AWS states that bulk price lists are not a complete source for limited-period Fr
 
 Use `costgoat/aws-free-tier` for regression topics and gotcha test ideas only. Do not ingest or copy its tables because no licence file was found.
 
+F008 P4 configures six official sources over six documents, all on
+`aws.amazon.com`. The central hazard for this provider is that AWS markets
+**three different free-offer kinds** under one brand — perpetual "Always Free"
+offers, a time-limited introductory tier, and short-term trials and credits — and
+only the first could ever be perpetual. Each source reads its own document and
+pins its identity, its offer type and its term to blocks describing that offer,
+so no profile can borrow another's facts.
+
+| Profile | Mode | Live structure it reads |
+| --- | --- | --- |
+| `aws_free_tier_plan` | matrix | the 6-row `Benefits` / `Free plan` / `Paid plan` table |
+| `aws_free_plan` | assertions | no table: the FAQ publishes its terms only as prose |
+| `aws_12_month_free_tier` | assertions | no table: the Free Tier Terms are prose |
+| `aws_dynamodb_free_tier` | assertions | 3 live tables, none header-selectable; allowance is a `<ul>` |
+| `aws_api_gateway_free_tier` | assertions | no table: the free tier is prose |
+| `aws_step_functions_free_tier` | assertions | 1 live table, a pricing example that publishes no allowance |
+
+**Two AWS pages could not be used, and that is reported rather than worked
+around.** MEASURED live (HTTP 200): `docs.aws.amazon.com` served 1166 bytes for
+the Billing guide's free-tier page and 1083 bytes for the Lambda billing page.
+Parsed with the repository's own `_DocumentCollector`, both yield zero tables,
+zero headings and zero body blocks — their content is client-rendered. AWS
+Lambda's pricing page was rejected for a different reason: its free-tier numbers
+appear only inside six repeated worked pricing examples, so no block is unique
+enough to pin without risking `ambiguous_assertion`.
+
+**Only one AWS page in the sweep is matrix-extractable.** Across 13 probed
+pricing pages, `_header_row` returned `expected one header row, found 0` for 4/4
+Lambda tables, 3/3 DynamoDB tables and 8/8 S3 tables. Per-service free-tier
+extraction on AWS is therefore assertion-based by necessity, not by preference.
+
+**Nothing in this provider is Z0, and that is the finding rather than a gap.**
+The FAQ page states, verbatim, "Yes, you are required to provide a valid payment
+method to sign up for an AWS account, whether you choose a free plan or a paid
+plan." That block names the free plan itself, so `requires_card=True` there is a
+quotation rather than a composition, and the free-plan offer classifies Z1.
+API Gateway states "If you exceed this number of calls per month, you will be
+charged the API Gateway usage rates", which is `automatic_billing` and also Z1.
+The plan-comparison, 12-month and DynamoDB offers classify UNKNOWN because their
+own documents prove nothing about card requirements.
+
+**The most important result is Step Functions.** Its page states, in a block of
+its own, that its free tier "does not automatically expire at the end of your 12
+month AWS Free Tier term, and is available to both existing and new AWS customers
+indefinitely" — which satisfies rule 1 of `docs/DATA_MODEL.md`, so the offer is
+genuinely `always_free`. The *same page* states "You are charged per state
+transition above the free tier". A perpetual allowance whose overage is billed is
+still `Z1_BILLING_EXPOSURE`. **Perpetual does not mean Z0**, and this provider
+proves it from official text rather than from an author's summary.
+
+`requires_card` is deliberately **absent** from the five non-FAQ profiles. The
+payment-method block lives on the FAQ page; carrying it onto another document
+would be cross-document composition, the same error the Google Cloud slice
+avoided by recording `billing_account: required` instead of inventing a card
+claim. No AWS profile claims a card is *not* required.
+
+**Eleven of the fourteen categories are `unknown`, deliberately.** AWS publishes
+its per-category free-offer list through a client-rendered widget: MEASURED on
+`https://aws.amazon.com/free/`, the served HTML carries the headings "Free Tier
+Categories", "Always free" and "Short-term trial" with no accompanying prose, and
+the page's single served table compares account plans rather than services. Each
+`unknown` records what was actually probed and what it did or did not say.
+Declaring those categories `offered_no_z0` would assert offers this slice cannot
+evidence; declaring them `not_offered` would be an unsupported claim in the other
+direction. Both are refused.
+
+**Four blocks are published twice by AWS** — the resource-reclaim, no-rollover,
+offer-termination and region-aggregation clauses appear verbatim in both the
+current and the Legacy sections of the Free Tier Terms. None is pinned, both
+occurrences are retained in the capture so the fixture reproduces the live
+ambiguity rather than hiding it, and
+`tests/unit/test_adapter_aws.py::test_a_block_aws_publishes_twice_would_be_ambiguous_if_pinned`
+proves that pinning one yields `ambiguous_assertion`.
+
 ## Google Cloud
 
 Use managed Google/Google Cloud MCP servers, free-program docs, product pricing, release-note data/feeds, and public APIs.

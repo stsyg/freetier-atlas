@@ -1,0 +1,41 @@
+{
+  "captured_by": "F008 P4 AWS provider slice (live capture, generated from the live parse)",
+  "fetched_at": "2026-08-14T18:05:00Z",
+  "http_status": 200,
+  "robots_allowed": true,
+  "sha256_original": "a8c7d387f4036f39a81478283a74224f90917da29d72b3f39ec48ad8ba7059a5",
+  "sha256_original_note": "sha256_original is the digest of the exact live bytes this capture was derived from on 2026-08-14. It is NOT reproducible across fetches: aws.amazon.com serves per-build markup and rotating inline tokens, so a later fetch of an unchanged page yields a different digest. STRUCTURE, not digest, is the invariant.",
+  "sha256_stored": "dfaf89957af05532edb604d71ef04b718240ae3a6b34684994447cbc25747e53",
+  "sha256_stored_note": "sha256_stored attests the COMMITTED BYTES ONLY. It is a tamper-evidence seal on this file, not a link to the live page, and it must never be read as a fidelity control.",
+  "tos_note": "Official AWS pages (aws.amazon.com). https://aws.amazon.com/robots.txt has a single 'User-agent: *' group; its only /free/ Disallow rules are '/free/cloud-computing-free-tier/' and '/free/databases-free-tier/', and neither this path nor /dynamodb/pricing/ is disallowed, so automated retrieval of this path is permitted. A minimal excerpt is committed for offline, deterministic extraction testing; every retained value and every pinned block is reproduced verbatim from the cited live page.",
+  "trim_method": "Removed scripts, navigation, styling and unrelated prose. This capture was GENERATED from the live document's own parse: every retained block is the exact normalised string the engine collected from the live page, and (where a table is retained) the headers and cells are the exact normalised strings the engine collected from the live target table. Inline markup inside those blocks and cells was flattened to plain text; the engine normalises a block or cell to its text content, so every retained normalised string is identical to live. This is a deliberate minimal excerpt, not a complete copy of the page.",
+  "live_table_count": 0,
+  "live_table_present": false,
+  "live_table_note": "ASSERTION-ONLY. MEASURED: the live document contains ZERO <table> elements -- AWS publishes the whole Free Tier FAQ as prose. This profile is mode='assertions', declares no table selector, reads no table, and takes 100% of its facts from verbatim prose. No table was synthesized, and none could have been taken from the live page because the live page has none.",
+  "non_target_tables_removed": 0,
+  "non_target_tables_removed_note": "MEASURED: no non-target table feeds this profile's outcome, so none is retained and none is synthesized.",
+  "target_table_rows_removed": [],
+  "target_table_cells_removed": [],
+  "unpivoted_target_table_columns": [],
+  "ignored_extraction_rows": [],
+  "duplicate_live_blocks_retained": [],
+  "duplicate_live_blocks_not_retained": [],
+  "live_reconciliation": "LIVE -> FIXTURE (primary): all 8 pinned block(s) occur EXACTLY ONCE in the live document and EXACTLY ONCE in this capture; all 0 live target-table row(s) are present, none removed, none added. FIXTURE -> LIVE (supporting only): every block in this capture occurs in the live document.",
+  "url": "https://aws.amazon.com/free/free-tier-faqs/",
+  "structure": {
+    "asserted_block_sha256": [
+      "bfccc7cbb5740a5e1d63948b693f4ffdcee476a0e7a1a814f559822799f9d36f",
+      "85b4a2250830b26120f6c6bcb8bcaa8ebbec67914ca414b7dc070d2f2361358b",
+      "85b4a2250830b26120f6c6bcb8bcaa8ebbec67914ca414b7dc070d2f2361358b",
+      "41b04ad49a7f93c9a9ba94bd60e709b8f7d03b13e044e160d435fe0219340e5c",
+      "41b04ad49a7f93c9a9ba94bd60e709b8f7d03b13e044e160d435fe0219340e5c",
+      "ecf0a28b6ac026e9ec1599593ba1f22d9d7d91750037450abb9734038c0eade7",
+      "0c7624537f694c62f9ccdf159be73a2eb80976ebaef86af302369df7f1ca6edd",
+      "b7809aeceb71eb1fda729bab878119d11ca2b23e1a2d076373e9511866fac3c7",
+      "7f8f8f83ae69ea4f4a5974194128029fc525fd9409a0c95b08a7534acca60f30",
+      "ecdfbcddf100fd13de044d938d1230a61b6214c1e829f5dc115713ee010de577"
+    ],
+    "headers": [],
+    "rows": []
+  }
+}
