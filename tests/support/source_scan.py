@@ -82,7 +82,9 @@ class SourceLine:
     ``context`` is the language whose rules produced this line's content, or
     ``None`` for inert data. ``region`` separates independently executed bodies:
     two ``run:`` blocks in a workflow are different regions, so an ``exit`` in
-    one says nothing about reachability in the other.
+    one says nothing about reachability in the other. ``key`` is the YAML key
+    whose VALUE this line contributes to - inline, block scalar or sequence item
+    alike - which is the structural fact a route rule needs.
     """
 
     number: int
@@ -289,9 +291,11 @@ _YAML_BLOCK = re.compile(
 )
 _YAML_KEY = re.compile(r"^[ \t]*(?:-[ \t]+)?(?P<key>[A-Za-z0-9_.\-]+)[ \t]*:")
 
-#: Block scalars under these keys are SCRIPTS, not data. Everywhere else a block
-#: scalar is inert text, and an invocation sitting in one does not run.
-_YAML_SCRIPT_KEYS = frozenset({"run", "entry"})
+#: Block scalars under these keys are SHELL SCRIPTS, so shell comment rules
+#: apply to their bodies. Only GitHub Actions' ``run:`` qualifies. pre-commit's
+#: ``entry`` is shlex-split and exec'd, NOT shell-interpreted, so a '#' there is
+#: a literal argument and stripping it would corrupt the value.
+_YAML_SHELL_SCRIPT_KEYS = frozenset({"run"})
 
 
 def _yaml_comment_start(line: str) -> int | None:
@@ -343,9 +347,18 @@ def _blank_yaml_strings(line: str, offset: int, code: list[str], text: str) -> N
 
 def _scan_yaml(
     text: str, executable: list[str], code: list[str], spans: list[tuple[int, int]]
-) -> tuple[list[str | None], list[int]]:
+) -> tuple[list[str | None], list[int], list[str | None]]:
+    """Classify YAML lines, and record which key OWNS each line's content.
+
+    Ownership is the structural fact the route rules need: a line belongs to the
+    value of some key regardless of whether that value is written inline, as a
+    block scalar, or as a sequence. Nothing is blanked for being non-script -
+    a block scalar under a non-executed key stays visible and is rejected by the
+    key rule instead, which is a reason rather than an accident.
+    """
     contexts: list[str | None] = ["yaml"] * len(spans)
     regions: list[int] = [0] * len(spans)
+    owners: list[str | None] = [None] * len(spans)
     next_region = 1
 
     index = 0
@@ -363,6 +376,7 @@ def _scan_yaml(
 
         # A block scalar. Its body is every following line that is blank or
         # indented deeper than the key.
+        key = match.group("key")
         key_indent = len(match.group("indent"))
         body = index + 1
         while body < len(spans):
@@ -375,19 +389,22 @@ def _scan_yaml(
         if body > index + 1:
             body_start = spans[index + 1][0]
             body_stop = spans[body - 1][1]
-            if match.group("key") in _YAML_SCRIPT_KEYS:
+            for line_index in range(index + 1, body):
+                owners[line_index] = key
+            if key in _YAML_SHELL_SCRIPT_KEYS:
                 _scan_shell(text, executable, code, body_start, body_stop)
                 for line_index in range(index + 1, body):
                     contexts[line_index] = "shell"
                     regions[line_index] = next_region
                 next_region += 1
             else:
-                _blank(text, body_start, body_stop, executable, code)
+                # Literal text: no comment syntax applies, so nothing is
+                # stripped and nothing is blanked.
                 for line_index in range(index + 1, body):
-                    contexts[line_index] = None
+                    contexts[line_index] = "literal"
         index = body
 
-    return contexts, regions
+    return contexts, regions, owners
 
 
 # --------------------------------------------------------------------------
@@ -407,13 +424,15 @@ def scan(relative_path: str, text: str) -> list[SourceLine]:
     spans = _line_spans(text)
 
     if lowered.endswith((".yml", ".yaml")):
-        contexts, regions = _scan_yaml(text, executable, code, spans)
+        contexts, regions, owners = _scan_yaml(text, executable, code, spans)
     elif lowered.endswith(".sh"):
         _scan_shell(text, executable, code, 0, len(text))
         contexts, regions = ["shell"] * len(spans), [0] * len(spans)
+        owners = [None] * len(spans)
     elif lowered.endswith(".ps1"):
         _scan_powershell(text, executable, code)
         contexts, regions = ["powershell"] * len(spans), [0] * len(spans)
+        owners = [None] * len(spans)
     else:
         raise UnknownLanguage(
             f"no scanner for {relative_path!r}. Add one rather than falling back to a "
@@ -425,12 +444,31 @@ def scan(relative_path: str, text: str) -> list[SourceLine]:
     code_joined = "".join(code)
 
     lines: list[SourceLine] = []
+    #: (indent, key) of each mapping key currently open, innermost last. This
+    #: computes OWNERSHIP structurally - which key's value a line contributes to
+    #: - rather than recognising the spellings that happen to appear in these
+    #: four files today. An inline value belongs to the key on its own line; a
+    #: block-scalar body belongs to the block's key; a sequence item belongs to
+    #: the nearest enclosing key at a shallower indent. All three are the same
+    #: question, and fitting only the spelling in front of you is how the 2/18
+    #: defect arose.
+    open_keys: list[tuple[int, str]] = []
     for index, (start, stop) in enumerate(spans):
         executable_line = executable_joined[start:stop]
-        key = None
-        if contexts[index] == "yaml":
+        key = owners[index]
+        if key is None and contexts[index] == "yaml":
             key_match = _YAML_KEY.match(executable_line)
-            key = key_match.group("key") if key_match else None
+            indent = len(executable_line) - len(executable_line.lstrip())
+            if key_match:
+                key = key_match.group("key")
+                while open_keys and open_keys[-1][0] >= indent:
+                    open_keys.pop()
+                open_keys.append((indent, key))
+            elif executable_line.strip().startswith("- "):
+                for open_indent, open_key in reversed(open_keys):
+                    if open_indent < indent:
+                        key = open_key
+                        break
         lines.append(
             SourceLine(
                 number=index + 1,
@@ -526,10 +564,18 @@ def invocation_problems(
     relative_path: str,
     text: str,
     needle: str,
-    contexts: frozenset[str],
+    contexts: frozenset[str] | None = None,
     keys: frozenset[str] | None = None,
 ) -> list[str]:
     """Every reason ``text`` does not demonstrably EXECUTE ``needle``.
+
+    ``keys`` constrains OWNERSHIP - which key's value the invocation forms - and
+    is the structural question a YAML route actually asks. ``contexts``
+    constrains the LANGUAGE whose comment rules produced the line, which is a
+    lexical fact; it is the right constraint for a whole-file script and the
+    WRONG one for YAML, where the same executed position is spelled inline
+    (context ``yaml``) or as a block scalar (context ``shell``). Asserting the
+    lexical property there rejects 16 of the 18 ways a workflow spells ``run:``.
 
     An empty list means at least one occurrence survives comment stripping, sits
     in an executed position, and is not preceded by an unconditional top-level
@@ -541,7 +587,7 @@ def invocation_problems(
         line
         for line in lines
         if needle in line.executable
-        and line.context in contexts
+        and (contexts is None or line.context in contexts)
         and (keys is None or line.key in keys)
     ]
 
@@ -551,11 +597,15 @@ def invocation_problems(
             where = ", ".join(
                 f"line {line.number} (context={line.context}, key={line.key})" for line in surviving
             )
+            required = []
+            if contexts is not None:
+                required.append(f"context in {sorted(contexts)}")
+            if keys is not None:
+                required.append(f"the value of one of {sorted(keys)}")
             return [
                 f"{relative_path}: {needle!r} survives comment stripping but not in an "
                 f"executed position. Found at {where}; this route requires "
-                f"context in {sorted(contexts)}"
-                + (f" and key in {sorted(keys)}" if keys else "")
+                + " and ".join(required or ["an executed position"])
                 + ". Update this rule if the invocation legitimately moved."
             ]
         if needle in text:

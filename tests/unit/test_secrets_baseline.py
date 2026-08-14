@@ -320,9 +320,16 @@ def test_empty_entry_list_fails(results) -> None:
 #   * deleted outright (the property the old substring test already had, kept);
 #   * the whole route file deleted or renamed - reported as a clear failure
 #     rather than an unhandled traceback;
-#   * demoted from an executed field to an inert one: in a workflow the
-#     invocation must live inside a 'run:' script, in .pre-commit-config.yaml
-#     inside 'entry:' or 'args:'. A mention in a 'name:' is not a wiring;
+#   * demoted from an executed field to an inert one: the invocation must form
+#     the VALUE of a key the tool runs - 'run:' in a workflow, 'entry:' or
+#     'args:' in .pre-commit-config.yaml. A mention in a 'name:' or a
+#     'description:' is not a wiring. That is a claim about OWNERSHIP, which is
+#     structural, and it holds for every spelling: inline, block scalar, flow
+#     sequence, block sequence. An earlier version asserted the lexical CONTEXT
+#     instead - a proxy - and so rejected 16 of the 18 ways this workflow spells
+#     'run:', plus the block-sequence 'args:' and the 'entry: |' forms that
+#     pre-commit executes identically. A proxy fails in BOTH directions and each
+#     direction looks like its own separate bug;
 #   * buried in a here-document or a PowerShell here-string, which are data;
 #   * made unreachable by an UNCONDITIONAL, TOP-LEVEL 'exit'/'return' earlier in
 #     the same executed body.
@@ -348,12 +355,15 @@ def test_empty_entry_list_fails(results) -> None:
 #     elsewhere and is out of this slice's scope by contract.
 # --------------------------------------------------------------------------
 
-#: What each route must do with the invocation, expressed as the position the
-#: invocation has to occupy in that file's own structure. Update this table if a
-#: route legitimately restructures - the failure message says so.
-ROUTE_RULES: dict[str, tuple[frozenset[str], frozenset[str] | None]] = {
-    ".github/workflows/ci.yml": (frozenset({"shell"}), None),
-    ".pre-commit-config.yaml": (frozenset({"yaml"}), frozenset({"entry", "args"})),
+#: What each route must do with the invocation. For a whole-file script the
+#: constraint is the LANGUAGE (the entire file is executed code). For YAML it is
+#: OWNERSHIP - which key's value the invocation forms - because the same
+#: executed position is spelled inline, as a block scalar, or as a sequence, and
+#: those produce different lexical contexts. Constraining the context there
+#: rejected 16 of the 18 ways this workflow spells `run:`.
+ROUTE_RULES: dict[str, tuple[frozenset[str] | None, frozenset[str] | None]] = {
+    ".github/workflows/ci.yml": (None, frozenset({"run"})),
+    ".pre-commit-config.yaml": (None, frozenset({"entry", "args"})),
     "scripts/check.ps1": (frozenset({"powershell"}), None),
     "scripts/check.sh": (frozenset({"shell"}), None),
 }
@@ -544,6 +554,174 @@ def test_parameter_expansion_is_not_mistaken_for_a_comment(
     assert expansion in executable
 
 
+# --------------------------------------------------------------------------
+# Legitimate restructurings must NOT fire. Found by probing the guard after it
+# was reported complete: the rule requiring the invocation to sit under an
+# executed key was over-fitted to the FLOW spelling that happens to be in
+# .pre-commit-config.yaml today, and rejected the block-sequence spelling that
+# pre-commit executes identically. That is a false positive on correct work -
+# the failure mode this whole suite is most anxious about, because it is the
+# one that gets a guard deleted rather than fixed.
+#
+# A sequence item now inherits the key it sits under, which is what the YAML
+# structure means rather than a special case bolted on to make one input pass.
+# test_a_mention_under_a_non_executed_key_is_still_rejected is the control that
+# keeps that honest: the key rule must still have teeth.
+# --------------------------------------------------------------------------
+
+
+def with_the_invocation_replaced_by(text: str, replacement: str) -> str:
+    return "".join(
+        replacement if VALIDATOR in line else line for line in text.splitlines(keepends=True)
+    )
+
+
+@pytest.mark.parametrize(
+    ("label", "relative_path", "replacement"),
+    [
+        (
+            "pre-commit args as a BLOCK sequence",
+            ".pre-commit-config.yaml",
+            "        entry: python\n        args:\n          - scripts/check_secrets_baseline.py\n",
+        ),
+        (
+            "pre-commit args as a flow sequence",
+            ".pre-commit-config.yaml",
+            '        entry: python\n        args: ["scripts/check_secrets_baseline.py"]\n',
+        ),
+        (
+            "shell invocation extracted into a function",
+            "scripts/check.sh",
+            'run_secrets_shape() {\n  "${PYTHON}" scripts/check_secrets_baseline.py\n}\n'
+            'check "Secrets baseline shape" run_secrets_shape\n',
+        ),
+        (
+            "PowerShell backtick line continuation",
+            "scripts/check.ps1",
+            'Invoke-Check "Secrets baseline shape" { & $python `\n'
+            "    scripts/check_secrets_baseline.py }\n",
+        ),
+        (
+            "PowerShell block re-indented",
+            "scripts/check.ps1",
+            '    Invoke-Check "Secrets baseline shape" '
+            "{ & $python scripts/check_secrets_baseline.py }\n",
+        ),
+    ],
+)
+def test_legitimate_restructurings_still_pass(
+    label: str, relative_path: str, replacement: str
+) -> None:
+    text = with_the_invocation_replaced_by(route_text(relative_path), replacement)
+    problems = route_problems(relative_path, text)
+    assert problems == [], f"false positive on a legitimate restructuring ({label}): {problems}"
+
+
+def test_a_folded_run_scalar_is_still_a_script() -> None:
+    """`run: >` executes exactly as `run: |` does."""
+    relative_path = ".github/workflows/ci.yml"
+    folded = route_text(relative_path).replace("run: |", "run: >")
+    assert route_problems(relative_path, folded) == []
+
+
+def test_an_inline_run_step_is_accepted() -> None:
+    """The prevailing spelling in this very file, and it used to be rejected.
+
+    Measured on `.github/workflows/ci.yml`: 2 of its 18 `run:` keys are block
+    scalars and 16 are inline. Requiring the block form meant requiring the
+    minority spelling, so collapsing a two-line step - the most ordinary edit
+    imaginable - turned the guard red on correct work.
+    """
+    relative_path = ".github/workflows/ci.yml"
+    text = route_text(relative_path)
+    collapsed = text.replace(
+        "        run: |\n"
+        "          git fetch --no-tags --depth=1 origin "
+        "+refs/heads/main:refs/remotes/origin/main\n"
+        "          python scripts/check_secrets_baseline.py --require-reference\n",
+        "        run: python scripts/check_secrets_baseline.py --require-reference\n",
+    )
+    assert collapsed != text, "the mutation did not apply; it would prove nothing"
+    assert route_problems(relative_path, collapsed) == []
+
+
+def test_a_precommit_entry_block_scalar_is_accepted() -> None:
+    """The mirror of the inline case, and the one the design contradicted itself on.
+
+    `entry:` used to be treated as a shell script, producing context `shell`,
+    while this route's rule demanded context `yaml` - so the two halves of the
+    design disagreed about one construct and rejected it. Ownership does not
+    care how the value is spelled.
+    """
+    relative_path = ".pre-commit-config.yaml"
+    text = with_the_invocation_replaced_by(
+        route_text(relative_path),
+        "        entry: |\n          python scripts/check_secrets_baseline.py\n",
+    )
+    assert route_problems(relative_path, text) == []
+
+
+def test_precommit_entry_is_not_shell_interpreted() -> None:
+    """A '#' in an `entry:` is a literal argument, not a comment.
+
+    pre-commit shlex-splits `entry` and execs it; no shell sees it. Stripping
+    comments there would corrupt the value, which is why only `run:` is treated
+    as a shell script.
+    """
+    source = "repos:\n  - hooks:\n      - entry: |\n          python x.py --tag '#1'\n"
+    executable = source_scan.executable_text(source_scan.scan("x.yaml", source))
+    assert "--tag '#1'" in executable
+
+
+@pytest.mark.parametrize(
+    ("label", "relative_path", "replacement"),
+    [
+        (
+            "inline name:",
+            ".pre-commit-config.yaml",
+            "        name: runs scripts/check_secrets_baseline.py\n",
+        ),
+        (
+            "name: as a block scalar",
+            ".pre-commit-config.yaml",
+            "        name: |\n          runs scripts/check_secrets_baseline.py\n",
+        ),
+        (
+            "description: prose",
+            ".pre-commit-config.yaml",
+            "        description: |\n          calls scripts/check_secrets_baseline.py for you\n",
+        ),
+        (
+            "inline name: in the workflow",
+            ".github/workflows/ci.yml",
+            "        name: runs scripts/check_secrets_baseline.py\n",
+        ),
+        (
+            "workflow name: as a block scalar",
+            ".github/workflows/ci.yml",
+            "        name: |\n          runs scripts/check_secrets_baseline.py\n",
+        ),
+    ],
+)
+def test_a_mention_under_a_non_executed_key_is_still_rejected(
+    label: str, relative_path: str, replacement: str
+) -> None:
+    """The control that stops the key rule from becoming meaningless.
+
+    Widening ownership to cover every spelling of an EXECUTED field must not
+    slide into accepting the invocation anywhere at all. A hook or step whose
+    `name:` or `description:` merely mentions the validator, with no executed
+    field invoking it, is still unwired. If any of these ever goes green, the
+    rule has been relaxed until it no longer says anything.
+    """
+    text = with_the_invocation_replaced_by(route_text(relative_path), replacement)
+    assert VALIDATOR in text
+    assert route_problems(relative_path, text) != [], (
+        f"a mention under a non-executed key was ACCEPTED ({label}); the key rule "
+        "has lost its teeth"
+    )
+
+
 def test_shell_comment_rules() -> None:
     lines = source_scan.scan("x.sh", 'a=1 # gone\nb="kept # inside"\nc=${#arr[@]}\n')
     executable = source_scan.executable_text(lines)
@@ -589,8 +767,16 @@ def test_yaml_comment_rules() -> None:
     assert "kept # inside" in executable
 
 
-def test_yaml_run_blocks_are_shell_but_other_block_scalars_are_data() -> None:
-    """The distinction that makes the workflow route checkable at all."""
+def test_yaml_block_scalars_are_owned_by_their_key() -> None:
+    """The distinction that makes the workflow route checkable at all.
+
+    A `run:` body is a shell SCRIPT, so shell comment rules apply to it. Any
+    other block scalar is literal text - nothing is stripped from it, and
+    nothing is blanked either. Both belong to their key, and it is OWNERSHIP,
+    not the lexical context, that decides whether the position is executed.
+    Blanking non-script blocks would reach the same verdict for prose by making
+    it invisible; rejecting it by key is the same answer for an honest reason.
+    """
     source = (
         "steps:\n"
         "  - name: real\n"
@@ -601,10 +787,29 @@ def test_yaml_run_blocks_are_shell_but_other_block_scalars_are_data() -> None:
         "      python scripts/check_secrets_baseline.py\n"
     )
     lines = source_scan.scan("x.yml", source)
-    shell_lines = [line.number for line in lines if line.context == "shell"]
-    inert_lines = [line.number for line in lines if line.context is None]
-    assert shell_lines == [4]
-    assert inert_lines == [7]
+    by_number = {line.number: line for line in lines}
+    assert by_number[4].context == "shell"
+    assert by_number[4].key == "run"
+    assert by_number[7].context == "literal"
+    assert by_number[7].key == "description"
+    # Both survive stripping; only ownership separates them.
+    assert "check_secrets_baseline" in by_number[7].executable
+    assert (
+        source_scan.invocation_problems(
+            "x.yml", source, "check_secrets_baseline", None, frozenset({"run"})
+        )
+        == []
+    )
+    assert (
+        source_scan.invocation_problems(
+            "x.yml",
+            source.replace("    run: |\n      python scripts/check_secrets_baseline.py\n", ""),
+            "check_secrets_baseline",
+            None,
+            frozenset({"run"}),
+        )
+        != []
+    )
 
 
 def test_a_commented_line_inside_a_run_block_is_stripped_as_shell() -> None:
