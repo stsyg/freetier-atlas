@@ -21,7 +21,7 @@
         "sites_per_account": "1"
       },
       "evidence_url": "https://docs.github.com/en/pages/getting-started-with-github-pages/github-pages-limits",
-      "evidence_selector": "github_pages_limits row[1]"
+      "evidence_selector": "github_pages_limits assertion[0] title[0] -> fact[service]"
     }
   ]
 }

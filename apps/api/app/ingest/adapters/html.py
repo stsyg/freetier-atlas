@@ -18,6 +18,13 @@ Design contract (docs/AGENT_HARNESS.md "unknown is better than guessed"):
 * Trusted static profiles may map exact normalized title, heading, or p/li text
   blocks to facts. A missing/drifted required assertion rejects the candidate;
   there are no unconditional profile constants or fuzzy matches.
+* A table is **not** required. Plenty of official pages state their free-tier
+  terms entirely in prose, so ``mode="assertions"`` reads such a page exactly as
+  the provider publishes it. Nothing is synthesized to satisfy the extractor: an
+  assertion-only profile declares no table selector at all.
+* Because the matrix is optional, the **evidence floor is explicit** rather than
+  incidental -- see :data:`_FACT_SOURCES_BY_MODE`. A profile that declares no way
+  to read a fact out of the document cannot be constructed.
 * Malformed input never crashes and never fabricates a value: if the profile's
   table is absent the adapter emits a single ``rejected`` candidate that
   :meth:`validate` flags (a *captured validation failure*); a partial row simply
@@ -54,6 +61,38 @@ from app.models.vocab import EXHAUSTION_BEHAVIOURS, OFFER_TYPES
 
 _EXCERPT_LIMIT = 280
 _LIST_SEPARATORS = (",", ";")
+
+#: THE EXPLICIT EVIDENCE FLOOR. Which profile fields count as a source of facts,
+#: per mode, and therefore which modes exist at all.
+#:
+#: Until assertion-only profiles existed, the mandatory matrix doubled as an
+#: *accidental* evidence floor: a profile that proved nothing could not emit a
+#: candidate, because it could not select a table. Making the matrix optional
+#: dissolves that accident, so the floor is stated here instead -- deliberately
+#: **per mode**, so a field that is inert in the selected mode (``matrix_rows``
+#: in ``rows`` mode, say) can never be mistaken for evidence. A profile that
+#: satisfies none of its mode's sources is refused at construction: in this
+#: product a candidate backed by no evidence is a potential unsupported claim
+#: that a service is free, which is a worse defect than refusing to extract.
+_FACT_SOURCES_BY_MODE: Mapping[str, tuple[str, ...]] = {
+    "rows": ("columns", "assertions"),
+    "matrix": ("matrix_rows",),
+    "assertions": ("assertions",),
+}
+
+#: Everything an assertion-only profile must NOT declare. Allowing any of these
+#: would let "assertion-only" quietly become "table-backed" again, which is the
+#: fabricated-anchor-table practice this mode exists to end.
+_TABLE_FIELDS = (
+    "table_id",
+    "table_class",
+    "header_signature",
+    "columns",
+    "matrix_metric_header",
+    "matrix_tier_header",
+    "matrix_rows",
+    "ignored_matrix_rows",
+)
 _ASSERTION_CLOSED_VALUES: Mapping[str, tuple[object, ...]] = {
     "offer_type": OFFER_TYPES,
     "exhaustion_behaviour": EXHAUSTION_BEHAVIOURS,
@@ -111,7 +150,16 @@ class HtmlExtractionProfile:
     (a class token), preserving the original row-mode behavior, or by an
     order-insensitive ``header_signature`` that must match exactly one table.
     ``mode="matrix"`` maps exact row labels from one tier column into one
-    candidate. Trusted assertions use whole-block normalized equality only.
+    candidate. ``mode="assertions"`` selects no table at all: the document is
+    read only for pinned text blocks, which is how an official page that states
+    its terms entirely in prose is extracted without synthesizing structure for
+    it. Trusted assertions use whole-block normalized equality only.
+
+    Construction is fail-closed. Beyond the closed-vocabulary checks on asserted
+    values, a profile must satisfy the explicit evidence floor in
+    :data:`_FACT_SOURCES_BY_MODE`: one that declares neither a matrix nor any
+    assertions (nor, in row mode, any column) is refused outright rather than
+    allowed to emit a candidate backed by nothing.
     """
 
     name: str
@@ -158,15 +206,36 @@ class HtmlExtractionProfile:
         )
         if selectors > 1:
             raise ValueError("An HTML profile must use exactly one table selection strategy.")
-        if self.mode not in {"rows", "matrix"}:
-            raise ValueError("HTML profile mode must be 'rows' or 'matrix'.")
+        if self.mode not in _FACT_SOURCES_BY_MODE:
+            raise ValueError(
+                f"HTML profile mode must be one of {sorted(_FACT_SOURCES_BY_MODE)}; "
+                f"got {self.mode!r}."
+            )
         if self.mode == "matrix":
             if not self.header_signature:
                 raise ValueError("Matrix profiles require a header_signature.")
             if self.matrix_metric_header is None or self.matrix_tier_header is None:
                 raise ValueError("Matrix profiles require metric and tier headers.")
-            if not self.matrix_rows:
-                raise ValueError("Matrix profiles require at least one mapped row.")
+        if self.mode == "assertions":
+            declared = [name for name in _TABLE_FIELDS if getattr(self, name)]
+            if declared:
+                raise ValueError(
+                    "Assertion-only profiles read no table and must declare none, so "
+                    "no synthetic anchor is ever needed to satisfy the extractor; "
+                    f"'{self.name}' declares {declared}."
+                )
+
+        # THE EVIDENCE FLOOR, applied as one explicit decision per profile. It is
+        # deliberately checked for every mode -- including the modes that could
+        # once rely on the mandatory matrix to refuse an empty profile for them.
+        accepted = _FACT_SOURCES_BY_MODE[self.mode]
+        if not any(getattr(self, source) for source in accepted):
+            raise ValueError(
+                f"HTML profile '{self.name}' (mode={self.mode!r}) declares no source of "
+                f"facts, so it could only emit a candidate backed by no evidence. "
+                f"Declare at least one of: {list(accepted)}."
+            )
+
         if assertions and not self.trusted_assertions:
             raise ValueError("Text assertions require trusted_assertions=True.")
         bad_scopes = sorted({a.scope for a in assertions} - {"title", "heading", "document"})
@@ -543,6 +612,11 @@ class HtmlDocAdapter(SourceAdapter):
         except Exception as exc:  # noqa: BLE001 - html.parser is lenient; never crash
             return [self._rejected(document, provider, "html_parse_error", str(exc))]
 
+        if self._profile.mode == "assertions":
+            return [
+                self._assertion_only_candidate(document, provider, document_collector.text_blocks)
+            ]
+
         if self._profile.header_signature:
             selection = _select_table(document_collector.tables, self._profile.header_signature)
             if selection[0] is None:
@@ -671,6 +745,43 @@ class HtmlDocAdapter(SourceAdapter):
             evidence=(location,),
             verification_state="candidate",
         )
+
+    def _assertion_only_candidate(
+        self,
+        document: SourceDocument,
+        provider: str,
+        blocks: Sequence[_TextBlock],
+    ) -> CandidateFacts:
+        """Build a candidate whose every fact is a pinned same-document assertion.
+
+        No table is selected and, crucially, none is fabricated: a page that
+        publishes its terms as prose is read exactly as the provider publishes
+        it. The empty base candidate below is never what gets returned --
+        :meth:`_apply_assertions` either fills it from pinned blocks or rejects
+        the document, and the runtime floor here refuses an extraction that
+        produced no evidence at all (every assertion optional and every one of
+        them absent), so "no evidence" can never be mistaken for "nothing to
+        object to".
+        """
+
+        base = CandidateFacts(
+            provider=provider,
+            source_url=document.url,
+            facts={},
+            evidence=(),
+            verification_state="candidate",
+        )
+        candidate = self._apply_assertions(document, provider, base, blocks)
+        if candidate.verification_state == "rejected":
+            return candidate
+        if not candidate.evidence:
+            return self._rejected(
+                document,
+                provider,
+                "no_assertion_evidence",
+                f"profile={self._profile.name}",
+            )
+        return candidate
 
     def _matrix_candidate(
         self,

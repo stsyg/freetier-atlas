@@ -19,7 +19,7 @@
         "actions_minutes": "3,000"
       },
       "evidence_url": "https://docs.github.com/en/enterprise-cloud@latest/admin/overview/setting-up-a-trial-of-github-enterprise-cloud",
-      "evidence_selector": "github_enterprise_cloud_trial row[1]"
+      "evidence_selector": "github_enterprise_cloud_trial assertion[0] title[0] -> fact[service]"
     }
   ]
 }

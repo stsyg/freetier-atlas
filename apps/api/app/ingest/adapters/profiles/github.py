@@ -16,11 +16,12 @@ below, and both were measured rather than assumed:
   instead of being silently dropped.
 * The GitHub Pages limits page and the Enterprise Cloud trial page contain **no
   table at all** (measured: zero ``<table>`` elements in the live markup). Their
-  allowances are published as ``<li>``/``<p>`` prose. The extraction engine
-  requires a table to emit a candidate, so those two profiles read a captured
-  anchor row that carries **no mapped column and therefore no claim**, and take
-  100% of their published facts from text assertions pinned to the verbatim live
-  prose. See the fixtures' ``capture.json`` for the full disclosure.
+  allowances are published as ``<li>``/``<p>`` prose. Those two profiles are
+  therefore ``mode="assertions"``: they declare no table selector, read no
+  table, and take 100% of their published facts from text assertions pinned to
+  the verbatim live prose. Nothing is synthesized to satisfy the extractor, so
+  each committed capture is the live page minus irrelevant chrome -- see the
+  fixtures' ``capture.json``.
 
 **Why the material Z0 conditions are assertions, not table cells.** The claim
 that makes a Z0 verdict reachable is ``requires_card = False``. Reading it out of
@@ -242,14 +243,13 @@ GITHUB_CODESPACES_BILLING = register_html_profile(
     )
 )
 
-#: The live GitHub Pages limits page contains no table; every fact below is
-#: pinned to one verbatim ``<li>``/``<p>`` block, so a reworded limit rejects the
-#: document rather than publishing a stale number.
+#: The live GitHub Pages limits page contains no table, so this profile declares
+#: none: every fact below is pinned to one verbatim ``<li>``/``<p>`` block, so a
+#: reworded limit rejects the document rather than publishing a stale number.
 GITHUB_PAGES_LIMITS = register_html_profile(
     HtmlExtractionProfile(
         name="github_pages_limits",
-        table_id="captured-source-anchor",
-        columns={},
+        mode="assertions",
         trusted_assertions=True,
         assertions=(
             HtmlTextAssertion(
@@ -348,13 +348,13 @@ GITHUB_PAGES_LIMITS = register_html_profile(
 )
 
 #: The deliberate NON-Z0 profile, and the live trial page likewise contains no
-#: table. The non-Z0 verdict is produced entirely by captured *facts* -- a 30-day
-#: expiry declared as ``trial`` -- and by no special-casing in code.
+#: table, so this profile is assertion-only too. The non-Z0 verdict is produced
+#: entirely by captured *facts* -- a 30-day expiry declared as ``trial`` -- and
+#: by no special-casing in code.
 GITHUB_ENTERPRISE_CLOUD_TRIAL = register_html_profile(
     HtmlExtractionProfile(
         name="github_enterprise_cloud_trial",
-        table_id="captured-source-anchor",
-        columns={},
+        mode="assertions",
         trusted_assertions=True,
         assertions=(
             HtmlTextAssertion(

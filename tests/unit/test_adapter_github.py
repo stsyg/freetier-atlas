@@ -93,6 +93,13 @@ MATRIX_CASES = (
     "github-codespaces-billing",
 )
 
+#: The captures whose live page publishes NO table at all: every fact comes from
+#: pinned prose, and the profile declares no table selector.
+ASSERTION_ONLY_CASES = (
+    "github-pages-limits",
+    "github-enterprise-cloud-trial",
+)
+
 #: The captures whose live page carries the no-payment-method sentence.
 NO_CARD_CASES = MATRIX_CASES
 
@@ -362,7 +369,12 @@ def test_the_unmutated_fixtures_still_publish_the_no_card_fact() -> None:
 
 @pytest.mark.parametrize("case", OFFICIAL_CASES)
 def test_capture_structure_matches_every_retained_target_cell(case: str) -> None:
-    """`capture.json` must describe the committed table exactly, with no silent cuts."""
+    """`capture.json` must describe the committed table exactly, with no silent cuts.
+
+    Where the live page publishes no table the capture must hold none either --
+    a capture that invents structure the live page does not have is a worse
+    fixture, not a more convenient one.
+    """
 
     fixture = load_case(PROVIDER, ADAPTER, case)
     capture = json.loads((fixture.directory / "capture.json").read_text(encoding="utf-8"))
@@ -370,13 +382,22 @@ def test_capture_structure_matches_every_retained_target_cell(case: str) -> None
     collector.feed(fixture.content.decode("utf-8"))
     collector.close()
 
-    assert len(collector.tables) == 1, f"{case}: the excerpt must hold exactly one table"
-    header_index, header = _header_row(collector.tables[0])
-    assert header_index is not None, f"{case}: {header}"
-    assert list(header.cells) == capture["structure"]["headers"]
-    assert [list(r.cells) for r in collector.tables[0].rows[header_index + 1 :]] == capture[
-        "structure"
-    ]["rows"]
+    if not capture["live_table_present"]:
+        assert collector.tables == [], (
+            f"{case}: the live page has no table, so the capture must contain none -- "
+            "synthesizing an anchor table to satisfy the extractor makes the capture "
+            "misrepresent its own source"
+        )
+        assert capture["structure"]["headers"] == []
+        assert capture["structure"]["rows"] == []
+    else:
+        assert len(collector.tables) == 1, f"{case}: the excerpt must hold exactly one table"
+        header_index, header = _header_row(collector.tables[0])
+        assert header_index is not None, f"{case}: {header}"
+        assert list(header.cells) == capture["structure"]["headers"]
+        assert [list(r.cells) for r in collector.tables[0].rows[header_index + 1 :]] == capture[
+            "structure"
+        ]["rows"]
     assert capture["target_table_rows_removed"] == []
     assert capture["target_table_cells_removed"] == []
     assert capture["ignored_extraction_rows"] == []
@@ -396,7 +417,15 @@ def test_asserted_blocks_match_the_pinned_capture_hashes(case: str) -> None:
 
 @pytest.mark.parametrize("case", OFFICIAL_CASES)
 def test_a_table_less_live_page_is_disclosed_and_claims_nothing(case: str) -> None:
-    """Where the live page has no table, the anchor row must carry no mapped column."""
+    """Where the live page has no table, the profile must declare no table at all.
+
+    The stronger form of the old control. Previously these two captures carried
+    a fabricated one-cell anchor table, constrained to map no column so it made
+    no claim -- but it existed nowhere on the live page, so the profile returned
+    ``table_not_found`` against the real document. Now the profile is
+    assertion-only and reads no table, so there is nothing to synthesize and
+    nothing to constrain.
+    """
 
     fixture = load_case(PROVIDER, ADAPTER, case)
     capture = json.loads((fixture.directory / "capture.json").read_text(encoding="utf-8"))
@@ -405,11 +434,51 @@ def test_a_table_less_live_page_is_disclosed_and_claims_nothing(case: str) -> No
         assert profile.mode == "matrix"
         assert profile.header_signature
         return
-    assert profile.mode == "rows"
-    assert dict(profile.columns) == {}, (
-        f"{case}: the anchor table must map no column, or it would carry a claim"
-    )
+
+    assert profile.mode == "assertions"
+    assert profile.assertions, "an assertion-only profile with no assertions proves nothing"
+    # Not merely "maps no column": declares no table machinery whatsoever, so it
+    # cannot quietly reacquire a synthetic anchor.
+    assert profile.table_id is None
+    assert profile.table_class is None
+    assert profile.header_signature == ()
+    assert dict(profile.columns) == {}
+    assert dict(profile.matrix_rows) == {}
     assert "ZERO <table>" in capture["live_table_note"]
+
+
+@pytest.mark.parametrize("case", ASSERTION_ONLY_CASES)
+def test_an_assertion_only_capture_contains_no_fabricated_table(case: str) -> None:
+    """The fabricated anchor table is gone from the committed bytes, and stays gone."""
+
+    fixture = load_case(PROVIDER, ADAPTER, case)
+    source = fixture.source_path.read_text(encoding="utf-8")
+    assert "<table" not in source.lower(), (
+        f"{case}: the live page has zero <table> elements, so the capture must too"
+    )
+    assert "captured-source-anchor" not in source
+
+
+@pytest.mark.parametrize("case", ASSERTION_ONLY_CASES)
+def test_an_assertion_only_profile_extracts_from_a_document_with_no_tables(case: str) -> None:
+    """The feature: a table-free official page extracts, with per-fact evidence.
+
+    This is what the fabricated anchor was standing in for. Against the captured
+    bytes -- which now contain no table, exactly like the live page -- the
+    profile must produce a valid candidate whose every fact carries its own
+    pinned-block evidence location.
+    """
+
+    fixture, (candidate,) = run_extraction_case(
+        PROVIDER, ADAPTER, case, official_domains=("docs.github.com",)
+    )
+    assert candidate.verification_state == "candidate"
+    assert "error" not in candidate.facts
+    assert candidate.facts == dict(fixture.expected_candidates[0]["facts"])
+    # One evidence location per asserted fact: nothing is published unsourced.
+    profile = resolve_profile(fixture.profile)
+    assert len(candidate.evidence) == len(profile.assertions)
+    assert all("assertion[" in (e.selector or "") for e in candidate.evidence)
 
 
 @pytest.mark.parametrize("case", OFFICIAL_CASES)
