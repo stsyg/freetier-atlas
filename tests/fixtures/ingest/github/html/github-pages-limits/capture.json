@@ -1,11 +1,38 @@
 {
-  "captured_by": "F008 P1 GitHub builder (manual official excerpt)",
-  "fetched_at": "2026-08-07T01:30:00Z",
+  "captured_by": "F008 P1 GitHub matrix/assertion re-derivation (live re-capture)",
+  "fetched_at": "2026-08-13T22:40:00Z",
   "http_status": 200,
   "robots_allowed": true,
-  "sha256_original": null,
-  "sha256_stored": "5188953eac9c4210d4bcc5206fe63888cda0646080629ba22f7f42658b493942",
-  "tos_note": "Official GitHub documentation (docs.github.com). https://docs.github.com/robots.txt was retrieved on 2026-08-07 and contains only 'User-agent: *' with no Disallow rules, so automated retrieval of this path is permitted. A minimal excerpt is committed here for offline, deterministic extraction testing; every value is reproduced verbatim from the cited page.",
-  "trim_method": "manual-excerpt: the official GitHub Pages 'Usage limits' list, one bullet per column, plus the rate-limit sentence. Re-expressed as the profile's canonical one-row offer table so the declared columns line up with the extraction profile; no value is altered, reordered within a cell, or invented, and a value the page does not publish is omitted rather than guessed. sha256_original is null because retrieval returned a text rendering of the page rather than retained raw bytes, so no honest digest of the untrimmed document exists; fetched_at is the retrieval session timestamp, accurate to the minute.",
-  "url": "https://docs.github.com/en/pages/getting-started-with-github-pages/github-pages-limits"
+  "sha256_original": "6afaf05ef5d989af00f9a33055257f29dd05e9dcfdee2f1e3e7d5d6b7a29409b",
+  "sha256_original_note": "sha256_original is the digest of the exact live bytes this capture was derived from on 2026-08-13. It is NOT reproducible across fetches: docs.github.com embeds per-build nonces, so a later fetch of an unchanged page yields a different digest. Structure, not digest, is the invariant.",
+  "sha256_stored": "8edda8890a48bdfe4415476ec7c31a22582bbeb34c20e29dae8dde148a44c3ac",
+  "tos_note": "Official GitHub documentation (docs.github.com). https://docs.github.com/robots.txt contains only 'User-agent: *' with no Disallow rules, so automated retrieval of these paths is permitted. A minimal excerpt is committed for offline, deterministic extraction testing; every retained value and every pinned sentence is reproduced verbatim from the cited live page.",
+  "trim_method": "Removed scripts, navigation, styling and unrelated prose. Retained the target table verbatim (spliced out of the live markup, attributes included) and every prose block the profile pins. Inline markup inside the retained prose blocks (anchors, SVG icons, nested <p> inside <li>) was flattened to plain text. The engine normalises a block to its text content, so the normalised block string is byte-identical to live; this was verified by matching each pinned assertion against the live document's own collected blocks.",
+  "live_table_present": false,
+  "live_table_note": "MEASURED: the live page contains ZERO <table> elements -- its allowances are published as <li>/<p> prose. The extraction engine requires a table to emit a candidate, so this capture carries a one-cell anchor table holding the source URL. The profile maps NO column from it, so the anchor table carries NO claim: 100% of this capture's published facts come from text assertions pinned to the verbatim live prose blocks retained above.",
+  "target_table_rows_removed": [],
+  "target_table_cells_removed": [],
+  "unpivoted_target_table_columns": [],
+  "ignored_extraction_rows": [],
+  "duplicate_live_blocks_not_retained": [],
+  "url": "https://docs.github.com/en/pages/getting-started-with-github-pages/github-pages-limits",
+  "structure": {
+    "asserted_block_sha256": [
+      "8a696168cd8624faa5e075e8caddc8cf6fd398d90ee6f04194a91adaa21112b7",
+      "e7d19773bdb561a5e373929879cbe5ef36d6694a2af150b026ba097cc2137521",
+      "e7d19773bdb561a5e373929879cbe5ef36d6694a2af150b026ba097cc2137521",
+      "e7d19773bdb561a5e373929879cbe5ef36d6694a2af150b026ba097cc2137521",
+      "3c56bb827c20409782f2041296830842ae7c41255000cc70a5bdfd0a59164a64",
+      "a0a141892d1bace052d2af856c4c16c3e39239e544edf48a1fe79ae21464a8ce",
+      "a8661d737b4267f6a1304793cbcce8a3e96d95eba4053ffa44ff98bb60bce5a3",
+      "d5113779ef90c0fd69e8ab8c16de95d1a4ea3389fbc6e42c29db252c5431f5d4",
+      "cccd72754935adaf3c7a0a75d820eb8c6521c32e2e9ca6e104d9bfd3890f9b05",
+      "30c26e0660e6c9a7435fd1a8712505429d5066f940e8cd097cb6ac636fff85ff",
+      "f3f98d275bf259126d60a60711fe8a4b1df583a8810acee31d72d18398315e37"
+    ],
+    "headers": ["Captured source"],
+    "rows": [
+      ["https://docs.github.com/en/pages/getting-started-with-github-pages/github-pages-limits"]
+    ]
+  }
 }

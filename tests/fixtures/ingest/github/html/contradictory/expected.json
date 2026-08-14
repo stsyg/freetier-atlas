@@ -1,5 +1,5 @@
 {
-  "profile": "github_actions_billing",
+  "profile": "quota_document",
   "mime": "text/html",
   "source_url": "https://docs.github.com/en/billing/concepts/product-billing/github-actions",
   "candidate_count": 2,
@@ -10,7 +10,7 @@
       "offer_type": "always_free"
     },
     "values": [false, true],
-    "note": "offer_type is part of the reconciler identity key, so a conflict must live in a non-identity material field to be detectable"
+    "note": "offer_type is part of the reconciler identity key, so a conflict must live in a non-identity material field to be detectable. This case uses the GENERIC quota_document profile: the GitHub profiles pin requires_card to a verbatim sentence, which makes two rows of one GitHub page structurally incapable of disagreeing about it."
   },
   "candidates": [
     {
@@ -21,14 +21,10 @@
         "offer_type": "always_free",
         "requires_card": false,
         "has_paid_dependencies": false,
-        "minutes_per_month": "2,000",
-        "artifact_storage": "500 MB",
-        "cache_storage_per_repository": "10 GB",
-        "public_repository_usage": "Free",
-        "exhaustion_behaviour": "hard_stop"
+        "quotas": ["hard_stop"]
       },
       "evidence_url": "https://docs.github.com/en/billing/concepts/product-billing/github-actions",
-      "evidence_selector": "github_actions_billing row[1]"
+      "evidence_selector": "quota_document row[1]"
     },
     {
       "verification_state": "candidate",
@@ -38,14 +34,10 @@
         "offer_type": "always_free",
         "requires_card": true,
         "has_paid_dependencies": true,
-        "minutes_per_month": "2,000",
-        "artifact_storage": "500 MB",
-        "cache_storage_per_repository": "10 GB",
-        "public_repository_usage": "Free",
-        "exhaustion_behaviour": "automatic_billing"
+        "quotas": ["automatic_billing"]
       },
       "evidence_url": "https://docs.github.com/en/billing/concepts/product-billing/github-actions",
-      "evidence_selector": "github_actions_billing row[2]"
+      "evidence_selector": "quota_document row[2]"
     }
   ]
 }

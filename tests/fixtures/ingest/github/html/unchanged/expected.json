@@ -8,13 +8,19 @@
       "verification_state": "candidate",
       "expect_valid": true,
       "facts": {
+        "minutes_per_month_github_free": "2,000",
+        "minutes_per_month_github_pro": "3,000",
+        "minutes_per_month_github_free_for_organizations": "2,000",
+        "minutes_per_month_github_team": "3,000",
+        "minutes_per_month_github_enterprise_cloud": "50,000",
         "service": "GitHub Actions",
         "offer_type": "always_free",
-        "minutes_per_month": "2,000",
-        "exhaustion_behaviour": "hard_stop"
+        "requires_card": false,
+        "exhaustion_behaviour": "hard_stop",
+        "has_paid_dependencies": false
       },
       "evidence_url": "https://docs.github.com/en/billing/concepts/product-billing/github-actions",
-      "evidence_selector": "github_actions_billing row[1]"
+      "evidence_selector": "github_actions_billing matrix row[1:GitHub Free] column[Minutes (per month)] -> fact[minutes_per_month_github_free]"
     }
   ]
 }

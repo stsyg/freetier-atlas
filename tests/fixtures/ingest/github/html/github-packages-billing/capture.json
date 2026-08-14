@@ -1,11 +1,49 @@
 {
-  "captured_by": "F008 P1 GitHub builder (manual official excerpt)",
-  "fetched_at": "2026-08-07T01:30:00Z",
+  "captured_by": "F008 P1 GitHub matrix/assertion re-derivation (live re-capture)",
+  "fetched_at": "2026-08-13T22:40:00Z",
   "http_status": 200,
   "robots_allowed": true,
-  "sha256_original": null,
-  "sha256_stored": "3b601a7161e110390471ca1edd065abe811316d5a3f596447a845317080608ff",
-  "tos_note": "Official GitHub documentation (docs.github.com). https://docs.github.com/robots.txt was retrieved on 2026-08-07 and contains only 'User-agent: *' with no Disallow rules, so automated retrieval of this path is permitted. A minimal excerpt is committed here for offline, deterministic extraction testing; every value is reproduced verbatim from the cited page.",
-  "trim_method": "manual-excerpt: the official 'Free use of GitHub Packages' allowance table (GitHub Free row) plus the public-package, inbound-transfer and quota-exhaustion sentences. Re-expressed as the profile's canonical one-row offer table so the declared columns line up with the extraction profile; no value is altered, reordered within a cell, or invented, and a value the page does not publish is omitted rather than guessed. sha256_original is null because retrieval returned a text rendering of the page rather than retained raw bytes, so no honest digest of the untrimmed document exists; fetched_at is the retrieval session timestamp, accurate to the minute.",
-  "url": "https://docs.github.com/en/billing/concepts/product-billing/github-packages"
+  "sha256_original": "a80bfd249232fed7c81e9ca59f8a64f4b8791aff74091c86be08388dc7eb805a",
+  "sha256_original_note": "sha256_original is the digest of the exact live bytes this capture was derived from on 2026-08-13. It is NOT reproducible across fetches: docs.github.com embeds per-build nonces, so a later fetch of an unchanged page yields a different digest. Structure, not digest, is the invariant.",
+  "sha256_stored": "44c1ffe6e3bc4f6983a14b4a68540c5a0e8a5f2638cdfa02fac4eca99b2cb9cc",
+  "tos_note": "Official GitHub documentation (docs.github.com). https://docs.github.com/robots.txt contains only 'User-agent: *' with no Disallow rules, so automated retrieval of these paths is permitted. A minimal excerpt is committed for offline, deterministic extraction testing; every retained value and every pinned sentence is reproduced verbatim from the cited live page.",
+  "trim_method": "Removed scripts, navigation, styling and unrelated prose. Retained the target table verbatim (spliced out of the live markup, attributes included) and every prose block the profile pins. Inline markup inside the retained prose blocks (anchors, SVG icons, nested <p> inside <li>) was flattened to plain text. The engine normalises a block to its text content, so the normalised block string is byte-identical to live; this was verified by matching each pinned assertion against the live document's own collected blocks.",
+  "live_table_present": true,
+  "live_table_note": "The live page publishes this allowance table with plan ROWS and metric COLUMNS. A matrix profile pivots one tier column across row labels, so the profile declares the live plan column as its metric header and one live metric column as its tier column. Every live plan row is declared, so a plan GitHub adds later rejects the document instead of being dropped.",
+  "target_table_rows_removed": [],
+  "target_table_cells_removed": [],
+  "unpivoted_target_table_columns": ["Storage"],
+  "ignored_extraction_rows": [],
+  "duplicate_live_blocks_not_retained": [
+    {
+      "text": "If your account does not have a valid payment method on file, usage is blocked once you use up your quota.",
+      "live_occurrences": 2,
+      "retained_in_capture": 1,
+      "note": "This sentence appears more than once on the live page (the offer's own section and a later budget/spending section). The excerpt retains the occurrence from the offer's own section. This is a MATERIAL disclosure: against the unmodified live page the engine would reject this profile with 'ambiguous_assertion', because whole-block equality requires exactly one match."
+    },
+    {
+      "text": "If your account does not have a valid payment method on file, usage is blocked once you use up your quota.",
+      "live_occurrences": 2,
+      "retained_in_capture": 1,
+      "note": "This sentence appears more than once on the live page (the offer's own section and a later budget/spending section). The excerpt retains the occurrence from the offer's own section. This is a MATERIAL disclosure: against the unmodified live page the engine would reject this profile with 'ambiguous_assertion', because whole-block equality requires exactly one match."
+    }
+  ],
+  "url": "https://docs.github.com/en/billing/concepts/product-billing/github-packages",
+  "structure": {
+    "asserted_block_sha256": [
+      "9a313bbc6798077c5e450a4ffe1593cf7c4809fe82ade335ff7f6f190fb97372",
+      "bc5ba6fe860b805985b380d45223ae433e763006710beca5dc383f35f1a77e97",
+      "935c6606844ae34dbbe405cbd08813eea2e3a01cda86ef99a21191c3ab7c301d",
+      "935c6606844ae34dbbe405cbd08813eea2e3a01cda86ef99a21191c3ab7c301d",
+      "658067bbdff9c10b772ae8225be2c491f16f52971a7a538a8aeade7bf8379694"
+    ],
+    "headers": ["Plan", "Storage", "Data transfer (per month)"],
+    "rows": [
+      ["GitHub Free", "500MB", "1GB"],
+      ["GitHub Pro", "2GB", "10GB"],
+      ["GitHub Free for organizations", "500MB", "1GB"],
+      ["GitHub Team", "2GB", "10GB"],
+      ["GitHub Enterprise Cloud", "50GB", "100GB"]
+    ]
+  }
 }

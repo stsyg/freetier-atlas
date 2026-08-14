@@ -1,11 +1,16 @@
 {
-  "captured_by": "F008 P1 GitHub builder (manual official excerpt)",
-  "fetched_at": "2026-08-07T01:30:00Z",
-  "http_status": 200,
-  "robots_allowed": true,
+  "captured_by": "F008 P1 GitHub matrix/assertion re-derivation (synthetic scaffold)",
+  "fetched_at": "2026-08-13T22:40:00Z",
+  "http_status": null,
+  "synthetic": true,
+  "negative_fixture_note": "NEGATIVE TEST FIXTURE, NOT A CLAIMED COMPLETE CAPTURE. Derived from the committed official capture in tests/fixtures/ingest/github/html/github-actions-billing by the single mutation named in 'mutation'. It is not a record of anything GitHub publishes and must never be cited as evidence.",
+  "derived_from": "tests/fixtures/ingest/github/html/github-actions-billing/source.html",
+  "mutation": "none: byte-identical to the official capture, so a re-scan must produce an identical content hash and raise no change event",
+  "extraction_profile": "github_actions_billing",
   "sha256_original": null,
-  "sha256_stored": "8129e00c3dd6477d3debe1af259d3f4cede1ebcc0b5533e5f5c10647c49437cd",
-  "tos_note": "Official GitHub documentation (docs.github.com). https://docs.github.com/robots.txt was retrieved on 2026-08-07 and contains only 'User-agent: *' with no Disallow rules, so automated retrieval of this path is permitted. A minimal excerpt is committed here for offline, deterministic extraction testing; every value is reproduced verbatim from the cited page.",
-  "trim_method": "derived-from: tests/fixtures/ingest/github/html/github-actions-billing (the official GitHub Actions billing capture). Unmodified copy of the captured official allowance row. Re-expressed as the profile's canonical one-row offer table so the declared columns line up with the extraction profile; no value is altered, reordered within a cell, or invented, and a value the page does not publish is omitted rather than guessed. sha256_original is null because retrieval returned a text rendering of the page rather than retained raw bytes, so no honest digest of the untrimmed document exists; fetched_at is the retrieval session timestamp, accurate to the minute.",
+  "sha256_stored": "fa9109f996f42d1b588d8695c4ea51fa97025fdba0f794f3d9580fe4b9ed5525",
+  "robots_allowed": true,
+  "tos_note": "No provider bytes were retrieved for this fixture. It is a NEGATIVE test scaffold derived locally from the committed official Actions capture, whose own capture.json carries the retrieval provenance and terms note.",
+  "trim_method": "not a capture: this document was produced locally by applying one named mutation to the committed official Actions capture. Mutation: none: byte-identical to the official capture, so a re-scan must produce an identical content hash and raise no change event",
   "url": "https://docs.github.com/en/billing/concepts/product-billing/github-actions"
 }

@@ -69,13 +69,15 @@ Three things about this slice are worth copying, and one is worth avoiding.
 
 **Perpetuity is checked, not assumed.** The last row is the deliberate non-Z0
 case and the reason it exists: GitHub's own trial page says *"You do not need to
-provide a payment method to start a trial"* and *"The trial lasts for 30 days"*
-on the same page. No card is required and it still must never be published as
-`$0` forever, so it is extracted with `offer_type: trial` and classifies
-`Z2_TEMPORARY_OR_CONDITIONAL`. Every row marked `always_free` instead carries a
-verbatim reset/perpetuity sentence in its fixture comment (for example, Actions:
-*"Your included minutes reset to the full amount at the start of each billing
-cycle."*). A page that is merely silent about expiry is not evidence of
+provide a payment method to start a trial."* and *"The trial lasts for 30 days
+and includes the following features."* on the same page. No card is required and
+it still must never be published as `$0` forever, so it is extracted with
+`offer_type: trial` and classifies `Z2_TEMPORARY_OR_CONDITIONAL`. Every offer
+marked `always_free` instead pins a verbatim perpetuity sentence as a required
+`HtmlTextAssertion` (for example, Actions: *"The following amounts of time for
+standard runners, artifact storage, and cache storage are included in your GitHub
+plan. At the start of each month, the minutes used by the account are reset to
+zero."*). A page that is merely silent about expiry is not evidence of
 perpetuity.
 
 **`hard_stop`, not `automatic_billing`.** The Actions, Packages and Codespaces
@@ -84,6 +86,29 @@ method on file, usage is blocked once you use up your quota."* That sentence is
 the whole basis for a Z0 verdict on those three services. Automatic billing
 applies only to an account that has already added a card, which is not the `$0`
 path being classified.
+
+**The sentence itself is load-bearing.** Every material Z0 condition —
+`service`, `offer_type`, `requires_card`, `has_paid_dependencies` and
+`exhaustion_behaviour` — is a whole-block `HtmlTextAssertion` pinned to verbatim
+source text, never a table cell. Rewording, truncating or deleting the sentence
+above yields `assertion_not_found` and REJECTS the candidate, so a `$0` claim
+cannot outlive the evidence for it. The profiles map no column onto those
+fields, which is asserted in `tests/unit/test_adapter_github.py`.
+
+**Two live pages carry no table at all.** Measured on 2026-08-13: the GitHub
+Pages limits page and the Enterprise Cloud trial page contain zero `<table>`
+elements — their allowances are published as `<li>`/`<p>` prose. Extraction
+still requires a table to emit a candidate, so those two captures hold a one-cell
+anchor table with **no mapped column**, and 100% of their published facts come
+from pinned assertions. Each `capture.json` discloses this explicitly.
+
+**Known limitation, disclosed in the captures.** The no-payment-method sentence
+appears **twice** on the live Packages and Codespaces pages (once in the offer's
+own section, once under budgets/spending). Whole-block equality requires exactly
+one match, so against those unmodified live pages the engine would return
+`ambiguous_assertion`. The committed excerpts retain the occurrence from the
+offer's own section and declare the omission in
+`capture.json → duplicate_live_blocks_not_retained`.
 
 **Offer type fails closed at both gates.** `requires_card`,
 `has_paid_dependencies` and `exhaustion_behaviour` each block Z0 when unknown.

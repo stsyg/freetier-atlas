@@ -12,12 +12,12 @@
         "offer_type": "always_free",
         "requires_card": false,
         "has_paid_dependencies": false,
-        "compute_time_per_month": "120 hrs",
-        "storage_per_month": "15 GB-month",
-        "exhaustion_behaviour": "hard_stop"
+        "exhaustion_behaviour": "hard_stop",
+        "compute_time_per_month_github_free_for_personal_accounts": "120 hrs",
+        "compute_time_per_month_github_pro": "180 hrs"
       },
       "evidence_url": "https://docs.github.com/en/billing/concepts/product-billing/github-codespaces",
-      "evidence_selector": "github_codespaces_billing row[1]"
+      "evidence_selector": "github_codespaces_billing matrix row[1:GitHub Free for personal accounts] column[Compute time per month] -> fact[compute_time_per_month_github_free_for_personal_accounts]"
     }
   ]
 }

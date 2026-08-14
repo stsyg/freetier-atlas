@@ -12,13 +12,13 @@
         "offer_type": "always_free",
         "requires_card": false,
         "has_paid_dependencies": false,
+        "exhaustion_behaviour": "throttled",
         "published_site_size": "1 GB",
         "source_repository_size": "1 GB",
         "bandwidth_per_month": "100 GB",
         "builds_per_hour": "10",
         "deployment_timeout": "10 minutes",
-        "sites_per_account": "1",
-        "exhaustion_behaviour": "throttled"
+        "sites_per_account": "1"
       },
       "evidence_url": "https://docs.github.com/en/pages/getting-started-with-github-pages/github-pages-limits",
       "evidence_selector": "github_pages_limits row[1]"
