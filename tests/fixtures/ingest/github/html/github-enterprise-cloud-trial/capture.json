@@ -1,15 +1,17 @@
 {
-  "captured_by": "F008 P1 GitHub matrix/assertion re-derivation (live re-capture)",
+  "captured_by": "F008 P1 GitHub matrix/assertion re-derivation (live re-capture); amended by F008 assertion-only-html-profiles (fabricated anchor table deleted)",
   "fetched_at": "2026-08-13T22:40:00Z",
   "http_status": 200,
   "robots_allowed": true,
   "sha256_original": "450fa80ed2c3e192c6da85eeae712447883da91ed4ed9a25fa97988d82a49344",
   "sha256_original_note": "sha256_original is the digest of the exact live bytes this capture was derived from on 2026-08-13. It is NOT reproducible across fetches: docs.github.com embeds per-build nonces, so a later fetch of an unchanged page yields a different digest. Structure, not digest, is the invariant.",
-  "sha256_stored": "9e7c4e2be815bb67aabb703a71efbd5c12abc3535144063b1c0ed550ccedc276",
+  "sha256_stored": "9d8cf4b496a59735782806555c0c54b6ebf1a1ed45da8267a19ad28eeb568b52",
   "tos_note": "Official GitHub documentation (docs.github.com). https://docs.github.com/robots.txt contains only 'User-agent: *' with no Disallow rules, so automated retrieval of these paths is permitted. A minimal excerpt is committed for offline, deterministic extraction testing; every retained value and every pinned sentence is reproduced verbatim from the cited live page.",
-  "trim_method": "Removed scripts, navigation, styling and unrelated prose. Retained the target table verbatim (spliced out of the live markup, attributes included) and every prose block the profile pins. Inline markup inside the retained prose blocks (anchors, SVG icons, nested <p> inside <li>) was flattened to plain text. The engine normalises a block to its text content, so the normalised block string is byte-identical to live; this was verified by matching each pinned assertion against the live document's own collected blocks.",
+  "trim_method": "Removed scripts, navigation, styling and unrelated prose. The live page publishes NO table, so this capture contains none and none was synthesized: it retains only the prose blocks the profile pins, verbatim. Inline markup inside the retained prose blocks (anchors, SVG icons, nested <p> inside <li>) was flattened to plain text. The engine normalises a block to its text content, so the normalised block string is byte-identical to live; this was verified by matching each pinned assertion against the live document's own collected blocks. This is a deliberate minimal excerpt, not a complete copy of the page.",
   "live_table_present": false,
-  "live_table_note": "MEASURED: the live page contains ZERO <table> elements -- its allowances are published as <li>/<p> prose. The extraction engine requires a table to emit a candidate, so this capture carries a one-cell anchor table holding the source URL. The profile maps NO column from it, so the anchor table carries NO claim: 100% of this capture's published facts come from text assertions pinned to the verbatim live prose blocks retained above.",
+  "live_table_note": "MEASURED 2026-08-13, re-measured 2026-08-14: the live page contains ZERO <table> elements -- its allowances are published as <li>/<p> prose. This capture also contains zero <table> elements, so its structure matches the live document. The profile is mode='assertions': it declares no table selector, reads no table, and takes 100% of its published facts from text assertions pinned to the verbatim live prose blocks retained above. HISTORICAL CORRECTION: an earlier version of this capture carried a one-cell anchor table that existed nowhere on the live page. It was added only because the extraction engine then required a table to emit a candidate, and it made this profile return table_not_found against the real page. The engine now supports assertion-only profiles, so that fabricated table has been DELETED.",
+  "live_reverified_at": "2026-08-14T01:40:00Z",
+  "live_reverification": "Re-fetched the live page (HTTP 200) and parsed it with the engine's own _DocumentCollector. Live <table> count: 0. Every one of the profile's 9 pinned blocks occurs EXACTLY ONCE in the live document and EXACTLY ONCE in this capture, so LIVE -> FIXTURE reconciliation is 1:1 with no unmatched, missing or ambiguous block. Driving the real HtmlDocAdapter over the live bytes now yields one candidate with 9 facts, 9 per-fact evidence locations and zero validation problems; before this slice the same probe returned the rejected candidate table_not_found.",
   "target_table_rows_removed": [],
   "target_table_cells_removed": [],
   "unpivoted_target_table_columns": [],
@@ -28,11 +30,7 @@
       "878aca81cfcadb45e4725e57f82bbb51522bbd37c0e5dceee1b01477362383c8",
       "b049f748748eb63f048086f5ad7414f10a8e1afc29a91809338076b35a59a3b7"
     ],
-    "headers": ["Captured source"],
-    "rows": [
-      [
-        "https://docs.github.com/en/enterprise-cloud@latest/admin/overview/setting-up-a-trial-of-github-enterprise-cloud"
-      ]
-    ]
+    "headers": [],
+    "rows": []
   }
 }

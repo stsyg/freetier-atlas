@@ -62,7 +62,7 @@ Five official `docs.github.com` sources, one captured excerpt each:
 | `github-actions-billing`        | GitHub Actions                | `cicd-source-control`   | Z0      |
 | `github-packages-billing`       | GitHub Packages               | `object-file-storage`   | Z0      |
 | `github-codespaces-billing`     | GitHub Codespaces             | `secrets-config-devtools` | Z0    |
-| `github-pages-limits`           | GitHub Pages                  | `containers-app-hosting` | Z0     |
+| `github-pages-limits`           | GitHub Pages                  | `containers-app-hosting` | **not Z0** (unknown card status) |
 | `github-enterprise-cloud-trial` | GitHub Enterprise Cloud trial | `cicd-source-control`   | **not Z0** |
 
 Three things about this slice are worth copying, and one is worth avoiding.
@@ -95,12 +95,36 @@ above yields `assertion_not_found` and REJECTS the candidate, so a `$0` claim
 cannot outlive the evidence for it. The profiles map no column onto those
 fields, which is asserted in `tests/unit/test_adapter_github.py`.
 
-**Two live pages carry no table at all.** Measured on 2026-08-13: the GitHub
-Pages limits page and the Enterprise Cloud trial page contain zero `<table>`
-elements — their allowances are published as `<li>`/`<p>` prose. Extraction
-still requires a table to emit a candidate, so those two captures hold a one-cell
-anchor table with **no mapped column**, and 100% of their published facts come
-from pinned assertions. Each `capture.json` discloses this explicitly.
+**A fact with no source sentence is not published at all.** GitHub Pages is the
+worked example. Measured on its live page, **none of its 65 text blocks** states
+that no payment method is required — the page says only which plans include
+Pages. An earlier revision pinned both `requires_card` and
+`has_paid_dependencies` to that availability sentence, which never mentions
+payment. Both facts are now **absent** rather than repinned, because there is
+nothing honest to pin them to: they stay `UNKNOWN`, the classifier withholds Z0,
+and the publication gate withholds the offer entirely. Pages still extracts
+successfully and still publishes its perpetuity and its limits — only the
+unsourced billing claims are gone. When a page does not state a material
+condition, delete the assertion; do not hunt for a nearby sentence that can be
+read as implying it.
+
+**Two live pages carry no table at all.** Measured on 2026-08-13 and re-measured
+on 2026-08-14: the GitHub Pages limits page and the Enterprise Cloud trial page
+contain zero `<table>` elements — their allowances are published as `<li>`/`<p>`
+prose. Both profiles are therefore **assertion-only** (`mode: "assertions"`):
+they declare no table selector, read no table, and take 100% of their published
+facts from pinned assertions. Each `capture.json` records the live re-verification.
+
+An earlier revision of those two captures instead carried a fabricated one-cell
+anchor table, constrained to map no column so it carried no claim. It was
+committed only because extraction then required a table, and it was measurably
+harmful: against the real pages both profiles returned `table_not_found`, so
+they could not extract from the live document at all. The anchor tables have
+been deleted and the engine now supports assertion-only profiles directly. **Do
+not synthesize structure to satisfy the extractor** — GCP, Azure, Oracle and AWS
+all state free-tier terms substantially in prose, and one fabricated table per
+provider would institutionalise exactly the practice that made this provider
+defective in the first place.
 
 **Known limitation, disclosed in the captures.** The no-payment-method sentence
 appears **twice** on the live Packages and Codespaces pages (once in the offer's
@@ -217,6 +241,44 @@ Each matrix cell and assertion adds a field-specific `EvidenceLocation`
 selector (for example, `matrix row[...] column[...] -> fact[...]`), so the
 existing evidence schema persists per-fact provenance without a migration.
 There is deliberately no source-set or cross-document composition API.
+
+### Assertion-only profiles (pages with no table)
+
+A table is **not** required. An official page that states its free-tier terms
+entirely in prose is extracted with `mode: "assertions"`: the profile declares
+no `table_id`, `table_class`, `header_signature`, `columns`, or matrix fields at
+all, and every fact comes from a pinned `HtmlTextAssertion`. Declaring any table
+field alongside `mode: "assertions"` is a construction-time `ValueError`, so an
+assertion-only profile cannot quietly become table-backed.
+
+Reach for this whenever the live page has no table. **Never commit a synthetic
+anchor table to give the extractor something to select.** A fabricated table
+does not exist on the live page, so the profile fails against the real document
+even while the fixture passes — the fixture stops representing its own source,
+which is the same class of defect as a synthesized header.
+
+**The evidence floor is explicit, because the matrix is optional.** Before this
+mode existed, the mandatory matrix doubled as an *accidental* evidence floor: a
+profile that proved nothing could not emit a candidate, because it could not
+select a table. Relaxing the matrix requirement dissolves that accident, so
+`HtmlExtractionProfile` now states the floor directly, keyed by mode:
+
+| mode         | accepted sources of facts |
+| ------------ | ------------------------- |
+| `rows`       | `columns` or `assertions` |
+| `matrix`     | `matrix_rows`             |
+| `assertions` | `assertions`              |
+
+A profile satisfying none of its mode's sources raises at construction rather
+than emitting a candidate backed by nothing — in this product an unsourced
+candidate is a potential unsupported claim that a service is free, which is
+worse than refusing to extract. The floor is deliberately **per mode**, not a
+permissive "any of these fields is set": `matrix_rows` are inert in `rows` mode
+and must not be mistaken for evidence there, and an unlisted mode raises rather
+than defaulting to permitted. At runtime the floor holds too — an assertion-only
+extraction that matches nothing (every assertion optional, every one absent)
+returns `no_assertion_evidence` instead of an empty candidate. See
+`tests/unit/test_adapter_html_assertions.py`.
 
 The complete Vercel fixture vocabulary covers unchanged, changed, partial,
 malformed, and structurally ambiguous documents offline. Withdrawn and stale

@@ -137,9 +137,22 @@ coverage:
       environment, declared under secrets-config-devtools) and ephemeral
       Actions runners (declared under cicd-source-control).
   containers-app-hosting:
-    # GitHub Pages: free for public repositories on GitHub Free, with published
-    # usage limits and no payment method required.
-    state: verified_free
+    # GitHub Pages exists and its published limits ARE captured, but whether it
+    # can be used at $0 CANNOT BE ESTABLISHED from the official page: measured,
+    # none of the 65 text blocks on
+    # https://docs.github.com/en/pages/getting-started-with-github-pages/github-pages-limits
+    # states that no payment method is required. `requires_card` is therefore
+    # UNKNOWN, the classifier withholds Z0, and the publication gate withholds
+    # the offer, so this category has nothing published behind it.
+    #
+    # `unknown` -- NOT `offered_no_z0`. Both are honest about the absence of a
+    # free claim, but `offered_no_z0` asserts we established the category has no
+    # Z0 tier, which is a positive claim we equally cannot support: we have only
+    # failed to prove Pages passes, not proved that it fails. `unknown` is also
+    # exactly what derive_coverage_state returns for zero published offers, so
+    # the declaration agrees with what the pipeline observes instead of
+    # contradicting it.
+    state: unknown
     source: github-pages-limits
   serverless-functions:
     # See the ARGUABLE note on GitHub Actions above. GitHub publishes no

@@ -93,6 +93,13 @@ MATRIX_CASES = (
     "github-codespaces-billing",
 )
 
+#: The captures whose live page publishes NO table at all: every fact comes from
+#: pinned prose, and the profile declares no table selector.
+ASSERTION_ONLY_CASES = (
+    "github-pages-limits",
+    "github-enterprise-cloud-trial",
+)
+
 #: The captures whose live page carries the no-payment-method sentence.
 NO_CARD_CASES = MATRIX_CASES
 
@@ -137,6 +144,18 @@ def _tier_index(case: str, profile) -> int:
     headers = [h.strip().lower() for h in capture["structure"]["headers"]]
     return headers.index(profile.matrix_tier_header.strip().lower())
 
+
+#: The profiles whose LIVE page carries a sentence actually stating that no
+#: payment method is required. GitHub Pages is deliberately NOT here: measured on
+#: the live page, none of its 65 text blocks says anything of the kind.
+_CARD_CLAIMING_PROFILES = frozenset(
+    {
+        "github_actions_billing",
+        "github_packages_billing",
+        "github_codespaces_billing",
+        "github_enterprise_cloud_trial",
+    }
+)
 
 #: Fact keys that are identity or material-condition metadata, not quotas.
 _NON_QUOTA_KEYS = frozenset(
@@ -362,7 +381,12 @@ def test_the_unmutated_fixtures_still_publish_the_no_card_fact() -> None:
 
 @pytest.mark.parametrize("case", OFFICIAL_CASES)
 def test_capture_structure_matches_every_retained_target_cell(case: str) -> None:
-    """`capture.json` must describe the committed table exactly, with no silent cuts."""
+    """`capture.json` must describe the committed table exactly, with no silent cuts.
+
+    Where the live page publishes no table the capture must hold none either --
+    a capture that invents structure the live page does not have is a worse
+    fixture, not a more convenient one.
+    """
 
     fixture = load_case(PROVIDER, ADAPTER, case)
     capture = json.loads((fixture.directory / "capture.json").read_text(encoding="utf-8"))
@@ -370,13 +394,22 @@ def test_capture_structure_matches_every_retained_target_cell(case: str) -> None
     collector.feed(fixture.content.decode("utf-8"))
     collector.close()
 
-    assert len(collector.tables) == 1, f"{case}: the excerpt must hold exactly one table"
-    header_index, header = _header_row(collector.tables[0])
-    assert header_index is not None, f"{case}: {header}"
-    assert list(header.cells) == capture["structure"]["headers"]
-    assert [list(r.cells) for r in collector.tables[0].rows[header_index + 1 :]] == capture[
-        "structure"
-    ]["rows"]
+    if not capture["live_table_present"]:
+        assert collector.tables == [], (
+            f"{case}: the live page has no table, so the capture must contain none -- "
+            "synthesizing an anchor table to satisfy the extractor makes the capture "
+            "misrepresent its own source"
+        )
+        assert capture["structure"]["headers"] == []
+        assert capture["structure"]["rows"] == []
+    else:
+        assert len(collector.tables) == 1, f"{case}: the excerpt must hold exactly one table"
+        header_index, header = _header_row(collector.tables[0])
+        assert header_index is not None, f"{case}: {header}"
+        assert list(header.cells) == capture["structure"]["headers"]
+        assert [list(r.cells) for r in collector.tables[0].rows[header_index + 1 :]] == capture[
+            "structure"
+        ]["rows"]
     assert capture["target_table_rows_removed"] == []
     assert capture["target_table_cells_removed"] == []
     assert capture["ignored_extraction_rows"] == []
@@ -396,7 +429,15 @@ def test_asserted_blocks_match_the_pinned_capture_hashes(case: str) -> None:
 
 @pytest.mark.parametrize("case", OFFICIAL_CASES)
 def test_a_table_less_live_page_is_disclosed_and_claims_nothing(case: str) -> None:
-    """Where the live page has no table, the anchor row must carry no mapped column."""
+    """Where the live page has no table, the profile must declare no table at all.
+
+    The stronger form of the old control. Previously these two captures carried
+    a fabricated one-cell anchor table, constrained to map no column so it made
+    no claim -- but it existed nowhere on the live page, so the profile returned
+    ``table_not_found`` against the real document. Now the profile is
+    assertion-only and reads no table, so there is nothing to synthesize and
+    nothing to constrain.
+    """
 
     fixture = load_case(PROVIDER, ADAPTER, case)
     capture = json.loads((fixture.directory / "capture.json").read_text(encoding="utf-8"))
@@ -405,11 +446,51 @@ def test_a_table_less_live_page_is_disclosed_and_claims_nothing(case: str) -> No
         assert profile.mode == "matrix"
         assert profile.header_signature
         return
-    assert profile.mode == "rows"
-    assert dict(profile.columns) == {}, (
-        f"{case}: the anchor table must map no column, or it would carry a claim"
-    )
+
+    assert profile.mode == "assertions"
+    assert profile.assertions, "an assertion-only profile with no assertions proves nothing"
+    # Not merely "maps no column": declares no table machinery whatsoever, so it
+    # cannot quietly reacquire a synthetic anchor.
+    assert profile.table_id is None
+    assert profile.table_class is None
+    assert profile.header_signature == ()
+    assert dict(profile.columns) == {}
+    assert dict(profile.matrix_rows) == {}
     assert "ZERO <table>" in capture["live_table_note"]
+
+
+@pytest.mark.parametrize("case", ASSERTION_ONLY_CASES)
+def test_an_assertion_only_capture_contains_no_fabricated_table(case: str) -> None:
+    """The fabricated anchor table is gone from the committed bytes, and stays gone."""
+
+    fixture = load_case(PROVIDER, ADAPTER, case)
+    source = fixture.source_path.read_text(encoding="utf-8")
+    assert "<table" not in source.lower(), (
+        f"{case}: the live page has zero <table> elements, so the capture must too"
+    )
+    assert "captured-source-anchor" not in source
+
+
+@pytest.mark.parametrize("case", ASSERTION_ONLY_CASES)
+def test_an_assertion_only_profile_extracts_from_a_document_with_no_tables(case: str) -> None:
+    """The feature: a table-free official page extracts, with per-fact evidence.
+
+    This is what the fabricated anchor was standing in for. Against the captured
+    bytes -- which now contain no table, exactly like the live page -- the
+    profile must produce a valid candidate whose every fact carries its own
+    pinned-block evidence location.
+    """
+
+    fixture, (candidate,) = run_extraction_case(
+        PROVIDER, ADAPTER, case, official_domains=("docs.github.com",)
+    )
+    assert candidate.verification_state == "candidate"
+    assert "error" not in candidate.facts
+    assert candidate.facts == dict(fixture.expected_candidates[0]["facts"])
+    # One evidence location per asserted fact: nothing is published unsourced.
+    profile = resolve_profile(fixture.profile)
+    assert len(candidate.evidence) == len(profile.assertions)
+    assert all("assertion[" in (e.selector or "") for e in candidate.evidence)
 
 
 @pytest.mark.parametrize("case", OFFICIAL_CASES)
@@ -445,10 +526,17 @@ def test_github_profiles_are_registered_declaratively(name: str) -> None:
     assert profile.required_fields == ("service", "offer_type")
     assert profile.trusted_assertions
     asserted = {assertion.field for assertion in profile.assertions}
-    # The identity and every material Z0 gate are pinned to verbatim source text
-    # rather than read out of an author-populated cell.
-    assert {"service", "offer_type", "requires_card", "has_paid_dependencies"} <= asserted
+    # Identity and perpetuity are pinned to verbatim source text on every
+    # profile, rather than read out of an author-populated cell.
+    assert {"service", "offer_type"} <= asserted
     assert "exhaustion_behaviour" in asserted
+    # The billing gates are pinned ONLY where a live sentence actually states
+    # them. Pages has no such sentence, so it must claim neither -- see
+    # test_pages_claims_no_billing_fact_it_cannot_source.
+    if name in _CARD_CLAIMING_PROFILES:
+        assert {"requires_card", "has_paid_dependencies"} <= asserted
+    else:
+        assert not ({"requires_card", "has_paid_dependencies"} & asserted)
     assert not set(profile.columns) & asserted, (
         f"{name}: a pinned fact must not also be readable from a table column"
     )
@@ -460,10 +548,12 @@ def test_github_profiles_are_registered_declaratively(name: str) -> None:
 def _facts_of(case: str) -> OfferFacts:
     fixture = load_case(PROVIDER, ADAPTER, case)
     facts = dict(fixture.expected_candidates[0]["facts"])
+    # `.get`, not `[...]`: a material condition the page does not state must
+    # arrive as None (UNKNOWN) rather than raising or defaulting to a value.
     return OfferFacts(
         offer_type=str(facts["offer_type"]),
-        requires_card=facts["requires_card"],
-        has_paid_dependencies=facts["has_paid_dependencies"],
+        requires_card=facts.get("requires_card"),
+        has_paid_dependencies=facts.get("has_paid_dependencies"),
         exhaustion_behaviours=(facts["exhaustion_behaviour"],),
     )
 
@@ -474,7 +564,6 @@ def _facts_of(case: str) -> OfferFacts:
         "github-actions-billing",
         "github-packages-billing",
         "github-codespaces-billing",
-        "github-pages-limits",
     ],
 )
 def test_the_perpetual_github_allowances_are_z0_and_explainable(case: str) -> None:
@@ -482,6 +571,64 @@ def test_the_perpetual_github_allowances_are_z0_and_explainable(case: str) -> No
     assert result.zero_cost_class == "Z0_TRUE_FREE"
     assert result.blocking_conditions == ()
     assert result.reasons, "a Z0 verdict with no stated reason is not explainable"
+
+
+def test_pages_claims_no_billing_fact_it_cannot_source() -> None:
+    """GitHub Pages must NOT reach Z0, because no live sentence says $0.
+
+    MEASURED on the live page: of its 65 text blocks, ZERO state that no payment
+    method is required. An earlier revision pinned both `requires_card=False`
+    and `has_paid_dependencies=False` to the availability sentence -- "GitHub
+    Pages is available in public repositories with GitHub Free ... See GitHub's
+    plans." -- which never mentions payment and establishes only perpetuity.
+
+    That claim was inert while the profile could not read its own live page. The
+    moment assertion-only extraction made the profile work, it became a
+    live-reachable `$0` claim with no source sentence behind it, which is the
+    exact failure this product forbids. Both facts are now ABSENT rather than
+    repinned, because there is nothing honest to pin them to.
+    """
+
+    fixture = load_case(PROVIDER, ADAPTER, "github-pages-limits")
+    facts = fixture.expected_candidates[0]["facts"]
+    assert "requires_card" not in facts
+    assert "has_paid_dependencies" not in facts
+
+    profile = resolve_profile("github_pages_limits")
+    asserted = {assertion.field for assertion in profile.assertions}
+    assert "requires_card" not in asserted
+    assert "has_paid_dependencies" not in asserted
+
+    result = classify(_facts_of("github-pages-limits"))
+    assert result.zero_cost_class == "UNKNOWN", (
+        "Pages published a $0 verdict without a source sentence stating it"
+    )
+    assert any("payment card" in condition for condition in result.blocking_conditions)
+    # Perpetuity IS sourced, so the offer type survives: only the unsourced
+    # billing facts were withdrawn.
+    assert facts["offer_type"] == "always_free"
+
+
+def test_removing_the_unsourced_card_fact_is_what_blocks_pages_from_z0() -> None:
+    """Isolate the variable, so the UNKNOWN verdict is not credited elsewhere.
+
+    Feeding the identical Pages facts WITH a card claim reaches Z0. The single
+    difference is the fact the live page does not support, which proves the
+    block comes from withdrawing that claim and not from `throttled` exhaustion
+    or anything else in the row.
+    """
+
+    sourced = _facts_of("github-pages-limits")
+    assert sourced.requires_card is None
+    assert classify(sourced).zero_cost_class == "UNKNOWN"
+
+    hypothetical = OfferFacts(
+        offer_type=sourced.offer_type,
+        requires_card=False,
+        has_paid_dependencies=False,
+        exhaustion_behaviours=sourced.exhaustion_behaviours,
+    )
+    assert classify(hypothetical).zero_cost_class == "Z0_TRUE_FREE"
 
 
 def test_the_enterprise_trial_is_not_z0_despite_requiring_no_card() -> None:
@@ -620,22 +767,46 @@ def test_every_absence_claim_carries_a_rationale(config) -> None:
 def test_no_published_category_is_left_undeclared(config) -> None:
     """Q9-A derived-contradiction rule, checked without a database.
 
-    Every category this slice publishes an offer into must be declared
+    Every category this slice actually publishes an offer into must be declared
     verified_free or offered_no_z0 -- never unknown, never not_offered.
+
+    "Publishes" is not the same as "extracts". A candidate whose material Z0
+    conditions are UNKNOWN classifies UNKNOWN, and the publication gate withholds
+    it, so its category has nothing published behind it. GitHub Pages is exactly
+    that case: measured on real PostgreSQL, it extracts a candidate and produces
+    NO offer row. Declaring `verified_free` for a category with nothing published
+    would be an unsupported free claim, which is the defect this control exists
+    to prevent -- so the rule is asserted in BOTH directions rather than assuming
+    every extracted case publishes.
     """
 
-    published = {
-        config.service_categories[service]
-        for case in OFFICIAL_CASES
-        for service in [
-            load_case(PROVIDER, ADAPTER, case).expected_candidates[0]["facts"]["service"]
-        ]
-    }
-    assert published, "the control is vacuous if nothing is published"
-    for slug in published:
+    publishable: set[str] = set()
+    withheld: set[str] = set()
+    for case in OFFICIAL_CASES:
+        facts = load_case(PROVIDER, ADAPTER, case).expected_candidates[0]["facts"]
+        slug = config.service_categories[facts["service"]]
+        # The gate needs every material condition to be known; a missing one is
+        # UNKNOWN, never a default (see test_pages_claims_no_billing_fact...).
+        if all(
+            facts.get(field) is not None for field in ("requires_card", "has_paid_dependencies")
+        ):
+            publishable.add(slug)
+        else:
+            withheld.add(slug)
+
+    assert publishable, "the control is vacuous if nothing is published"
+    for slug in publishable:
         assert config.coverage[slug].state in ("verified_free", "offered_no_z0"), (
             f"{slug}: an offer is published here, so the declaration cannot be "
             f"{config.coverage[slug].state!r}"
+        )
+    # The other direction: a category we publish NOTHING into must not claim a
+    # verified free tier. This is the half that would have let the Pages claim
+    # survive in config after it was removed from the profile.
+    for slug in withheld - publishable:
+        assert config.coverage[slug].state not in ("verified_free", "offered_no_z0"), (
+            f"{slug}: nothing is published here because a material condition is "
+            f"unknown, so the declaration cannot be {config.coverage[slug].state!r}"
         )
 
 

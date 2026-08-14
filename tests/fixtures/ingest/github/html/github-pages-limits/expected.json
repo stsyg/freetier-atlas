@@ -10,8 +10,6 @@
       "facts": {
         "service": "GitHub Pages",
         "offer_type": "always_free",
-        "requires_card": false,
-        "has_paid_dependencies": false,
         "exhaustion_behaviour": "throttled",
         "published_site_size": "1 GB",
         "source_repository_size": "1 GB",
@@ -21,7 +19,7 @@
         "sites_per_account": "1"
       },
       "evidence_url": "https://docs.github.com/en/pages/getting-started-with-github-pages/github-pages-limits",
-      "evidence_selector": "github_pages_limits row[1]"
+      "evidence_selector": "github_pages_limits assertion[0] title[0] -> fact[service]"
     }
   ]
 }

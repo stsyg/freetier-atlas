@@ -16,11 +16,12 @@ below, and both were measured rather than assumed:
   instead of being silently dropped.
 * The GitHub Pages limits page and the Enterprise Cloud trial page contain **no
   table at all** (measured: zero ``<table>`` elements in the live markup). Their
-  allowances are published as ``<li>``/``<p>`` prose. The extraction engine
-  requires a table to emit a candidate, so those two profiles read a captured
-  anchor row that carries **no mapped column and therefore no claim**, and take
-  100% of their published facts from text assertions pinned to the verbatim live
-  prose. See the fixtures' ``capture.json`` for the full disclosure.
+  allowances are published as ``<li>``/``<p>`` prose. Those two profiles are
+  therefore ``mode="assertions"``: they declare no table selector, read no
+  table, and take 100% of their published facts from text assertions pinned to
+  the verbatim live prose. Nothing is synthesized to satisfy the extractor, so
+  each committed capture is the live page minus irrelevant chrome -- see the
+  fixtures' ``capture.json``.
 
 **Why the material Z0 conditions are assertions, not table cells.** The claim
 that makes a Z0 verdict reachable is ``requires_card = False``. Reading it out of
@@ -41,6 +42,16 @@ fields: an account with no payment method on file is never charged
 (``requires_card = False``) and its usage stops rather than billing
 (``exhaustion_behaviour = hard_stop``). That safe stop is precisely why these
 offers can reach Z0.
+
+**The Pages page carries no such sentence, so Pages claims no such fact.**
+MEASURED on the live GitHub Pages limits page: of its 65 text blocks, NONE
+states that no payment method is required. ``github_pages_limits`` therefore
+asserts neither ``requires_card`` nor ``has_paid_dependencies``, both stay
+UNKNOWN, and the classifier withholds Z0 for Pages. This is the rule working as
+intended rather than a gap to be filled: the only honest way to publish a $0
+claim here would be a live sentence supporting it, and there is not one. Do not
+repin these fields to the availability sentence -- "available with GitHub Free"
+describes which plans include the product, not whether a card is on file.
 
 ``offer_type`` distinguishes a perpetual allowance (``always_free``) from a
 **time-limited trial** (``trial``). The GitHub Enterprise Cloud trial requires no
@@ -242,14 +253,13 @@ GITHUB_CODESPACES_BILLING = register_html_profile(
     )
 )
 
-#: The live GitHub Pages limits page contains no table; every fact below is
-#: pinned to one verbatim ``<li>``/``<p>`` block, so a reworded limit rejects the
-#: document rather than publishing a stale number.
+#: The live GitHub Pages limits page contains no table, so this profile declares
+#: none: every fact below is pinned to one verbatim ``<li>``/``<p>`` block, so a
+#: reworded limit rejects the document rather than publishing a stale number.
 GITHUB_PAGES_LIMITS = register_html_profile(
     HtmlExtractionProfile(
         name="github_pages_limits",
-        table_id="captured-source-anchor",
-        columns={},
+        mode="assertions",
         trusted_assertions=True,
         assertions=(
             HtmlTextAssertion(
@@ -258,8 +268,14 @@ GITHUB_PAGES_LIMITS = register_html_profile(
                 value="GitHub Pages",
                 scope="title",
             ),
-            # Pages is available on GitHub Free itself, so the offer is perpetual,
-            # needs no payment method and depends on no paid product.
+            # Availability on GitHub Free proves the offer is PERPETUAL, and that
+            # is all it proves. This sentence says nothing about payment, so it
+            # cannot carry `requires_card` or `has_paid_dependencies` -- and
+            # MEASURED on the live page, none of its 65 blocks states that no
+            # card is required. Both facts are therefore deliberately ABSENT,
+            # which leaves them UNKNOWN and blocks Z0 for Pages. Unknown is
+            # better than guessed: a $0 claim with no source sentence behind it
+            # is exactly what this product forbids.
             HtmlTextAssertion(
                 text=(
                     "GitHub Pages is available in public repositories with GitHub Free and "
@@ -269,26 +285,6 @@ GITHUB_PAGES_LIMITS = register_html_profile(
                 ),
                 field="offer_type",
                 value="always_free",
-            ),
-            HtmlTextAssertion(
-                text=(
-                    "GitHub Pages is available in public repositories with GitHub Free and "
-                    "GitHub Free for organizations, and in public and private repositories "
-                    "with GitHub Pro, GitHub Team, GitHub Enterprise Cloud, and GitHub "
-                    "Enterprise Server. See GitHub's plans."
-                ),
-                field="requires_card",
-                value=False,
-            ),
-            HtmlTextAssertion(
-                text=(
-                    "GitHub Pages is available in public repositories with GitHub Free and "
-                    "GitHub Free for organizations, and in public and private repositories "
-                    "with GitHub Pro, GitHub Team, GitHub Enterprise Cloud, and GitHub "
-                    "Enterprise Server. See GitHub's plans."
-                ),
-                field="has_paid_dependencies",
-                value=False,
             ),
             # Exceeding a soft quota degrades or suspends service and never bills:
             # Pages has no metered paid tier to bill into.
@@ -348,13 +344,13 @@ GITHUB_PAGES_LIMITS = register_html_profile(
 )
 
 #: The deliberate NON-Z0 profile, and the live trial page likewise contains no
-#: table. The non-Z0 verdict is produced entirely by captured *facts* -- a 30-day
-#: expiry declared as ``trial`` -- and by no special-casing in code.
+#: table, so this profile is assertion-only too. The non-Z0 verdict is produced
+#: entirely by captured *facts* -- a 30-day expiry declared as ``trial`` -- and
+#: by no special-casing in code.
 GITHUB_ENTERPRISE_CLOUD_TRIAL = register_html_profile(
     HtmlExtractionProfile(
         name="github_enterprise_cloud_trial",
-        table_id="captured-source-anchor",
-        columns={},
+        mode="assertions",
         trusted_assertions=True,
         assertions=(
             HtmlTextAssertion(

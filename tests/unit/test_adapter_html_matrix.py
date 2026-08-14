@@ -9,6 +9,7 @@ import pytest
 from app.ingest import (
     FetchPolicy,
     FixtureFetcher,
+    HtmlColumn,
     HtmlDocAdapter,
     HtmlExtractionProfile,
     HtmlMatrixRow,
@@ -414,7 +415,15 @@ def test_old_synthetic_table_id_is_absent_and_not_required() -> None:
     _, _, candidates = _extract(html, _profile())
     assert candidates[0].verification_state == "candidate"
 
-    legacy = HtmlExtractionProfile(name="old-synthetic", table_id="free-tier")
+    # The legacy profile declares a real column: a profile that declared no fact
+    # source at all could not be constructed (see the evidence-floor tests in
+    # tests/unit/test_adapter_html_assertions.py), and this control is about the
+    # missing TABLE, not about an empty profile.
+    legacy = HtmlExtractionProfile(
+        name="old-synthetic",
+        table_id="free-tier",
+        columns={"service": HtmlColumn("service", "text")},
+    )
     _, _, rejected = _extract(html, legacy)
     _assert_rejected(rejected, "table_not_found")
 
