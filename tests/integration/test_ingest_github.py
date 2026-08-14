@@ -157,7 +157,15 @@ def test_the_runner_persists_scans_snapshots_candidates_and_official_evidence(
             select(Evidence).where(Evidence.candidate_id.in_([c.id for c in candidates]))
         ).scalars()
     )
-    assert len(evidence) == 5, "every official candidate must carry its own evidence row"
+    # A matrix/assertion profile emits one evidence location per pinned fact, so
+    # the count is >= the candidate count rather than exactly equal to it. What
+    # the control actually guards is that EVERY candidate is evidence-backed and
+    # every location is official -- asserted directly, and matching the shape the
+    # Vercel slice established.
+    assert len(evidence) >= 5, "every official candidate must carry its own evidence row"
+    assert {row.candidate_id for row in evidence} == {c.id for c in candidates}, (
+        "a candidate was published with no evidence location of its own"
+    )
     for row in evidence:
         assert row.url.startswith("https://docs.github.com/"), "evidence must be official"
 
@@ -301,9 +309,9 @@ def test_a_changed_allowance_raises_a_material_change_event_on_persisted_rows(
     # MEASURED, and not what one might assume: a changed headline allowance is
     # `unknown`, not `material`. `MATERIAL_FACT_FIELDS` is only offer_type /
     # requires_card / has_paid_dependencies / quotas, and these HTML profiles
-    # publish per-limit values as flat facts (`minutes_per_month`), not inside a
-    # `quotas` structure. What matters for safety is that it is never quietly
-    # downgraded to `non_material`, and it is not.
+    # publish per-limit values as flat facts (`minutes_per_month_github_free`),
+    # not inside a `quotas` structure. What matters for safety is that it is
+    # never quietly downgraded to `non_material`, and it is not.
     assert all(e.materiality != "non_material" for e in events), (
         "a changed allowance must never be classified cosmetic"
     )
@@ -339,6 +347,13 @@ def test_a_contradictory_page_is_withheld_and_queued_for_review(session: Session
     conflicting excerpt is served through a SECOND official GitHub source for
     the same offer identity, which is what a real "two docs pages disagree"
     incident looks like.
+
+    The second source is read with the GENERIC ``quota_document`` profile. The
+    GitHub profiles now pin ``requires_card`` to a verbatim sentence, so they
+    cannot express a disagreement about it -- a GitHub page that stops carrying
+    that sentence is REJECTED outright instead (proved in the unit suite by
+    ``test_the_no_card_claim_is_pinned_to_verbatim_source_text``). This test
+    keeps the cross-source contradiction machinery itself under test.
     """
 
     from app.ingest.fetch import FetchPolicy, FixtureFetcher
@@ -357,7 +372,7 @@ def test_a_contradictory_page_is_withheld_and_queued_for_review(session: Session
         slug="github-actions-billing-conflicting",
         adapter_type=actions.adapter_type,
         endpoint="https://docs.github.com/en/billing/concepts/product-billing/github-actions-conflict",
-        parser_profile=actions.parser_profile,
+        parser_profile="quota_document",
         schedule=actions.schedule,
         trust_level=actions.trust_level,
         official=True,

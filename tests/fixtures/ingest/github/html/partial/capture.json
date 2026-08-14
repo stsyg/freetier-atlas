@@ -1,11 +1,16 @@
 {
-  "captured_by": "F008 P1 GitHub builder (manual official excerpt)",
-  "fetched_at": "2026-08-07T01:30:00Z",
-  "http_status": 200,
-  "robots_allowed": true,
+  "captured_by": "F008 P1 GitHub matrix/assertion re-derivation (synthetic scaffold)",
+  "fetched_at": "2026-08-13T22:40:00Z",
+  "http_status": null,
+  "synthetic": true,
+  "negative_fixture_note": "NEGATIVE TEST FIXTURE, NOT A CLAIMED COMPLETE CAPTURE. Derived from the committed official capture in tests/fixtures/ingest/github/html/github-actions-billing by the single mutation named in 'mutation'. It is not a record of anything GitHub publishes and must never be cited as evidence.",
+  "derived_from": "tests/fixtures/ingest/github/html/github-actions-billing/source.html",
+  "mutation": "the sentence that proves the allowance is perpetual was deleted. The page still publishes the allowance table, so a reader that trusted the table alone would still call the offer always-free; the pinned assertion rejects the document instead. A material condition can never be assumed.",
+  "extraction_profile": "github_actions_billing",
   "sha256_original": null,
-  "sha256_stored": "3ca0e3e66bbbe22ade68c1757f5c8d1ee3656e7b2cb0e7fe97e197e4a0fdd1f0",
-  "tos_note": "Official GitHub documentation (docs.github.com). https://docs.github.com/robots.txt was retrieved on 2026-08-07 and contains only 'User-agent: *' with no Disallow rules, so automated retrieval of this path is permitted. A minimal excerpt is committed here for offline, deterministic extraction testing; every value is reproduced verbatim from the cited page.",
-  "trim_method": "derived-from: tests/fixtures/ingest/github/html/github-actions-billing (the official GitHub Actions billing capture). The 'Offer type' header and cell removed to model a page that does not publish the material condition. Re-expressed as the profile's canonical one-row offer table so the declared columns line up with the extraction profile; no value is altered, reordered within a cell, or invented, and a value the page does not publish is omitted rather than guessed. sha256_original is null because retrieval returned a text rendering of the page rather than retained raw bytes, so no honest digest of the untrimmed document exists; fetched_at is the retrieval session timestamp, accurate to the minute.",
+  "sha256_stored": "9db38cb7d38f20001366b6f4a3394ece0f77614a3c121c323ced5f09972b334d",
+  "robots_allowed": true,
+  "tos_note": "No provider bytes were retrieved for this fixture. It is a NEGATIVE test scaffold derived locally from the committed official Actions capture, whose own capture.json carries the retrieval provenance and terms note.",
+  "trim_method": "not a capture: this document was produced locally by applying one named mutation to the committed official Actions capture. Mutation: the sentence that proves the allowance is perpetual was deleted. The page still publishes the allowance table, so a reader that trusted the table alone would still call the offer always-free; the pinned assertion rejects the document instead. A material condition can never be assumed.",
   "url": "https://docs.github.com/en/billing/concepts/product-billing/github-actions"
 }

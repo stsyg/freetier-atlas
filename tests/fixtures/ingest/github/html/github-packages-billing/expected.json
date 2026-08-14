@@ -12,14 +12,15 @@
         "offer_type": "always_free",
         "requires_card": false,
         "has_paid_dependencies": false,
-        "storage": "500 MB",
-        "data_transfer_per_month": "1 GB",
-        "public_package_storage": "Free",
-        "inbound_data_transfer": "Free",
-        "exhaustion_behaviour": "hard_stop"
+        "exhaustion_behaviour": "hard_stop",
+        "data_transfer_per_month_github_free": "1GB",
+        "data_transfer_per_month_github_pro": "10GB",
+        "data_transfer_per_month_github_free_for_organizations": "1GB",
+        "data_transfer_per_month_github_team": "10GB",
+        "data_transfer_per_month_github_enterprise_cloud": "100GB"
       },
       "evidence_url": "https://docs.github.com/en/billing/concepts/product-billing/github-packages",
-      "evidence_selector": "github_packages_billing row[1]"
+      "evidence_selector": "github_packages_billing matrix row[1:GitHub Free] column[Data transfer (per month)] -> fact[data_transfer_per_month_github_free]"
     }
   ]
 }

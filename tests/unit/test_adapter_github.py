@@ -1,30 +1,43 @@
 """Contract tests for the GitHub OFFICIAL free-tier slice (F008 P1).
 
-Offline, fixture-driven, no database, no network. These tests exist to make one
-specific failure mode impossible to ship: publishing a **time-limited offer as
-though it were perpetually free**.
+Offline, fixture-driven, no database, no network. These tests exist to make two
+specific failure modes impossible to ship:
 
-The three controls that matter here are:
+1. publishing a **time-limited offer as though it were perpetually free**;
+2. publishing a **$0 claim that no longer has a source sentence behind it**.
+
+The controls that matter here are:
 
 1. :func:`test_every_published_number_appears_verbatim_in_the_captured_source`
    -- traceability. A number that is not present byte-for-byte in the captured
    official excerpt cannot be published, so no allowance can drift in from
    training data or from an editor's memory.
-2. :func:`test_the_enterprise_trial_is_not_z0_despite_requiring_no_card` -- the
+2. :func:`test_the_no_card_claim_is_pinned_to_verbatim_source_text` -- THE
+   control this slice exists for. ``requires_card=False`` is the single fact
+   that makes a Z0 verdict reachable. It is pinned to the verbatim sentence
+   "If your account does not have a valid payment method on file, usage is
+   blocked once you use up your quota." Rewording it, truncating it, or deleting
+   it must REJECT the candidate rather than silently keep publishing $0.
+3. :func:`test_the_enterprise_trial_is_not_z0_despite_requiring_no_card` -- the
    headline trap. The GitHub Enterprise Cloud trial asks for **no payment
    method** and still must never be Z0, because it expires after 30 days.
-3. :func:`test_a_missing_material_condition_is_unknown_never_assumed_free` --
+4. :func:`test_a_missing_material_condition_is_unknown_never_assumed_free` --
    unknown is better than guessed.
 """
 
 from __future__ import annotations
 
+import hashlib
+import json
+import re
 from pathlib import Path
 
 import pytest
 from app.classify.engine import OfferFacts, classify
 from app.config import load_and_validate
 from app.ingest import CandidateFacts, resolve_profile
+from app.ingest.adapters.html import _DocumentCollector, _header_row
+from app.ingest.adapters.profiles.github import NO_PAYMENT_METHOD_BLOCKS_USAGE
 
 from tests.support.fixtures import (
     available_cases,
@@ -71,6 +84,59 @@ OFFICIAL_CASES = (
     "github-pages-limits",
     "github-enterprise-cloud-trial",
 )
+
+#: The captures whose LIVE page publishes a real allowance table, so the profile
+#: is a matrix re-derived from that table's own headers.
+MATRIX_CASES = (
+    "github-actions-billing",
+    "github-packages-billing",
+    "github-codespaces-billing",
+)
+
+#: The captures whose live page carries the no-payment-method sentence.
+NO_CARD_CASES = MATRIX_CASES
+
+#: ``(case, plan row label)`` for the blank-pivoted-cell mutation.
+_EMPTIED_CELL_CASES = (
+    ("github-actions-billing", "GitHub Free", "minutes_per_month_github_free"),
+    ("github-packages-billing", "GitHub Free", "data_transfer_per_month_github_free"),
+    (
+        "github-codespaces-billing",
+        "GitHub Free for personal accounts",
+        "compute_time_per_month_github_free_for_personal_accounts",
+    ),
+)
+
+_CELL = re.compile(r"<t[dh][^>]*>.*?</t[dh]>", re.DOTALL)
+
+
+def _flex(sentence: str) -> re.Pattern[str]:
+    """Match ``sentence`` across any whitespace, since Prettier reflows prose."""
+
+    return re.compile(r"\s+".join(re.escape(word) for word in sentence.split()))
+
+
+def _blank_pivoted_cell(source: str, plan_label: str, tier_index: int) -> str:
+    """Empty the pivoted cell of the row labelled ``plan_label``."""
+
+    label_at = source.index(f">{plan_label}<")
+    row_start = source.rindex("<tr>", 0, label_at)
+    row_end = source.index("</tr>", label_at)
+    row = source[row_start:row_end]
+    cells = list(_CELL.finditer(row))
+    assert len(cells) > tier_index, f"row for {plan_label!r} has too few cells"
+    target = cells[tier_index]
+    mutated_row = row[: target.start()] + "<td></td>" + row[target.end() :]
+    return source[:row_start] + mutated_row + source[row_end:]
+
+
+def _tier_index(case: str, profile) -> int:
+    capture = json.loads(
+        (load_case(PROVIDER, ADAPTER, case).directory / "capture.json").read_text(encoding="utf-8")
+    )
+    headers = [h.strip().lower() for h in capture["structure"]["headers"]]
+    return headers.index(profile.matrix_tier_header.strip().lower())
+
 
 #: Fact keys that are identity or material-condition metadata, not quotas.
 _NON_QUOTA_KEYS = frozenset(
@@ -130,50 +196,234 @@ def test_every_published_number_appears_verbatim_in_the_captured_source(case: st
 
 
 def test_a_missing_material_condition_is_unknown_never_assumed_free() -> None:
-    """The `partial` case drops `Offer type`: UNKNOWN, and invalid -- not free.
+    """The `partial` case deletes the perpetuity sentence: REJECTED, not free.
 
-    A page that stops publishing whether an offer is perpetual must never be
-    read as "perpetual by default". Extraction records ``None`` and validation
-    rejects the candidate, so it can never reach the publisher.
+    The page still publishes the allowance table, so a reader that trusted the
+    table alone would happily go on calling the offer always-free. Because
+    ``offer_type`` is pinned to a verbatim sentence instead, its disappearance
+    rejects the whole document. A page that stops publishing whether an offer is
+    perpetual can never be read as "perpetual by default".
     """
 
     fixture, candidates = run_extraction_case(
         PROVIDER, ADAPTER, "partial", official_domains=("docs.github.com",)
     )
     (candidate,) = candidates
-    assert candidate.facts["offer_type"] is None
-    # The real allowance is still read correctly -- only the unknown is unknown.
-    assert candidate.facts["minutes_per_month"] == "2,000"
+    assert candidate.verification_state == "rejected"
+    assert candidate.facts["error"] == "assertion_not_found"
+    # Not merely unknown: the fact is absent entirely, so nothing downstream can
+    # read a default out of it.
+    assert "offer_type" not in candidate.facts
+    problems = list(
+        build_fixture_adapter(fixture, official_domains=("docs.github.com",)).validate(candidate)
+    )
+    assert problems and "assertion_not_found" in problems[0]
 
 
-@pytest.mark.parametrize("case", OFFICIAL_CASES)
-def test_dropping_a_column_yields_unknown_and_never_a_guessed_number(case: str) -> None:
-    """Mutation: delete a mapped column and prove no value is invented."""
+@pytest.mark.parametrize(("case", "plan_label", "field"), _EMPTIED_CELL_CASES)
+def test_an_emptied_allowance_cell_is_unknown_and_never_a_guessed_number(
+    case: str, plan_label: str, field: str
+) -> None:
+    """Mutation: blank the free plan's pivoted cell and prove nothing is invented.
+
+    This is the surviving half of the old drop-a-column control: the value must
+    come back UNKNOWN (``None``), never as a remembered or neighbouring number.
+    """
 
     fixture = load_case(PROVIDER, ADAPTER, case)
+    profile = resolve_profile(fixture.profile)
     text = fixture.source_path.read_text(encoding="utf-8")
     want = fixture.expected_candidates[0]["facts"]
+    assert want[field], "the control is vacuous if the cell was already empty"
 
-    target = next(
-        key for key, value in want.items() if key not in _NON_QUOTA_KEYS and isinstance(value, str)
-    )
-    header = " ".join(
-        word.capitalize() if i == 0 else word for i, word in enumerate(target.split("_"))
-    )
-    mutated = text.replace(f"<th>{header}</th>\n", "", 1).replace(
-        f"<td>{want[target]}</td>\n", "", 1
-    )
-    assert mutated != text, f"{case}: mutation did not change the document ({header})"
+    mutated = _blank_pivoted_cell(text, plan_label, _tier_index(case, profile))
+    assert mutated != text, f"{case}: mutation did not change the document"
 
     adapter = build_fixture_adapter(
         fixture, official_domains=("docs.github.com",), body=mutated.encode("utf-8")
     )
     (candidate,) = adapter.extract(adapter.canonicalize(adapter.fetch(fixture.source_url)))
     assert isinstance(candidate, CandidateFacts)
-    assert candidate.facts[target] is None, (
-        f"{case}: {target} was invented rather than left unknown"
-    )
+    assert candidate.facts[field] is None, f"{case}: {field} was invented rather than left unknown"
+    # The identity still comes from the pinned prose, so the row is traceable.
     assert candidate.facts["service"] == want["service"]
+    # And the neighbouring plans are untouched: nothing shifted into the gap.
+    for key, value in want.items():
+        if key != field and key.startswith(field.rsplit("_github", 1)[0]):
+            assert candidate.facts[key] == value
+
+
+@pytest.mark.parametrize("case", OFFICIAL_CASES)
+def test_deleting_a_pinned_block_rejects_the_document(case: str) -> None:
+    """Every pinned block is load-bearing: delete any one and the document fails."""
+
+    fixture = load_case(PROVIDER, ADAPTER, case)
+    profile = resolve_profile(fixture.profile)
+    text = fixture.source_path.read_text(encoding="utf-8")
+
+    checked = 0
+    for assertion in profile.assertions:
+        if assertion.scope != "document":
+            continue
+        mutated = _flex(assertion.text).sub("", text, count=1)
+        assert mutated != text, f"{case}: could not delete {assertion.text[:40]!r}"
+        adapter = build_fixture_adapter(
+            fixture, official_domains=("docs.github.com",), body=mutated.encode("utf-8")
+        )
+        (candidate,) = adapter.extract(adapter.canonicalize(adapter.fetch(fixture.source_url)))
+        assert candidate.verification_state == "rejected", (
+            f"{case}: deleting {assertion.field!r}'s source block still produced a candidate"
+        )
+        assert candidate.facts["error"] == "assertion_not_found"
+        checked += 1
+    assert checked >= 1, f"{case}: no pinned block was checked; the control is vacuous"
+
+
+@pytest.mark.parametrize("case", MATRIX_CASES)
+def test_an_undeclared_matrix_row_rejects_the_document(case: str) -> None:
+    """A plan GitHub adds later must reject, never be silently dropped."""
+
+    fixture = load_case(PROVIDER, ADAPTER, case)
+    capture = json.loads((fixture.directory / "capture.json").read_text(encoding="utf-8"))
+    width = len(capture["structure"]["headers"])
+    text = fixture.source_path.read_text(encoding="utf-8")
+
+    extra = "<tr>" + "".join(f"<td>Undeclared {i}</td>" for i in range(width)) + "</tr>"
+    mutated = text.replace("</tbody>", extra + "</tbody>", 1)
+    assert mutated != text
+
+    adapter = build_fixture_adapter(
+        fixture, official_domains=("docs.github.com",), body=mutated.encode("utf-8")
+    )
+    (candidate,) = adapter.extract(adapter.canonicalize(adapter.fetch(fixture.source_url)))
+    assert candidate.verification_state == "rejected"
+    assert candidate.facts["error"] == "unknown_matrix_rows", candidate.facts
+
+
+# --- The claim this slice exists to defend ---------------------------------
+
+
+@pytest.mark.parametrize("case", NO_CARD_CASES)
+@pytest.mark.parametrize("mutation", ("reworded", "truncated", "deleted"))
+def test_the_no_card_claim_is_pinned_to_verbatim_source_text(case: str, mutation: str) -> None:
+    """Reword, truncate or delete the no-card sentence -- each must REJECT.
+
+    ``requires_card=False`` is the single fact that makes a Z0 verdict reachable
+    for these offers. Before this slice it was read out of a table cell, so the
+    claim survived any change to the sentence that justified it. Now the sentence
+    itself is load-bearing: PREDICTION, recorded before measurement, is that all
+    three mutations yield ``assertion_not_found``.
+    """
+
+    fixture = load_case(PROVIDER, ADAPTER, case)
+    text = fixture.source_path.read_text(encoding="utf-8")
+    pinned = _flex(NO_PAYMENT_METHOD_BLOCKS_USAGE)
+    assert pinned.search(text), "the fixture lost the pinned sentence"
+
+    if mutation == "reworded":
+        mutated = pinned.sub(
+            "If your account does not have a valid payment method on file, usage is paused "
+            "once you use up your quota.",
+            text,
+            count=1,
+        )
+    elif mutation == "truncated":
+        mutated = pinned.sub(
+            "If your account does not have a valid payment method on file.", text, count=1
+        )
+    else:
+        mutated = pinned.sub("", text, count=1)
+    assert mutated != text, f"{case}/{mutation}: mutation did not change the document"
+
+    adapter = build_fixture_adapter(
+        fixture, official_domains=("docs.github.com",), body=mutated.encode("utf-8")
+    )
+    (candidate,) = adapter.extract(adapter.canonicalize(adapter.fetch(fixture.source_url)))
+    assert candidate.verification_state == "rejected", (
+        f"{case}/{mutation}: the no-card claim survived a change to its own source sentence"
+    )
+    assert candidate.facts["error"] == "assertion_not_found"
+    assert "requires_card" not in candidate.facts
+
+
+def test_the_unmutated_fixtures_still_publish_the_no_card_fact() -> None:
+    """Positive control: the mutation test above is not passing vacuously."""
+
+    for case in NO_CARD_CASES:
+        _, (candidate,) = run_extraction_case(
+            PROVIDER, ADAPTER, case, official_domains=("docs.github.com",)
+        )
+        assert candidate.facts["requires_card"] is False
+        assert candidate.facts["exhaustion_behaviour"] == "hard_stop"
+
+
+# --- Capture integrity -----------------------------------------------------
+
+
+@pytest.mark.parametrize("case", OFFICIAL_CASES)
+def test_capture_structure_matches_every_retained_target_cell(case: str) -> None:
+    """`capture.json` must describe the committed table exactly, with no silent cuts."""
+
+    fixture = load_case(PROVIDER, ADAPTER, case)
+    capture = json.loads((fixture.directory / "capture.json").read_text(encoding="utf-8"))
+    collector = _DocumentCollector()
+    collector.feed(fixture.content.decode("utf-8"))
+    collector.close()
+
+    assert len(collector.tables) == 1, f"{case}: the excerpt must hold exactly one table"
+    header_index, header = _header_row(collector.tables[0])
+    assert header_index is not None, f"{case}: {header}"
+    assert list(header.cells) == capture["structure"]["headers"]
+    assert [list(r.cells) for r in collector.tables[0].rows[header_index + 1 :]] == capture[
+        "structure"
+    ]["rows"]
+    assert capture["target_table_rows_removed"] == []
+    assert capture["target_table_cells_removed"] == []
+    assert capture["ignored_extraction_rows"] == []
+
+
+@pytest.mark.parametrize("case", OFFICIAL_CASES)
+def test_asserted_blocks_match_the_pinned_capture_hashes(case: str) -> None:
+    fixture = load_case(PROVIDER, ADAPTER, case)
+    capture = json.loads((fixture.directory / "capture.json").read_text(encoding="utf-8"))
+    profile = resolve_profile(fixture.profile)
+    actual = [
+        hashlib.sha256(assertion.text.encode("utf-8")).hexdigest()
+        for assertion in profile.assertions
+    ]
+    assert actual == capture["structure"]["asserted_block_sha256"]
+
+
+@pytest.mark.parametrize("case", OFFICIAL_CASES)
+def test_a_table_less_live_page_is_disclosed_and_claims_nothing(case: str) -> None:
+    """Where the live page has no table, the anchor row must carry no mapped column."""
+
+    fixture = load_case(PROVIDER, ADAPTER, case)
+    capture = json.loads((fixture.directory / "capture.json").read_text(encoding="utf-8"))
+    profile = resolve_profile(fixture.profile)
+    if capture["live_table_present"]:
+        assert profile.mode == "matrix"
+        assert profile.header_signature
+        return
+    assert profile.mode == "rows"
+    assert dict(profile.columns) == {}, (
+        f"{case}: the anchor table must map no column, or it would carry a claim"
+    )
+    assert "ZERO <table>" in capture["live_table_note"]
+
+
+@pytest.mark.parametrize("case", OFFICIAL_CASES)
+def test_every_duplicated_live_block_is_disclosed(case: str) -> None:
+    """A sentence that repeats on the live page must be declared, not quietly cut."""
+
+    fixture = load_case(PROVIDER, ADAPTER, case)
+    capture = json.loads((fixture.directory / "capture.json").read_text(encoding="utf-8"))
+    disclosed = capture["duplicate_live_blocks_not_retained"]
+    source = fixture.source_path.read_text(encoding="utf-8")
+    for entry in disclosed:
+        assert entry["live_occurrences"] > entry["retained_in_capture"]
+        assert entry["retained_in_capture"] == len(_flex(entry["text"]).findall(source))
+        assert "ambiguous_assertion" in entry["note"]
 
 
 # --- Profiles are data -----------------------------------------------------
@@ -192,8 +442,16 @@ def test_dropping_a_column_yields_unknown_and_never_a_guessed_number(case: str) 
 def test_github_profiles_are_registered_declaratively(name: str) -> None:
     profile = resolve_profile(name)
     assert profile.name == name
-    assert "service" in profile.columns
     assert profile.required_fields == ("service", "offer_type")
+    assert profile.trusted_assertions
+    asserted = {assertion.field for assertion in profile.assertions}
+    # The identity and every material Z0 gate are pinned to verbatim source text
+    # rather than read out of an author-populated cell.
+    assert {"service", "offer_type", "requires_card", "has_paid_dependencies"} <= asserted
+    assert "exhaustion_behaviour" in asserted
+    assert not set(profile.columns) & asserted, (
+        f"{name}: a pinned fact must not also be readable from a table column"
+    )
 
 
 # --- Z0: the trap that matters most ----------------------------------------
@@ -273,9 +531,16 @@ def test_time_limitation_alone_blocks_z0_even_with_a_safe_exhaustion_behaviour()
 
 
 def test_the_contradictory_page_offers_a_row_that_must_never_be_z0() -> None:
-    """The synthetic conflicting row demands a card and bills -> Z1, never Z0."""
+    """The synthetic conflicting row demands a card and bills -> Z1, never Z0.
+
+    This case is read with the pre-existing GENERIC ``quota_document`` profile.
+    The GitHub profiles now pin ``requires_card`` to a verbatim sentence, which
+    makes two rows of one GitHub page structurally incapable of disagreeing about
+    it -- so an intra-page disagreement can only be expressed generically.
+    """
 
     fixture = load_case(PROVIDER, ADAPTER, "contradictory")
+    assert fixture.profile == "quota_document"
     first, second = (dict(c["facts"]) for c in fixture.expected_candidates[:2])
 
     # Both rows claim the same offer identity, so a reader that trusted either
@@ -289,7 +554,7 @@ def test_the_contradictory_page_offers_a_row_that_must_never_be_z0() -> None:
                 offer_type=str(facts["offer_type"]),
                 requires_card=bool(facts["requires_card"]),
                 has_paid_dependencies=bool(facts["has_paid_dependencies"]),
-                exhaustion_behaviours=(str(facts["exhaustion_behaviour"]),),
+                exhaustion_behaviours=tuple(str(q) for q in facts["quotas"]),
             )
         ).zero_cost_class
 

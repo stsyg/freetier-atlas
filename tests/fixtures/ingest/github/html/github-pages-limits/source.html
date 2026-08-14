@@ -1,66 +1,44 @@
 <!doctype html>
 <html lang="en">
   <head>
-    <title>GitHub Pages limits — usage limits</title>
-    <!--
-      Minimal excerpt of the official GitHub Pages limits page.
-
-      Verbatim from the "Usage limits" list: "Published GitHub Pages sites may
-      be no larger than 1 GB."; "GitHub Pages source repositories have a
-      recommended limit of 1 GB."; "GitHub Pages sites have a soft bandwidth
-      limit of 100 GB per month."; "GitHub Pages sites have a soft limit of 10
-      builds per hour."; "GitHub Pages deployments will timeout if they take
-      longer than 10 minutes."; "You can only create one user or organization
-      site for each account on GitHub."
-
-      PERPETUITY (why always_free): the page publishes standing usage limits for
-      Pages with no expiry, no introductory period and no payment method; the
-      GitHub plans page lists "GitHub Pages" in public repositories as part of
-      GitHub Free.
-
-      EXHAUSTION (why throttled): verbatim, "In order to provide consistent
-      quality of service for all GitHub Pages sites, rate limits may apply...
-      If your request triggers rate limiting, you will receive an appropriate
-      response with an HTTP status code of 429". Exceeding the soft quotas
-      degrades or suspends service ("we may not be able to serve your site") and
-      never triggers a charge -- Pages has no metered paid tier to bill into.
-    -->
+    <title>GitHub Pages limits - GitHub Docs</title>
   </head>
   <body>
     <h1>GitHub Pages limits</h1>
     <p>
-      Usage limits for GitHub Pages sites. Source:
-      https://docs.github.com/en/pages/getting-started-with-github-pages/github-pages-limits
+      GitHub Pages is available in public repositories with GitHub Free and GitHub Free for
+      organizations, and in public and private repositories with GitHub Pro, GitHub Team, GitHub
+      Enterprise Cloud, and GitHub Enterprise Server. See GitHub's plans.
     </p>
-    <table id="github-pages-usage-limits">
+    <p>You can only create one user or organization site for each account on GitHub.</p>
+    <p>
+      GitHub Pages source repositories have a recommended limit of 1 GB. For more information, see
+      About large files on GitHub.
+    </p>
+    <p>Published GitHub Pages sites may be no larger than 1 GB.</p>
+    <p>GitHub Pages deployments will timeout if they take longer than 10 minutes.</p>
+    <p>GitHub Pages sites have a soft bandwidth limit of 100 GB per month.</p>
+    <p>
+      GitHub Pages sites have a soft limit of 10 builds per hour. This limit does not apply if you
+      build and publish your site with a custom GitHub Actions workflow.
+    </p>
+    <p>
+      In order to provide consistent quality of service for all GitHub Pages sites, rate limits may
+      apply. These rate limits are not intended to interfere with legitimate uses of GitHub Pages.
+      If your request triggers rate limiting, you will receive an appropriate response with an HTTP
+      status code of 429, along with an informative HTML body.
+    </p>
+    <table id="captured-source-anchor">
       <thead>
         <tr>
-          <th>Service</th>
-          <th>Offer type</th>
-          <th>Card required</th>
-          <th>Paid dependencies</th>
-          <th>Published site size</th>
-          <th>Source repository size</th>
-          <th>Bandwidth per month</th>
-          <th>Builds per hour</th>
-          <th>Deployment timeout</th>
-          <th>Sites per account</th>
-          <th>Exhaustion behaviour</th>
+          <th>Captured source</th>
         </tr>
       </thead>
       <tbody>
         <tr>
-          <td>GitHub Pages</td>
-          <td>always_free</td>
-          <td>No</td>
-          <td>No</td>
-          <td>1 GB</td>
-          <td>1 GB</td>
-          <td>100 GB</td>
-          <td>10</td>
-          <td>10 minutes</td>
-          <td>1</td>
-          <td>throttled</td>
+          <td>
+            https://docs.github.com/en/pages/getting-started-with-github-pages/github-pages-limits
+          </td>
         </tr>
       </tbody>
     </table>

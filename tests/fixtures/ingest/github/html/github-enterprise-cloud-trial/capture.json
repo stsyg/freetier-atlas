@@ -1,11 +1,38 @@
 {
-  "captured_by": "F008 P1 GitHub builder (manual official excerpt)",
-  "fetched_at": "2026-08-07T01:30:00Z",
+  "captured_by": "F008 P1 GitHub matrix/assertion re-derivation (live re-capture)",
+  "fetched_at": "2026-08-13T22:40:00Z",
   "http_status": 200,
   "robots_allowed": true,
-  "sha256_original": null,
-  "sha256_stored": "ed1372f52ad8fe3164c0ea2207b6e2ec461b5e4d15a7a99981f23dfa76b32c8f",
-  "tos_note": "Official GitHub documentation (docs.github.com). https://docs.github.com/robots.txt was retrieved on 2026-08-07 and contains only 'User-agent: *' with no Disallow rules, so automated retrieval of this path is permitted. A minimal excerpt is committed here for offline, deterministic extraction testing; every value is reproduced verbatim from the cited page.",
-  "trim_method": "manual-excerpt: the official trial page's 'What is included in the trial', 'Do I need to provide a payment method?' and 'What happens when the trial ends?' sections. Re-expressed as the profile's canonical one-row offer table so the declared columns line up with the extraction profile; no value is altered, reordered within a cell, or invented, and a value the page does not publish is omitted rather than guessed. sha256_original is null because retrieval returned a text rendering of the page rather than retained raw bytes, so no honest digest of the untrimmed document exists; fetched_at is the retrieval session timestamp, accurate to the minute.",
-  "url": "https://docs.github.com/en/enterprise-cloud@latest/admin/overview/setting-up-a-trial-of-github-enterprise-cloud"
+  "sha256_original": "450fa80ed2c3e192c6da85eeae712447883da91ed4ed9a25fa97988d82a49344",
+  "sha256_original_note": "sha256_original is the digest of the exact live bytes this capture was derived from on 2026-08-13. It is NOT reproducible across fetches: docs.github.com embeds per-build nonces, so a later fetch of an unchanged page yields a different digest. Structure, not digest, is the invariant.",
+  "sha256_stored": "9e7c4e2be815bb67aabb703a71efbd5c12abc3535144063b1c0ed550ccedc276",
+  "tos_note": "Official GitHub documentation (docs.github.com). https://docs.github.com/robots.txt contains only 'User-agent: *' with no Disallow rules, so automated retrieval of these paths is permitted. A minimal excerpt is committed for offline, deterministic extraction testing; every retained value and every pinned sentence is reproduced verbatim from the cited live page.",
+  "trim_method": "Removed scripts, navigation, styling and unrelated prose. Retained the target table verbatim (spliced out of the live markup, attributes included) and every prose block the profile pins. Inline markup inside the retained prose blocks (anchors, SVG icons, nested <p> inside <li>) was flattened to plain text. The engine normalises a block to its text content, so the normalised block string is byte-identical to live; this was verified by matching each pinned assertion against the live document's own collected blocks.",
+  "live_table_present": false,
+  "live_table_note": "MEASURED: the live page contains ZERO <table> elements -- its allowances are published as <li>/<p> prose. The extraction engine requires a table to emit a candidate, so this capture carries a one-cell anchor table holding the source URL. The profile maps NO column from it, so the anchor table carries NO claim: 100% of this capture's published facts come from text assertions pinned to the verbatim live prose blocks retained above.",
+  "target_table_rows_removed": [],
+  "target_table_cells_removed": [],
+  "unpivoted_target_table_columns": [],
+  "ignored_extraction_rows": [],
+  "duplicate_live_blocks_not_retained": [],
+  "url": "https://docs.github.com/en/enterprise-cloud@latest/admin/overview/setting-up-a-trial-of-github-enterprise-cloud",
+  "structure": {
+    "asserted_block_sha256": [
+      "67cb9a98d24ca25a0ab687c3f7f718ddc47193e830bb76b75ac5a268fe8d8a71",
+      "a205953ae7dc51e31403e040a8239c927848a0a84ef76809edc1bf40298b54d3",
+      "a205953ae7dc51e31403e040a8239c927848a0a84ef76809edc1bf40298b54d3",
+      "625a3abdba8bc8385628b8f5205114a34ebe657775e009577cab5c2dc3419a7d",
+      "625a3abdba8bc8385628b8f5205114a34ebe657775e009577cab5c2dc3419a7d",
+      "bc660685cb1a77a3ce81a8cd2e76601fb4514b16d0415b0669b872926de157a8",
+      "88d30476ff32f9b6566c6acd0708604f69a877afc66ba4f96ea953d8c6b12573",
+      "878aca81cfcadb45e4725e57f82bbb51522bbd37c0e5dceee1b01477362383c8",
+      "b049f748748eb63f048086f5ad7414f10a8e1afc29a91809338076b35a59a3b7"
+    ],
+    "headers": ["Captured source"],
+    "rows": [
+      [
+        "https://docs.github.com/en/enterprise-cloud@latest/admin/overview/setting-up-a-trial-of-github-enterprise-cloud"
+      ]
+    ]
+  }
 }

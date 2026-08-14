@@ -1,63 +1,68 @@
 <!doctype html>
 <html lang="en">
   <head>
-    <title>GitHub Actions billing — free use (GitHub Free)</title>
-    <!--
-      Minimal excerpt of the official GitHub Actions billing page.
-
-      Verbatim from the "Free use of GitHub Actions" table, GitHub Free row:
-      artifact storage "500 MB", minutes per month "2,000", cache storage
-      "10 GB" per repository.
-
-      Verbatim, on public repositories: "GitHub Actions usage is free for
-      standard GitHub-hosted runners in public repositories, and for self-hosted
-      runners."
-
-      PERPETUITY (why offer type is always_free, not a trial or an
-      introductory offer): the page publishes a monthly allowance attached to
-      the GitHub Free plan with no expiry date and no conversion to a paid plan.
-      Verbatim: "Your included minutes reset to the full amount at the start of
-      each billing cycle." There is no 12-month clock anywhere on this page.
-
-      EXHAUSTION (why hard_stop, not automatic_billing): verbatim, "If your
-      account does not have a valid payment method on file, usage is blocked
-      once you use up your quota." Automatic billing only applies to an account
-      that has already added a payment method ("Any usage beyond the included
-      amounts is billed to your account"), which is not the $0 path this row
-      describes.
-    -->
+    <title>GitHub Actions billing - GitHub Docs</title>
   </head>
   <body>
     <h1>GitHub Actions billing</h1>
     <p>
-      Free use of GitHub Actions, GitHub Free plan. Source:
-      https://docs.github.com/en/billing/concepts/product-billing/github-actions
+      GitHub Actions usage is free for self-hosted runners and for public repositories that use
+      standard GitHub-hosted runners. See Choosing the runner for a job.
     </p>
-    <table id="github-actions-free-use">
+    <p>
+      The following amounts of time for standard runners, artifact storage, and cache storage are
+      included in your GitHub plan. At the start of each month, the minutes used by the account are
+      reset to zero.
+    </p>
+    <p>
+      If your account does not have a valid payment method on file, usage is blocked once you use up
+      your quota.
+    </p>
+    <table aria-labelledby="free-use-of-github-actions">
       <thead>
         <tr>
-          <th>Service</th>
-          <th>Offer type</th>
-          <th>Card required</th>
-          <th>Paid dependencies</th>
-          <th>Minutes per month</th>
-          <th>Artifact storage</th>
-          <th>Cache storage per repository</th>
-          <th>Public repository usage</th>
-          <th>Exhaustion behaviour</th>
+          <th scope="col">Plan</th>
+          <th scope="col">Artifact storage</th>
+          <th scope="col">Minutes (per month)</th>
+          <th scope="col">Cache storage (per repository)</th>
+          <th scope="col">Custom image storage</th>
         </tr>
       </thead>
       <tbody>
         <tr>
-          <td>GitHub Actions</td>
-          <td>always_free</td>
-          <td>No</td>
-          <td>No</td>
-          <td>2,000</td>
+          <td>GitHub Free</td>
           <td>500 MB</td>
+          <td>2,000</td>
           <td>10 GB</td>
-          <td>Free</td>
-          <td>hard_stop</td>
+          <td>Not applicable</td>
+        </tr>
+        <tr>
+          <td>GitHub Pro</td>
+          <td>1 GB</td>
+          <td>3,000</td>
+          <td>10 GB</td>
+          <td>Not applicable</td>
+        </tr>
+        <tr>
+          <td>GitHub Free for organizations</td>
+          <td>500 MB</td>
+          <td>2,000</td>
+          <td>10 GB</td>
+          <td>Not applicable</td>
+        </tr>
+        <tr>
+          <td>GitHub Team</td>
+          <td>2 GB</td>
+          <td>3,000</td>
+          <td>10 GB</td>
+          <td>75 GB</td>
+        </tr>
+        <tr>
+          <td>GitHub Enterprise Cloud</td>
+          <td>50 GB</td>
+          <td>50,000</td>
+          <td>10 GB</td>
+          <td>150 GB</td>
         </tr>
       </tbody>
     </table>

@@ -12,11 +12,11 @@
         "offer_type": "trial",
         "requires_card": false,
         "has_paid_dependencies": false,
+        "exhaustion_behaviour": "manual_upgrade_required",
         "trial_length_days": "30",
         "licenses": "50",
-        "organizations": "3",
-        "actions_minutes": "3,000",
-        "exhaustion_behaviour": "manual_upgrade_required"
+        "organizations": "three",
+        "actions_minutes": "3,000"
       },
       "evidence_url": "https://docs.github.com/en/enterprise-cloud@latest/admin/overview/setting-up-a-trial-of-github-enterprise-cloud",
       "evidence_selector": "github_enterprise_cloud_trial row[1]"

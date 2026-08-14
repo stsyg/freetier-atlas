@@ -5,17 +5,14 @@
   "candidate_count": 1,
   "candidates": [
     {
-      "verification_state": "candidate",
+      "verification_state": "rejected",
       "expect_valid": false,
-      "validate_contains": ["offer_type"],
+      "validate_contains": ["assertion_not_found"],
       "facts": {
-        "service": "GitHub Actions",
-        "offer_type": null,
-        "minutes_per_month": "2,000",
-        "exhaustion_behaviour": "hard_stop"
+        "error": "assertion_not_found"
       },
       "evidence_url": "https://docs.github.com/en/billing/concepts/product-billing/github-actions",
-      "evidence_selector": "github_actions_billing row[1]"
+      "evidence_selector": null
     }
   ]
 }
