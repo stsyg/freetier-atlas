@@ -368,12 +368,12 @@ def test_empty_entry_list_fails(results) -> None:
 #: while `run` and `entry` are single strings, and a value of the wrong shape
 #: does not execute at all. Without it, `run:` written as a sequence - which
 #: GitHub Actions cannot even load - was certified as correctly wired.
-CI_STEP_RUN = (("jobs", "*", "steps", "run"), True, False)
-PRECOMMIT_ENTRY = (("repos", "hooks", "entry"), False, False)
-PRECOMMIT_ARGS = (("repos", "hooks", "args"), False, True)
+CI_STEP_RUN = (("jobs", "*", "steps[]", "run"), True)
+PRECOMMIT_ENTRY = (("repos[]", "hooks[]", "entry"), False)
+PRECOMMIT_ARGS = (("repos[]", "hooks[]", "args[]"), False)
 
 ROUTE_RULES: dict[
-    str, tuple[frozenset[str] | None, tuple[tuple[tuple[str, ...], bool, bool], ...] | None]
+    str, tuple[frozenset[str] | None, tuple[tuple[tuple[str, ...], bool], ...] | None]
 ] = {
     ".github/workflows/ci.yml": (None, (CI_STEP_RUN,)),
     ".pre-commit-config.yaml": (None, (PRECOMMIT_ENTRY, PRECOMMIT_ARGS)),
@@ -1341,7 +1341,178 @@ WRONG_SHAPE = {
         "        args:\n          - - scripts/check_secrets_baseline.py\n",
         (PRECOMMIT_ENTRY, PRECOMMIT_ARGS),
     ),
+    "steps: as a mapping": (
+        "x.yml",
+        "jobs:\n  j:\n    steps:\n      only:\n        run: python "
+        "scripts/check_secrets_baseline.py\n",
+        (CI_STEP_RUN,),
+    ),
+    "jobs: as a list": (
+        "x.yml",
+        "jobs:\n  - steps:\n      - run: python scripts/check_secrets_baseline.py\n",
+        (CI_STEP_RUN,),
+    ),
+    "hooks: as a mapping": (
+        "x.yaml",
+        "repos:\n  - repo: local\n    hooks:\n      only:\n        entry: python "
+        "scripts/check_secrets_baseline.py\n",
+        (PRECOMMIT_ENTRY, PRECOMMIT_ARGS),
+    ),
+    "repos: as a mapping": (
+        "x.yaml",
+        "repos:\n  local:\n    hooks:\n      - id: s\n        entry: python "
+        "scripts/check_secrets_baseline.py\n",
+        (PRECOMMIT_ENTRY, PRECOMMIT_ARGS),
+    ),
+    # The variant that distinguishes typing from luck: a `steps:` mapping whose
+    # key IS `run`. Rejecting `steps: {only: {run: ...}}` needs no type check at
+    # all - `run` simply is not a direct key of that mapping - so it rejects
+    # incidentally. This one is only rejected because `steps` is declared a
+    # sequence.
+    "steps: as a mapping whose key is run": (
+        "x.yml",
+        "jobs:\n  j:\n    steps:\n      run: python scripts/check_secrets_baseline.py\n",
+        (CI_STEP_RUN,),
+    ),
+    "hooks: as a mapping whose key is entry": (
+        "x.yaml",
+        "repos:\n  - repo: local\n    hooks:\n        entry: python "
+        "scripts/check_secrets_baseline.py\n",
+        (PRECOMMIT_ENTRY, PRECOMMIT_ARGS),
+    ),
+    # The ELEMENT type, not merely the container type. `repos` is a list OF
+    # MAPPINGS; a list of lists satisfies "is a list" at every step while never
+    # being what the schema says. A traversal that recurses into any list - which
+    # is what "intermediate sequences are always traversed" amounts to - accepts
+    # all three of these. Iterating a sequence segment exactly ONCE and then
+    # requiring the element to be whatever the next segment demands is what
+    # rejects them, and it is one statement rather than three exclusions.
+    "repos: as a list of lists": (
+        "x.yaml",
+        "repos:\n  - - repo: local\n      hooks:\n        - id: s\n"
+        "          entry: python scripts/check_secrets_baseline.py\n",
+        (PRECOMMIT_ENTRY, PRECOMMIT_ARGS),
+    ),
+    "hooks: as a list of lists": (
+        "x.yaml",
+        "repos:\n  - repo: local\n    hooks:\n      - - id: s\n"
+        "          entry: python scripts/check_secrets_baseline.py\n",
+        (PRECOMMIT_ENTRY, PRECOMMIT_ARGS),
+    ),
+    "steps: as a list of lists": (
+        "x.yml",
+        "jobs:\n  j:\n    steps:\n      - - run: python scripts/check_secrets_baseline.py\n",
+        (CI_STEP_RUN,),
+    ),
+    "steps: as a list of strings": (
+        "x.yml",
+        "jobs:\n  j:\n    steps:\n      - python scripts/check_secrets_baseline.py\n",
+        (CI_STEP_RUN,),
+    ),
 }
+
+
+MULTI_DOCUMENT = {
+    "workflow, needle in the second document": (
+        "x.yml",
+        "jobs:\n  b:\n    steps:\n      - run: echo hi\n"
+        "---\n"
+        "jobs:\n  c:\n    steps:\n      - run: python scripts/check_secrets_baseline.py\n",
+        (CI_STEP_RUN,),
+    ),
+    "hooks, needle in the second document": (
+        "x.yaml",
+        "repos: []\n"
+        "---\n"
+        "repos:\n  - repo: local\n    hooks:\n      - id: s\n        entry: python "
+        "scripts/check_secrets_baseline.py\n",
+        (PRECOMMIT_ENTRY, PRECOMMIT_ARGS),
+    ),
+}
+
+
+@pytest.mark.parametrize("label", sorted(MULTI_DOCUMENT))
+def test_only_the_document_the_tool_reads_counts(label: str) -> None:
+    """pre-commit and Actions each read ONE document, not a stream.
+
+    Reading them all accepted a needle in the second document of a file the
+    tool never looks past the first of - the same class as accepting a value of
+    the wrong shape: a configuration the tool will not run, certified as wired.
+    """
+    relative_path, text, patterns = MULTI_DOCUMENT[label]
+    assert VALIDATOR in text
+    problems = source_scan.invocation_problems(relative_path, text, VALIDATOR, None, patterns)
+    assert problems != [], f"a needle outside the read document was ACCEPTED ({label})"
+
+
+def test_a_recursive_alias_rejects_rather_than_crashing() -> None:
+    """The crash fired only while EXPLAINING a failure, which is the worst place.
+
+    `all_values` runs only when building a rejection message, so a recursive
+    alias raised `RecursionError` exactly when the check was trying to say why
+    it had failed. A guard that dies mid-explanation is indistinguishable from a
+    broken guard. The needle is deliberately ABSENT here, because that is the
+    path that reaches the diagnostics walk.
+    """
+    source = "a: &a\n  self: *a\njobs:\n  j:\n    steps:\n      - run: echo hi\n"
+    assert VALIDATOR not in source
+    problems = source_scan.invocation_problems("x.yml", source, VALIDATOR, None, (CI_STEP_RUN,))
+    assert problems != []
+    assert "absent entirely" in problems[0]
+
+
+def test_a_failure_to_explain_never_becomes_a_failure_to_reject(monkeypatch) -> None:
+    """The CLASS fix, tested independently of the instance fix.
+
+    The cycle guard closes the recursive-alias crash, which means it also hides
+    the safety net behind it. So this forces the diagnostics walk to raise
+    something the guard has never seen, and asserts the verdict still comes back
+    as a rejection with a usable message rather than a traceback. Fixing the
+    instance and calling the class fixed is the mistake this slice keeps making.
+    """
+
+    def explode(_text: str) -> list[tuple[tuple[str, ...], str]]:
+        raise MemoryError("simulated diagnostics failure")
+
+    monkeypatch.setattr(source_scan, "all_values", explode)
+    source = WORKFLOW_REJECT["with: run: inline"]
+    problems = source_scan.invocation_problems("x.yml", source, VALIDATOR, None, (CI_STEP_RUN,))
+    assert problems != [], "an exception while explaining swallowed the rejection"
+    assert "MemoryError" in problems[0]
+    assert "Rejecting on what is known" in problems[0]
+
+
+def test_safe_load_is_authoritative_over_compose() -> None:
+    """The boundary the loader amendment drew, asserted rather than honoured.
+
+    `compose` is consulted ONLY to explain a rejection, never to decide one. On
+    a duplicated key the two disagree by construction: the composer preserves
+    both, the loader keeps the last. The verdict must follow the loader, because
+    the loader is what pre-commit and Actions run. A boundary that lives only in
+    discipline erodes; one that fails loudly does not.
+    """
+    overridden = PRECOMMIT_REJECT["duplicate entry, validator OVERRIDDEN"]
+    patterns = (PRECOMMIT_ENTRY, PRECOMMIT_ARGS)
+    assert source_scan.survives_in_the_composed_document(overridden, VALIDATOR) is True
+    assert source_scan.invocation_problems("x.yaml", overridden, VALIDATOR, None, patterns) != []
+
+    wins = PRECOMMIT_ACCEPT["duplicate entry, validator LAST"]
+    assert source_scan.survives_in_the_composed_document(wins, VALIDATOR) is True
+    assert source_scan.invocation_problems("x.yaml", wins, VALIDATOR, None, patterns) == []
+
+
+def test_a_multi_document_file_says_so() -> None:
+    """A maintainer who split a config into two documents deserves to be told."""
+    relative_path, text, patterns = MULTI_DOCUMENT["workflow, needle in the second document"]
+    problems = source_scan.invocation_problems(relative_path, text, VALIDATOR, None, patterns)
+    assert problems != []
+    assert "MULTIPLE DOCUMENTS" in problems[0], problems[0]
+
+    # A different parse failure must NOT claim to be a multi-document problem.
+    tabbed = "jobs:\n  j:\n\tbad: 1\n"
+    other = source_scan.invocation_problems("x.yml", tabbed, VALIDATOR, None, (CI_STEP_RUN,))
+    assert other != []
+    assert "MULTIPLE DOCUMENTS" not in other[0], other[0]
 
 
 @pytest.mark.parametrize("label", sorted(WRONG_SHAPE))
@@ -1374,7 +1545,7 @@ def test_the_right_shape_is_still_accepted(
     label: str,
     relative_path: str,
     text: str,
-    patterns: tuple[tuple[tuple[str, ...], bool, bool], ...],
+    patterns: tuple[tuple[tuple[str, ...], bool], ...],
 ) -> None:
     """The paired control: arity must reject the wrong shape, not both shapes."""
     problems = source_scan.invocation_problems(relative_path, text, VALIDATOR, None, patterns)
@@ -1433,4 +1604,74 @@ def test_diagnostics_name_the_schema_path() -> None:
     decoy = WORKFLOW_REJECT["with: run: inline"]
     problems = source_scan.invocation_problems("x.yml", decoy, VALIDATOR, None, (CI_STEP_RUN,))
     assert problems and "with.run" in problems[0]
-    assert "jobs.*.steps.run" in problems[0], "the message must say what this route DOES run"
+    assert "jobs.*.steps[].run" in problems[0], "the message must say what this route DOES run"
+    assert "jobs.j.steps.[0].with.run" not in problems[0].split("This route runs")[1], (
+        "the message must not name a path that matches the pattern it says is unmatched"
+    )
+
+
+def test_each_rejection_states_only_what_it_established() -> None:
+    """Four different causes, four different messages, none of them guessed.
+
+    An explanation that asserts a cause it has not shown is the same defect
+    class as a guard claiming coverage it lacks: both teach the reader something
+    false. This one is worse than it sounds, because the case it got wrong was
+    the FLAGSHIP mode - an invocation commented out in the real workflow was
+    told "none of those is a position this tool executes", naming a path that
+    matches the pattern the sentence says is unmatched. A maintainer reading
+    that concludes the rule is broken, and a rule that looks broken is deleted.
+    """
+    workflow = route_text(".github/workflows/ci.yml")
+    hooks = route_text(".pre-commit-config.yaml")
+
+    def commented(text: str, opener: str) -> str:
+        return "".join(
+            (line[: len(line) - len(line.lstrip())] + opener + line.lstrip())
+            if VALIDATOR in line
+            else line
+            for line in text.splitlines(keepends=True)
+        )
+
+    cases = {
+        # Commented out INSIDE a run: body. The YAML value still contains the
+        # needle; only the shell scanner can see that it does not run.
+        "shell comment": (
+            ".github/workflows/ci.yml",
+            commented(workflow, "# "),
+            (CI_STEP_RUN,),
+            "COMMENTED OUT",
+        ),
+        # Commented out as YAML: the key is not in the document at all.
+        "yaml comment": (
+            ".pre-commit-config.yaml",
+            commented(hooks, "# "),
+            (PRECOMMIT_ENTRY, PRECOMMIT_ARGS),
+            "only in a YAML comment",
+        ),
+        # Present in the document, discarded by last-wins.
+        "duplicate override": (
+            "x.yaml",
+            PRECOMMIT_REJECT["duplicate entry, validator OVERRIDDEN"],
+            (PRECOMMIT_ENTRY, PRECOMMIT_ARGS),
+            "overridden by a later duplicate",
+        ),
+        # Live, uncommented, and simply not somewhere that runs.
+        "not an executed position": (
+            "x.yml",
+            WORKFLOW_REJECT["with: run: inline"],
+            (CI_STEP_RUN,),
+            "none of which is a position this tool executes",
+        ),
+    }
+
+    seen: list[str] = []
+    for label, (relative_path, text, patterns, expected) in cases.items():
+        problems = source_scan.invocation_problems(relative_path, text, VALIDATOR, None, patterns)
+        assert problems != [], f"{label}: expected a rejection"
+        assert expected in problems[0], f"{label}: wrong reason given: {problems[0]}"
+        seen.append(problems[0])
+
+    assert len({p[:60] for p in seen}) == len(seen), (
+        "two different causes produced the same explanation; the branches are not "
+        "distinguishing what they claim to distinguish"
+    )

@@ -344,96 +344,121 @@ class ExecutedValue:
 
 
 def _select(
-    node: object,
-    pattern: tuple[str, ...],
-    path: tuple[str, ...] = (),
-    *,
-    list_valued: bool = False,
+    node: object, pattern: tuple[str, ...], path: tuple[str, ...] = ()
 ) -> Iterator[tuple[tuple[str, ...], str]]:
-    """Yield (path, scalar) for every node at ``pattern``, respecting ARITY.
+    """Yield (path, scalar) for every node at ``pattern``, respecting SCHEMA TYPE.
 
-    An INTERMEDIATE list is traversed transparently without consuming a pattern
-    segment, so ``steps`` and ``hooks`` being sequences of mappings need no
-    special case. A TERMINAL list is a different question, and the schema
-    answers it: ``args`` is list-valued, while ``run`` and ``entry`` are
-    scalar-valued.
+    Every segment declares the type of the value it names. A bare segment names
+    a value that is a mapping to descend into, or - when it is last - a string.
+    A ``[]`` suffix names a value that must be a SEQUENCE, whose items are
+    descended into, or - when it is last - are the strings themselves.
 
-    That distinction is load-bearing. Iterating a terminal list unconditionally
-    - which is what iterating it for ``args`` alone amounts to - accepts
-
-        run:
-          - python scripts/check_secrets_baseline.py
-
-    which GitHub Actions cannot load at all, because ``run`` is typed as a
-    string. The guard would then certify a workflow that never runs as correctly
-    wired: the same class as certifying an unparseable file, which this module
-    already refuses to do. The mirror cases (``entry`` as a sequence, ``args`` as
-    a scalar) are equally invalid and equally rejected, so this encodes the
-    schema rather than the one shape that was reported.
+    That typing is the whole correction. An earlier version traversed any list
+    transparently and descended any mapping, so it accepted seven distinct
+    schema-INVALID shapes: ``run:`` and ``entry:`` written as sequences,
+    ``args:`` as a scalar or as a list of lists, ``steps:`` and ``hooks:`` as
+    mappings, and ``jobs:`` as a list. None of those loads in the tool that
+    reads it, so certifying them as wired is the same defect as certifying an
+    unparseable file. Fixing them one at a time is what produced the earlier
+    narrow version; typing the segments states the rule once.
 
     ``*`` matches exactly one mapping key, which is how an arbitrary job id is
-    named.
+    named. Recursion is bounded by the pattern length because every step
+    consumes a segment, so a cyclic document cannot loop here.
     """
-    if pattern:
-        if isinstance(node, list):
-            for index, item in enumerate(node):
-                yield from _select(item, pattern, (*path, f"[{index}]"), list_valued=list_valued)
-            return
+    if not pattern:
+        return
+    head, rest = pattern[0], pattern[1:]
+    listed = head.endswith("[]")
+    name = head[:-2] if listed else head
+
+    if name == "*":
         if not isinstance(node, dict):
             return
-        head, rest = pattern[0], pattern[1:]
-        if head == "*":
-            for key, value in node.items():
-                yield from _select(value, rest, (*path, str(key)), list_valued=list_valued)
-        elif head in node:
-            yield from _select(node[head], rest, (*path, head), list_valued=list_valued)
+        for key, value in node.items():
+            yield from _consume(value, listed, rest, (*path, str(key)))
         return
 
-    if list_valued:
-        # One level only: `args: [[x]]` is not valid either.
-        if isinstance(node, list):
-            for index, item in enumerate(node):
-                if isinstance(item, str):
-                    yield (*path, f"[{index}]"), item
+    if not isinstance(node, dict) or name not in node:
         return
-    if isinstance(node, str):
-        yield path, node
+    yield from _consume(node[name], listed, rest, (*path, name))
+
+
+def _consume(
+    value: object, listed: bool, rest: tuple[str, ...], path: tuple[str, ...]
+) -> Iterator[tuple[tuple[str, ...], str]]:
+    """Apply a segment's declared type to the value it named."""
+    if listed:
+        if not isinstance(value, list):
+            return
+        for index, item in enumerate(value):
+            yield from _descend(item, rest, (*path, f"[{index}]"))
+        return
+    yield from _descend(value, rest, path)
+
+
+def _descend(
+    value: object, rest: tuple[str, ...], path: tuple[str, ...]
+) -> Iterator[tuple[tuple[str, ...], str]]:
+    if rest:
+        if isinstance(value, dict):
+            yield from _select(value, rest, path)
+        return
+    if isinstance(value, str):
+        yield path, value
+
+
+def _single_document(text: str) -> object:
+    """The ONE document a tool reads.
+
+    pre-commit and GitHub Actions each read a single document; neither iterates
+    a multi-document stream. Loading them all accepted a needle in the second
+    document of a file the tool would never look past the first of. ``safe_load``
+    raises on a multi-document stream, so this is the correct semantics rather
+    than a guard bolted on afterwards.
+    """
+    return yaml.safe_load(text)
 
 
 def executed_values(
-    text: str, patterns: tuple[tuple[tuple[str, ...], bool, bool], ...]
+    text: str, patterns: tuple[tuple[tuple[str, ...], bool], ...]
 ) -> list[ExecutedValue]:
-    """Every scalar the tool executes, found by walking ``patterns``.
+    """Every scalar the tool executes, found by walking typed ``patterns``.
 
-    Each pattern is ``(path, is_shell_script, is_list_valued)``.
-
-    ``is_shell_script``: GitHub Actions' ``run:`` is a shell script, so a '#'
-    inside it is a comment. pre-commit's ``entry`` is not - pre-commit
-    shlex-splits and execs it with no shell involved, so a '#' there is a
-    literal argument and stripping it would corrupt the value.
-
-    ``is_list_valued``: ``args`` is a sequence of strings; ``run`` and ``entry``
-    are single strings. A value of the wrong shape does not execute, so it is
-    not a wiring.
+    Each pattern is ``(typed path, is_shell_script)``. ``is_shell_script`` says
+    whether a '#' inside the value is a comment: GitHub Actions' ``run:`` is a
+    shell script, while pre-commit's ``entry`` is shlex-split and exec'd with no
+    shell involved, so a '#' there is a literal argument.
 
     Propagates ``yaml.YAMLError`` so callers fail closed rather than treating an
     unparseable file as one that happens to contain nothing.
     """
+    document = _single_document(text)
+    if document is None:
+        return []
     found: list[ExecutedValue] = []
-    for document in yaml.safe_load_all(text):
-        if document is None:
-            continue
-        for pattern, shell, list_valued in patterns:
-            for path, value in _select(document, pattern, list_valued=list_valued):
-                found.append(ExecutedValue(path, value, shell))
+    for pattern, shell in patterns:
+        for path, value in _select(document, pattern):
+            found.append(ExecutedValue(path, value, shell))
     return found
 
 
 def all_values(text: str) -> list[tuple[tuple[str, ...], str]]:
-    """Every scalar and its path, so a rejection can say where the mention IS."""
+    """Every scalar and its path, so a rejection can say where the mention IS.
+
+    Diagnostics only - never the verdict. Carries a cycle guard because a
+    recursive alias makes the loaded structure self-referencing, and this walk
+    runs ONLY while building a rejection message: without the guard the check
+    crashes precisely when it is trying to explain a failure.
+    """
     found: list[tuple[tuple[str, ...], str]] = []
+    seen: set[int] = set()
 
     def walk(node: object, path: tuple[str, ...]) -> None:
+        if isinstance(node, (dict, list)):
+            if id(node) in seen:
+                return
+            seen.add(id(node))
         if isinstance(node, dict):
             for key, value in node.items():
                 walk(value, (*path, str(key)))
@@ -443,10 +468,44 @@ def all_values(text: str) -> list[tuple[tuple[str, ...], str]]:
         elif isinstance(node, str):
             found.append((path, node))
 
-    for document in yaml.safe_load_all(text):
-        if document is not None:
-            walk(document, ())
+    document = _single_document(text)
+    if document is not None:
+        walk(document, ())
     return found
+
+
+def survives_in_the_composed_document(text: str, needle: str) -> bool | None:
+    """Is ``needle`` a value the DOCUMENT contains but the loaded mapping drops?
+
+    Diagnostics only. The composer preserves duplicate keys, so a value present
+    here but absent from ``safe_load``'s result was written in the file and then
+    overridden by a later duplicate - which is a different thing from being
+    commented out, and the two must not be reported as each other.
+
+    Returns None when the question cannot be answered (a composer error, or a
+    recursive alias), so the caller can say what it knows instead of guessing.
+    """
+    try:
+        for document in yaml.compose_all(text):
+            stack: list[yaml.Node] = [document] if document is not None else []
+            seen: set[int] = set()
+            while stack:
+                node = stack.pop()
+                if id(node) in seen:
+                    continue
+                seen.add(id(node))
+                if isinstance(node, yaml.ScalarNode):
+                    if needle in node.value:
+                        return True
+                elif isinstance(node, yaml.MappingNode):
+                    for key_node, value_node in node.value:
+                        stack.append(key_node)
+                        stack.append(value_node)
+                elif isinstance(node, yaml.SequenceNode):
+                    stack.extend(node.value)
+    except (yaml.YAMLError, RecursionError):
+        return None
+    return False
 
 
 # --------------------------------------------------------------------------
@@ -606,18 +665,38 @@ def _yaml_problems(
     relative_path: str,
     text: str,
     needle: str,
-    patterns: tuple[tuple[tuple[str, ...], bool, bool], ...],
+    patterns: tuple[tuple[tuple[str, ...], bool], ...],
 ) -> list[str]:
+    """Reject with a reason this function can actually establish.
+
+    An explanation that asserts an unestablished cause is the same defect class
+    as a guard claiming coverage it lacks: both teach the reader something
+    false, and a rule that looks broken is a rule that gets deleted. So each
+    branch below says only what it has shown, and the branches are ordered from
+    the most specific establishable cause to the least.
+    """
     try:
         values = executed_values(text, patterns)
     except yaml.YAMLError as error:
+        # Heuristic, and its worst case is a less specific message rather than a
+        # wrong verdict: a multi-document stream is the one parse failure a
+        # maintainer is likely to have caused deliberately, so name it.
+        multi = "expected a single document" in str(error)
+        detail = (
+            " The file holds MULTIPLE DOCUMENTS: neither pre-commit nor GitHub Actions "
+            "reads past the first, so a value in a later one never runs."
+            if multi
+            else ""
+        )
         return [
-            f"{relative_path}: could not be parsed as YAML ({type(error).__name__}). This "
-            "check fails CLOSED: a route file too broken to parse is reported, never "
-            f"certified as correctly wired. {error}"
+            f"{relative_path}: could not be parsed as a single YAML document "
+            f"({type(error).__name__}). This check fails CLOSED: a route file the tool "
+            f"itself could not read is reported, never certified as correctly wired.{detail} "
+            f"{error}"
         ]
 
     blocked: list[ExecutedValue] = []
+    commented_out: list[ExecutedValue] = []
     for value in values:
         if not value.shell:
             if needle in value.value:
@@ -627,11 +706,12 @@ def _yaml_problems(
         # parser neither can nor should strip.
         lines = scan("body.sh", value.value)
         hits = [line for line in lines if needle in line.executable]
-        if not hits:
-            continue
-        if any(_terminator_before(lines, line) is None for line in hits):
-            return []
-        blocked.append(value)
+        if hits:
+            if any(_terminator_before(lines, line) is None for line in hits):
+                return []
+            blocked.append(value)
+        elif needle in value.value:
+            commented_out.append(value)
 
     if blocked:
         detail = ", ".join(".".join(value.path) for value in blocked)
@@ -640,26 +720,66 @@ def _yaml_problems(
             "unconditional top-level exit earlier in the same script."
         ]
 
-    wanted = sorted(".".join(pattern) for pattern, _, _ in patterns)
+    if commented_out:
+        detail = ", ".join(".".join(value.path) for value in commented_out)
+        return [
+            f"{relative_path}: the invocation is present in the script at {detail} but is "
+            "COMMENTED OUT, so that step runs everything except the validator. A '#' "
+            "disables this check exactly as deleting the line does."
+        ]
+
+    wanted = sorted(".".join(pattern) for pattern, _ in patterns)
     try:
-        elsewhere = [path for path, value in all_values(text) if needle in value]
-    except yaml.YAMLError:  # pragma: no cover - executed_values would have raised first
-        elsewhere = []
+        return _explain(relative_path, text, needle, wanted)
+    except Exception as error:  # noqa: BLE001 - deliberate, see below
+        # A failure to EXPLAIN must never become a failure to REJECT. The
+        # diagnostics walk runs only while building a rejection, so anything
+        # that raises in it - a recursive alias today, something else later -
+        # would turn a red verdict into a traceback exactly when the guard is
+        # doing its job. Catching broadly here is the point: the verdict is
+        # already decided above, and only the wording is at risk.
+        return [
+            f"{relative_path}: {needle!r} is not invoked from any position this route "
+            f"executes ({wanted}), and the explanation could not be built "
+            f"({type(error).__name__}). Rejecting on what is known."
+        ]
+
+
+def _explain(relative_path: str, text: str, needle: str, wanted: list[str]) -> list[str]:
+    """Say why, having established it. May raise; the caller rejects regardless."""
+    elsewhere = [path for path, value in all_values(text) if needle in value]
     if elsewhere:
         where = ", ".join(".".join(path) for path in elsewhere)
         return [
-            f"{relative_path}: {needle!r} appears at {where}, and none of those is a "
-            f"position this tool executes. This route runs {wanted}. A value sitting "
-            "anywhere else - an action input, an environment variable, a name, a "
-            "description, or a key later overridden by a duplicate - is not a wiring. "
-            "Update this rule if the invocation legitimately moved."
+            f"{relative_path}: {needle!r} appears at {where}, none of which is a position "
+            f"this tool executes. This route runs {wanted}. A value sitting anywhere else "
+            "- an action input, an environment variable, a name or a description - is not "
+            "a wiring, and neither is a value of the wrong shape, since the tool cannot "
+            "load it. Update this rule if the invocation legitimately moved."
         ]
+
     if needle in text:
+        composed = survives_in_the_composed_document(text, needle)
+        if composed is True:
+            return [
+                f"{relative_path}: {needle!r} is written in the document but is not what "
+                "runs - the loaded configuration does not contain it, which is what a key "
+                "overridden by a later duplicate looks like. The last value of a repeated "
+                "key is the one the tool uses."
+            ]
+        if composed is False:
+            return [
+                f"{relative_path}: {needle!r} is PRESENT in the file but absent from the "
+                "document itself, so it survives only in a YAML comment. Commenting out "
+                "the invocation disables the check exactly as deleting it does."
+            ]
         return [
-            f"{relative_path}: {needle!r} is PRESENT in the file but absent from the parsed "
-            "document, so it survives only in a comment. Commenting out the invocation "
-            "disables the check exactly as deleting it does."
+            f"{relative_path}: {needle!r} appears in the file but not in the loaded "
+            "configuration, so it is not what runs. This check could not determine "
+            "whether it is commented out or discarded by the document, because the file "
+            "could not be re-read for diagnostics."
         ]
+
     return [
         f"{relative_path}: {needle!r} is absent entirely; this route no longer runs the "
         "secrets baseline validator."
