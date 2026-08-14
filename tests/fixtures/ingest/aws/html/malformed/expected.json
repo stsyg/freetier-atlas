@@ -1,0 +1,19 @@
+{
+  "profile": "aws_free_tier_plan",
+  "mime": "text/html",
+  "source_url": "https://aws.amazon.com/free/",
+  "candidate_count": 1,
+  "candidates": [
+    {
+      "verification_state": "rejected",
+      "expect_valid": false,
+      "facts": {
+        "error": "table_not_found",
+        "detail": "required_headers=['benefits', 'free plan', 'paid plan']; table[0] headers=['benefits', 'free plans', 'paid plan']"
+      },
+      "evidence_url": "https://aws.amazon.com/free/",
+      "evidence_selector": null,
+      "validate_contains": ["table_not_found"]
+    }
+  ]
+}

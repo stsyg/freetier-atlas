@@ -1,0 +1,40 @@
+{
+  "captured_by": "F008 P4 AWS provider slice (live capture, generated from the live parse)",
+  "fetched_at": "2026-08-14T18:05:00Z",
+  "http_status": 200,
+  "robots_allowed": true,
+  "sha256_original": "426398fde05b50b6fb01cee5c7b5001953094d01919c40512cc9f82972438ea6",
+  "sha256_original_note": "sha256_original is the digest of the exact live bytes this capture was derived from on 2026-08-14. It is NOT reproducible across fetches: aws.amazon.com serves per-build markup and rotating inline tokens, so a later fetch of an unchanged page yields a different digest. STRUCTURE, not digest, is the invariant.",
+  "sha256_stored": "200fae70fc0044bd2bd1519ad5e7943d230684c82e7cb3f8c78cb6809cbc5c90",
+  "sha256_stored_note": "sha256_stored attests the COMMITTED BYTES ONLY. It is a tamper-evidence seal on this file, not a link to the live page, and it must never be read as a fidelity control.",
+  "tos_note": "Official AWS pages (aws.amazon.com). https://aws.amazon.com/robots.txt has a single 'User-agent: *' group; its only /free/ Disallow rules are '/free/cloud-computing-free-tier/' and '/free/databases-free-tier/', and neither this path nor /dynamodb/pricing/ is disallowed, so automated retrieval of this path is permitted. A minimal excerpt is committed for offline, deterministic extraction testing; every retained value and every pinned block is reproduced verbatim from the cited live page.",
+  "trim_method": "Removed scripts, navigation, styling and unrelated prose. This capture was GENERATED from the live document's own parse: every retained block is the exact normalised string the engine collected from the live page, and (where a table is retained) the headers and cells are the exact normalised strings the engine collected from the live target table. Inline markup inside those blocks and cells was flattened to plain text; the engine normalises a block or cell to its text content, so every retained normalised string is identical to live. This is a deliberate minimal excerpt, not a complete copy of the page.",
+  "live_table_count": 0,
+  "live_table_present": false,
+  "live_table_note": "ASSERTION-ONLY. MEASURED: the live document contains ZERO <table> elements. The API Gateway free tier is published entirely as prose, so this profile declares no table selector and none was synthesized.",
+  "non_target_tables_removed": 0,
+  "non_target_tables_removed_note": "MEASURED: no non-target table feeds this profile's outcome, so none is retained and none is synthesized.",
+  "target_table_rows_removed": [],
+  "target_table_cells_removed": [],
+  "unpivoted_target_table_columns": [],
+  "ignored_extraction_rows": [],
+  "duplicate_live_blocks_retained": [
+    "document: Starting July 15, 2025, new AWS customers will receive up to $200 in AWS Free Tier credits"
+  ],
+  "duplicate_live_blocks_not_retained": [],
+  "live_reconciliation": "LIVE -> FIXTURE (primary): all 3 pinned block(s) occur EXACTLY ONCE in the live document and EXACTLY ONCE in this capture; all 0 live target-table row(s) are present, none removed, none added. FIXTURE -> LIVE (supporting only): every block in this capture occurs in the live document.",
+  "url": "https://aws.amazon.com/api-gateway/pricing/",
+  "structure": {
+    "asserted_block_sha256": [
+      "ff41c813c64a6c2c277e55a418c288558ac1244c58043c3d2802104c0b2774a7",
+      "02ec70d1d71df1a390ac2b0874d0993dd2740c7979d48c1b0c8a4de460487831",
+      "02ec70d1d71df1a390ac2b0874d0993dd2740c7979d48c1b0c8a4de460487831",
+      "02ec70d1d71df1a390ac2b0874d0993dd2740c7979d48c1b0c8a4de460487831",
+      "02ec70d1d71df1a390ac2b0874d0993dd2740c7979d48c1b0c8a4de460487831",
+      "e267b6152c57c6d3bdecfb10899e36685e79522a406af5fc4aa0bfa468f9f17e",
+      "e267b6152c57c6d3bdecfb10899e36685e79522a406af5fc4aa0bfa468f9f17e"
+    ],
+    "headers": [],
+    "rows": []
+  }
+}

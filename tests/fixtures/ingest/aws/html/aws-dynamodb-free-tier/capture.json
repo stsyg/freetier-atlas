@@ -1,0 +1,41 @@
+{
+  "captured_by": "F008 P4 AWS provider slice (live capture, generated from the live parse)",
+  "fetched_at": "2026-08-14T18:05:00Z",
+  "http_status": 200,
+  "robots_allowed": true,
+  "sha256_original": "62c1dae3b4baae9bb9a3e6b58d15d0d33f0806b71a7994bb3424890e6f0e43ef",
+  "sha256_original_note": "sha256_original is the digest of the exact live bytes this capture was derived from on 2026-08-14. It is NOT reproducible across fetches: aws.amazon.com serves per-build markup and rotating inline tokens, so a later fetch of an unchanged page yields a different digest. STRUCTURE, not digest, is the invariant.",
+  "sha256_stored": "89ac4cd3aeb8687f61f8d78eb7fce6da86a7c7535f29b99338b4cf43377e43d1",
+  "sha256_stored_note": "sha256_stored attests the COMMITTED BYTES ONLY. It is a tamper-evidence seal on this file, not a link to the live page, and it must never be read as a fidelity control.",
+  "tos_note": "Official AWS pages (aws.amazon.com). https://aws.amazon.com/robots.txt has a single 'User-agent: *' group; its only /free/ Disallow rules are '/free/cloud-computing-free-tier/' and '/free/databases-free-tier/', and neither this path nor /dynamodb/pricing/ is disallowed, so automated retrieval of this path is permitted. A minimal excerpt is committed for offline, deterministic extraction testing; every retained value and every pinned block is reproduced verbatim from the cited live page.",
+  "trim_method": "Removed scripts, navigation, styling and unrelated prose. This capture was GENERATED from the live document's own parse: every retained block is the exact normalised string the engine collected from the live page, and (where a table is retained) the headers and cells are the exact normalised strings the engine collected from the live target table. Inline markup inside those blocks and cells was flattened to plain text; the engine normalises a block or cell to its text content, so every retained normalised string is identical to live. This is a deliberate minimal excerpt, not a complete copy of the page.",
+  "live_table_count": 3,
+  "live_table_present": false,
+  "live_table_note": "ASSERTION-ONLY. MEASURED: the live document contains 3 <table> elements and NONE of them carries a header row -- _header_row returns 'expected one header row, found 0' for all three, so the engine cannot select any of them and a matrix profile is impossible here. The free allowance is published as a <ul> of five <li> items under one intro paragraph, which is prose, so this profile is mode='assertions'. The three live tables are pay-as-you-go price tables belonging to no free offer; assertion-only extraction reads no table, so omitting them cannot change what the engine decides.",
+  "non_target_tables_removed": 3,
+  "non_target_tables_removed_note": "MEASURED: no non-target table feeds this profile's outcome, so none is retained and none is synthesized.",
+  "target_table_rows_removed": [],
+  "target_table_cells_removed": [],
+  "unpivoted_target_table_columns": [],
+  "ignored_extraction_rows": [],
+  "duplicate_live_blocks_retained": [],
+  "duplicate_live_blocks_not_retained": [],
+  "live_reconciliation": "LIVE -> FIXTURE (primary): all 9 pinned block(s) occur EXACTLY ONCE in the live document and EXACTLY ONCE in this capture; all 0 live target-table row(s) are present, none removed, none added. FIXTURE -> LIVE (supporting only): every block in this capture occurs in the live document.",
+  "url": "https://aws.amazon.com/dynamodb/pricing/",
+  "structure": {
+    "asserted_block_sha256": [
+      "68db5fc8f65d0acec29b6b07b20f7c8d2d8aea72e07abc379d532fd348ad7fd3",
+      "c1678e1efc1cfd48cfb4ebbee44d9d7c58d7929b077d0aec4014bd131dde665c",
+      "c1678e1efc1cfd48cfb4ebbee44d9d7c58d7929b077d0aec4014bd131dde665c",
+      "2559a7220ff0ef4a58447af1f36729d670121776feb9ff435644154769d7bcc4",
+      "d6041e700c489917491d4285e0a883e3366bff93bafe4daaea98f911d4c9dca8",
+      "306342e1c9c6ebbff6c9f687ff370c1115b5fd51f54497ed9c0b9b56adfe34f1",
+      "ec09e38eff7ddbe9a9b77c59cbd7a81d5bfd1f0e0ea5050b2154ee56918c293d",
+      "9805c1b7d2f4d99e247a52613fa4116b75807622393a9e041955e967598c6b4b",
+      "3971a3d6a1bc23088e617cd616b18bffb895b54716e889e3570d595ee35ee70d",
+      "a862f93f45eff9571c0b50e28e84acccd5a76307e8ea4e1445e96f8fab690ce0"
+    ],
+    "headers": [],
+    "rows": []
+  }
+}

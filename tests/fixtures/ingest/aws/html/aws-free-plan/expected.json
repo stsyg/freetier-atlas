@@ -1,0 +1,26 @@
+{
+  "profile": "aws_free_plan",
+  "mime": "text/html",
+  "source_url": "https://aws.amazon.com/free/free-tier-faqs/",
+  "candidate_count": 1,
+  "candidates": [
+    {
+      "verification_state": "candidate",
+      "expect_valid": true,
+      "facts": {
+        "service": "AWS Free Tier free plan",
+        "offer_type": "new_customer_credit",
+        "free_plan_duration_months": "6",
+        "exhaustion_behaviour": "manual_upgrade_required",
+        "notes": "When your free plan expires, AWS closes your account, and you’ll lose access to your resources and data. AWS will retain your data for 90 days after your free plan expires. During this period, you have the option to upgrade to paid plan to reopen your account and restore access to your resources. If you don’t upgrade your account within 90 days, AWS will permanently erase your AWS account and all its content.",
+        "requires_card": true,
+        "payment_method_purpose": "AWS requires a valid payment method to verify your identity and prevent abuse of AWS resources. AWS will not charge your payment method until you upgrade to paid plan, and you will not need to reenter your payment method when you upgrade.",
+        "eligibility": "You would be ineligible for free plan or Free Tier credits if you have an existing AWS account or have had one in the past. The free plan and Free Tier credits are available only to new AWS customers.",
+        "credit_expiry_months": "12",
+        "overage_note": "If you exceed the free usage limits, your account will begin incurring charges at the standard pay-as-you-go service rates (see each service page for full pricing details). Your Free Tier credits will automatically apply to these charges. If your account is under the free plan, you won’t see any charges on your AWS Bills. If your account is under a paid plan, you’ll simply pay for charges that exceed your Free Tier credit balance."
+      },
+      "evidence_url": "https://aws.amazon.com/free/free-tier-faqs/",
+      "evidence_selector": "aws_free_plan assertion[0] document[4] -> fact[service]"
+    }
+  ]
+}

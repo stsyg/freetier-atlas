@@ -1,0 +1,48 @@
+{
+  "captured_by": "F008 P4 AWS provider slice (live capture, generated from the live parse)",
+  "fetched_at": "2026-08-14T18:05:00Z",
+  "http_status": 200,
+  "robots_allowed": true,
+  "sha256_original": "bcde5806d177f768f93fea37f03e615c8a221fb697ac77c84ecf0107e5adf98c",
+  "sha256_original_note": "sha256_original is the digest of the exact live bytes this capture was derived from on 2026-08-14. It is NOT reproducible across fetches: aws.amazon.com serves per-build markup and rotating inline tokens, so a later fetch of an unchanged page yields a different digest. STRUCTURE, not digest, is the invariant.",
+  "sha256_stored": "406725f0ab1f58f0b7a7e15df92fad018620a37617bf3b192af95c2a8fef63f8",
+  "sha256_stored_note": "sha256_stored attests the COMMITTED BYTES ONLY. It is a tamper-evidence seal on this file, not a link to the live page, and it must never be read as a fidelity control.",
+  "tos_note": "Official AWS pages (aws.amazon.com). https://aws.amazon.com/robots.txt has a single 'User-agent: *' group; its only /free/ Disallow rules are '/free/cloud-computing-free-tier/' and '/free/databases-free-tier/', and neither this path nor /dynamodb/pricing/ is disallowed, so automated retrieval of this path is permitted. A minimal excerpt is committed for offline, deterministic extraction testing; every retained value and every pinned block is reproduced verbatim from the cited live page.",
+  "trim_method": "Removed scripts, navigation, styling and unrelated prose. This capture was GENERATED from the live document's own parse: every retained block is the exact normalised string the engine collected from the live page, and (where a table is retained) the headers and cells are the exact normalised strings the engine collected from the live target table. Inline markup inside those blocks and cells was flattened to plain text; the engine normalises a block or cell to its text content, so every retained normalised string is identical to live. This is a deliberate minimal excerpt, not a complete copy of the page.",
+  "live_table_count": 1,
+  "live_table_present": true,
+  "live_table_note": "MEASURED: the live document contains exactly ONE <table> and it is the target. Its live header row is ['Benefits', 'Free plan', 'Paid plan']. Every one of its 6 live body rows is retained, in live order, with its live is_header/in_thead structure and its <p>-wrapped cell contents reproduced, so the fixture yields byte-identical _HtmlRow tuples and the same 12 derived cell text blocks the live page produces.",
+  "non_target_tables_removed": 0,
+  "non_target_tables_removed_note": "MEASURED: no non-target table feeds this profile's outcome, so none is retained and none is synthesized.",
+  "target_table_rows_removed": [],
+  "target_table_cells_removed": [],
+  "unpivoted_target_table_columns": ["Paid plan"],
+  "ignored_extraction_rows": [],
+  "duplicate_live_blocks_retained": ["document: ✔"],
+  "duplicate_live_blocks_not_retained": [],
+  "live_reconciliation": "LIVE -> FIXTURE (primary): all 3 pinned block(s) occur EXACTLY ONCE in the live document and EXACTLY ONCE in this capture; all 6 live target-table row(s) are present, none removed, none added. FIXTURE -> LIVE (supporting only): every block in this capture occurs in the live document.",
+  "url": "https://aws.amazon.com/free/",
+  "structure": {
+    "asserted_block_sha256": [
+      "b9d8723af8fd6a026dc62b01b79d2814039ca1bf1ffca5ea9b53db0b20489684",
+      "07ac05c570ff4451a0f8b8c7f3129e51a57613594d26dfe62469b94f9d09e431",
+      "07ac05c570ff4451a0f8b8c7f3129e51a57613594d26dfe62469b94f9d09e431",
+      "07ac05c570ff4451a0f8b8c7f3129e51a57613594d26dfe62469b94f9d09e431",
+      "07ac05c570ff4451a0f8b8c7f3129e51a57613594d26dfe62469b94f9d09e431",
+      "3ce145e5db4e3aca7a9839e4f2254b0fa83978705d13245bfeee0d2486bec379"
+    ],
+    "headers": ["Benefits", "Free plan", "Paid plan"],
+    "rows": [
+      ["Receive up to $200 USD free credits", "✔", "✔"],
+      ["Free usage of select services", "✔", "✔"],
+      ["Access to all AWS services", "✖ Limited to select services only", "✔"],
+      [
+        "Billed for the usage",
+        "✖ No charges incurred unless you upgrade to a Paid plan or activate paid-only services",
+        "✔ Pay beyond credit thresholds"
+      ],
+      ["Scale workloads beyond credit", "✖", "✔"],
+      ["Promotional Credits", "✖ Not eligible", "✔ Eligible"]
+    ]
+  }
+}

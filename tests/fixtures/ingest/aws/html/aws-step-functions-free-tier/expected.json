@@ -1,0 +1,23 @@
+{
+  "profile": "aws_step_functions_free_tier",
+  "mime": "text/html",
+  "source_url": "https://aws.amazon.com/step-functions/pricing/",
+  "candidate_count": 1,
+  "candidates": [
+    {
+      "verification_state": "candidate",
+      "expect_valid": true,
+      "facts": {
+        "service": "AWS Step Functions",
+        "offer_type": "always_free",
+        "availability": "The Step Functions Free Tier does not automatically expire at the end of your 12 month AWS Free Tier term, and is available to both existing and new AWS customers indefinitely.",
+        "free_state_transitions_per_month": "4,000",
+        "quota_basis": "The Step Functions free tier includes 4,000 free state transitions per month. All charges are metered daily and billed monthly.",
+        "exhaustion_behaviour": "automatic_billing",
+        "billing_basis": "With AWS Step Functions, you pay for the number state transitions you use per month. You are charged per state transition above the free tier. See the State Transitions Pricing Table for details. _"
+      },
+      "evidence_url": "https://aws.amazon.com/step-functions/pricing/",
+      "evidence_selector": "aws_step_functions_free_tier assertion[0] title[0] -> fact[service]"
+    }
+  ]
+}

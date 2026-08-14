@@ -1,0 +1,283 @@
+provider:
+  id: aws
+  name: Amazon Web Services
+  official_domains:
+    - aws.amazon.com
+
+# OFFICIAL sources only. Every source below is an aws.amazon.com page.
+#
+# NOTE ON THE THREE OFFER KINDS. AWS markets perpetual "Always Free" offers, a
+# time-limited introductory tier, and short-term trials and credits, all under
+# the single brand "AWS Free Tier". Only the first could ever be perpetual, and
+# conflating them is the largest correctness risk in this provider. Each source
+# below therefore pins its identity, its offer type and its term to blocks that
+# describe THAT offer, and no source is allowed to borrow a fact from another.
+#
+# NOTE ON WHAT IS NOT HERE. There is deliberately NO always_free source.
+# MEASURED on the live pages: AWS never describes the Always Free offer in a
+# block of its own. The "always free" vocabulary appears only inside blocks that
+# simultaneously grant the $200 credit, inside an answer about the PAID plan, or
+# as a question heading. Pinning an always_free identity to any of them would
+# splice one offer's identity onto another's context, which is inference rather
+# than quotation, so this slice extracts none. That is a finding, not a gap.
+#
+# NOTE ON PAGES THAT COULD NOT BE USED. MEASURED (live, HTTP 200):
+# docs.aws.amazon.com served 1166 and 1083 bytes for the Billing and Lambda
+# guide pages; both parse to zero tables and zero text blocks because their
+# content is client-rendered. AWS Lambda's pricing page states its free-tier
+# numbers only inside six repeated worked pricing examples, so there is no
+# unique block to pin. Neither is used, and neither was worked around.
+sources:
+  # The ONLY AWS page in the sweep that publishes free-tier facts in a table the
+  # engine can select: exactly one <table>, live headers
+  # `Benefits` / `Free plan` / `Paid plan`, 6 body rows, all mapped.
+  - id: aws-free-tier-plan
+    type: html
+    trust_level: official
+    url: https://aws.amazon.com/free/
+    schedule_ref: official_pages
+    extraction_profile: aws_free_tier_plan
+
+  # The richest AWS evidence page, and the ONLY one that states the
+  # payment-method requirement. Assertion-only: zero tables live.
+  - id: aws-free-plan
+    type: html
+    trust_level: official
+    url: https://aws.amazon.com/free/free-tier-faqs/
+    schedule_ref: official_pages
+    extraction_profile: aws_free_plan
+
+  # The deliberate TIME-LIMITED control, from the authoritative Free Tier Terms.
+  - id: aws-12-month-free-tier
+    type: html
+    trust_level: official
+    url: https://aws.amazon.com/free/terms/
+    schedule_ref: official_pages
+    extraction_profile: aws_12_month_free_tier
+
+  - id: aws-dynamodb-free-tier
+    type: html
+    trust_level: official
+    url: https://aws.amazon.com/dynamodb/pricing/
+    schedule_ref: official_pages
+    extraction_profile: aws_dynamodb_free_tier
+
+  - id: aws-api-gateway-free-tier
+    type: html
+    trust_level: official
+    url: https://aws.amazon.com/api-gateway/pricing/
+    schedule_ref: official_pages
+    extraction_profile: aws_api_gateway_free_tier
+
+  # The one genuinely PERPETUAL offer in this provider, and the proof that
+  # perpetual does not mean Z0: the same page calls the tier indefinite AND says
+  # usage above it is charged.
+  - id: aws-step-functions-free-tier
+    type: html
+    trust_level: official
+    url: https://aws.amazon.com/step-functions/pricing/
+    schedule_ref: official_pages
+    extraction_profile: aws_step_functions_free_tier
+
+publishing:
+  automatic_threshold: 0.90
+  uncertain_threshold: 0.70
+  require_official_source: true
+  require_deterministic_numeric_validation: true
+
+# Declared service-to-category assignments. These are taxonomy decisions, not
+# inferences from quota units. Each is preceded by its rationale.
+service_categories:
+  # ARGUABLE: the AWS Free Tier program spans every category AWS sells, and one
+  # slug cannot express that. Compute VMs is chosen because it is the category
+  # the tier is popularly identified by, and because the plan-comparison table
+  # this source reads describes account-level plan benefits rather than any one
+  # product. The category assignment does NOT assert that AWS offers a free
+  # compute VM; the coverage block below is where that claim would have to live,
+  # and it does not make it.
+  AWS Free Tier: compute-vms
+  # ARGUABLE: same reasoning. The free plan is an account plan, not a product.
+  # It is mapped alongside the program so a reader sees the credit-backed plan
+  # and the plan comparison side by side, which is exactly where the difference
+  # between a credit and a perpetual allowance must be visible.
+  AWS Free Tier free plan: compute-vms
+  # ARGUABLE: same reasoning again. The legacy 12-month tier is an account-level
+  # offer spanning many products, and placing it beside the other two is what
+  # makes the three different AWS offer kinds comparable at a glance.
+  AWS 12 Month Free Tier: compute-vms
+  # DynamoDB is a managed document/key-value database; the taxonomy's NoSQL
+  # bucket is its unambiguous home.
+  Amazon DynamoDB: nosql-key-value
+  # ARGUABLE: API Gateway is an HTTP/WebSocket front door that terminates and
+  # routes API traffic. The taxonomy has no dedicated API-management category,
+  # and Networking, CDN and DNS is the least misleading of the fourteen because
+  # the published allowance is expressed in API calls received and connection
+  # minutes, which are traffic-handling units. It was CONSIDERED and REJECTED
+  # for serverless-functions: API Gateway runs no customer code.
+  Amazon API Gateway: networking-cdn-dns
+  # ARGUABLE: Step Functions orchestrates workflows made of other services'
+  # steps. The taxonomy has no workflow-orchestration category, and Queues,
+  # messaging and scheduled jobs is the least misleading of the fourteen because
+  # the published allowance is expressed in state transitions, which are units of
+  # orchestrated job execution. It was CONSIDERED and REJECTED for
+  # serverless-functions: Step Functions runs no customer code of its own.
+  AWS Step Functions: queues-messaging-jobs
+
+# Explicit provider x category coverage. All fourteen canonical categories are
+# declared; a pair with no declaration is a config error, not an implicit
+# unknown.
+#
+# NOTHING here is verified_free, and that is the finding, not an omission.
+# MEASURED on https://aws.amazon.com/free/free-tier-faqs/, verbatim: "Yes, you
+# are required to provide a valid payment method to sign up for an AWS account,
+# whether you choose a free plan or a paid plan." A payment method is therefore
+# required to obtain ANY of these offers. MEASURED on the same page: "If you
+# exceed the free usage limits, your account will begin incurring charges at the
+# standard pay-as-you-go service rates". Publishing any AWS category as
+# verified_free would be exactly the unsupported free claim this product forbids.
+#
+# ELEVEN of the fourteen are `unknown`, and that is a deliberate, measured
+# outcome rather than laziness. AWS publishes its per-category free-offer list
+# through a CLIENT-RENDERED widget: MEASURED on https://aws.amazon.com/free/,
+# the served HTML contains the section headings "Free Tier Categories", "Always
+# free" and "Short-term trial" with NO accompanying prose, and the page's single
+# served table compares account plans rather than services. There is therefore
+# no official served document establishing which categories carry a free
+# allowance. Each `unknown` below records what WAS probed. Declaring these
+# categories `offered_no_z0` would assert offers this slice cannot evidence, and
+# declaring them `not_offered` would be an unsupported claim in the other
+# direction; both are refused.
+coverage:
+  compute-vms:
+    state: unknown
+    rationale: >-
+      MEASURED (live): https://aws.amazon.com/ec2/pricing/ was probed and served
+      zero tables. Its ONLY free-tier block in served HTML is the heading "Try
+      Amazon EC2 at no cost with AWS Free Tier", which names no allowance, no
+      term and no exhaustion behaviour. This slice therefore verified no official
+      AWS page establishing a free compute-VM allowance, so the state is unknown
+      rather than guessed in either direction.
+  containers-app-hosting:
+    state: unknown
+    rationale: >-
+      MEASURED (live): https://aws.amazon.com/lightsail/pricing/ and
+      https://aws.amazon.com/amplify/pricing/ were probed. Lightsail's only
+      free-tier prose is "As part of the AWS Free Tier, you can get started with
+      Amazon Lightsail for free. Check out the AWS Free Tier FAQs to learn
+      more.", which states no allowance and defers to another page. Amplify's
+      single header-row table is a "Use case" / "Pricing" table, not a free-tier
+      table. No allowance was evidenced, so the state is unknown.
+  serverless-functions:
+    state: unknown
+    rationale: >-
+      MEASURED (live): https://aws.amazon.com/lambda/pricing/ was probed. All
+      four of its tables fail header-row selection, and its free-tier numbers
+      appear in served HTML only inside six repeated worked pricing examples
+      ("the free tier provides 400,000 GB-s"), so no block is unique enough to
+      pin without risking ambiguous_assertion. Pinning an ambiguous block was
+      refused, so the state is unknown rather than evidenced from a worked
+      example.
+  relational-databases:
+    state: unknown
+    rationale: >-
+      NOT PROBED in this slice. No official AWS page establishing a free
+      relational-database allowance was retrieved or verified here, so the state
+      is unknown. Asserting absence would be a positive claim this slice cannot
+      support.
+  nosql-key-value:
+    state: offered_no_z0
+    source: aws-dynamodb-free-tier
+    rationale: >-
+      The DynamoDB pricing page publishes a free allowance of 25 WCUs and 25
+      RCUs, 25 rWCUs for global tables, 25 GB of data storage, 2.5 million
+      DynamoDB Streams read requests and 1 GB of data transfer out, granted
+      "each month on a per Region, per-payer account basis". The category is
+      therefore offered. No Z0 offer is produced: the page proves nothing about
+      whether a payment card is required, and it states its overage consequence
+      only inside worked pricing examples, so the exhaustion behaviour is left
+      unknown rather than inferred and the classifier withholds Z0.
+  object-file-storage:
+    state: unknown
+    rationale: >-
+      MEASURED (live): https://aws.amazon.com/s3/pricing/ was probed and served
+      eight tables, NONE of which carries a header row the engine can select. Its
+      only unique free-tier blocks are a description of the account-level $200
+      credit programme and a single worked-example line about a 500 KB query
+      allowance; neither states an S3 storage or request allowance. No S3
+      allowance was evidenced, so the state is unknown.
+  networking-cdn-dns:
+    state: offered_no_z0
+    source: aws-api-gateway-free-tier
+    rationale: >-
+      The API Gateway pricing page publishes one million REST API calls, one
+      million HTTP API calls, and one million messages plus 750,000 connection
+      minutes for WebSocket APIs per month, and states in the same block that
+      this lasts "up to 12 months" and that "If you exceed this number of calls
+      per month, you will be charged the API Gateway usage rates." That is
+      automatic billing on exhaustion, which the classifier treats as a definite
+      billing exposure, so the category is offered but the offer classifies Z1
+      and no Z0 offer is produced. See the ARGUABLE note on the API Gateway
+      category assignment.
+  queues-messaging-jobs:
+    state: offered_no_z0
+    source: aws-step-functions-free-tier
+    rationale: >-
+      The Step Functions pricing page publishes 4,000 free state transitions per
+      month and states, in a block of its own, that "The Step Functions Free Tier
+      does not automatically expire at the end of your 12 month AWS Free Tier
+      term, and is available to both existing and new AWS customers
+      indefinitely." That is a genuinely PERPETUAL AWS allowance. It still
+      produces no Z0 offer: the same page states "You are charged per state
+      transition above the free tier", which is automatic billing on exhaustion
+      and a definite billing exposure, so the offer classifies Z1. MEASURED
+      (live): https://aws.amazon.com/sqs/pricing/ and
+      https://aws.amazon.com/sns/pricing/ were also probed and are not cited
+      here; SQS does publish a unique monthly allowance block, but Step Functions
+      was chosen because it additionally states both its perpetuity and its
+      overage consequence in blocks of their own.
+  auth-identity:
+    state: unknown
+    rationale: >-
+      MEASURED (live): https://aws.amazon.com/cognito/pricing/ was probed and it
+      DOES publish unique free-tier blocks, including a 10,000 monthly-active-user
+      allowance and a statement that the tier "is available to both existing and
+      new AWS customers indefinitely". This slice deliberately did NOT add Cognito
+      as a source, to keep the covered set small enough that every claim is fully
+      evidenced and fixture-backed. Because no source is declared for this
+      category, no coverage claim is made here and the state stays unknown; it is
+      a strong candidate for the next AWS slice rather than an unchecked absence.
+  cicd-source-control:
+    state: unknown
+    rationale: >-
+      NOT PROBED in this slice. No official AWS page establishing a free CI/CD or
+      source-control allowance was retrieved or verified here, so the state is
+      unknown rather than declared absent.
+  monitoring-logs-tracing:
+    state: unknown
+    rationale: >-
+      MEASURED (live): https://aws.amazon.com/cloudwatch/pricing/ was probed. Its
+      one unique free-tier block states only "You can get started with Amazon
+      CloudWatch for free ... Many applications should be able to operate within
+      these free tier limits" and names NO allowance, no term and no exhaustion
+      behaviour. Every block that does carry a number is a repeated worked
+      pricing example occurring two to four times, which would yield
+      ambiguous_assertion if pinned. No allowance was evidenced without
+      inference, so the state is unknown.
+  ai-inference-embeddings:
+    state: unknown
+    rationale: >-
+      NOT PROBED in this slice. No official AWS page establishing a free AI
+      inference or embeddings allowance was retrieved or verified here, so the
+      state is unknown rather than declared absent.
+  email-notifications-comms:
+    state: unknown
+    rationale: >-
+      MEASURED (live): https://aws.amazon.com/sns/pricing/ was probed and no
+      free-tier prose block was found in its served HTML at all. Amazon SES was
+      NOT probed. No allowance was evidenced, so the state is unknown.
+  secrets-config-devtools:
+    state: unknown
+    rationale: >-
+      NOT PROBED in this slice. No official AWS page establishing a free secrets,
+      configuration or developer-tooling allowance was retrieved or verified
+      here, so the state is unknown rather than declared absent.

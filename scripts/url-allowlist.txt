@@ -58,6 +58,7 @@ freetier-atlas.github.io
 freetier-atlas.pages.dev
 
 # --- Provider and vendor documentation cited by the catalogue and docs --------
+aws.amazon.com
 cloud.google.com
 developers.cloudflare.com
 www.cloudflare.com

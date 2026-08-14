@@ -1,0 +1,28 @@
+{
+  "profile": "aws_free_tier_plan",
+  "mime": "text/html",
+  "source_url": "https://aws.amazon.com/free/",
+  "candidate_count": 1,
+  "candidates": [
+    {
+      "verification_state": "candidate",
+      "expect_valid": true,
+      "facts": {
+        "receive_up_to_200_usd_free_credits": "✔",
+        "free_usage_of_select_services": "✔",
+        "access_to_all_aws_services": "✖ Limited to select services only",
+        "billed_for_the_usage": "✖ No charges incurred unless you upgrade to a Paid plan or activate paid-only services",
+        "scale_workloads_beyond_credit": "✖",
+        "promotional_credits": "✖ Not eligible",
+        "service": "AWS Free Tier",
+        "offer_type": "new_customer_credit",
+        "credit_amount": "$200",
+        "free_plan_duration_months": "6",
+        "notes": "When you create a new AWS Free Tier account, you get $100 in credits immediately. As you explore key services, you can earn up to $100 more. That's up to $200 over 6 months to build, break things, and experiment with no charges and no surprise bills on the Free plan. The account closes on its own 6 months after you open it or when your credits run out, whichever comes first. You won’t be charged unless you convert to a Paid plan.",
+        "eligibility": "Get up to $200 in credits for new customers"
+      },
+      "evidence_url": "https://aws.amazon.com/free/",
+      "evidence_selector": "aws_free_tier_plan matrix row[1:Receive up to $200 USD free credits] column[Free plan] -> fact[receive_up_to_200_usd_free_credits]"
+    }
+  ]
+}

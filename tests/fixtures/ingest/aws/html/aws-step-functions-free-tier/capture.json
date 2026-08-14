@@ -1,0 +1,38 @@
+{
+  "captured_by": "F008 P4 AWS provider slice (live capture, generated from the live parse)",
+  "fetched_at": "2026-08-14T18:05:00Z",
+  "http_status": 200,
+  "robots_allowed": true,
+  "sha256_original": "e4d483855656bdd8918f17ee2f266d87074cda74845a0074005e1dc88976e51b",
+  "sha256_original_note": "sha256_original is the digest of the exact live bytes this capture was derived from on 2026-08-14. It is NOT reproducible across fetches: aws.amazon.com serves per-build markup and rotating inline tokens, so a later fetch of an unchanged page yields a different digest. STRUCTURE, not digest, is the invariant.",
+  "sha256_stored": "d4391212976e76a4fb6699f12a5abb5fb5aee812e02c78c1e7cb1c92f9764dc0",
+  "sha256_stored_note": "sha256_stored attests the COMMITTED BYTES ONLY. It is a tamper-evidence seal on this file, not a link to the live page, and it must never be read as a fidelity control.",
+  "tos_note": "Official AWS pages (aws.amazon.com). https://aws.amazon.com/robots.txt has a single 'User-agent: *' group; its only /free/ Disallow rules are '/free/cloud-computing-free-tier/' and '/free/databases-free-tier/', and neither this path nor /dynamodb/pricing/ is disallowed, so automated retrieval of this path is permitted. A minimal excerpt is committed for offline, deterministic extraction testing; every retained value and every pinned block is reproduced verbatim from the cited live page.",
+  "trim_method": "Removed scripts, navigation, styling and unrelated prose. This capture was GENERATED from the live document's own parse: every retained block is the exact normalised string the engine collected from the live page, and (where a table is retained) the headers and cells are the exact normalised strings the engine collected from the live target table. Inline markup inside those blocks and cells was flattened to plain text; the engine normalises a block or cell to its text content, so every retained normalised string is identical to live. This is a deliberate minimal excerpt, not a complete copy of the page.",
+  "live_table_count": 1,
+  "live_table_present": false,
+  "live_table_note": "ASSERTION-ONLY. MEASURED: the live document contains exactly ONE <table> and it is a pricing-EXAMPLE table with the live headers ['Function', 'Memory (MB)', 'Duration (Msec)'] describing an invented worked example. It publishes no free allowance, so it is not a target and is not retained. The free tier itself is published as prose, so this profile is mode='assertions', reads no table, and none was synthesized.",
+  "non_target_tables_removed": 1,
+  "non_target_tables_removed_note": "MEASURED: no non-target table feeds this profile's outcome, so none is retained and none is synthesized.",
+  "target_table_rows_removed": [],
+  "target_table_cells_removed": [],
+  "unpivoted_target_table_columns": [],
+  "ignored_extraction_rows": [],
+  "duplicate_live_blocks_retained": [],
+  "duplicate_live_blocks_not_retained": [],
+  "live_reconciliation": "LIVE -> FIXTURE (primary): all 4 pinned block(s) occur EXACTLY ONCE in the live document and EXACTLY ONCE in this capture; all 0 live target-table row(s) are present, none removed, none added. FIXTURE -> LIVE (supporting only): every block in this capture occurs in the live document.",
+  "url": "https://aws.amazon.com/step-functions/pricing/",
+  "structure": {
+    "asserted_block_sha256": [
+      "4e653867e055890d0122c85e2ffb682a2e2923f2c5b953fdae22b3cdf868e37a",
+      "e2bba60be8ebd50542d6bba6583670bdf3237672819c9e3e6dcc75b3db118953",
+      "e2bba60be8ebd50542d6bba6583670bdf3237672819c9e3e6dcc75b3db118953",
+      "b85e18dab3283bee6241b905e6961bb007131eaf3116e6e991683da0bff1a2db",
+      "b85e18dab3283bee6241b905e6961bb007131eaf3116e6e991683da0bff1a2db",
+      "4cd1616648686d17e7cf46e3b1748db531881cc72fadf44b8ad6a35070ff928a",
+      "4cd1616648686d17e7cf46e3b1748db531881cc72fadf44b8ad6a35070ff928a"
+    ],
+    "headers": [],
+    "rows": []
+  }
+}
