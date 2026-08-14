@@ -54,8 +54,13 @@ FIXTURES = REPO_ROOT / "tests" / "fixtures" / "ingest" / "github" / "html"
 DOMAINS = ("docs.github.com",)
 TRIAL_ENDPOINT = "https://docs.github.com/en/github-trial-pipeline-case"
 
-#: The four perpetual GitHub allowances this slice expects to reach Z0.
-Z0_SERVICES = frozenset({"GitHub Actions", "GitHub Packages", "GitHub Codespaces", "GitHub Pages"})
+#: The three perpetual GitHub allowances this slice expects to reach Z0. GitHub
+#: Pages is deliberately ABSENT: measured on its live page, none of its 65 text
+#: blocks states that no payment method is required, so `requires_card` stays
+#: UNKNOWN and Z0 is correctly withheld. See `PAGES_SERVICE` below.
+Z0_SERVICES = frozenset({"GitHub Actions", "GitHub Packages", "GitHub Codespaces"})
+#: The perpetual offer whose page does NOT state its billing terms.
+PAGES_SERVICE = "GitHub Pages"
 #: The deliberate NON-Z0 offer: no card required, expires after 30 days.
 TRIAL_SERVICE = "GitHub Enterprise Cloud trial"
 
@@ -238,6 +243,56 @@ def test_the_perpetual_allowances_that_publish_are_z0(session: Session, config) 
         seen += 1
         assert version.zero_cost_class == "Z0_TRUE_FREE", f"{name}: {version.zero_cost_class}"
     assert seen >= 1, "no perpetual GitHub allowance published; the control is vacuous"
+
+
+@skip_without_db
+def test_pages_is_never_published_as_z0_on_persisted_rows(session: Session, config) -> None:
+    """The unsourced-$0 regression, asserted on real database rows.
+
+    GitHub Pages is perpetual and its page publishes real limits, so it is a
+    plausible-looking Z0 candidate. But no live block on that page states that
+    no payment method is required, so `requires_card` is UNKNOWN and a Z0
+    verdict is unreachable.
+
+    MEASURED behaviour this pins: Pages EXTRACTS successfully (a candidate with
+    `offer_type: always_free` and `requires_card: None`) and is then WITHHELD by
+    the publication gate entirely -- no offer, no version. Both halves matter.
+    Asserting only "no Z0 version" would pass vacuously if extraction broke, so
+    the candidate assertion keeps the control honest; asserting only extraction
+    would miss a regression that republished the claim.
+    """
+
+    _run(session, config)
+
+    pages_candidates = [
+        candidate
+        for candidate in session.execute(select(Candidate)).scalars()
+        if (candidate.candidate_facts or {}).get("service") == PAGES_SERVICE
+    ]
+    assert pages_candidates, (
+        "no GitHub Pages candidate was extracted at all; this control would pass "
+        "vacuously, so the extraction path must be repaired before trusting it"
+    )
+    for candidate in pages_candidates:
+        facts = candidate.candidate_facts or {}
+        assert facts.get("offer_type") == "always_free"
+        assert facts.get("requires_card") is None, (
+            "Pages asserted a card fact, but no sentence on its live page states one"
+        )
+        assert facts.get("has_paid_dependencies") is None
+
+    z0_pages = [
+        version
+        for version, offer in session.execute(
+            select(OfferVersion, Offer).join(OfferVersion.offer).join(Offer.service)
+        ).all()
+        if offer.service.canonical_name == PAGES_SERVICE
+        and version.zero_cost_class == "Z0_TRUE_FREE"
+    ]
+    assert not z0_pages, (
+        "GitHub Pages was published as true-free, but no sentence on its live "
+        "page states that no payment method is required"
+    )
 
 
 @skip_without_db

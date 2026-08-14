@@ -21,7 +21,7 @@ important test in the slice. It is deliberately not a fall-through: this
 repository has already been bitten once by a lookup returning ``None`` being
 read as "no constraint applies, therefore allow", which silently exempted
 exactly the fields that most needed checking. A mode that is not listed in
-:data:`~app.ingest.adapters.html._FACT_SOURCES_BY_MODE` raises a ``KeyError``
+:data:`~app.ingest.adapters.html._FACT_SOURCES_BY_MODE` raises ``ValueError``
 rather than defaulting to permitted.
 """
 

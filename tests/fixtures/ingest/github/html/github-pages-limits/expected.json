@@ -10,8 +10,6 @@
       "facts": {
         "service": "GitHub Pages",
         "offer_type": "always_free",
-        "requires_card": false,
-        "has_paid_dependencies": false,
         "exhaustion_behaviour": "throttled",
         "published_site_size": "1 GB",
         "source_repository_size": "1 GB",

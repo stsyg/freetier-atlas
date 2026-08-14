@@ -43,6 +43,16 @@ fields: an account with no payment method on file is never charged
 (``exhaustion_behaviour = hard_stop``). That safe stop is precisely why these
 offers can reach Z0.
 
+**The Pages page carries no such sentence, so Pages claims no such fact.**
+MEASURED on the live GitHub Pages limits page: of its 65 text blocks, NONE
+states that no payment method is required. ``github_pages_limits`` therefore
+asserts neither ``requires_card`` nor ``has_paid_dependencies``, both stay
+UNKNOWN, and the classifier withholds Z0 for Pages. This is the rule working as
+intended rather than a gap to be filled: the only honest way to publish a $0
+claim here would be a live sentence supporting it, and there is not one. Do not
+repin these fields to the availability sentence -- "available with GitHub Free"
+describes which plans include the product, not whether a card is on file.
+
 ``offer_type`` distinguishes a perpetual allowance (``always_free``) from a
 **time-limited trial** (``trial``). The GitHub Enterprise Cloud trial requires no
 payment method -- verbatim, "You do not need to provide a payment method to start
@@ -258,8 +268,14 @@ GITHUB_PAGES_LIMITS = register_html_profile(
                 value="GitHub Pages",
                 scope="title",
             ),
-            # Pages is available on GitHub Free itself, so the offer is perpetual,
-            # needs no payment method and depends on no paid product.
+            # Availability on GitHub Free proves the offer is PERPETUAL, and that
+            # is all it proves. This sentence says nothing about payment, so it
+            # cannot carry `requires_card` or `has_paid_dependencies` -- and
+            # MEASURED on the live page, none of its 65 blocks states that no
+            # card is required. Both facts are therefore deliberately ABSENT,
+            # which leaves them UNKNOWN and blocks Z0 for Pages. Unknown is
+            # better than guessed: a $0 claim with no source sentence behind it
+            # is exactly what this product forbids.
             HtmlTextAssertion(
                 text=(
                     "GitHub Pages is available in public repositories with GitHub Free and "
@@ -269,26 +285,6 @@ GITHUB_PAGES_LIMITS = register_html_profile(
                 ),
                 field="offer_type",
                 value="always_free",
-            ),
-            HtmlTextAssertion(
-                text=(
-                    "GitHub Pages is available in public repositories with GitHub Free and "
-                    "GitHub Free for organizations, and in public and private repositories "
-                    "with GitHub Pro, GitHub Team, GitHub Enterprise Cloud, and GitHub "
-                    "Enterprise Server. See GitHub's plans."
-                ),
-                field="requires_card",
-                value=False,
-            ),
-            HtmlTextAssertion(
-                text=(
-                    "GitHub Pages is available in public repositories with GitHub Free and "
-                    "GitHub Free for organizations, and in public and private repositories "
-                    "with GitHub Pro, GitHub Team, GitHub Enterprise Cloud, and GitHub "
-                    "Enterprise Server. See GitHub's plans."
-                ),
-                field="has_paid_dependencies",
-                value=False,
             ),
             # Exceeding a soft quota degrades or suspends service and never bills:
             # Pages has no metered paid tier to bill into.

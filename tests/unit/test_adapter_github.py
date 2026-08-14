@@ -145,6 +145,18 @@ def _tier_index(case: str, profile) -> int:
     return headers.index(profile.matrix_tier_header.strip().lower())
 
 
+#: The profiles whose LIVE page carries a sentence actually stating that no
+#: payment method is required. GitHub Pages is deliberately NOT here: measured on
+#: the live page, none of its 65 text blocks says anything of the kind.
+_CARD_CLAIMING_PROFILES = frozenset(
+    {
+        "github_actions_billing",
+        "github_packages_billing",
+        "github_codespaces_billing",
+        "github_enterprise_cloud_trial",
+    }
+)
+
 #: Fact keys that are identity or material-condition metadata, not quotas.
 _NON_QUOTA_KEYS = frozenset(
     {"service", "offer_type", "requires_card", "has_paid_dependencies", "exhaustion_behaviour"}
@@ -514,10 +526,17 @@ def test_github_profiles_are_registered_declaratively(name: str) -> None:
     assert profile.required_fields == ("service", "offer_type")
     assert profile.trusted_assertions
     asserted = {assertion.field for assertion in profile.assertions}
-    # The identity and every material Z0 gate are pinned to verbatim source text
-    # rather than read out of an author-populated cell.
-    assert {"service", "offer_type", "requires_card", "has_paid_dependencies"} <= asserted
+    # Identity and perpetuity are pinned to verbatim source text on every
+    # profile, rather than read out of an author-populated cell.
+    assert {"service", "offer_type"} <= asserted
     assert "exhaustion_behaviour" in asserted
+    # The billing gates are pinned ONLY where a live sentence actually states
+    # them. Pages has no such sentence, so it must claim neither -- see
+    # test_pages_claims_no_billing_fact_it_cannot_source.
+    if name in _CARD_CLAIMING_PROFILES:
+        assert {"requires_card", "has_paid_dependencies"} <= asserted
+    else:
+        assert not ({"requires_card", "has_paid_dependencies"} & asserted)
     assert not set(profile.columns) & asserted, (
         f"{name}: a pinned fact must not also be readable from a table column"
     )
@@ -529,10 +548,12 @@ def test_github_profiles_are_registered_declaratively(name: str) -> None:
 def _facts_of(case: str) -> OfferFacts:
     fixture = load_case(PROVIDER, ADAPTER, case)
     facts = dict(fixture.expected_candidates[0]["facts"])
+    # `.get`, not `[...]`: a material condition the page does not state must
+    # arrive as None (UNKNOWN) rather than raising or defaulting to a value.
     return OfferFacts(
         offer_type=str(facts["offer_type"]),
-        requires_card=facts["requires_card"],
-        has_paid_dependencies=facts["has_paid_dependencies"],
+        requires_card=facts.get("requires_card"),
+        has_paid_dependencies=facts.get("has_paid_dependencies"),
         exhaustion_behaviours=(facts["exhaustion_behaviour"],),
     )
 
@@ -543,7 +564,6 @@ def _facts_of(case: str) -> OfferFacts:
         "github-actions-billing",
         "github-packages-billing",
         "github-codespaces-billing",
-        "github-pages-limits",
     ],
 )
 def test_the_perpetual_github_allowances_are_z0_and_explainable(case: str) -> None:
@@ -551,6 +571,64 @@ def test_the_perpetual_github_allowances_are_z0_and_explainable(case: str) -> No
     assert result.zero_cost_class == "Z0_TRUE_FREE"
     assert result.blocking_conditions == ()
     assert result.reasons, "a Z0 verdict with no stated reason is not explainable"
+
+
+def test_pages_claims_no_billing_fact_it_cannot_source() -> None:
+    """GitHub Pages must NOT reach Z0, because no live sentence says $0.
+
+    MEASURED on the live page: of its 65 text blocks, ZERO state that no payment
+    method is required. An earlier revision pinned both `requires_card=False`
+    and `has_paid_dependencies=False` to the availability sentence -- "GitHub
+    Pages is available in public repositories with GitHub Free ... See GitHub's
+    plans." -- which never mentions payment and establishes only perpetuity.
+
+    That claim was inert while the profile could not read its own live page. The
+    moment assertion-only extraction made the profile work, it became a
+    live-reachable `$0` claim with no source sentence behind it, which is the
+    exact failure this product forbids. Both facts are now ABSENT rather than
+    repinned, because there is nothing honest to pin them to.
+    """
+
+    fixture = load_case(PROVIDER, ADAPTER, "github-pages-limits")
+    facts = fixture.expected_candidates[0]["facts"]
+    assert "requires_card" not in facts
+    assert "has_paid_dependencies" not in facts
+
+    profile = resolve_profile("github_pages_limits")
+    asserted = {assertion.field for assertion in profile.assertions}
+    assert "requires_card" not in asserted
+    assert "has_paid_dependencies" not in asserted
+
+    result = classify(_facts_of("github-pages-limits"))
+    assert result.zero_cost_class == "UNKNOWN", (
+        "Pages published a $0 verdict without a source sentence stating it"
+    )
+    assert any("payment card" in condition for condition in result.blocking_conditions)
+    # Perpetuity IS sourced, so the offer type survives: only the unsourced
+    # billing facts were withdrawn.
+    assert facts["offer_type"] == "always_free"
+
+
+def test_removing_the_unsourced_card_fact_is_what_blocks_pages_from_z0() -> None:
+    """Isolate the variable, so the UNKNOWN verdict is not credited elsewhere.
+
+    Feeding the identical Pages facts WITH a card claim reaches Z0. The single
+    difference is the fact the live page does not support, which proves the
+    block comes from withdrawing that claim and not from `throttled` exhaustion
+    or anything else in the row.
+    """
+
+    sourced = _facts_of("github-pages-limits")
+    assert sourced.requires_card is None
+    assert classify(sourced).zero_cost_class == "UNKNOWN"
+
+    hypothetical = OfferFacts(
+        offer_type=sourced.offer_type,
+        requires_card=False,
+        has_paid_dependencies=False,
+        exhaustion_behaviours=sourced.exhaustion_behaviours,
+    )
+    assert classify(hypothetical).zero_cost_class == "Z0_TRUE_FREE"
 
 
 def test_the_enterprise_trial_is_not_z0_despite_requiring_no_card() -> None:

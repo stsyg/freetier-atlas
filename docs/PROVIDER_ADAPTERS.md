@@ -62,7 +62,7 @@ Five official `docs.github.com` sources, one captured excerpt each:
 | `github-actions-billing`        | GitHub Actions                | `cicd-source-control`   | Z0      |
 | `github-packages-billing`       | GitHub Packages               | `object-file-storage`   | Z0      |
 | `github-codespaces-billing`     | GitHub Codespaces             | `secrets-config-devtools` | Z0    |
-| `github-pages-limits`           | GitHub Pages                  | `containers-app-hosting` | Z0     |
+| `github-pages-limits`           | GitHub Pages                  | `containers-app-hosting` | **not Z0** (unknown card status) |
 | `github-enterprise-cloud-trial` | GitHub Enterprise Cloud trial | `cicd-source-control`   | **not Z0** |
 
 Three things about this slice are worth copying, and one is worth avoiding.
@@ -94,6 +94,19 @@ source text, never a table cell. Rewording, truncating or deleting the sentence
 above yields `assertion_not_found` and REJECTS the candidate, so a `$0` claim
 cannot outlive the evidence for it. The profiles map no column onto those
 fields, which is asserted in `tests/unit/test_adapter_github.py`.
+
+**A fact with no source sentence is not published at all.** GitHub Pages is the
+worked example. Measured on its live page, **none of its 65 text blocks** states
+that no payment method is required — the page says only which plans include
+Pages. An earlier revision pinned both `requires_card` and
+`has_paid_dependencies` to that availability sentence, which never mentions
+payment. Both facts are now **absent** rather than repinned, because there is
+nothing honest to pin them to: they stay `UNKNOWN`, the classifier withholds Z0,
+and the publication gate withholds the offer entirely. Pages still extracts
+successfully and still publishes its perpetuity and its limits — only the
+unsourced billing claims are gone. When a page does not state a material
+condition, delete the assertion; do not hunt for a nearby sentence that can be
+read as implying it.
 
 **Two live pages carry no table at all.** Measured on 2026-08-13 and re-measured
 on 2026-08-14: the GitHub Pages limits page and the Enterprise Cloud trial page

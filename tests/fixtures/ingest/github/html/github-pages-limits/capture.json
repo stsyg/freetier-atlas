@@ -11,7 +11,8 @@
   "live_table_present": false,
   "live_table_note": "MEASURED 2026-08-13, re-measured 2026-08-14: the live page contains ZERO <table> elements -- its allowances are published as <li>/<p> prose. This capture also contains zero <table> elements, so its structure matches the live document. The profile is mode='assertions': it declares no table selector, reads no table, and takes 100% of its published facts from text assertions pinned to the verbatim live prose blocks retained above. HISTORICAL CORRECTION: an earlier version of this capture carried a one-cell anchor table that existed nowhere on the live page. It was added only because the extraction engine then required a table to emit a candidate, and it made this profile return table_not_found against the real page. The engine now supports assertion-only profiles, so that fabricated table has been DELETED.",
   "live_reverified_at": "2026-08-14T01:40:00Z",
-  "live_reverification": "Re-fetched the live page (HTTP 200) and parsed it with the engine's own _DocumentCollector. Live <table> count: 0. Every one of the profile's 11 pinned blocks occurs EXACTLY ONCE in the live document and EXACTLY ONCE in this capture, so LIVE -> FIXTURE reconciliation is 1:1 with no unmatched, missing or ambiguous block. Driving the real HtmlDocAdapter over the live bytes now yields one candidate with 11 facts, 11 per-fact evidence locations and zero validation problems; before this slice the same probe returned the rejected candidate table_not_found.",
+  "live_reverification": "Re-fetched the live page (HTTP 200) and parsed it with the engine's own _DocumentCollector. Live <table> count: 0. Every one of the profile's 9 pinned blocks occurs EXACTLY ONCE in the live document and EXACTLY ONCE in this capture, so LIVE -> FIXTURE reconciliation is 1:1 with no unmatched, missing or ambiguous block. Driving the real HtmlDocAdapter over the live bytes now yields one candidate with 9 facts, 9 per-fact evidence locations and zero validation problems; before this slice the same probe returned the rejected candidate table_not_found.",
+  "unsupported_claims_withdrawn": "MEASURED: of the 65 text blocks on the live page, ZERO state that no payment method is required. An earlier revision of this profile pinned BOTH requires_card=false and has_paid_dependencies=false to the availability sentence ('GitHub Pages is available in public repositories with GitHub Free ... See GitHub's plans.'), which never mentions payment at all. That sentence establishes only that the offer is perpetual. Both facts have been REMOVED rather than repinned, because no live block supports them; they are now UNKNOWN and the classifier withholds Z0 for GitHub Pages. Unknown is better than guessed.",
   "target_table_rows_removed": [],
   "target_table_cells_removed": [],
   "unpivoted_target_table_columns": [],
@@ -21,8 +22,6 @@
   "structure": {
     "asserted_block_sha256": [
       "8a696168cd8624faa5e075e8caddc8cf6fd398d90ee6f04194a91adaa21112b7",
-      "e7d19773bdb561a5e373929879cbe5ef36d6694a2af150b026ba097cc2137521",
-      "e7d19773bdb561a5e373929879cbe5ef36d6694a2af150b026ba097cc2137521",
       "e7d19773bdb561a5e373929879cbe5ef36d6694a2af150b026ba097cc2137521",
       "3c56bb827c20409782f2041296830842ae7c41255000cc70a5bdfd0a59164a64",
       "a0a141892d1bace052d2af856c4c16c3e39239e544edf48a1fe79ae21464a8ce",
