@@ -25,6 +25,8 @@ dependencies = [
   "pyyaml==6.0.3",
 ]
 
+# These pins MUST stay in sync with requirements-dev.txt (enforced by
+# tests/unit/test_requirements_sync.py).
 [project.optional-dependencies]
 dev = [
   "ruff==0.14.5",
@@ -32,6 +34,10 @@ dev = [
   "detect-secrets==1.5.0",
   "pip-audit==2.9.0",
   "httpx==0.28.1",
+  # Test-only, and deliberately NOT a runtime dependency. It is what makes the
+  # end-to-end TLS tests in tests/unit/test_ingest_fetch.py execute in CI
+  # instead of skipping.
+  "cryptography==50.0.0",
 ]
 
 [project.urls]

@@ -59,6 +59,21 @@ both directions: that a pinned connection still negotiates and verifies against
 the URL's hostname, and that a certificate for a different name is still
 rejected.
 
+Those two TLS directions are proved by a **real handshake** against a throwaway
+CA minted into a temporary directory, which is why `cryptography` is a declared
+test dependency rather than an optional convenience — do not remove it to slim
+the dev extra. It was previously undeclared, so both tests skipped in CI, and
+the skip was rationalised on the grounds that the standard-library-only tests
+above enforced the same property. That was measured and found false. Those tests
+assert `server_hostname`, `check_hostname` and `CERT_REQUIRED` and infer the
+rest from the stdlib contract, so a defect that weakens the context *injected*
+into the handler, or that retries with verification off after an SSL error,
+satisfies every one of them while defeating certificate verification entirely.
+Both stayed green until the handshake tests were made to run. A third mutation —
+verifying against the dialled IP literal instead of the hostname — is caught by
+the standard-library-only test, so that test is not vacuous; it enforces part of
+the property and infers the rest, and the handshake closes the inferred part.
+
 Committed real-provider fixtures carry a `capture.json` provenance sidecar whose
 presence, completeness and `sha256_stored` are asserted by
 `tests/unit/test_capture_sidecar.py`. That test deliberately asserts **nothing
