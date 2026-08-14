@@ -433,9 +433,12 @@ def test_vercel_fixture_retains_the_complete_real_target_matrix() -> None:
 
     assert "<th>Region</th>" not in html
     assert "<th>Availability</th>" not in html
-    assert "<th>Hobby (Included)</th>" in html
-    assert "<th>Pro (Per month)</th>" in html
-    assert "<th>Enterprise (Per month)</th>" in html
+    # The live page serves each tier header as nested markup. Asserting the
+    # FLATTENED spelling here is what previously defended a capture that was
+    # easier than reality, so these pin the live form instead.
+    assert "<th><strong>Hobby</strong><br/>(Included)</th>" in html
+    assert "<th><strong>Pro</strong><br/>(Per month)</th>" in html
+    assert "<th><strong>Enterprise</strong><br/>(Per month)</th>" in html
     for row_label in (
         "Sandbox Active CPU",
         "Sandbox Provisioned Memory",
