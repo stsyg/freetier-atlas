@@ -24,6 +24,13 @@ built to make impossible to reintroduce.
 The second most important is :func:`test_legitimate_in_place_refresh_passes`. A
 check that fires on correct work teaches people to bypass it, which is worse than
 no check at all.
+
+The wiring section at the end guards a third instance of the same family. It
+used to assert ``"check_secrets_baseline" in text`` for each of the four routes.
+Measured: that goes red when the invocation is DELETED and stays green when it
+is COMMENTED OUT - and commenting out is the likelier bypass, because it is what
+a contributor does to a check they believe is misfiring. A substring constrains
+PRESENCE; what the guard owes us is EFFECT.
 """
 
 from __future__ import annotations
@@ -37,6 +44,8 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+
+from tests.support import source_scan
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 BASELINE_PATH = REPO_ROOT / ".secrets.baseline"
@@ -298,25 +307,311 @@ def test_empty_entry_list_fails(results) -> None:
 
 
 # --------------------------------------------------------------------------
-# Wiring. A guard nobody runs is not a guard.
+# Wiring. A guard nobody runs is not a guard - and an invocation nobody
+# executes is not an invocation.
+#
+# PRESENT-BUT-INERT MODES CONSIDERED, and where this guard stands on each.
+#
+# CAUGHT:
+#   * commented out in the file's own line-comment syntax ('#' in all three
+#     languages here). This is the mode that was measured green before;
+#   * commented out in a PowerShell '<# ... #>' block comment, including nested
+#     ones;
+#   * deleted outright (the property the old substring test already had, kept);
+#   * the whole route file deleted or renamed - reported as a clear failure
+#     rather than an unhandled traceback;
+#   * demoted from an executed field to an inert one: in a workflow the
+#     invocation must live inside a 'run:' script, in .pre-commit-config.yaml
+#     inside 'entry:' or 'args:'. A mention in a 'name:' is not a wiring;
+#   * buried in a here-document or a PowerShell here-string, which are data;
+#   * made unreachable by an UNCONDITIONAL, TOP-LEVEL 'exit'/'return' earlier in
+#     the same executed body.
+#
+# KNOWINGLY NOT CAUGHT. Stated because a guard whose limits are documented is
+# more useful than one whose limits are discovered later:
+#   * an always-false guard ('if false; then ... fi', 'if ($false) { ... }').
+#     Deciding this needs evaluation, not parsing;
+#   * shadowing - redefining check()/Invoke-Check as a no-op, or shadowing
+#     $python with something inert. Same reason;
+#   * a CONDITIONAL early exit, or one nested in any block. Only an
+#     unconditional top-level one is flagged, deliberately: the conservative
+#     rule has no false positives on these four files, and a false positive
+#     here would push people to delete the guard;
+#   * an invocation that only ever appears inside a display string, e.g.
+#     echo "run python scripts/check_secrets_baseline.py". String bodies are
+#     KEPT on purpose, because quoting an interpreter path is idiomatic and
+#     must not be mistaken for a bypass;
+#   * disabling the machinery from outside these files - 'pre-commit uninstall',
+#     a branch-protection change, or a workflow-level 'if:' that skips the job.
+#     Nothing in the four files' text can show that;
+#   * the validator being invoked but its exit code discarded. That is asserted
+#     elsewhere and is out of this slice's scope by contract.
+# --------------------------------------------------------------------------
+
+#: What each route must do with the invocation, expressed as the position the
+#: invocation has to occupy in that file's own structure. Update this table if a
+#: route legitimately restructures - the failure message says so.
+ROUTE_RULES: dict[str, tuple[frozenset[str], frozenset[str] | None]] = {
+    ".github/workflows/ci.yml": (frozenset({"shell"}), None),
+    ".pre-commit-config.yaml": (frozenset({"yaml"}), frozenset({"entry", "args"})),
+    "scripts/check.ps1": (frozenset({"powershell"}), None),
+    "scripts/check.sh": (frozenset({"shell"}), None),
+}
+
+VALIDATOR = "check_secrets_baseline"
+
+
+def route_text(relative_path: str) -> str:
+    path = REPO_ROOT / relative_path
+    assert path.is_file(), (
+        f"{relative_path} does not exist. It is one of the four routes that must run the "
+        "secrets baseline validator; if it moved, move this rule with it."
+    )
+    return path.read_text(encoding="utf-8")
+
+
+def route_problems(relative_path: str, text: str) -> list[str]:
+    contexts, keys = ROUTE_RULES[relative_path]
+    return source_scan.invocation_problems(relative_path, text, VALIDATOR, contexts, keys)
+
+
+def dense(text: str) -> int:
+    """Characters that are not whitespace. Blanking preserves length, not this."""
+    return sum(1 for char in text if not char.isspace())
+
+
+def without_the_invocation(text: str) -> str:
+    """Delete every line invoking the validator."""
+    return "".join(line for line in text.splitlines(keepends=True) if VALIDATOR not in line)
+
+
+def with_the_invocation_commented_out(text: str, opener: str = "# ") -> str:
+    """Comment out every line invoking the validator, preserving indentation.
+
+    '#' is the line-comment character in all three languages involved, so one
+    helper covers YAML, PowerShell and POSIX shell. Every occurrence is mutated,
+    so the mutation stays meaningful if a route ever gains a second invocation.
+    """
+    mutated = []
+    for line in text.splitlines(keepends=True):
+        if VALIDATOR in line:
+            stripped = line.lstrip()
+            mutated.append(line[: len(line) - len(stripped)] + opener + stripped)
+        else:
+            mutated.append(line)
+    return "".join(mutated)
+
+
+# --------------------------------------------------------------------------
+# The guard against the guard. Borrowed from
+# tests/unit/test_no_live_fetcher_in_tests.py::test_the_scan_is_not_vacuous.
+#
+# The failure mode being controlled for is specific: if the scanner ever fell
+# back to returning a file unchanged, every assertion below would keep passing
+# while checking nothing but a substring again. So prove, per file, that the
+# scan really ran and really removed content.
+# --------------------------------------------------------------------------
+
+
+def test_the_route_scan_is_not_vacuous() -> None:
+    assert len(ROUTE_RULES) == 4, "the four historical routes must all still be covered"
+    for relative_path in sorted(ROUTE_RULES):
+        text = route_text(relative_path)
+        assert text.strip(), f"{relative_path} is empty"
+        assert VALIDATOR in text, f"{relative_path} does not mention the validator at all"
+        # Raises UnknownLanguage rather than degrading to substring semantics.
+        lines = source_scan.scan(relative_path, text)
+        executable = source_scan.executable_text(lines)
+        assert dense(executable) < dense(text), (
+            f"the scan removed nothing from {relative_path}. Every one of these files "
+            "carries comments, so a scan that removes nothing is a scan that did not "
+            "run - and this whole section would then be asserting a substring again."
+        )
+        assert VALIDATOR in executable
+
+
+def test_an_unscanned_file_type_fails_closed() -> None:
+    """A route in a language with no scanner must raise, never quietly pass."""
+    with pytest.raises(source_scan.UnknownLanguage):
+        source_scan.scan("scripts/check.rb", "system 'check_secrets_baseline'\n")
+
+
+# --------------------------------------------------------------------------
+# The three acceptance cases, per route. Untouched must PASS; deleted and
+# commented-out must both FAIL.
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("relative_path", sorted(ROUTE_RULES))
+def test_every_route_invokes_the_validator(relative_path: str) -> None:
+    problems = route_problems(relative_path, route_text(relative_path))
+    assert problems == [], (
+        f"{relative_path} no longer runs the secrets baseline validator; "
+        "the corruption this suite reproduces would ship undetected from that route. "
+        f"{problems}"
+    )
+
+
+@pytest.mark.parametrize("relative_path", sorted(ROUTE_RULES))
+def test_commenting_out_the_invocation_is_detected(relative_path: str) -> None:
+    """The regression test for the substring guard.
+
+    Measured on the tree this replaced: deleting the invocation went red in all
+    four routes, and commenting it out stayed GREEN in all four. Commenting out
+    is the likelier bypass of the two, so the guard was missing the mode it most
+    needed to catch.
+    """
+    text = route_text(relative_path)
+    assert route_problems(relative_path, text) == [], "positive control: untouched must pass"
+    commented = with_the_invocation_commented_out(text)
+    assert VALIDATOR in commented, "the mutation must keep the substring, or it proves nothing"
+    assert route_problems(relative_path, commented) != []
+
+
+@pytest.mark.parametrize("relative_path", sorted(ROUTE_RULES))
+def test_deleting_the_invocation_is_still_detected(relative_path: str) -> None:
+    """The property the substring test already had. It must not be traded away."""
+    text = route_text(relative_path)
+    deleted = without_the_invocation(text)
+    assert VALIDATOR not in deleted
+    assert route_problems(relative_path, deleted) != []
+
+
+def test_a_powershell_block_comment_is_detected() -> None:
+    """'#' is not the only way to comment out a PowerShell line."""
+    relative_path = "scripts/check.ps1"
+    text = route_text(relative_path)
+    blocked = "".join(
+        f"<#{line}#>\n" if VALIDATOR in line else line for line in text.splitlines(keepends=True)
+    )
+    assert VALIDATOR in blocked
+    assert route_problems(relative_path, blocked) != []
+
+
+@pytest.mark.parametrize(
+    "relative_path", ["scripts/check.sh", "scripts/check.ps1", ".github/workflows/ci.yml"]
+)
+def test_an_unconditional_top_level_early_exit_is_detected(relative_path: str) -> None:
+    """Present, uncommented, and never reached.
+
+    The terminator takes the invocation line's own indentation, so inside the
+    workflow's ``run:`` block scalar the mutation stays valid YAML and stays
+    inside the same executed body - otherwise this would be measuring a parse
+    failure rather than reachability.
+    """
+    text = route_text(relative_path)
+    mutated = []
+    for line in text.splitlines(keepends=True):
+        if VALIDATOR in line:
+            indent = line[: len(line) - len(line.lstrip())]
+            mutated.append(f"{indent}exit 0\n")
+        mutated.append(line)
+    injected = "".join(mutated)
+    assert VALIDATOR in injected
+    assert route_problems(relative_path, injected) != []
+
+
+def test_a_deleted_route_file_is_reported_clearly() -> None:
+    """A missing route must fail with an explanation, not a traceback."""
+    with pytest.raises(AssertionError, match="does not exist"):
+        route_text("scripts/check.does-not-exist.sh")
+
+
+# --------------------------------------------------------------------------
+# False-positive controls for the scanner itself. A stripper that mangles
+# correct code is a guard that fires on correct work.
 # --------------------------------------------------------------------------
 
 
 @pytest.mark.parametrize(
-    "relative_path",
+    ("relative_path", "expansion"),
     [
-        ".github/workflows/ci.yml",
-        ".pre-commit-config.yaml",
-        "scripts/check.ps1",
-        "scripts/check.sh",
+        (".github/workflows/ci.yml", "${#files[@]}"),
+        ("scripts/check.sh", "${#FAILURES[@]}"),
     ],
 )
-def test_every_route_invokes_the_validator(relative_path: str) -> None:
-    text = (REPO_ROOT / relative_path).read_text(encoding="utf-8")
-    assert "check_secrets_baseline" in text, (
-        f"{relative_path} no longer runs the secrets baseline validator; "
-        "the corruption this suite reproduces would ship undetected from that route"
+def test_parameter_expansion_is_not_mistaken_for_a_comment(
+    relative_path: str, expansion: str
+) -> None:
+    """Both real shell routes contain a '#' that is NOT a comment.
+
+    ``line.split("#")[0]`` truncates these lines mid-expression. That is why the
+    scanner tracks quoting and word boundaries instead.
+    """
+    text = route_text(relative_path)
+    assert expansion in text, "the probe is stale; pick an expansion the file still has"
+    executable = source_scan.executable_text(source_scan.scan(relative_path, text))
+    assert expansion in executable
+
+
+def test_shell_comment_rules() -> None:
+    lines = source_scan.scan("x.sh", 'a=1 # gone\nb="kept # inside"\nc=${#arr[@]}\n')
+    executable = source_scan.executable_text(lines)
+    assert "gone" not in executable
+    assert "kept # inside" in executable
+    assert "${#arr[@]}" in executable
+
+
+def test_shell_heredoc_bodies_are_data() -> None:
+    source = "cat <<'EOF'\ncheck_secrets_baseline\nEOF\nreal_command\n"
+    executable = source_scan.executable_text(source_scan.scan("x.sh", source))
+    assert "check_secrets_baseline" not in executable
+    assert "real_command" in executable
+
+
+def test_process_substitution_is_not_a_heredoc() -> None:
+    """scripts/check.sh really uses `done < <(git ls-files -z)`."""
+    source = "while read -r f; do :; done < <(git ls-files -z)\nkeep_me\n"
+    executable = source_scan.executable_text(source_scan.scan("x.sh", source))
+    assert "keep_me" in executable
+    assert "git ls-files -z" in executable
+
+
+def test_powershell_comment_rules() -> None:
+    source = '<# block\ncheck_secrets_baseline\n#>\n$x = "kept # inside"\n$y = 1 # gone\n'
+    executable = source_scan.executable_text(source_scan.scan("x.ps1", source))
+    assert "check_secrets_baseline" not in executable
+    assert "kept # inside" in executable
+    assert "gone" not in executable
+
+
+def test_powershell_here_strings_are_data() -> None:
+    source = "$t = @'\ncheck_secrets_baseline\n'@\nreal_command\n"
+    executable = source_scan.executable_text(source_scan.scan("x.ps1", source))
+    assert "check_secrets_baseline" not in executable
+    assert "real_command" in executable
+
+
+def test_yaml_comment_rules() -> None:
+    source = 'a: 1 # gone\nb: "kept # inside"\n'
+    executable = source_scan.executable_text(source_scan.scan("x.yml", source))
+    assert "gone" not in executable
+    assert "kept # inside" in executable
+
+
+def test_yaml_run_blocks_are_shell_but_other_block_scalars_are_data() -> None:
+    """The distinction that makes the workflow route checkable at all."""
+    source = (
+        "steps:\n"
+        "  - name: real\n"
+        "    run: |\n"
+        "      python scripts/check_secrets_baseline.py\n"
+        "  - name: prose\n"
+        "    description: |\n"
+        "      python scripts/check_secrets_baseline.py\n"
     )
+    lines = source_scan.scan("x.yml", source)
+    shell_lines = [line.number for line in lines if line.context == "shell"]
+    inert_lines = [line.number for line in lines if line.context is None]
+    assert shell_lines == [4]
+    assert inert_lines == [7]
+
+
+def test_a_commented_line_inside_a_run_block_is_stripped_as_shell() -> None:
+    source = "steps:\n  - run: |\n      # python scripts/check_secrets_baseline.py\n      true\n"
+    executable = source_scan.executable_text(source_scan.scan("x.yml", source))
+    assert "check_secrets_baseline" not in executable
+    assert "true" in executable
 
 
 # --------------------------------------------------------------------------
