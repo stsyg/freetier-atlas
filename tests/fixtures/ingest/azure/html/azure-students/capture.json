@@ -1,0 +1,44 @@
+{
+  "captured_by": "F008 P5 Azure provider slice (live capture, generated from the live parse)",
+  "duplicate_live_blocks_not_retained": [
+    "heading: 'No credit card required' -- the SAME string is published live both as a section heading and as a bullet inside the Azure for Students feature list. Whole-block equality is scope-aware, so each occurs exactly once in its own scope and neither is ambiguous; only the document-scope bullet is retained, because that is the one this profile reads."
+  ],
+  "duplicate_live_blocks_retained": [],
+  "fetched_at": "2026-08-14T22:10:00Z",
+  "http_status": 200,
+  "ignored_extraction_rows": [],
+  "live_reconciliation": "LIVE -> FIXTURE (primary): all 8 retained live block(s) occur EXACTLY ONCE in the live document and EXACTLY ONCE in this capture; all 0 live target-table row(s) and all 0 target-table cell(s) are present, none removed, none added. FIXTURE -> LIVE (supporting only): every block and every cell in this capture was taken from the live parse; the generator refuses to write a fixture containing any block or cell that is not a live one, so a synthesized sentence cannot reach disk. RETAINED is not the same as ASSERTED: a retained block the profile does not read (a document <title>, say) is live content kept for context, and the count above is of blocks in this file rather than of profile assertions.",
+  "live_table_count": 0,
+  "live_table_note": "ASSERTION-ONLY. MEASURED: the live document contains 0 <table> element(s), and none of them publishes this offer's free allowance. MEASURED: the live document contains ZERO <table> elements, and its FAQ answers are client-rendered -- the served HTML carries the question headings (for example 'What happens once I use my $100 free credit?') with no answer prose, so this page states no exhaustion behaviour that could be pinned. The offer's terms are published as prose, so this profile is mode='assertions', reads no table, and none was synthesized.",
+  "live_table_present": false,
+  "non_target_tables_removed": 0,
+  "non_target_tables_removed_note": "MEASURED: the live document contains no table at all, so none was removed and none was synthesized.",
+  "retained_context_blocks": [],
+  "retained_context_blocks_note": "The live page publishes TWO offers -- Azure for Students and Azure for Startups -- and the Startups bullet list states the OPPOSITE card direction ('Spending protection-credit card required only for identity verification and services beyond credit*'). That is why this profile carries 'No credit card required' as a verbatim card_claim note and does NOT convert it into requires_card=False: read alone the bullet names no offer, and pinning it would splice one offer's terms onto a page that publishes two.",
+  "retained_live_block_count": 8,
+  "robots_allowed": true,
+  "sha256_original": "0a822a190d67a5f501c929123735e90ed60dcbdea64e37e447775bcee30e8c03",
+  "sha256_original_note": "sha256_original is the digest of the exact live bytes this capture was derived from on 2026-08-14. It is NOT reproducible across fetches: Microsoft serves per-build markup, rotating correlation ids and localised banner content, so a later fetch of an unchanged page yields a different digest. STRUCTURE, not digest, is the invariant.",
+  "sha256_stored": "a0c61d42083ea5030ac3b6b6e2d16832e7529e3e34cfb23459b932ee721b4555",
+  "sha256_stored_note": "sha256_stored attests the COMMITTED BYTES ONLY. It is a tamper-evidence seal on this file, not a link to the live page, and it must never be read as a fidelity control.",
+  "structure": {
+    "asserted_block_sha256": [
+      "2680bbc07fbdd90f7971a4c49b22ff9cc84ca66d9d658e2f428a20aad1ec071e",
+      "8f2e5a886f3280497d03a5bd164e3d5044f60ff73c8fd36a0e3e669e769d042e",
+      "8f2e5a886f3280497d03a5bd164e3d5044f60ff73c8fd36a0e3e669e769d042e",
+      "5d313f217ca1f2f3c0012f0fc3089fec3b08aa5e964efc22a0f3921537af26b4",
+      "bbb5bb59548f16e58070ff3aa48d2509c3a7bf9e404c7491f588e7db7a224e29",
+      "7c7e677785f81d98a870db5597c75e74900ff54f5405588a27a78460acedebcc",
+      "77842cce8dcb2f37bf85cfc24372f207b5c5c7535d543d92a162b05871ec9079",
+      "d65a0f94a114ac4fa8026d1a284f566103b42dfe0e4948ef263f103a1145768d"
+    ],
+    "headers": [],
+    "rows": []
+  },
+  "target_table_cells_removed": [],
+  "target_table_rows_removed": [],
+  "tos_note": "Official Microsoft Azure pages (azure.microsoft.com). https://azure.microsoft.com/robots.txt has a single 'User-agent: *' group with 10 Disallow rules, none of which matches this path (they cover /*/searchresults/, /*/search/?q=*, /*/patterns/, /api/, /debug/, /di-ag/ and similar), so automated retrieval of this path is permitted. A minimal excerpt is committed for offline, deterministic extraction testing; every retained value and every pinned block is reproduced verbatim from the cited live page.",
+  "trim_method": "Removed scripts, navigation, styling and unrelated prose. This capture was GENERATED from the live document's own parse by an owner-run reconciling generator: every retained block is the exact normalised string the engine collected from the live page, and (where a table is retained) the headers and cells are the exact normalised strings the engine collected from the live target table. The generator re-parses what it is about to write and REFUSES to write when any pinned block or any target-table cell differs from live in either direction. This is a deliberate minimal excerpt, not a complete copy of the page.",
+  "unpivoted_target_table_columns": [],
+  "url": "https://azure.microsoft.com/en-us/free/students/"
+}

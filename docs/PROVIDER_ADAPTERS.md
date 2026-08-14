@@ -298,6 +298,141 @@ rather than against an author's intuition.
 
 Use Microsoft Learn MCP, Azure free/pricing pages, Azure updates, Azure Retail Prices API where useful, and Azure MCP for deployment/operational verification.
 
+F008 P5 configures seven official sources over seven documents, split across two
+official hosts. That split is a finding rather than an accident: Microsoft's
+marketing host publishes the offer **terms** (the free account, the 12-month
+window, DevOps pricing, Azure for Students) while its documentation host
+publishes the per-service **allowances** and their exhaustion behaviour. A slice
+that used only one host would have had to compose facts across documents to say
+anything material.
+
+The central hazard for this provider is that Microsoft publishes **four
+different free things** under overlapping branding — a credit-backed *Azure free
+account*, a *12 months free services* introductory window, per-service *free
+plans and free tiers*, and eligibility-gated *programmes*. Only the third kind
+could ever be perpetual. Each source reads its own document and pins its
+identity, its offer type and its term to blocks describing that offer, so no
+profile can borrow another's facts. Microsoft itself draws the line, verbatim:
+*"Azure Cosmos DB free tier is different from the Azure free account."*
+
+| Profile | Mode | Live structure it reads | Verdict |
+| --- | --- | --- | --- |
+| `azure_free_account` | assertions | no selectable table: 2 live tables are the country/currency grid | **Z1** (card quoted) |
+| `azure_free_services` | assertions | no table: the hub's free list is client-rendered | UNKNOWN |
+| `azure_cosmos_db_free_tier` | assertions | no table: the lifetime tier is prose | **Z1** (perpetual, still billed) |
+| `azure_app_service_quotas` | matrix | the 5-row `Quota` / `Description` table | UNKNOWN (card gate alone) |
+| `azure_static_web_apps_plans` | matrix | the 13-row `Feature` / `Free plan (For personal projects)` table | UNKNOWN |
+| `azure_devops_services` | assertions | 1 live table, irregular by width (one-cell section rows) | UNKNOWN |
+| `azure_students` | assertions | no table: the FAQ answers are client-rendered | UNKNOWN |
+
+**Azure states a perpetual free tier in a block of its own, and this is the
+finding the slice exists for.** `https://learn.microsoft.com/en-us/azure/cosmos-db/free-tier`
+is titled *"Lifetime Free Tier - Azure Cosmos DB"* and says *"Free tier lasts
+indefinitely for the lifetime of the account and it comes with all the benefits
+and features of a regular Azure Cosmos DB account."* That satisfies rule 1 of
+`docs/DATA_MODEL.md` by quotation, so the offer is genuinely `always_free`. **It
+is still `Z1_BILLING_EXPOSURE`**, because the block that grants the allowance
+also says *"The throughput and storage consumed beyond these limits are billed at
+regular price."* Azure therefore reproduces the AWS Step Functions finding
+independently, on a different provider and a different document: **perpetual does
+not mean Z0.**
+
+This prediction was recorded before probing as the one most likely to be wrong,
+precisely because the AWS builder's most valuable disclosed error was concluding
+too early that a provider never describes a perpetual offer in isolation. The
+Azure marketing hub reproduces that trap exactly — measured on
+`https://azure.microsoft.com/en-us/pricing/free-services/`, the served HTML
+carries the heading *"65+ always-free services with an Azure account"* with **no
+allowance prose beneath it** and zero tables. Stopping at the hub would have
+produced a tidy and wrong "Azure never states a perpetual offer".
+
+**Nothing in this provider is Z0, and the reasons differ per offer, which
+matters.** The free account states *"All you need is a phone number, a credit
+card or a debit card (non-prepaid), and a Microsoft account or a GitHub
+account"* under its own "Payment options" heading, so `requires_card=True` is a
+quotation about that offer and it classifies Z1. Cosmos DB classifies Z1 on
+automatic billing. The other five classify UNKNOWN because their own documents
+prove nothing about card requirements.
+
+**App Service is the closest Azure comes to Z0, and its failure is unusually
+narrow.** Its page states, in a block of its own, *"If an app exceeds the CPU
+(Short), CPU (Day), or Bandwidth quota, the app is stopped until the quota
+resets. During this time, all incoming requests result in an HTTP 403 error."*
+That is a genuinely safe, non-billing stop — the only one found on any Azure page
+in this sweep — so the offer clears the billing gate entirely and fails **only**
+at the unknown-conditions gate. One unknown separates it from Z0. Recording that
+precisely matters: "not Z0 for a good reason" and "not Z0 for want of one fact"
+are different findings, and only the second is a candidate for a later slice.
+
+**The favourable card statement is published, and deliberately not used as a
+gate.** `https://azure.microsoft.com/en-us/free/students/` publishes the bare
+list item *"No credit card required"* — the only block in the whole sweep saying
+a card is unnecessary. Omitting it would under-report a real free offer, which
+this product treats as a defect equal to overstating one, so it **is** extracted
+and carried whole as a `card_claim` fact. It is not converted into
+`requires_card=False` because the live page carries **two** offers, and the Azure
+for Startups list immediately below states the opposite direction (*"Spending
+protection-credit card required only for identity verification and services
+beyond credit*"*). Read alone, the bullet names no offer. The choice is
+**verdict-neutral**, and that is asserted by test rather than claimed:
+`student_program` is in `TEMPORARY_CONDITIONAL_OFFER_TYPES`, so even with
+`requires_card=False` the offer reaches Z2 at best and never Z0.
+
+**Two profiles are the first applications of `docs/DATA_MODEL.md` rule 3 in this
+repository.** App Service and Static Web Apps each identify a Free plan, but
+neither document states that the plan is indefinite (rule 1) and in both the
+containing plan *is* the zero-priced one (so rule 2 does not apply). Rule 3 is
+therefore reached explicitly and both are `offer_type: other`, routed for review
+until the structure is evidenced — rather than inferred from the word "free".
+
+**`requires_card` is deliberately absent from the six non-account profiles.** The
+payment-method block lives on the free-account terms page and describes that
+offer's signup. Carrying it onto another document would be cross-document
+composition, the same error the Google Cloud slice avoided by recording
+`billing_account: required` rather than inventing a card claim. No Azure profile
+claims a card is *not* required.
+
+**`exhaustion_behaviour` is UNKNOWN on three profiles, and one of those is a
+deliberate refusal.** The free-services hub and the Students page state no
+consequence at all in served HTML. The DevOps page states how to obtain *more*
+capacity — *"simply buy the number of pipelines you need"* — but never what
+happens if you do not, and deriving an exhaustion rule from a purchase
+instruction would be inference rather than quotation.
+
+**Eleven of the fourteen categories are `unknown`, deliberately, and each names
+what was probed.** Six were probed live and record what the page did or did not
+say; five say plainly that they were not probed. Two of the six probed
+`unknown`s name a concrete measured allowance they declined to publish —
+Microsoft Entra External ID (*"free for your first 50,000 monthly active
+users"*) and Azure App Configuration (*"Free tier stores are limited to 1,000
+requests per day. When a store reaches 1,000 requests, it returns HTTP status
+code 429 for all requests until midnight UTC"*, a second safe stop) — so the
+bounded scope names what it left on the table instead of hiding it. Declaring
+those categories `offered_no_z0` would assert offers this slice cannot
+fixture-back; declaring them `not_offered` would be an unsupported claim in the
+other direction. Both are refused.
+
+**Two Azure pages could not be used, and that is reported rather than worked
+around.** MEASURED live: `https://azure.microsoft.com/en-us/pricing/details/static-web-apps/`
+returns HTTP 404, and `https://azure.microsoft.com/en-us/pricing/details/active-directory/`
+redirects to a `www.microsoft.com` URL outside this provider's official-domain
+allowlist, so the repository's own fetch policy refused it (`disallowed_host`)
+before any content was read.
+
+**The fixtures were generated, not transcribed.** An owner-run reconciling
+generator resolves each pinned block against the live parse by needle, refuses
+any needle matching zero or several distinct blocks, refuses any block that
+occurs more than once live (which would yield `ambiguous_assertion`), re-parses
+the excerpt it is about to write, and **refuses to write** when any retained
+block or any target-table cell differs from live in either direction. It also
+emits the resolved strings as Python literals, so the profile module was written
+from the live parse rather than from a human retyping a sentence out of a
+browser — transcription being exactly where a *composed* quotation creeps in.
+Each `capture.json` records both directions with counts, and
+`tests/unit/test_adapter_azure.py::test_every_capture_records_both_reconciliation_directions`
+recomputes the retained-block count from the committed bytes rather than taking
+the sidecar's word for it.
+
 ## Vercel
 
 Use official Vercel MCP, plans/limits docs, changelog, and public APIs.

@@ -1,0 +1,17 @@
+{
+  "captured_by": "F008 P5 Azure provider slice (synthetic scaffold)",
+  "derived_from": null,
+  "extraction_profile": "quota_document",
+  "fetched_at": "2026-08-14T22:10:00Z",
+  "http_status": null,
+  "mutation": "two synthetic rows for one offer identity disagree on requires_card, on paid dependencies and on exhaustion behaviour. Read with the pre-existing GENERIC quota_document profile, because every Azure profile pins those facts to verbatim prose and cannot express an intra-page disagreement about them.",
+  "mutation_intent": "Proves a disagreement is surfaced for reconciliation rather than silently merged.",
+  "negative_fixture_note": "NEGATIVE TEST FIXTURE, NOT A CLAIMED COMPLETE CAPTURE. It is not a record of anything Microsoft publishes and must never be cited as evidence.",
+  "robots_allowed": true,
+  "sha256_original": null,
+  "sha256_stored": "b9c0ce02be0ef543a6a28d5ae3d885129f6c44f025dabaf4e29abe4b16a82737",
+  "synthetic": true,
+  "tos_note": "No provider bytes were retrieved for this fixture. It is a wholly SYNTHETIC document written locally to exercise intra-document contradiction; no Microsoft page has this shape.",
+  "trim_method": "not a capture: this document was authored locally and declares its synthetic provenance in its own visible body text.",
+  "url": "https://learn.microsoft.com/en-us/azure/app-service/web-sites-monitor"
+}

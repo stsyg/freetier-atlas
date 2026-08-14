@@ -1,0 +1,30 @@
+{
+  "profile": "azure_free_account",
+  "mime": "text/html",
+  "source_url": "https://azure.microsoft.com/en-us/pricing/offers/ms-azr-0044p/",
+  "candidate_count": 1,
+  "candidates": [
+    {
+      "verification_state": "candidate",
+      "expect_valid": true,
+      "facts": {
+        "service": "Azure free account",
+        "offer_type": "new_customer_credit",
+        "credit_amount": "$200",
+        "credit_validity_days": "30",
+        "free_services_term_months": "12",
+        "eligibility": "We offer eligible customers $200 in Azure credits (“Credits”) to be used within the first 30 days of sign-up and 12 months of select free services (services subject to change). This offer is limited to one Azure free account per eligible customer and cannot be combined with any other offer unless otherwise permitted by Microsoft.",
+        "quota_basis": "With the Azure free account, eligible customers receive $200 in credits which can be used within the first 30 days on most Azure services. Any unused credits cannot be carried over to subsequent months and cannot be transferred to other Azure subscriptions.",
+        "exhaustion_behaviour": "manual_upgrade_required",
+        "notes": "Within 30 days of sign-up or upon exhaustion of the credits (whichever occurs first), you must upgrade to a pay-as-you-go subscription by removing the spending limit. This allows continued use of the Azure free account and select free services for the term.",
+        "credit_exclusions": "Azure credits may not be used to purchase Azure support plans, Azure DevOps, Visual Studio subscriptions, Visual Studio App Center services, Azure ExpressRoute, third-party branded products, products sold through Azure Marketplace, or products otherwise licensed separately from Azure (for example, Microsoft Azure Active Directory Premium).",
+        "requires_card": true,
+        "payment_method_basis": "All you need is a phone number, a credit card or a debit card (non-prepaid), and a Microsoft account or a GitHub account. Only credit cards are accepted in Hong Kong and Brazil.",
+        "payment_method_purpose": "Your credit card or debit card will initially NOT be charged, except for a temporary authorization hold. Any taxes which may result from receiving services at no charge are the sole responsibility of the recipient. More details on pricing and billing can be found on the pricing page.",
+        "cancellation_policy": "You may cancel at any time. Payment is required for any outstanding fees incurred."
+      },
+      "evidence_url": "https://azure.microsoft.com/en-us/pricing/offers/ms-azr-0044p/",
+      "evidence_selector": "azure_free_account assertion[0] heading[0] -> fact[service]"
+    }
+  ]
+}
