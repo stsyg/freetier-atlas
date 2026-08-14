@@ -58,14 +58,19 @@ every caller would keep passing while checking nothing.
 from __future__ import annotations
 
 import re
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 
+import yaml
+
 __all__ = [
+    "ExecutedValue",
     "SourceLine",
     "UnknownLanguage",
+    "all_values",
     "code_text",
     "executable_text",
+    "executed_values",
     "invocation_problems",
     "scan",
 ]
@@ -79,12 +84,13 @@ class UnknownLanguage(RuntimeError):
 class SourceLine:
     """One line of a scanned file.
 
-    ``context`` is the language whose rules produced this line's content, or
-    ``None`` for inert data. ``region`` separates independently executed bodies:
-    two ``run:`` blocks in a workflow are different regions, so an ``exit`` in
-    one says nothing about reachability in the other. ``key`` is the YAML key
-    whose VALUE this line contributes to - inline, block scalar or sequence item
-    alike - which is the structural fact a route rule needs.
+    Produced only for whole-file scripts (``.sh``, ``.ps1``). YAML structure is
+    resolved by a parser instead, so there is no per-line key here: asking which
+    key owns a LINE was the question that kept being answered wrongly.
+
+    ``context`` is the language whose rules produced this line's content.
+    ``region`` separates independently executed bodies, so an ``exit`` in one
+    says nothing about reachability in another.
     """
 
     number: int
@@ -93,7 +99,6 @@ class SourceLine:
     code: str
     context: str | None
     region: int
-    key: str | None = None
 
 
 # --------------------------------------------------------------------------
@@ -283,128 +288,130 @@ def _scan_powershell(text: str, executable: list[str], code: list[str]) -> None:
 
 
 # --------------------------------------------------------------------------
-# YAML, and the shell nested inside it.
+# YAML structure, resolved by a real parser, and selected by WALKING the schema.
+#
+# This module tried three times to answer a STRUCTURAL question about YAML with
+# hand-rolled line matching, and lost a round to each new spelling: the lexical
+# context, then the innermost key, and next it would have been the key's start
+# column. Each rework had the same shape, which is the signature of a partial
+# parser standing in for a real one. Ten distinct defects were measured across
+# those revisions - `with: run:`, `env: run:` and a duplicate `entry:` accepted
+# though none of them executes; flow mappings, CRLF files, three alias shapes
+# and a `<<:` merge rejected though all are legitimate; and unparseable files
+# certified as correctly wired. Closing those by hand means implementing flow
+# syntax, anchors, aliases, merge keys, duplicate-key resolution and CRLF - a
+# YAML parser, written here, badly.
+#
+# TWO decisions are load-bearing, and neither is about the dependency.
+#
+# WALK, DO NOT SEARCH. Selection consumes the pattern one segment at a time, so
+# a step's `with:` and `env:` are simply never visited. Ancestry is enforced by
+# CONSTRUCTION, not by an exclusion list: nothing here names `with`, and a rule
+# spelled "not under `with`" would be fitted to the decoy in front of it. A
+# recursive hunt for any key called `run` would reproduce the nearest-key defect
+# with a parser underneath - harder to see, not easier.
+#
+# `safe_load`, NOT `compose`. The composer keeps line marks, but it PRESERVES
+# duplicate keys and does not expand `<<` merge keys. `safe_load` resolves
+# last-wins and expands merges, which is literally what pre-commit and Actions
+# execute. Measured: with `entry:` written twice, the first naming the validator
+# and the second overriding it, a compose-based rule ACCEPTS while the file runs
+# something else. A verdict computed from anything but the executed semantics is
+# a proxy for the truth, which is the mistake this slice exists to correct. The
+# cost is line numbers, paid deliberately: a wrong line number is an annoyance,
+# a wrong verdict is the failure. Diagnostics name the key PATH instead, which
+# says WHY a position is not executed rather than only where it sits.
+#
+# No new dependency: pyyaml==6.0.3 is a declared `[project] dependencies` pin in
+# pyproject.toml, kept in step with apps/api/requirements.txt by
+# tests/unit/test_requirements_sync.py, and CI installs it via
+# `pip install -e ".[dev]"`.
+#
+# What the parser still has to be TOLD to do: fail closed. `yaml.YAMLError` is
+# caught explicitly and turned into a rejection. Without that the guard raises
+# instead of rejecting, and a route file too broken to parse was previously
+# certified as correctly wired.
 # --------------------------------------------------------------------------
 
-_YAML_BLOCK = re.compile(
-    r"^(?P<indent>[ \t]*)(?:-[ \t]+)?(?P<key>[A-Za-z0-9_.\-]+)[ \t]*:[ \t]*[|>][-+]?\d*[ \t]*$"
-)
-_YAML_KEY = re.compile(r"^[ \t]*(?:-[ \t]+)?(?P<key>[A-Za-z0-9_.\-]+)[ \t]*:")
 
-#: Block scalars under these keys are SHELL SCRIPTS, so shell comment rules
-#: apply to their bodies. Only GitHub Actions' ``run:`` qualifies. pre-commit's
-#: ``entry`` is shlex-split and exec'd, NOT shell-interpreted, so a '#' there is
-#: a literal argument and stripping it would corrupt the value.
-_YAML_SHELL_SCRIPT_KEYS = frozenset({"run"})
+@dataclass(frozen=True)
+class ExecutedValue:
+    """A scalar the tool actually runs, and the schema path it sits at."""
+
+    path: tuple[str, ...]
+    value: str
+    shell: bool
 
 
-def _yaml_comment_start(line: str) -> int | None:
-    """Offset of the '#' opening a YAML comment, or None.
+def _select(
+    node: object, pattern: tuple[str, ...], path: tuple[str, ...] = ()
+) -> Iterator[tuple[tuple[str, ...], str]]:
+    """Yield (path, scalar) for every node at ``pattern``.
 
-    YAML opens a comment only when '#' begins the line or follows whitespace,
-    and never inside a quoted scalar.
+    A list is traversed transparently without consuming a pattern segment, so
+    ``steps`` being a sequence of step mappings needs no special case, and
+    ``args:`` yields each item. ``*`` matches exactly one mapping key, which is
+    how an arbitrary job id is named.
     """
-    single = double = False
-    index = 0
-    while index < len(line):
-        char = line[index]
-        if single:
-            if char == "'":
-                single = False
-        elif double:
-            if char == "\\":
-                index += 2
-                continue
-            if char == '"':
-                double = False
-        elif char == "'":
-            single = True
-        elif char == '"':
-            double = True
-        elif char == "#" and (index == 0 or line[index - 1] in " \t"):
-            return index
-        index += 1
-    return None
+    if isinstance(node, list):
+        for index, item in enumerate(node):
+            yield from _select(item, pattern, (*path, f"[{index}]"))
+        return
+    if not pattern:
+        if isinstance(node, str):
+            yield path, node
+        return
+    if not isinstance(node, dict):
+        return
+    head, rest = pattern[0], pattern[1:]
+    if head == "*":
+        for key, value in node.items():
+            yield from _select(value, rest, (*path, str(key)))
+    elif head in node:
+        yield from _select(node[head], rest, (*path, head))
 
 
-def _blank_yaml_strings(line: str, offset: int, code: list[str], text: str) -> None:
-    single = double = False
-    start = 0
-    for index, char in enumerate(line):
-        if single:
-            if char == "'":
-                _blank(text, offset + start + 1, offset + index, code)
-                single = False
-        elif double:
-            if char == '"':
-                _blank(text, offset + start + 1, offset + index, code)
-                double = False
-        elif char == "'":
-            single, start = True, index
-        elif char == '"':
-            double, start = True, index
+def executed_values(
+    text: str, patterns: tuple[tuple[tuple[str, ...], bool], ...]
+) -> list[ExecutedValue]:
+    """Every scalar the tool executes, found by walking ``patterns``.
 
+    ``patterns`` pairs a schema path with whether that value is a SHELL SCRIPT.
+    GitHub Actions' ``run:`` is; pre-commit's ``entry`` is not - pre-commit
+    shlex-splits and execs it with no shell involved, so a '#' there is a
+    literal argument and stripping it would corrupt the value.
 
-def _scan_yaml(
-    text: str, executable: list[str], code: list[str], spans: list[tuple[int, int]]
-) -> tuple[list[str | None], list[int], list[str | None]]:
-    """Classify YAML lines, and record which key OWNS each line's content.
-
-    Ownership is the structural fact the route rules need: a line belongs to the
-    value of some key regardless of whether that value is written inline, as a
-    block scalar, or as a sequence. Nothing is blanked for being non-script -
-    a block scalar under a non-executed key stays visible and is rejected by the
-    key rule instead, which is a reason rather than an accident.
+    Propagates ``yaml.YAMLError`` so callers fail closed rather than treating an
+    unparseable file as one that happens to contain nothing.
     """
-    contexts: list[str | None] = ["yaml"] * len(spans)
-    regions: list[int] = [0] * len(spans)
-    owners: list[str | None] = [None] * len(spans)
-    next_region = 1
-
-    index = 0
-    while index < len(spans):
-        start, stop = spans[index]
-        line = text[start:stop]
-        match = _YAML_BLOCK.match(line)
-        if not match:
-            comment = _yaml_comment_start(line)
-            if comment is not None:
-                _blank(text, start + comment, stop, executable, code)
-            _blank_yaml_strings(line, start, code, text)
-            index += 1
+    found: list[ExecutedValue] = []
+    for document in yaml.safe_load_all(text):
+        if document is None:
             continue
+        for pattern, shell in patterns:
+            for path, value in _select(document, pattern):
+                found.append(ExecutedValue(path, value, shell))
+    return found
 
-        # A block scalar. Its body is every following line that is blank or
-        # indented deeper than the key.
-        key = match.group("key")
-        key_indent = len(match.group("indent"))
-        body = index + 1
-        while body < len(spans):
-            body_start, body_stop = spans[body]
-            body_line = text[body_start:body_stop]
-            if body_line.strip() and (len(body_line) - len(body_line.lstrip())) <= key_indent:
-                break
-            body += 1
 
-        if body > index + 1:
-            body_start = spans[index + 1][0]
-            body_stop = spans[body - 1][1]
-            for line_index in range(index + 1, body):
-                owners[line_index] = key
-            if key in _YAML_SHELL_SCRIPT_KEYS:
-                _scan_shell(text, executable, code, body_start, body_stop)
-                for line_index in range(index + 1, body):
-                    contexts[line_index] = "shell"
-                    regions[line_index] = next_region
-                next_region += 1
-            else:
-                # Literal text: no comment syntax applies, so nothing is
-                # stripped and nothing is blanked.
-                for line_index in range(index + 1, body):
-                    contexts[line_index] = "literal"
-        index = body
+def all_values(text: str) -> list[tuple[tuple[str, ...], str]]:
+    """Every scalar and its path, so a rejection can say where the mention IS."""
+    found: list[tuple[tuple[str, ...], str]] = []
 
-    return contexts, regions, owners
+    def walk(node: object, path: tuple[str, ...]) -> None:
+        if isinstance(node, dict):
+            for key, value in node.items():
+                walk(value, (*path, str(key)))
+        elif isinstance(node, list):
+            for index, item in enumerate(node):
+                walk(item, (*path, f"[{index}]"))
+        elif isinstance(node, str):
+            found.append((path, node))
+
+    for document in yaml.safe_load_all(text):
+        if document is not None:
+            walk(document, ())
+    return found
 
 
 # --------------------------------------------------------------------------
@@ -413,7 +420,11 @@ def _scan_yaml(
 
 
 def scan(relative_path: str, text: str) -> list[SourceLine]:
-    """Classify every line of ``text`` using the language ``relative_path`` implies.
+    """Classify every line of a whole-file SCRIPT in its own language.
+
+    Handles ``.sh`` and ``.ps1``. YAML is not scanned line by line any more -
+    :func:`executed_values` parses it instead - so passing a ``.yml`` here
+    raises, rather than silently returning an unclassified file.
 
     Raises :class:`UnknownLanguage` rather than guessing. A silent identity
     fallback would reinstate substring semantics with no visible failure.
@@ -423,16 +434,12 @@ def scan(relative_path: str, text: str) -> list[SourceLine]:
     code = list(text)
     spans = _line_spans(text)
 
-    if lowered.endswith((".yml", ".yaml")):
-        contexts, regions, owners = _scan_yaml(text, executable, code, spans)
-    elif lowered.endswith(".sh"):
+    if lowered.endswith(".sh"):
         _scan_shell(text, executable, code, 0, len(text))
-        contexts, regions = ["shell"] * len(spans), [0] * len(spans)
-        owners = [None] * len(spans)
+        context = "shell"
     elif lowered.endswith(".ps1"):
         _scan_powershell(text, executable, code)
-        contexts, regions = ["powershell"] * len(spans), [0] * len(spans)
-        owners = [None] * len(spans)
+        context = "powershell"
     else:
         raise UnknownLanguage(
             f"no scanner for {relative_path!r}. Add one rather than falling back to a "
@@ -442,45 +449,17 @@ def scan(relative_path: str, text: str) -> list[SourceLine]:
 
     executable_joined = "".join(executable)
     code_joined = "".join(code)
-
-    lines: list[SourceLine] = []
-    #: (indent, key) of each mapping key currently open, innermost last. This
-    #: computes OWNERSHIP structurally - which key's value a line contributes to
-    #: - rather than recognising the spellings that happen to appear in these
-    #: four files today. An inline value belongs to the key on its own line; a
-    #: block-scalar body belongs to the block's key; a sequence item belongs to
-    #: the nearest enclosing key at a shallower indent. All three are the same
-    #: question, and fitting only the spelling in front of you is how the 2/18
-    #: defect arose.
-    open_keys: list[tuple[int, str]] = []
-    for index, (start, stop) in enumerate(spans):
-        executable_line = executable_joined[start:stop]
-        key = owners[index]
-        if key is None and contexts[index] == "yaml":
-            key_match = _YAML_KEY.match(executable_line)
-            indent = len(executable_line) - len(executable_line.lstrip())
-            if key_match:
-                key = key_match.group("key")
-                while open_keys and open_keys[-1][0] >= indent:
-                    open_keys.pop()
-                open_keys.append((indent, key))
-            elif executable_line.strip().startswith("- "):
-                for open_indent, open_key in reversed(open_keys):
-                    if open_indent < indent:
-                        key = open_key
-                        break
-        lines.append(
-            SourceLine(
-                number=index + 1,
-                raw=text[start:stop],
-                executable=executable_line,
-                code=code_joined[start:stop],
-                context=contexts[index],
-                region=regions[index],
-                key=key,
-            )
+    return [
+        SourceLine(
+            number=index + 1,
+            raw=text[start:stop],
+            executable=executable_joined[start:stop],
+            code=code_joined[start:stop],
+            context=context,
+            region=0,
         )
-    return lines
+        for index, (start, stop) in enumerate(spans)
+    ]
 
 
 def executable_text(lines: list[SourceLine]) -> str:
@@ -565,49 +544,104 @@ def invocation_problems(
     text: str,
     needle: str,
     contexts: frozenset[str] | None = None,
-    keys: frozenset[str] | None = None,
+    paths: tuple[tuple[tuple[str, ...], bool], ...] | None = None,
 ) -> list[str]:
     """Every reason ``text`` does not demonstrably EXECUTE ``needle``.
 
-    ``keys`` constrains OWNERSHIP - which key's value the invocation forms - and
-    is the structural question a YAML route actually asks. ``contexts``
-    constrains the LANGUAGE whose comment rules produced the line, which is a
-    lexical fact; it is the right constraint for a whole-file script and the
-    WRONG one for YAML, where the same executed position is spelled inline
-    (context ``yaml``) or as a block scalar (context ``shell``). Asserting the
-    lexical property there rejects 16 of the 18 ways a workflow spells ``run:``.
+    For a YAML route, ``paths`` names the positions the tool runs and the
+    question is answered structurally by a parser. For a whole-file script,
+    ``contexts`` names the language and every line is executable code.
 
     An empty list means at least one occurrence survives comment stripping, sits
     in an executed position, and is not preceded by an unconditional top-level
-    exit. Any occurrence satisfying all three is enough; the others may be prose.
+    exit.
     """
-    lines = scan(relative_path, text)
+    if relative_path.lower().endswith((".yml", ".yaml")):
+        if paths is None:
+            raise ValueError(
+                f"{relative_path}: no executed-path patterns supplied. Refusing to guess "
+                "which positions a tool executes - guessing is what made this check "
+                "accept `with: run:`, which never runs."
+            )
+        return _yaml_problems(relative_path, text, needle, paths)
+    return _script_problems(relative_path, text, needle, contexts)
 
+
+def _yaml_problems(
+    relative_path: str,
+    text: str,
+    needle: str,
+    patterns: tuple[tuple[tuple[str, ...], bool], ...],
+) -> list[str]:
+    try:
+        values = executed_values(text, patterns)
+    except yaml.YAMLError as error:
+        return [
+            f"{relative_path}: could not be parsed as YAML ({type(error).__name__}). This "
+            "check fails CLOSED: a route file too broken to parse is reported, never "
+            f"certified as correctly wired. {error}"
+        ]
+
+    blocked: list[ExecutedValue] = []
+    for value in values:
+        if not value.shell:
+            if needle in value.value:
+                return []
+            continue
+        # A shell script: a '#' inside it is the shell's comment, which a YAML
+        # parser neither can nor should strip.
+        lines = scan("body.sh", value.value)
+        hits = [line for line in lines if needle in line.executable]
+        if not hits:
+            continue
+        if any(_terminator_before(lines, line) is None for line in hits):
+            return []
+        blocked.append(value)
+
+    if blocked:
+        detail = ", ".join(".".join(value.path) for value in blocked)
+        return [
+            f"{relative_path}: the invocation at {detail} is unreachable after an "
+            "unconditional top-level exit earlier in the same script."
+        ]
+
+    wanted = sorted(".".join(pattern) for pattern, _ in patterns)
+    try:
+        elsewhere = [path for path, value in all_values(text) if needle in value]
+    except yaml.YAMLError:  # pragma: no cover - executed_values would have raised first
+        elsewhere = []
+    if elsewhere:
+        where = ", ".join(".".join(path) for path in elsewhere)
+        return [
+            f"{relative_path}: {needle!r} appears at {where}, and none of those is a "
+            f"position this tool executes. This route runs {wanted}. A value sitting "
+            "anywhere else - an action input, an environment variable, a name, a "
+            "description, or a key later overridden by a duplicate - is not a wiring. "
+            "Update this rule if the invocation legitimately moved."
+        ]
+    if needle in text:
+        return [
+            f"{relative_path}: {needle!r} is PRESENT in the file but absent from the parsed "
+            "document, so it survives only in a comment. Commenting out the invocation "
+            "disables the check exactly as deleting it does."
+        ]
+    return [
+        f"{relative_path}: {needle!r} is absent entirely; this route no longer runs the "
+        "secrets baseline validator."
+    ]
+
+
+def _script_problems(
+    relative_path: str, text: str, needle: str, contexts: frozenset[str] | None
+) -> list[str]:
+    lines = scan(relative_path, text)
     positioned = [
         line
         for line in lines
-        if needle in line.executable
-        and (contexts is None or line.context in contexts)
-        and (keys is None or line.key in keys)
+        if needle in line.executable and (contexts is None or line.context in contexts)
     ]
 
     if not positioned:
-        surviving = [line for line in lines if needle in line.executable]
-        if surviving:
-            where = ", ".join(
-                f"line {line.number} (context={line.context}, key={line.key})" for line in surviving
-            )
-            required = []
-            if contexts is not None:
-                required.append(f"context in {sorted(contexts)}")
-            if keys is not None:
-                required.append(f"the value of one of {sorted(keys)}")
-            return [
-                f"{relative_path}: {needle!r} survives comment stripping but not in an "
-                f"executed position. Found at {where}; this route requires "
-                + " and ".join(required or ["an executed position"])
-                + ". Update this rule if the invocation legitimately moved."
-            ]
         if needle in text:
             commented = [line.number for line in lines if needle in line.raw]
             return [

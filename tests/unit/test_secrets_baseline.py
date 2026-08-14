@@ -355,18 +355,29 @@ def test_empty_entry_list_fails(results) -> None:
 #     elsewhere and is out of this slice's scope by contract.
 # --------------------------------------------------------------------------
 
-#: What each route must do with the invocation. For a whole-file script the
-#: constraint is the LANGUAGE (the entire file is executed code). For YAML it is
-#: OWNERSHIP - which key's value the invocation forms - because the same
-#: executed position is spelled inline, as a block scalar, or as a sequence, and
-#: those produce different lexical contexts. Constraining the context there
-#: rejected 16 of the 18 ways this workflow spells `run:`.
-ROUTE_RULES: dict[str, tuple[frozenset[str] | None, frozenset[str] | None]] = {
-    ".github/workflows/ci.yml": (None, frozenset({"run"})),
-    ".pre-commit-config.yaml": (None, frozenset({"entry", "args"})),
+#: Where each route actually EXECUTES a command. For a whole-file script the
+#: constraint is the LANGUAGE, because every line of it is executed code. For
+#: YAML it is the KEY PATH, resolved by a parser: GitHub Actions runs
+#: `jobs.*.steps[].run`, pre-commit runs `repos[].hooks[].entry` and `...args[]`.
+#: Those are the tools' schemas, not spellings observed in these files - which is
+#: the difference between a rule and a pattern-match. It never has to name
+#: `with:` or `env:`: a value there simply is not at an executed path, so no
+#: decoy-shaped exclusion is needed.
+CI_STEP_RUN = (("jobs", "*", "steps", "run"), True)
+PRECOMMIT_ENTRY = (("repos", "hooks", "entry"), False)
+PRECOMMIT_ARGS = (("repos", "hooks", "args"), False)
+
+ROUTE_RULES: dict[
+    str, tuple[frozenset[str] | None, tuple[tuple[tuple[str, ...], bool], ...] | None]
+] = {
+    ".github/workflows/ci.yml": (None, (CI_STEP_RUN,)),
+    ".pre-commit-config.yaml": (None, (PRECOMMIT_ENTRY, PRECOMMIT_ARGS)),
     "scripts/check.ps1": (frozenset({"powershell"}), None),
     "scripts/check.sh": (frozenset({"shell"}), None),
 }
+
+YAML_ROUTES = [path for path, (_, paths) in ROUTE_RULES.items() if paths is not None]
+SCRIPT_ROUTES = [path for path, (_, paths) in ROUTE_RULES.items() if paths is None]
 
 VALIDATOR = "check_secrets_baseline"
 
@@ -381,8 +392,8 @@ def route_text(relative_path: str) -> str:
 
 
 def route_problems(relative_path: str, text: str) -> list[str]:
-    contexts, keys = ROUTE_RULES[relative_path]
-    return source_scan.invocation_problems(relative_path, text, VALIDATOR, contexts, keys)
+    contexts, paths = ROUTE_RULES[relative_path]
+    return source_scan.invocation_problems(relative_path, text, VALIDATOR, contexts, paths)
 
 
 def dense(text: str) -> int:
@@ -425,19 +436,37 @@ def with_the_invocation_commented_out(text: str, opener: str = "# ") -> str:
 
 def test_the_route_scan_is_not_vacuous() -> None:
     assert len(ROUTE_RULES) == 4, "the four historical routes must all still be covered"
+    assert len(YAML_ROUTES) == 2 and len(SCRIPT_ROUTES) == 2
     for relative_path in sorted(ROUTE_RULES):
         text = route_text(relative_path)
         assert text.strip(), f"{relative_path} is empty"
         assert VALIDATOR in text, f"{relative_path} does not mention the validator at all"
+
+    for relative_path in sorted(SCRIPT_ROUTES):
+        text = route_text(relative_path)
         # Raises UnknownLanguage rather than degrading to substring semantics.
-        lines = source_scan.scan(relative_path, text)
-        executable = source_scan.executable_text(lines)
+        executable = source_scan.executable_text(source_scan.scan(relative_path, text))
         assert dense(executable) < dense(text), (
             f"the scan removed nothing from {relative_path}. Every one of these files "
             "carries comments, so a scan that removes nothing is a scan that did not "
             "run - and this whole section would then be asserting a substring again."
         )
         assert VALIDATOR in executable
+
+    for relative_path in sorted(YAML_ROUTES):
+        text = route_text(relative_path)
+        _, paths = ROUTE_RULES[relative_path]
+        assert paths is not None
+        values = source_scan.executed_values(text, paths)
+        assert values, f"no executed values found in {relative_path}; the walk found nothing"
+        joined = "\n".join(value.value for value in values)
+        assert VALIDATOR in joined
+        assert dense(joined) < dense(text), (
+            f"the executed values of {relative_path} are not smaller than the file. If the "
+            "walk ever returned everything, every assertion here would pass vacuously "
+            "while distinguishing nothing."
+        )
+        assert all(value.path for value in values), "executed values carry no path"
 
 
 def test_an_unscanned_file_type_fails_closed() -> None:
@@ -533,25 +562,39 @@ def test_a_deleted_route_file_is_reported_clearly() -> None:
 # --------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize(
-    ("relative_path", "expansion"),
-    [
-        (".github/workflows/ci.yml", "${#files[@]}"),
-        ("scripts/check.sh", "${#FAILURES[@]}"),
-    ],
-)
-def test_parameter_expansion_is_not_mistaken_for_a_comment(
-    relative_path: str, expansion: str
-) -> None:
-    """Both real shell routes contain a '#' that is NOT a comment.
+def test_parameter_expansion_is_not_mistaken_for_a_comment() -> None:
+    """`scripts/check.sh` contains a '#' that is NOT a comment.
 
-    ``line.split("#")[0]`` truncates these lines mid-expression. That is why the
-    scanner tracks quoting and word boundaries instead.
+    ``line.split("#")[0]`` truncates that line mid-expression. That is why the
+    shell scanner tracks quoting and word boundaries instead - and it is the
+    half of the problem a YAML parser cannot help with.
     """
+    relative_path = "scripts/check.sh"
+    expansion = "${#FAILURES[@]}"
     text = route_text(relative_path)
     assert expansion in text, "the probe is stale; pick an expansion the file still has"
     executable = source_scan.executable_text(source_scan.scan(relative_path, text))
     assert expansion in executable
+
+
+def test_parameter_expansion_survives_inside_a_workflow_run_body() -> None:
+    """The same hazard one layer down: `${#files[@]}` lives inside a `run:` body.
+
+    The parser hands back the script verbatim; the shell scanner then strips
+    comments from it. Both halves have to be right for this to survive.
+    """
+    relative_path = ".github/workflows/ci.yml"
+    expansion = "${#files[@]}"
+    text = route_text(relative_path)
+    assert expansion in text, "the probe is stale; pick an expansion the file still has"
+    _, paths = ROUTE_RULES[relative_path]
+    assert paths is not None
+    bodies = [value.value for value in source_scan.executed_values(text, paths)]
+    assert any(expansion in body for body in bodies), "not in any executed run body"
+    stripped = "\n".join(
+        source_scan.executable_text(source_scan.scan("body.sh", body)) for body in bodies
+    )
+    assert expansion in stripped
 
 
 # --------------------------------------------------------------------------
@@ -665,12 +708,15 @@ def test_precommit_entry_is_not_shell_interpreted() -> None:
     """A '#' in an `entry:` is a literal argument, not a comment.
 
     pre-commit shlex-splits `entry` and execs it; no shell sees it. Stripping
-    comments there would corrupt the value, which is why only `run:` is treated
-    as a shell script.
+    comments there would corrupt the value, which is why `entry` is declared
+    non-shell while `run:` is declared shell.
     """
-    source = "repos:\n  - hooks:\n      - entry: |\n          python x.py --tag '#1'\n"
-    executable = source_scan.executable_text(source_scan.scan("x.yaml", source))
-    assert "--tag '#1'" in executable
+    source = (
+        "repos:\n  - repo: local\n    hooks:\n      - entry: |\n          python x.py --tag '#1'\n"
+    )
+    values = source_scan.executed_values(source, (PRECOMMIT_ENTRY, PRECOMMIT_ARGS))
+    assert values, "the entry value was not found at all"
+    assert "--tag '#1'" in values[0].value
 
 
 @pytest.mark.parametrize(
@@ -760,63 +806,65 @@ def test_powershell_here_strings_are_data() -> None:
     assert "real_command" in executable
 
 
-def test_yaml_comment_rules() -> None:
-    source = 'a: 1 # gone\nb: "kept # inside"\n'
-    executable = source_scan.executable_text(source_scan.scan("x.yml", source))
-    assert "gone" not in executable
-    assert "kept # inside" in executable
+def test_yaml_comments_vanish_from_the_parsed_document() -> None:
+    """The parser gives this for free, which is most of why it is used.
+
+    A commented-out key is simply not in the tree, and a '#' inside a value is
+    part of the value. The hand-rolled scanner had to implement both, and got
+    the second one right only after being told about it.
+    """
+    source = 'a: 1 # gone\nb: "kept # inside"\nc: 2\n'
+    values = dict(source_scan.all_values(source))
+    assert values[("b",)] == "kept # inside"
+    assert not any("gone" in value for value in values.values())
 
 
-def test_yaml_block_scalars_are_owned_by_their_key() -> None:
+def test_executed_paths_separate_a_script_from_prose() -> None:
     """The distinction that makes the workflow route checkable at all.
 
-    A `run:` body is a shell SCRIPT, so shell comment rules apply to it. Any
-    other block scalar is literal text - nothing is stripped from it, and
-    nothing is blanked either. Both belong to their key, and it is OWNERSHIP,
-    not the lexical context, that decides whether the position is executed.
-    Blanking non-script blocks would reach the same verdict for prose by making
-    it invisible; rejecting it by key is the same answer for an honest reason.
+    Both values are present in the document and neither is hidden. Only the
+    PATH separates the one that runs from the one that merely describes.
     """
     source = (
-        "steps:\n"
-        "  - name: real\n"
-        "    run: |\n"
-        "      python scripts/check_secrets_baseline.py\n"
-        "  - name: prose\n"
-        "    description: |\n"
-        "      python scripts/check_secrets_baseline.py\n"
+        "jobs:\n"
+        "  j:\n"
+        "    steps:\n"
+        "      - name: real\n"
+        "        run: |\n"
+        "          python scripts/check_secrets_baseline.py\n"
+        "      - name: prose\n"
+        "        description: |\n"
+        "          python scripts/check_secrets_baseline.py\n"
     )
-    lines = source_scan.scan("x.yml", source)
-    by_number = {line.number: line for line in lines}
-    assert by_number[4].context == "shell"
-    assert by_number[4].key == "run"
-    assert by_number[7].context == "literal"
-    assert by_number[7].key == "description"
-    # Both survive stripping; only ownership separates them.
-    assert "check_secrets_baseline" in by_number[7].executable
-    assert (
-        source_scan.invocation_problems(
-            "x.yml", source, "check_secrets_baseline", None, frozenset({"run"})
-        )
-        == []
+    assert source_scan.invocation_problems("x.yml", source, VALIDATOR, None, (CI_STEP_RUN,)) == []
+    without_run = source.replace(
+        "        run: |\n          python scripts/check_secrets_baseline.py\n", ""
     )
+    assert VALIDATOR in without_run, "the description still mentions it"
     assert (
-        source_scan.invocation_problems(
-            "x.yml",
-            source.replace("    run: |\n      python scripts/check_secrets_baseline.py\n", ""),
-            "check_secrets_baseline",
-            None,
-            frozenset({"run"}),
-        )
-        != []
+        source_scan.invocation_problems("x.yml", without_run, VALIDATOR, None, (CI_STEP_RUN,)) != []
     )
 
 
 def test_a_commented_line_inside_a_run_block_is_stripped_as_shell() -> None:
-    source = "steps:\n  - run: |\n      # python scripts/check_secrets_baseline.py\n      true\n"
-    executable = source_scan.executable_text(source_scan.scan("x.yml", source))
-    assert "check_secrets_baseline" not in executable
-    assert "true" in executable
+    """The half a YAML parser cannot do: inside a run body, '#' is the shell's.
+
+    To the parser both documents are identical apart from two characters in a
+    string. Only the shell scanner can tell that one of them runs nothing.
+    """
+    commented = (
+        "jobs:\n"
+        "  j:\n"
+        "    steps:\n"
+        "      - run: |\n"
+        "          # python scripts/check_secrets_baseline.py\n"
+        "          true\n"
+    )
+    live = commented.replace("# python", "python")
+    assert (
+        source_scan.invocation_problems("x.yml", commented, VALIDATOR, None, (CI_STEP_RUN,)) != []
+    )
+    assert source_scan.invocation_problems("x.yml", live, VALIDATOR, None, (CI_STEP_RUN,)) == []
 
 
 # --------------------------------------------------------------------------
@@ -987,3 +1035,287 @@ def test_without_the_flag_a_missing_reference_only_skips(tmp_path) -> None:
     )
     assert completed.returncode == 0, completed.stdout + completed.stderr
     assert "SKIPPED" in completed.stdout
+
+
+# --------------------------------------------------------------------------
+# The accept battery. Fourteen legitimate spellings, NONE of which appears in
+# any of the four route files today. This exists because the guard was twice
+# fitted to the spellings that happened to be in front of it: it demanded a
+# 2/18 minority `run:` form, and it demanded one of the two ways to write
+# `args:`. A rule that only accepts what the tree already contains is a
+# pattern-match wearing a rule's clothes.
+#
+# Treat this as the definition of "did not lose the accept side". A change that
+# turns any of these red has narrowed the guard, whatever else it fixed.
+# --------------------------------------------------------------------------
+
+WORKFLOW_ACCEPT = {
+    "dash and key on one line": (
+        "jobs:\n  j:\n    steps:\n      - name: s\n        run: python "
+        "scripts/check_secrets_baseline.py\n"
+    ),
+    "run after a nested env block": (
+        "jobs:\n  j:\n    steps:\n      - name: s\n        env:\n          FOO: bar\n"
+        "        run: python scripts/check_secrets_baseline.py\n"
+    ),
+    "four-space indent": (
+        "jobs:\n    j:\n        steps:\n            - name: s\n              run: python "
+        "scripts/check_secrets_baseline.py\n"
+    ),
+    "inside a matrix job": (
+        "jobs:\n  j:\n    strategy:\n      matrix:\n        os: [ubuntu-latest]\n"
+        "    steps:\n      - run: python scripts/check_secrets_baseline.py\n"
+    ),
+    "step following a prior step with:": (
+        "jobs:\n  j:\n    steps:\n      - uses: a/b@v1\n        with:\n          run: decoy\n"
+        "      - run: python scripts/check_secrets_baseline.py\n"
+    ),
+    "keep-chomped block": (
+        "jobs:\n  j:\n    steps:\n      - run: |-\n          python "
+        "scripts/check_secrets_baseline.py\n"
+    ),
+    "explicit indent indicator": (
+        "jobs:\n  j:\n    steps:\n      - run: |2\n          python "
+        "scripts/check_secrets_baseline.py\n"
+    ),
+    "double-quoted inline": (
+        'jobs:\n  j:\n    steps:\n      - run: "python scripts/check_secrets_baseline.py"\n'
+    ),
+    "flow-mapping step": (
+        "jobs:\n  j:\n    steps:\n      - {name: s, run: python "
+        "scripts/check_secrets_baseline.py}\n"
+    ),
+    "anchor aliased into run": (
+        "x-templates:\n  cmd: &cmd python scripts/check_secrets_baseline.py\n"
+        "jobs:\n  j:\n    steps:\n      - run: *cmd\n"
+    ),
+}
+
+PRECOMMIT_ACCEPT = {
+    "multi-item block-sequence args": (
+        "repos:\n  - repo: local\n    hooks:\n      - id: s\n        entry: python\n"
+        "        args:\n          - -X\n          - scripts/check_secrets_baseline.py\n"
+    ),
+    "entry with keys after it": (
+        "repos:\n  - repo: local\n    hooks:\n      - id: s\n"
+        "        entry: python scripts/check_secrets_baseline.py\n        language: system\n"
+    ),
+    "single-quoted entry": (
+        "repos:\n  - repo: local\n    hooks:\n      - id: s\n"
+        "        entry: 'python scripts/check_secrets_baseline.py'\n"
+    ),
+    "second hook after an unrelated first": (
+        "repos:\n  - repo: local\n    hooks:\n      - id: other\n        entry: true\n"
+        "      - id: s\n        entry: python scripts/check_secrets_baseline.py\n"
+    ),
+    "flow-mapping hook": (
+        "repos:\n  - repo: local\n    hooks:\n      - {id: s, entry: python "
+        "scripts/check_secrets_baseline.py, language: system}\n"
+    ),
+    "alias into entry": (
+        "x: &cmd python scripts/check_secrets_baseline.py\n"
+        "repos:\n  - repo: local\n    hooks:\n      - id: s\n        entry: *cmd\n"
+    ),
+    "nested alias chain": (
+        "cmd: &cmd python scripts/check_secrets_baseline.py\n"
+        "tmpl: &tmpl\n  entry: *cmd\n"
+        "repos:\n  - repo: local\n    hooks:\n      - id: s\n        <<: *tmpl\n"
+    ),
+    "alias of a whole hook mapping": (
+        "x:\n  hook: &hook\n    id: s\n    entry: python scripts/check_secrets_baseline.py\n"
+        "repos:\n  - repo: local\n    hooks:\n      - *hook\n"
+    ),
+    "merge key": (
+        "base: &base\n  entry: python scripts/check_secrets_baseline.py\n"
+        "repos:\n  - repo: local\n    hooks:\n      - id: s\n        <<: *base\n"
+    ),
+    "duplicate entry, validator LAST": (
+        "repos:\n  - repo: local\n    hooks:\n      - id: s\n        entry: python other.py\n"
+        "        entry: python scripts/check_secrets_baseline.py\n"
+    ),
+}
+
+#: Positions that LOOK executed and are not. Each carries the needle, so a
+#: rejection here can never be the trivial "absent entirely".
+PRECOMMIT_REJECT = {
+    "duplicate entry, validator OVERRIDDEN": (
+        "repos:\n  - repo: local\n    hooks:\n      - id: s\n"
+        "        entry: python scripts/check_secrets_baseline.py\n"
+        "        entry: python other.py\n"
+    ),
+    "alias only into an inert key": (
+        "x: &cmd python scripts/check_secrets_baseline.py\n"
+        "repos:\n  - repo: local\n    hooks:\n      - id: s\n        name: *cmd\n"
+        "        entry: python other.py\n"
+    ),
+}
+
+
+@pytest.mark.parametrize("label", sorted(WORKFLOW_ACCEPT))
+def test_legitimate_workflow_spellings_are_accepted(label: str) -> None:
+    problems = source_scan.invocation_problems(
+        "x.yml", WORKFLOW_ACCEPT[label], VALIDATOR, None, (CI_STEP_RUN,)
+    )
+    assert problems == [], f"false positive on a legitimate workflow spelling ({label}): {problems}"
+
+
+@pytest.mark.parametrize("label", sorted(PRECOMMIT_ACCEPT))
+def test_legitimate_precommit_spellings_are_accepted(label: str) -> None:
+    problems = source_scan.invocation_problems(
+        "x.yaml", PRECOMMIT_ACCEPT[label], VALIDATOR, None, (PRECOMMIT_ENTRY, PRECOMMIT_ARGS)
+    )
+    assert problems == [], f"false positive on a legitimate hook spelling ({label}): {problems}"
+
+
+def test_a_crlf_workflow_is_accepted() -> None:
+    """A CRLF checkout must not read as an unwired route.
+
+    Latent today - .gitattributes pins `*.yml text eol=lf` and all four routes
+    are LF on disk even under core.autocrlf=true - but the previous scanner
+    rejected a CRLF workflow WHOLESALE, which is a false positive waiting for
+    one .gitattributes edit. The parser handles CRLF as a line break, so this
+    costs nothing to keep true; the test is what survives the implementation.
+    """
+    source = WORKFLOW_ACCEPT["dash and key on one line"]
+    assert source_scan.invocation_problems("x.yml", source, VALIDATOR, None, (CI_STEP_RUN,)) == []
+    crlf = source.replace("\n", "\r\n")
+    assert crlf != source
+    assert source_scan.invocation_problems("x.yml", crlf, VALIDATOR, None, (CI_STEP_RUN,)) == []
+
+
+# --------------------------------------------------------------------------
+# The reject battery. A value named `run` is not a value that RUNS.
+#
+# These are the decoys that make the difference between asking what a key is
+# CALLED and asking where the value IS. Note that nothing in the rule mentions
+# `with` or `env`: a rule spelled "not under `with`" would be fitted to the
+# decoy in front of it, which is the mistake that produced the 2/18 defect.
+# --------------------------------------------------------------------------
+
+WORKFLOW_REJECT = {
+    "with: run: as a block scalar": (
+        "jobs:\n  j:\n    steps:\n      - uses: third/party@v1\n        with:\n"
+        "          run: |\n            python scripts/check_secrets_baseline.py\n"
+    ),
+    "with: run: inline": (
+        "jobs:\n  j:\n    steps:\n      - uses: third/party@v1\n        with:\n"
+        "          run: python scripts/check_secrets_baseline.py\n"
+    ),
+    "env: var named run": (
+        "jobs:\n  j:\n    steps:\n      - uses: third/party@v1\n        env:\n"
+        "          run: python scripts/check_secrets_baseline.py\n"
+    ),
+    "defaults.run.shell": (
+        "jobs:\n  j:\n    defaults:\n      run:\n        shell: python "
+        "scripts/check_secrets_baseline.py\n    steps:\n      - run: true\n"
+    ),
+    "anchor aliased only into env": (
+        "x-templates:\n  cmd: &cmd python scripts/check_secrets_baseline.py\n"
+        "jobs:\n  j:\n    steps:\n      - env:\n          run: *cmd\n        uses: a/b@v1\n"
+    ),
+}
+
+
+@pytest.mark.parametrize("label", sorted(WORKFLOW_REJECT))
+def test_a_value_merely_named_run_is_rejected(label: str) -> None:
+    """Guard green plus validator never running is the silent failure.
+
+    A false positive is loud and self-correcting: it fires, someone reads the
+    message, the rule gets updated. A false negative says nothing at all, and
+    the check it was guarding is simply gone.
+    """
+    source = WORKFLOW_REJECT[label]
+    assert VALIDATOR in source, "the decoy must contain the needle, or it proves nothing"
+    problems = source_scan.invocation_problems("x.yml", source, VALIDATOR, None, (CI_STEP_RUN,))
+    assert problems != [], f"a non-executed position was ACCEPTED ({label})"
+
+
+@pytest.mark.parametrize("label", sorted(PRECOMMIT_REJECT))
+def test_a_precommit_position_that_does_not_execute_is_rejected(label: str) -> None:
+    """Last-wins is what pre-commit runs, so it is what the verdict must use.
+
+    The overridden-duplicate case is the one that decided the loader: the needle
+    is present, uncommented, at a key literally named `entry`, and it is not
+    what executes. A rule reading the parsed document with duplicates preserved
+    accepts it.
+    """
+    source = PRECOMMIT_REJECT[label]
+    assert VALIDATOR in source, "the decoy must contain the needle, or it proves nothing"
+    problems = source_scan.invocation_problems(
+        "x.yaml", source, VALIDATOR, None, (PRECOMMIT_ENTRY, PRECOMMIT_ARGS)
+    )
+    assert problems != [], f"a non-executed position was ACCEPTED ({label})"
+
+
+# --------------------------------------------------------------------------
+# Failing closed. An unparseable or unconfigured route must never pass.
+# --------------------------------------------------------------------------
+
+
+def test_unparseable_yaml_fails_closed() -> None:
+    """The needle sits at a REAL executed key, then the file is broken.
+
+    A fail-closed probe whose needle is absent rejects for the trivial reason
+    "absent entirely" and proves nothing. Each of these would be ACCEPTED if the
+    parse error were swallowed, and each is a shape a human edit really produces.
+    """
+    wired = PRECOMMIT_ACCEPT["entry with keys after it"]
+    assert (
+        source_scan.invocation_problems(
+            "x.yaml", wired, VALIDATOR, None, (PRECOMMIT_ENTRY, PRECOMMIT_ARGS)
+        )
+        == []
+    ), "control: the intact document must be accepted, or the breakage proves nothing"
+
+    broken = {
+        "tab indentation": wired.replace("      - id: s\n", "      - id: s\n\tbad: 1\n"),
+        "unclosed quote": wired + '        stages: ["commit\n',
+        "undefined alias": wired + "        stages: *never-defined\n",
+        "outright garbage": wired + "\n\n{[}]::\n",
+    }
+    for label, text in broken.items():
+        assert VALIDATOR in text, f"{label}: the needle must still be present"
+        problems = source_scan.invocation_problems(
+            "x.yaml", text, VALIDATOR, None, (PRECOMMIT_ENTRY, PRECOMMIT_ARGS)
+        )
+        assert problems != [], f"{label}: an unparseable route file was ACCEPTED"
+        assert "could not be parsed" in problems[0], f"{label}: {problems[0]}"
+
+
+def test_a_yaml_route_with_no_declared_paths_fails_closed() -> None:
+    """Refusing to guess which positions a tool executes.
+
+    Guessing is what accepted `with: run:`, which never runs.
+    """
+    with pytest.raises(ValueError, match="no executed-path patterns"):
+        source_scan.invocation_problems("x.yml", "a: 1\n", VALIDATOR)
+
+
+def test_diagnostics_name_the_schema_path() -> None:
+    """What line numbers were traded for, and why the trade is defensible.
+
+    `safe_load` is used for the VERDICT because its semantics - duplicate keys
+    resolved last-wins, `<<` merges expanded - are literally what pre-commit and
+    Actions execute. It discards line marks. `compose` keeps marks but preserves
+    duplicates, so a compose-based verdict accepts a file whose `entry:` is
+    overridden later. A wrong line number is an annoyance; a wrong verdict is
+    the failure, so the marks went.
+
+    The replacement is arguably better diagnostics: a path says WHY a position
+    is not executed, where a line number only says where it sits.
+    """
+    for relative_path in sorted(YAML_ROUTES):
+        text = route_text(relative_path)
+        _, paths = ROUTE_RULES[relative_path]
+        assert paths is not None
+        hits = [v for v in source_scan.executed_values(text, paths) if VALIDATOR in v.value]
+        assert hits, f"{relative_path}: the invocation was not found at an executed path"
+        for hit in hits:
+            assert hit.path, "an executed value carries no path"
+
+    # A rejection must say where the mention actually is, not merely that it is
+    # in the wrong place.
+    decoy = WORKFLOW_REJECT["with: run: inline"]
+    problems = source_scan.invocation_problems("x.yml", decoy, VALIDATOR, None, (CI_STEP_RUN,))
+    assert problems and "with.run" in problems[0]
+    assert "jobs.*.steps.run" in problems[0], "the message must say what this route DOES run"
