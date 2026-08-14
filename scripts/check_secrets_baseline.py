@@ -248,19 +248,49 @@ def git_show(rev: str, path: str, root: pathlib.Path) -> str | None:
     return completed.stdout.decode("utf-8")
 
 
-def resolve_reference(explicit: str | None, root: pathlib.Path) -> tuple[str, str] | None:
+def is_self_reference(rev: str) -> bool:
+    """True when ``rev`` names the commit being validated rather than a 'before'.
+
+    ``HEAD`` is the commit under validation. Once a corruption is COMMITTED - which
+    is exactly the case CI exists to catch - ``HEAD:.secrets.baseline`` is the
+    corrupted file itself, so the directional checks compare it against itself and
+    can never fail. Measured: with three entries genuinely deleted and committed,
+    a HEAD-referenced run reported "passed... nothing lost".
+
+    Only the literal is rejected, never a resolved SHA that merely coincides with
+    HEAD. On a push to ``main`` the merge base legitimately IS the pushed commit,
+    and failing there would break the default branch for a healthy no-op.
+    """
+    return rev.strip() in {"HEAD", "@"}
+
+
+def resolve_reference(
+    explicit: str | None,
+    root: pathlib.Path,
+    require_reference: bool = False,
+) -> tuple[str, str] | None:
     """Return (revision, baseline text) for the 'before' side, or None.
 
     Resolution order, most specific first. The fork point is preferred over a
     branch tip so that a branch which is merely BEHIND main is not accused of
     deleting entries that main gained after the branch was cut.
+
+    ``HEAD`` is a last-resort fallback for local runs with uncommitted changes,
+    and is EXCLUDED under ``require_reference``. Including it there made the flag
+    vacuous: ``git show HEAD:.secrets.baseline`` nearly always succeeds, so a
+    reference was always "resolved", the flag never fired, and the directional
+    check silently degraded into a self-comparison that self-certifies. A flag
+    that reports success because it compared a file to itself is worse than no
+    flag, so it now fails closed.
     """
     candidates: list[str] = []
     if explicit:
+        if require_reference and is_self_reference(explicit):
+            return None
         candidates.append(explicit)
     else:
         from_env = os.environ.get("SECRETS_BASELINE_REF")
-        if from_env:
+        if from_env and not (require_reference and is_self_reference(from_env)):
             candidates.append(from_env)
         merge_base = subprocess.run(
             ["git", "merge-base", "HEAD", "origin/main"],
@@ -269,7 +299,9 @@ def resolve_reference(explicit: str | None, root: pathlib.Path) -> tuple[str, st
         )
         if merge_base.returncode == 0:
             candidates.append(merge_base.stdout.decode().strip())
-        candidates.extend(["origin/main", "HEAD"])
+        candidates.append("origin/main")
+        if not require_reference:
+            candidates.append("HEAD")
 
     for rev in candidates:
         if not rev:
@@ -298,7 +330,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--require-reference",
         action="store_true",
-        help="fail rather than skip when no reference baseline can be resolved (use in CI)",
+        help=(
+            "fail rather than skip when no reference baseline can be resolved (use in CI). "
+            "HEAD is excluded under this flag, because it is the commit being validated"
+        ),
     )
     parser.add_argument(
         "--repo-root",
@@ -325,12 +360,15 @@ def main(argv: list[str] | None = None) -> int:
     problems += entry_problems(candidate_results)
     problems += existence_problems(candidate_results, root)
 
-    resolved = resolve_reference(args.reference, root)
+    baseline_text = baseline_path.read_text(encoding="utf-8")
+    resolved = resolve_reference(args.reference, root, args.require_reference)
     reference: dict[str, Any] | None = None
     if resolved is None:
         message = (
             "no reference baseline could be resolved, so the directional checks "
-            "(counts non-decreasing, files never disappearing) DID NOT RUN"
+            "(counts non-decreasing, files never disappearing) DID NOT RUN. "
+            "HEAD does not count: it is the commit under validation, so comparing "
+            "against it would compare the file with itself"
         )
         if args.require_reference:
             problems.append(message)
@@ -338,14 +376,28 @@ def main(argv: list[str] | None = None) -> int:
             print(f"  SKIPPED: {message}")
     else:
         rev, text = resolved
-        try:
-            reference = json.loads(text)
-            reference_results = load_results(reference, f"{rev}:{BASELINE_NAME}")
-        except ValueError as exc:
-            problems.append(f"reference baseline at {rev} is unusable: {exc}")
+        # Defence in depth. resolve_reference already refuses to hand back HEAD
+        # under --require-reference, so this only fires on a permissive local run
+        # - or on a future edit that reintroduces the fallback.
+        if is_self_reference(rev) and text == baseline_text:
+            message = (
+                f"the only reference available was {rev}, and the file under validation "
+                "is byte-identical to it, so the directional checks would compare it "
+                "against ITSELF and could never fail"
+            )
+            if args.require_reference:
+                problems.append(message)
+            else:
+                print(f"  SKIPPED: {message}")
         else:
-            print(f"  reference: {rev}")
-            problems += direction_problems(candidate_results, reference_results)
+            try:
+                reference = json.loads(text)
+                reference_results = load_results(reference, f"{rev}:{BASELINE_NAME}")
+            except ValueError as exc:
+                problems.append(f"reference baseline at {rev} is unusable: {exc}")
+            else:
+                print(f"  reference: {rev}")
+                problems += direction_problems(candidate_results, reference_results)
 
     for note in advisory_notes(candidate, reference):
         print(f"  note: {note}")

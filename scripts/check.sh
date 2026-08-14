@@ -54,11 +54,27 @@ check() {
 
 secret_scan() {
   local status=0
-  # The file list is passed on argv rather than through `xargs`, which collapses
-  # every child code from 1 to 125 into 123 and so cannot distinguish "a secret
-  # was found" (1) from "the baseline was rewritten" (3).
-  # shellcheck disable=SC2046
-  "${DETECT_HOOK}" --baseline .secrets.baseline $(git ls-files) || status=$?
+  local files=()
+  # Null-delimited into an array, then passed as "${files[@]}". This is the only
+  # form that keeps BOTH properties; each earlier form kept one and lost the other.
+  #
+  #   git ls-files -z | xargs -0 ...   null-safe, but xargs collapses every child
+  #                                    exit code from 1..125 into 123, so a secret
+  #                                    finding (1) and a baseline rewrite (3) become
+  #                                    indistinguishable.
+  #   ... $(git ls-files)              preserves the exit code, but word-splits on
+  #                                    whitespace. MEASURED: a secret planted in
+  #                                    'q2 dir/has space.txt' returns 0 - a silent
+  #                                    pass on a real secret.
+  #
+  # A `while read` loop rather than `mapfile -d ''`: mapfile does not exist at all
+  # on bash 3.2, which is still the system bash on macOS, a platform this script
+  # claims to support. Verified on 3.2.57 and 5.2.37.
+  while IFS= read -r -d '' file; do
+    files+=("$file")
+  done < <(git ls-files -z)
+
+  "${DETECT_HOOK}" --baseline .secrets.baseline "${files[@]}" || status=$?
   case "${status}" in
     0) return 0 ;;
     1)

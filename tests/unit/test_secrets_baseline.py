@@ -31,6 +31,8 @@ from __future__ import annotations
 import copy
 import importlib.util
 import json
+import subprocess
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -315,3 +317,173 @@ def test_every_route_invokes_the_validator(relative_path: str) -> None:
         f"{relative_path} no longer runs the secrets baseline validator; "
         "the corruption this suite reproduces would ship undetected from that route"
     )
+
+
+# --------------------------------------------------------------------------
+# The file list must be NUL-delimited. Measured on Linux with a secret planted
+# in 'q2 dir/has space.txt': `... $(git ls-files)` word-splits and exits 0 - a
+# silent pass on a real secret - while `xargs -0` catches it but collapses the
+# exit code into 123, losing the 1-versus-3 distinction. Reading NUL-delimited
+# names into an array is the only form that keeps both properties.
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("relative_path", [".github/workflows/ci.yml", "scripts/check.sh"])
+def test_shell_routes_read_the_file_list_nul_delimited(relative_path: str) -> None:
+    text = (REPO_ROOT / relative_path).read_text(encoding="utf-8")
+    assert "read -r -d ''" in text and "git ls-files -z" in text, (
+        f"{relative_path} must read tracked filenames NUL-delimited into an array"
+    )
+    assert 'detect-secrets-hook --baseline .secrets.baseline "${files[@]}"' in text or (
+        '--baseline .secrets.baseline "${files[@]}"' in text
+    ), f"{relative_path} must pass the array quoted, or a whitespace filename is skipped"
+
+
+@pytest.mark.parametrize("relative_path", [".github/workflows/ci.yml", "scripts/check.sh"])
+def test_shell_routes_do_not_word_split_the_file_list(relative_path: str) -> None:
+    """The regression the evaluator measured: a planted secret passing at exit 0."""
+    text = (REPO_ROOT / relative_path).read_text(encoding="utf-8")
+    for forbidden in ("$(git ls-files)", "`git ls-files`"):
+        for line in text.splitlines():
+            stripped = line.strip()
+            if stripped.startswith("#") or not stripped:
+                continue
+            assert forbidden not in stripped, (
+                f"{relative_path} word-splits the file list; a tracked filename "
+                f"containing whitespace would be silently skipped: {stripped!r}"
+            )
+
+
+@pytest.mark.parametrize("relative_path", [".github/workflows/ci.yml", "scripts/check.sh"])
+def test_shell_routes_avoid_mapfile(relative_path: str) -> None:
+    """`mapfile` does not exist on bash 3.2, still the system bash on macOS.
+
+    Verified in containers: 3.2.57 has no `mapfile` builtin at all, while the
+    `while read -r -d ''` loop behaves identically on 3.2.57 and 5.2.37.
+    """
+    text = (REPO_ROOT / relative_path).read_text(encoding="utf-8")
+    for line in text.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("#") or not stripped:
+            continue
+        assert "mapfile" not in stripped, f"{relative_path} uses mapfile, absent on bash 3.2"
+
+
+# --------------------------------------------------------------------------
+# --require-reference must not be satisfiable by the commit under validation.
+# Measured: with a genuine mode-A corruption COMMITTED, a HEAD-resolved run
+# reported "passed... nothing lost", because it compared the file with itself.
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("rev", ["HEAD", "@", " HEAD "])
+def test_head_is_recognised_as_a_self_reference(rev: str) -> None:
+    assert validator.is_self_reference(rev)
+
+
+@pytest.mark.parametrize("rev", ["origin/main", "7577b619", "main", "HEAD~1"])
+def test_a_real_revision_is_not_a_self_reference(rev: str) -> None:
+    """A resolved SHA that merely coincides with HEAD must stay usable.
+
+    On a push to `main` the merge base legitimately IS the pushed commit, and
+    rejecting that would break the default branch for a healthy no-op change.
+    """
+    assert not validator.is_self_reference(rev)
+
+
+def test_explicit_head_is_refused_under_require_reference() -> None:
+    assert validator.resolve_reference("HEAD", REPO_ROOT, require_reference=True) is None
+
+
+def test_head_is_still_allowed_without_require_reference() -> None:
+    resolved = validator.resolve_reference("HEAD", REPO_ROOT, require_reference=False)
+    assert resolved is not None and resolved[0] == "HEAD"
+
+
+def test_require_reference_never_resolves_to_head_in_this_repository() -> None:
+    resolved = validator.resolve_reference(None, REPO_ROOT, require_reference=True)
+    if resolved is not None:
+        assert not validator.is_self_reference(resolved[0])
+
+
+def test_require_reference_fails_when_nothing_can_be_resolved(tmp_path) -> None:
+    """End to end, outside any git repository: the flag must fail closed.
+
+    Previously the candidate list ended with the literal `HEAD`, which nearly
+    always resolves, so this flag could never fire.
+    """
+    (tmp_path / "a.txt").write_text("hello\n", encoding="utf-8")
+    baseline = {
+        "version": "1.5.0",
+        "plugins_used": [],
+        "filters_used": [],
+        "results": {
+            "a.txt": [
+                {
+                    "filename": "a.txt",
+                    "hashed_secret": "e" * 40,
+                    "is_verified": False,
+                    "line_number": 1,
+                    "type": "Hex High Entropy String",
+                }
+            ]
+        },
+    }
+    path = tmp_path / ".secrets.baseline"
+    path.write_text(json.dumps(baseline, indent=2) + "\n", encoding="utf-8")
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            str(REPO_ROOT / "scripts" / "check_secrets_baseline.py"),
+            "--baseline",
+            str(path),
+            "--repo-root",
+            str(tmp_path),
+            "--require-reference",
+        ],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+    )
+    assert completed.returncode == 1, completed.stdout + completed.stderr
+    assert "no reference baseline could be resolved" in completed.stderr
+
+
+def test_without_the_flag_a_missing_reference_only_skips(tmp_path) -> None:
+    """The permissive path must stay usable, and must say so out loud."""
+    (tmp_path / "a.txt").write_text("hello\n", encoding="utf-8")
+    baseline = {
+        "version": "1.5.0",
+        "plugins_used": [],
+        "filters_used": [],
+        "results": {
+            "a.txt": [
+                {
+                    "filename": "a.txt",
+                    "hashed_secret": "e" * 40,
+                    "is_verified": False,
+                    "line_number": 1,
+                    "type": "Hex High Entropy String",
+                }
+            ]
+        },
+    }
+    path = tmp_path / ".secrets.baseline"
+    path.write_text(json.dumps(baseline, indent=2) + "\n", encoding="utf-8")
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            str(REPO_ROOT / "scripts" / "check_secrets_baseline.py"),
+            "--baseline",
+            str(path),
+            "--repo-root",
+            str(tmp_path),
+        ],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+    )
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+    assert "SKIPPED" in completed.stdout
