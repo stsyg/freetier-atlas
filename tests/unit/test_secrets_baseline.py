@@ -363,12 +363,17 @@ def test_empty_entry_list_fails(results) -> None:
 #: the difference between a rule and a pattern-match. It never has to name
 #: `with:` or `env:`: a value there simply is not at an executed path, so no
 #: decoy-shaped exclusion is needed.
-CI_STEP_RUN = (("jobs", "*", "steps", "run"), True)
-PRECOMMIT_ENTRY = (("repos", "hooks", "entry"), False)
-PRECOMMIT_ARGS = (("repos", "hooks", "args"), False)
+#: Each pattern is (schema path, is a shell script, is list-valued). The last
+#: field is the one an earlier version omitted: `args` is a sequence of strings
+#: while `run` and `entry` are single strings, and a value of the wrong shape
+#: does not execute at all. Without it, `run:` written as a sequence - which
+#: GitHub Actions cannot even load - was certified as correctly wired.
+CI_STEP_RUN = (("jobs", "*", "steps", "run"), True, False)
+PRECOMMIT_ENTRY = (("repos", "hooks", "entry"), False, False)
+PRECOMMIT_ARGS = (("repos", "hooks", "args"), False, True)
 
 ROUTE_RULES: dict[
-    str, tuple[frozenset[str] | None, tuple[tuple[tuple[str, ...], bool], ...] | None]
+    str, tuple[frozenset[str] | None, tuple[tuple[tuple[str, ...], bool, bool], ...] | None]
 ] = {
     ".github/workflows/ci.yml": (None, (CI_STEP_RUN,)),
     ".pre-commit-config.yaml": (None, (PRECOMMIT_ENTRY, PRECOMMIT_ARGS)),
@@ -1289,6 +1294,116 @@ def test_a_yaml_route_with_no_declared_paths_fails_closed() -> None:
     """
     with pytest.raises(ValueError, match="no executed-path patterns"):
         source_scan.invocation_problems("x.yml", "a: 1\n", VALIDATOR)
+
+
+# --------------------------------------------------------------------------
+# Arity. A value of the wrong SHAPE does not execute, so it is not a wiring.
+#
+# `args` is a sequence of strings; `run` and `entry` are single strings. An
+# earlier version recorded only whether a value was a shell script, so it
+# iterated every terminal sequence - correct for `args`, and wrong for `run`,
+# where a sequence is not loadable workflow syntax at all.
+#
+# This is the same class as certifying an unparseable file: an invalid config
+# reported as correctly wired. "It fails loudly when the tool runs" was rejected
+# as sufficient grounds for the fail-open case, and it is rejected here for the
+# same reason - the guard exists to say the check is WIRED, and it is not.
+# --------------------------------------------------------------------------
+
+WRONG_SHAPE = {
+    "run: as a sequence": (
+        "x.yml",
+        "jobs:\n  j:\n    steps:\n      - run:\n"
+        "          - python scripts/check_secrets_baseline.py\n",
+        (CI_STEP_RUN,),
+    ),
+    "run: as a mapping": (
+        "x.yml",
+        "jobs:\n  j:\n    steps:\n      - run:\n"
+        "          cmd: python scripts/check_secrets_baseline.py\n",
+        (CI_STEP_RUN,),
+    ),
+    "entry: as a sequence": (
+        "x.yaml",
+        "repos:\n  - repo: local\n    hooks:\n      - id: s\n        entry:\n"
+        "          - python scripts/check_secrets_baseline.py\n",
+        (PRECOMMIT_ENTRY, PRECOMMIT_ARGS),
+    ),
+    "args: as a scalar": (
+        "x.yaml",
+        "repos:\n  - repo: local\n    hooks:\n      - id: s\n        entry: python\n"
+        "        args: scripts/check_secrets_baseline.py\n",
+        (PRECOMMIT_ENTRY, PRECOMMIT_ARGS),
+    ),
+    "args: nested one level too deep": (
+        "x.yaml",
+        "repos:\n  - repo: local\n    hooks:\n      - id: s\n        entry: python\n"
+        "        args:\n          - - scripts/check_secrets_baseline.py\n",
+        (PRECOMMIT_ENTRY, PRECOMMIT_ARGS),
+    ),
+}
+
+
+@pytest.mark.parametrize("label", sorted(WRONG_SHAPE))
+def test_a_value_of_the_wrong_shape_is_rejected(label: str) -> None:
+    relative_path, text, patterns = WRONG_SHAPE[label]
+    assert VALIDATOR in text, "the decoy must contain the needle, or it proves nothing"
+    problems = source_scan.invocation_problems(relative_path, text, VALIDATOR, None, patterns)
+    assert problems != [], f"a value the tool cannot execute was ACCEPTED ({label})"
+
+
+@pytest.mark.parametrize(
+    ("label", "relative_path", "text", "patterns"),
+    [
+        (
+            "run: as a scalar",
+            "x.yml",
+            "jobs:\n  j:\n    steps:\n      - run: python scripts/check_secrets_baseline.py\n",
+            (CI_STEP_RUN,),
+        ),
+        (
+            "args: as a sequence",
+            "x.yaml",
+            "repos:\n  - repo: local\n    hooks:\n      - id: s\n        entry: python\n"
+            "        args:\n          - scripts/check_secrets_baseline.py\n",
+            (PRECOMMIT_ENTRY, PRECOMMIT_ARGS),
+        ),
+    ],
+)
+def test_the_right_shape_is_still_accepted(
+    label: str,
+    relative_path: str,
+    text: str,
+    patterns: tuple[tuple[tuple[str, ...], bool, bool], ...],
+) -> None:
+    """The paired control: arity must reject the wrong shape, not both shapes."""
+    problems = source_scan.invocation_problems(relative_path, text, VALIDATOR, None, patterns)
+    assert problems == [], f"the valid shape was rejected ({label}): {problems}"
+
+
+def test_a_yaml_11_boolean_key_is_a_known_diagnostics_artefact() -> None:
+    """A documented limit, pinned so it is known rather than discovered.
+
+    PyYAML implements YAML 1.1, where a bare `on:` key parses as the boolean
+    True. GitHub workflows use `on:` for triggers, so a mention under it is
+    reported at a path beginning `True.` rather than `on.`.
+
+    The VERDICT is unaffected - no executed path starts at `on` - and this is
+    not repairable rather than merely unfixed: the loaded document cannot say
+    whether the source spelled it `on`, `yes` or `true`. Recording it as an
+    asserted limit is the honest option; guessing a spelling back would be
+    inventing information the parser deliberately discarded.
+    """
+    source = (
+        "on:\n  push:\n    note: see scripts/check_secrets_baseline.py\n"
+        "jobs:\n  j:\n    steps:\n      - run: echo hi\n"
+    )
+    problems = source_scan.invocation_problems("x.yml", source, VALIDATOR, None, (CI_STEP_RUN,))
+    assert problems != [], "a mention under a trigger block is not a wiring"
+    assert "True.push.note" in problems[0], (
+        "if this ever reads 'on.push.note', PyYAML's YAML version changed and this "
+        "documented limit can be retired"
+    )
 
 
 def test_diagnostics_name_the_schema_path() -> None:

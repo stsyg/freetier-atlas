@@ -344,42 +344,77 @@ class ExecutedValue:
 
 
 def _select(
-    node: object, pattern: tuple[str, ...], path: tuple[str, ...] = ()
+    node: object,
+    pattern: tuple[str, ...],
+    path: tuple[str, ...] = (),
+    *,
+    list_valued: bool = False,
 ) -> Iterator[tuple[tuple[str, ...], str]]:
-    """Yield (path, scalar) for every node at ``pattern``.
+    """Yield (path, scalar) for every node at ``pattern``, respecting ARITY.
 
-    A list is traversed transparently without consuming a pattern segment, so
-    ``steps`` being a sequence of step mappings needs no special case, and
-    ``args:`` yields each item. ``*`` matches exactly one mapping key, which is
-    how an arbitrary job id is named.
+    An INTERMEDIATE list is traversed transparently without consuming a pattern
+    segment, so ``steps`` and ``hooks`` being sequences of mappings need no
+    special case. A TERMINAL list is a different question, and the schema
+    answers it: ``args`` is list-valued, while ``run`` and ``entry`` are
+    scalar-valued.
+
+    That distinction is load-bearing. Iterating a terminal list unconditionally
+    - which is what iterating it for ``args`` alone amounts to - accepts
+
+        run:
+          - python scripts/check_secrets_baseline.py
+
+    which GitHub Actions cannot load at all, because ``run`` is typed as a
+    string. The guard would then certify a workflow that never runs as correctly
+    wired: the same class as certifying an unparseable file, which this module
+    already refuses to do. The mirror cases (``entry`` as a sequence, ``args`` as
+    a scalar) are equally invalid and equally rejected, so this encodes the
+    schema rather than the one shape that was reported.
+
+    ``*`` matches exactly one mapping key, which is how an arbitrary job id is
+    named.
     """
-    if isinstance(node, list):
-        for index, item in enumerate(node):
-            yield from _select(item, pattern, (*path, f"[{index}]"))
+    if pattern:
+        if isinstance(node, list):
+            for index, item in enumerate(node):
+                yield from _select(item, pattern, (*path, f"[{index}]"), list_valued=list_valued)
+            return
+        if not isinstance(node, dict):
+            return
+        head, rest = pattern[0], pattern[1:]
+        if head == "*":
+            for key, value in node.items():
+                yield from _select(value, rest, (*path, str(key)), list_valued=list_valued)
+        elif head in node:
+            yield from _select(node[head], rest, (*path, head), list_valued=list_valued)
         return
-    if not pattern:
-        if isinstance(node, str):
-            yield path, node
+
+    if list_valued:
+        # One level only: `args: [[x]]` is not valid either.
+        if isinstance(node, list):
+            for index, item in enumerate(node):
+                if isinstance(item, str):
+                    yield (*path, f"[{index}]"), item
         return
-    if not isinstance(node, dict):
-        return
-    head, rest = pattern[0], pattern[1:]
-    if head == "*":
-        for key, value in node.items():
-            yield from _select(value, rest, (*path, str(key)))
-    elif head in node:
-        yield from _select(node[head], rest, (*path, head))
+    if isinstance(node, str):
+        yield path, node
 
 
 def executed_values(
-    text: str, patterns: tuple[tuple[tuple[str, ...], bool], ...]
+    text: str, patterns: tuple[tuple[tuple[str, ...], bool, bool], ...]
 ) -> list[ExecutedValue]:
     """Every scalar the tool executes, found by walking ``patterns``.
 
-    ``patterns`` pairs a schema path with whether that value is a SHELL SCRIPT.
-    GitHub Actions' ``run:`` is; pre-commit's ``entry`` is not - pre-commit
+    Each pattern is ``(path, is_shell_script, is_list_valued)``.
+
+    ``is_shell_script``: GitHub Actions' ``run:`` is a shell script, so a '#'
+    inside it is a comment. pre-commit's ``entry`` is not - pre-commit
     shlex-splits and execs it with no shell involved, so a '#' there is a
     literal argument and stripping it would corrupt the value.
+
+    ``is_list_valued``: ``args`` is a sequence of strings; ``run`` and ``entry``
+    are single strings. A value of the wrong shape does not execute, so it is
+    not a wiring.
 
     Propagates ``yaml.YAMLError`` so callers fail closed rather than treating an
     unparseable file as one that happens to contain nothing.
@@ -388,8 +423,8 @@ def executed_values(
     for document in yaml.safe_load_all(text):
         if document is None:
             continue
-        for pattern, shell in patterns:
-            for path, value in _select(document, pattern):
+        for pattern, shell, list_valued in patterns:
+            for path, value in _select(document, pattern, list_valued=list_valued):
                 found.append(ExecutedValue(path, value, shell))
     return found
 
@@ -544,7 +579,7 @@ def invocation_problems(
     text: str,
     needle: str,
     contexts: frozenset[str] | None = None,
-    paths: tuple[tuple[tuple[str, ...], bool], ...] | None = None,
+    paths: tuple[tuple[tuple[str, ...], bool, bool], ...] | None = None,
 ) -> list[str]:
     """Every reason ``text`` does not demonstrably EXECUTE ``needle``.
 
@@ -571,7 +606,7 @@ def _yaml_problems(
     relative_path: str,
     text: str,
     needle: str,
-    patterns: tuple[tuple[tuple[str, ...], bool], ...],
+    patterns: tuple[tuple[tuple[str, ...], bool, bool], ...],
 ) -> list[str]:
     try:
         values = executed_values(text, patterns)
@@ -605,7 +640,7 @@ def _yaml_problems(
             "unconditional top-level exit earlier in the same script."
         ]
 
-    wanted = sorted(".".join(pattern) for pattern, _ in patterns)
+    wanted = sorted(".".join(pattern) for pattern, _, _ in patterns)
     try:
         elsewhere = [path for path, value in all_values(text) if needle in value]
     except yaml.YAMLError:  # pragma: no cover - executed_values would have raised first
