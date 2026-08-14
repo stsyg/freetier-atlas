@@ -1,0 +1,38 @@
+{
+  "captured_by": "F008 P3 Google Cloud provider slice (live capture, generated from the live parse)",
+  "fetched_at": "2026-08-14T15:30:00Z",
+  "http_status": 200,
+  "robots_allowed": true,
+  "sha256_original": "85c05faeab62cedfb52b76ae025a56490d07976055935f30b82ff6fed19161c6",
+  "sha256_original_note": "sha256_original is the digest of the exact live bytes this capture was derived from on 2026-08-14. It is NOT reproducible across fetches: cloud.google.com serves per-build markup, so a later fetch of an unchanged page yields a different digest. STRUCTURE, not digest, is the invariant.",
+  "sha256_stored": "af774f5ba6a392f155418517c69f32039b6c29e1104aec679d5eb799eebab39b",
+  "tos_note": "Official Google Cloud documentation (cloud.google.com). https://cloud.google.com/robots.txt has a single 'User-agent: *' group whose Disallow rules cover /console, /landing/, /walkthroughs/, /terms/looker/*, /log, two /partners/resources pages, and the per-language /*/docs/reference/* trees; none of /free/docs/, /firestore/ or /bigquery/ is disallowed, so automated retrieval of this path is permitted. A minimal excerpt is committed for offline, deterministic extraction testing; every retained value and every pinned sentence is reproduced verbatim from the cited live page.",
+  "trim_method": "Removed scripts, navigation, styling and unrelated prose. This capture was GENERATED from the live document's own parse: the retained prose blocks are the exact normalised strings the engine collected from the live page, and the retained table's headers and cells are the exact normalised strings the engine collected from the live target table. Inline markup inside those blocks and cells (anchors, list items, nested elements) was flattened to plain text; the engine normalises a block or cell to its text content, so every retained normalised string is identical to live. This is a deliberate minimal excerpt, not a complete copy of the page.",
+  "live_table_count": 2,
+  "live_table_present": false,
+  "live_table_note": "ASSERTION-ONLY. The live page publishes NOTHING about the Free Trial in a table: its terms are prose. This profile is mode='assertions', declares no table selector, reads no table, and takes 100% of its facts from verbatim prose. This capture therefore contains ZERO <table> elements and none was synthesized. The live document does contain tables (see live_table_count), but they belong to the Free Tier and to an unrelated SKU cost example, and assertion-only extraction never reads a table, so omitting them cannot change what the engine decides.",
+  "non_target_tables_removed": 2,
+  "non_target_tables_removed_note": "MEASURED: assertion-only extraction reads no table, so the live tables are irrelevant to this profile's outcome and none is retained or synthesized.",
+  "target_table_rows_removed": [],
+  "target_table_cells_removed": [],
+  "unpivoted_target_table_columns": [],
+  "ignored_extraction_rows": [],
+  "duplicate_live_blocks_not_retained": [],
+  "live_reconciliation": "LIVE -> FIXTURE (primary): all 5 pinned block(s) occur EXACTLY ONCE in the live document and EXACTLY ONCE in this capture; all 0 live target-table row(s) are present, none removed, none added.",
+  "url": "https://cloud.google.com/free/docs/free-cloud-features#free-trial",
+  "structure": {
+    "asserted_block_sha256": [
+      "094d7bee63a304268b520ff394c9a56ea2b19daf88db3fa7fa12d297a69884bc",
+      "094d7bee63a304268b520ff394c9a56ea2b19daf88db3fa7fa12d297a69884bc",
+      "094d7bee63a304268b520ff394c9a56ea2b19daf88db3fa7fa12d297a69884bc",
+      "10e6b286332abb3393327ed66ced974b8e7200a293b5ff26375440273844ac5d",
+      "10e6b286332abb3393327ed66ced974b8e7200a293b5ff26375440273844ac5d",
+      "26b973df9fb9c0abf6d634e8a98d7f8847002073745bb2a00f7270908f22a3dc",
+      "2d1bbd6e3463258f0c7513c19d721869e7001ce2079571a7d01a45d6a5fdc79c",
+      "2d1bbd6e3463258f0c7513c19d721869e7001ce2079571a7d01a45d6a5fdc79c",
+      "939f8c951a62b43c716ddcbc9b5c1eb033ef51aabf6c0b97cc617648aedb8252"
+    ],
+    "headers": [],
+    "rows": []
+  }
+}

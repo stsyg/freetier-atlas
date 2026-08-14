@@ -1,0 +1,17 @@
+{
+  "captured_by": "F008 P3 Google Cloud provider slice (synthetic scaffold)",
+  "fetched_at": "2026-08-14T15:30:00Z",
+  "http_status": null,
+  "synthetic": true,
+  "negative_fixture_note": "NEGATIVE TEST FIXTURE, NOT A CLAIMED COMPLETE CAPTURE. It is not a record of anything Google Cloud publishes and must never be cited as evidence.",
+  "derived_from": "tests/fixtures/ingest/gcp/html/gcp-firestore-free-tier/source.html",
+  "mutation": "the sentence that establishes the free quota and its continuation condition was deleted. The page still publishes the allowance table, so a reader that trusted the table alone would still call the offer free; the pinned assertion rejects the document instead. A material condition can never be assumed.",
+  "mutation_intent": "Proves the evidence floor: a table without its supporting prose is not enough.",
+  "extraction_profile": "gcp_firestore_free_tier",
+  "sha256_original": null,
+  "sha256_stored": "973dfef42a5ac6406134d030329f80cc42707355c9cbb7bf6ac671bbb44cc3c8",
+  "robots_allowed": true,
+  "tos_note": "No provider bytes were retrieved for this fixture. It is a NEGATIVE test scaffold produced locally; the official Firestore capture it derives from carries the retrieval provenance and terms note.",
+  "trim_method": "not a capture: this document was produced locally by applying one named mutation to the committed official Firestore capture. Mutation: the sentence that establishes the free quota and its continuation condition was deleted. The page still publishes the allowance table, so a reader that trusted the table alone would still call the offer free; the pinned assertion rejects the document instead. A material condition can never be assumed.",
+  "url": "https://cloud.google.com/firestore/pricing"
+}

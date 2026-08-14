@@ -1,0 +1,17 @@
+{
+  "captured_by": "F008 P3 Google Cloud provider slice (synthetic scaffold)",
+  "fetched_at": "2026-08-14T15:30:00Z",
+  "http_status": null,
+  "synthetic": true,
+  "negative_fixture_note": "NEGATIVE TEST FIXTURE, NOT A CLAIMED COMPLETE CAPTURE. It is not a record of anything Google Cloud publishes and must never be cited as evidence.",
+  "derived_from": "tests/fixtures/ingest/gcp/html/gcp-firestore-free-tier/source.html",
+  "mutation": "the tier column header was renamed Quota -> Quotas so the declared header signature no longer selects any table. The adapter must reject with table_not_found rather than scrape whatever table it can find and publish numbers from the wrong context.",
+  "mutation_intent": "Proves the profile is pinned to the live header text, not to column position.",
+  "extraction_profile": "gcp_firestore_free_tier",
+  "sha256_original": null,
+  "sha256_stored": "7c66419d555ee8207a7d59bba71f24986f6a6882ce7af896f3447da30d6ead0a",
+  "robots_allowed": true,
+  "tos_note": "No provider bytes were retrieved for this fixture. It is a NEGATIVE test scaffold produced locally; the official Firestore capture it derives from carries the retrieval provenance and terms note.",
+  "trim_method": "not a capture: this document was produced locally by applying one named mutation to the committed official Firestore capture. Mutation: the tier column header was renamed Quota -> Quotas so the declared header signature no longer selects any table. The adapter must reject with table_not_found rather than scrape whatever table it can find and publish numbers from the wrong context.",
+  "url": "https://cloud.google.com/firestore/pricing"
+}

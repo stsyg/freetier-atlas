@@ -1,0 +1,22 @@
+{
+  "profile": "gcp_bigquery_free_tier",
+  "mime": "text/html",
+  "source_url": "https://cloud.google.com/bigquery/pricing",
+  "candidate_count": 1,
+  "candidates": [
+    {
+      "verification_state": "candidate",
+      "expect_valid": true,
+      "facts": {
+        "storage": "The first 10 GiB per month is free.",
+        "queries_analysis": "The first 1 TiB of query data processed per month is free.",
+        "service": "BigQuery",
+        "offer_type": "recurring_quota",
+        "exhaustion_behaviour": "automatic_billing",
+        "notes": "As part of the Google Cloud Free Tier, BigQuery offers some resources free of charge up to a specific limit. These free usage limits are available during and after the free trial period. If you go over these usage limits and are no longer in the free trial period, you will be charged according to the pricing on this page. You can try BigQuery's free tier in the BigQuery sandbox without a credit card."
+      },
+      "evidence_url": "https://cloud.google.com/bigquery/pricing",
+      "evidence_selector": "gcp_bigquery_free_tier matrix row[1:Storage] column[Monthly free usage limits] -> fact[storage]"
+    }
+  ]
+}

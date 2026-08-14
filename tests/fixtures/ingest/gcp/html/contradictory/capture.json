@@ -1,0 +1,17 @@
+{
+  "captured_by": "F008 P3 Google Cloud provider slice (synthetic scaffold)",
+  "fetched_at": "2026-08-14T15:30:00Z",
+  "http_status": null,
+  "synthetic": true,
+  "negative_fixture_note": "NEGATIVE TEST FIXTURE, NOT A CLAIMED COMPLETE CAPTURE. It is not a record of anything Google Cloud publishes and must never be cited as evidence.",
+  "derived_from": null,
+  "mutation": "two synthetic rows for one offer identity disagree on requires_card, on paid dependencies and on exhaustion behaviour. Read with the pre-existing GENERIC quota_document profile, because every Google Cloud profile pins those facts to verbatim prose and cannot express an intra-page disagreement about them.",
+  "mutation_intent": "Proves a disagreement is surfaced for reconciliation rather than silently merged.",
+  "extraction_profile": "quota_document",
+  "sha256_original": null,
+  "sha256_stored": "dfdea5e38d8653c22c065875d4b675ed40f1e010847cc4bddf8a93ed2a3e6325",
+  "robots_allowed": true,
+  "tos_note": "No provider bytes were retrieved for this fixture. It is a wholly SYNTHETIC document written locally to exercise intra-document contradiction; no Google Cloud page has this shape.",
+  "trim_method": "not a capture: this document was authored locally and declares its synthetic provenance in its own visible body text.",
+  "url": "https://cloud.google.com/firestore/pricing"
+}

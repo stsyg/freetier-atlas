@@ -1,0 +1,228 @@
+provider:
+  id: gcp
+  name: Google Cloud
+  official_domains:
+    - cloud.google.com
+
+# OFFICIAL sources only. Every source below is a cloud.google.com page.
+#
+# NOTE ON THE TWO OFFERS SHARING ONE PAGE. Google publishes the perpetual Free
+# Tier and the 90-day credit-backed Free Trial on the SAME document. They are
+# different offers with different offer types, and conflating them is the single
+# largest correctness risk in this provider, so they are declared as two separate
+# sources reading two separate profiles. Each profile pins its identity, its
+# offer type and its exhaustion behaviour to prose inside its own section, which
+# makes conflation structurally impossible rather than merely discouraged.
+#
+# The two source URLs carry the page's OWN section anchors (#free-tier and
+# #free-trial). MEASURED on the live page: both ids exist verbatim on the
+# corresponding <h2> elements, so neither anchor is invented to manufacture a
+# distinct URL; each simply names the section its profile reads.
+sources:
+  - id: gcp-free-tier-products
+    type: html
+    trust_level: official
+    url: https://cloud.google.com/free/docs/free-cloud-features#free-tier
+    schedule_ref: official_pages
+    extraction_profile: gcp_free_tier_products
+
+  # The deliberate NON-Z0 case. This offer is time-limited, credit-backed AND
+  # card-gated, all stated verbatim on the page.
+  - id: gcp-free-trial
+    type: html
+    trust_level: official
+    url: https://cloud.google.com/free/docs/free-cloud-features#free-trial
+    schedule_ref: official_pages
+    extraction_profile: gcp_free_trial
+
+  - id: gcp-firestore-free-tier
+    type: html
+    trust_level: official
+    url: https://cloud.google.com/firestore/pricing
+    schedule_ref: official_pages
+    extraction_profile: gcp_firestore_free_tier
+
+  - id: gcp-bigquery-free-tier
+    type: html
+    trust_level: official
+    url: https://cloud.google.com/bigquery/pricing
+    schedule_ref: official_pages
+    extraction_profile: gcp_bigquery_free_tier
+
+publishing:
+  automatic_threshold: 0.90
+  uncertain_threshold: 0.70
+  require_official_source: true
+  require_deterministic_numeric_validation: true
+
+# Declared service-to-category assignments. These are taxonomy decisions, not
+# inferences from quota units. Each is preceded by its rationale.
+service_categories:
+  # ARGUABLE: the Free Tier program spans compute, storage, data, AI and
+  # developer tooling, and one slug cannot express that. Compute VMs wins because
+  # the always-free e2-micro instance is the only allowance in the table that is
+  # a whole machine, and it is the allowance the tier is popularly identified by.
+  Google Cloud Free Tier: compute-vms
+  # ARGUABLE: the trial covers the entire platform for 90 days. It is mapped to
+  # the same category as the Free Tier so the two appear side by side, which is
+  # exactly where the difference between a perpetual tier and a 90-day credit
+  # must be visible to a reader.
+  Google Cloud Free Trial: compute-vms
+  # Firestore is a managed document database; the taxonomy's NoSQL/key-value
+  # bucket is its unambiguous home.
+  Firestore: nosql-key-value
+  # ARGUABLE: BigQuery is an analytical data warehouse queried with SQL, not an
+  # OLTP relational database. The taxonomy has no analytics/warehouse category,
+  # and relational-databases is the least misleading of the fourteen because the
+  # published allowance is expressed in stored bytes and queried bytes of SQL
+  # data. Google's OLTP relational products (Cloud SQL, AlloyDB, Spanner) do NOT
+  # appear in the Free Tier usage-limits table.
+  BigQuery: relational-databases
+
+# Explicit provider x category coverage. All fourteen canonical categories are
+# declared; a pair with no declaration is a config error, not an implicit
+# unknown.
+#
+# NOTHING here is verified_free, and that is the finding, not an omission.
+# MEASURED on https://cloud.google.com/free/docs/free-cloud-features, verbatim:
+# "Any usage that exceeds the Free Tier usage limits is billed at standard
+# rates." That is automatic billing on exhaustion, which the classifier treats as
+# a definite billing exposure, so every Google Cloud offer this provider
+# produces is Z1 or UNKNOWN and none can be Z0. Publishing any of these as
+# verified_free would be exactly the unsupported free claim this product forbids.
+#
+# The three `unknown` entries are deliberate after research, not unchecked
+# absences: in each case the Free Tier usage-limits table was read and contains
+# no product of that kind, and this slice did not verify a Google Cloud page
+# establishing whether the category is offered at all. Asserting absence would be
+# a claim in the other direction and is equally unsupported.
+coverage:
+  compute-vms:
+    state: offered_no_z0
+    source: gcp-free-tier-products
+    rationale: >-
+      The Free Tier usage-limits table publishes one non-preemptible e2-micro VM
+      instance per month in us-west1, us-central1 or us-east1, 30 GB-months of
+      standard persistent disk, and 1 GB of outbound data transfer from North
+      America. The same page states that usage beyond the Free Tier limits is
+      billed at standard rates, so the category is offered but no Z0 offer is
+      produced.
+  containers-app-hosting:
+    state: offered_no_z0
+    source: gcp-free-tier-products
+    rationale: >-
+      The Free Tier usage-limits table publishes allowances for App Engine
+      standard environment, for Cloud Run request-based billing, and one free
+      Autopilot or zonal Standard GKE cluster per month. The GKE entry states
+      explicitly that the credit applies to the cluster charge only and not to
+      compute, networking or other resources, and page-level overage is billed at
+      standard rates, so no Z0 offer is produced.
+  serverless-functions:
+    state: offered_no_z0
+    source: gcp-free-tier-products
+    rationale: >-
+      The Free Tier usage-limits table publishes 2 million Cloud Run functions
+      invocations per month with 400,000 GB-seconds and 200,000 GHz-seconds of
+      compute time and 5 GB of outbound data transfer. Overage is billed at
+      standard rates, so the category is offered without a Z0 offer.
+  relational-databases:
+    state: offered_no_z0
+    source: gcp-bigquery-free-tier
+    rationale: >-
+      BigQuery publishes an explicit monthly free usage table of 10 GiB of
+      storage and 1 TiB of queries, and states verbatim that going over those
+      limits outside the free trial period is charged. See the ARGUABLE note on
+      the BigQuery category assignment: BigQuery is an analytical warehouse
+      rather than an OLTP database, and Google's OLTP relational products do not
+      appear in the Free Tier usage-limits table.
+  nosql-key-value:
+    state: offered_no_z0
+    source: gcp-firestore-free-tier
+    rationale: >-
+      Firestore publishes a dedicated free-tier table of 1 GiB stored data,
+      50,000 document reads, 20,000 writes and 20,000 deletes per day, and 10
+      GiB of outbound data transfer per month. Its page states that more quota
+      requires enabling billing on the project, which is a manual paid step, and
+      the page proves nothing about whether a payment card is required, so no Z0
+      offer is produced.
+  object-file-storage:
+    state: offered_no_z0
+    source: gcp-free-tier-products
+    rationale: >-
+      The Free Tier usage-limits table publishes 5 GB-months of regional Cloud
+      Storage restricted to us-east1, us-west1 and us-central1, with 5,000 Class
+      A and 50,000 Class B operations per month, plus 0.5 GB per month of
+      Artifact Registry storage. Overage is billed at standard rates, so the
+      category is offered without a Z0 offer.
+  networking-cdn-dns:
+    state: unknown
+    rationale: >-
+      MEASURED: the Free Tier usage-limits table contains no standalone
+      networking, CDN or DNS product. The outbound data transfer allowances it
+      does publish belong to Compute Engine, Cloud Storage, App Engine, Cloud
+      Run, Cloud Run functions and Firestore rather than to a separately offered
+      delivery product. This slice did not verify a Google Cloud page
+      establishing whether Cloud CDN or Cloud DNS carries a free allowance of its
+      own, so the state is unknown rather than guessed in either direction.
+  queues-messaging-jobs:
+    state: offered_no_z0
+    source: gcp-free-tier-products
+    rationale: >-
+      The Free Tier usage-limits table publishes 10 GiB of Pub/Sub messages per
+      month, and 5,000 internal Workflows steps with 2,000 external HTTP calls
+      per month. Overage is billed at standard rates, so the category is offered
+      without a Z0 offer.
+  auth-identity:
+    state: unknown
+    rationale: >-
+      MEASURED: the Free Tier usage-limits table contains no identity product.
+      reCAPTCHA appears in the table with 10,000 assessments per month, and was
+      CONSIDERED and REJECTED for this category: it is bot and abuse assessment,
+      not an application-user identity service. Whether Identity Platform carries
+      a free allowance was not verified from an official page in this slice, so
+      the state is unknown after research rather than an unchecked absence.
+  cicd-source-control:
+    state: offered_no_z0
+    source: gcp-free-tier-products
+    rationale: >-
+      The Free Tier usage-limits table publishes 2,500 Cloud Build build-minutes
+      per month on e2-standard-2, the first active Cloud Deploy delivery pipeline
+      per billing account, and Cloud Source Repositories for up to 5 users per
+      billing account with 50 GB of storage and 50 GB of outbound data transfer.
+      Overage is billed at standard rates, so no Z0 offer is produced.
+  monitoring-logs-tracing:
+    state: offered_no_z0
+    source: gcp-free-tier-products
+    rationale: >-
+      The Free Tier usage-limits table publishes the first 50 GiB of log data per
+      project per month, all non-chargeable Google Cloud metrics, and the first 1
+      million time series returned per billing account from Cloud Monitoring API
+      read calls. Overage is billed at standard rates, so the category is offered
+      without a Z0 offer.
+  ai-inference-embeddings:
+    state: offered_no_z0
+    source: gcp-free-tier-products
+    rationale: >-
+      The Free Tier usage-limits table publishes 5,000 Cloud Natural Language
+      API units, 1,000 Cloud Vision units, 1,000 Video Intelligence API units and
+      60 minutes per minute per month per account for the Speech-to-Text V1 API.
+      Overage is billed at standard rates, so the category is offered without a
+      Z0 offer.
+  email-notifications-comms:
+    state: unknown
+    rationale: >-
+      MEASURED: the Free Tier usage-limits table contains no email, SMS or push
+      messaging product. This slice did not verify a Google Cloud page
+      establishing whether any first-party transactional messaging service exists
+      or carries a free allowance, so the state is unknown rather than declared
+      absent, which would itself be an unsupported claim.
+  secrets-config-devtools:
+    state: offered_no_z0
+    source: gcp-free-tier-products
+    rationale: >-
+      The Free Tier usage-limits table publishes 6 active Secret Manager secret
+      versions with 10,000 access operations per month, Cloud Shell with 5 GB of
+      persistent disk storage, and 100 active Cloud KMS key versions with 10,000
+      cryptographic operations per month, the last restricted to key versions
+      created using Cloud KMS Autokey. Overage is billed at standard rates, so
+      the category is offered without a Z0 offer.

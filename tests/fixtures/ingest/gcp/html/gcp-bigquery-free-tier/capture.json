@@ -1,0 +1,44 @@
+{
+  "captured_by": "F008 P3 Google Cloud provider slice (live capture, generated from the live parse)",
+  "fetched_at": "2026-08-14T15:30:00Z",
+  "http_status": 200,
+  "robots_allowed": true,
+  "sha256_original": "9193c1e8aef2bfd36bd26e578a94ef03384cb19efb410e1b2343043759f47b56",
+  "sha256_original_note": "sha256_original is the digest of the exact live bytes this capture was derived from on 2026-08-14. It is NOT reproducible across fetches: cloud.google.com serves per-build markup, so a later fetch of an unchanged page yields a different digest. STRUCTURE, not digest, is the invariant.",
+  "sha256_stored": "c0b0a80f9960cc84642b3a5654979dc8eb7911ace5dd5a10b101b805a354d41f",
+  "tos_note": "Official Google Cloud documentation (cloud.google.com). https://cloud.google.com/robots.txt has a single 'User-agent: *' group whose Disallow rules cover /console, /landing/, /walkthroughs/, /terms/looker/*, /log, two /partners/resources pages, and the per-language /*/docs/reference/* trees; none of /free/docs/, /firestore/ or /bigquery/ is disallowed, so automated retrieval of this path is permitted. A minimal excerpt is committed for offline, deterministic extraction testing; every retained value and every pinned sentence is reproduced verbatim from the cited live page.",
+  "trim_method": "Removed scripts, navigation, styling and unrelated prose. This capture was GENERATED from the live document's own parse: the retained prose blocks are the exact normalised strings the engine collected from the live page, and the retained table's headers and cells are the exact normalised strings the engine collected from the live target table. Inline markup inside those blocks and cells (anchors, list items, nested elements) was flattened to plain text; the engine normalises a block or cell to its text content, so every retained normalised string is identical to live. This is a deliberate minimal excerpt, not a complete copy of the page.",
+  "live_table_count": 38,
+  "live_table_present": true,
+  "live_table_note": "The live page publishes an explicit monthly free-usage table among many pricing tables. Exactly one live table carries the declared header signature; the nearest other candidate is ['Resource', 'Pricing', 'Details'], which is NOT a superset of the signature, so selection is unambiguous.",
+  "non_target_tables_removed": 37,
+  "non_target_tables_removed_note": "MEASURED: the declared header signature matched EXACTLY ONE live table, and the committed capture retains exactly that table, so removing the others cannot change which table the engine selects. For the assertion-only profile no table is read at all.",
+  "target_table_rows_removed": [],
+  "target_table_cells_removed": [],
+  "unpivoted_target_table_columns": ["Details"],
+  "ignored_extraction_rows": [],
+  "duplicate_live_blocks_not_retained": [],
+  "live_reconciliation": "LIVE -> FIXTURE (primary): all 2 pinned block(s) occur EXACTLY ONCE in the live document and EXACTLY ONCE in this capture; all 2 live target-table row(s) are present, none removed, none added.",
+  "url": "https://cloud.google.com/bigquery/pricing",
+  "structure": {
+    "asserted_block_sha256": [
+      "fc37d7466500c73a478499a94249ca32b4fc3af7a440a4678916a337cc5480c6",
+      "7c86014f2450e69ffdfb5627eade4839f0c76ecf0659b8e7c2150afef7144149",
+      "7c86014f2450e69ffdfb5627eade4839f0c76ecf0659b8e7c2150afef7144149",
+      "7c86014f2450e69ffdfb5627eade4839f0c76ecf0659b8e7c2150afef7144149"
+    ],
+    "headers": ["Resource", "Monthly free usage limits", "Details"],
+    "rows": [
+      [
+        "Storage",
+        "The first 10 GiB per month is free.",
+        "BigQuery ML models and training data stored in BigQuery are included in the BigQuery storage free tier."
+      ],
+      [
+        "Queries (analysis)",
+        "The first 1 TiB of query data processed per month is free.",
+        "BigQuery Editions pricing is also available for high-volume customers that prefer a stable, monthly cost."
+      ]
+    ]
+  }
+}

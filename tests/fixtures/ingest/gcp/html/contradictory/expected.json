@@ -1,0 +1,43 @@
+{
+  "profile": "quota_document",
+  "mime": "text/html",
+  "source_url": "https://cloud.google.com/firestore/pricing",
+  "candidate_count": 2,
+  "candidates": [
+    {
+      "verification_state": "candidate",
+      "expect_valid": true,
+      "facts": {
+        "service": "Firestore",
+        "offer_type": "recurring_quota",
+        "requires_card": false,
+        "has_paid_dependencies": false,
+        "quotas": ["manual_upgrade_required"]
+      },
+      "evidence_url": "https://cloud.google.com/firestore/pricing",
+      "evidence_selector": "quota_document row[1]"
+    },
+    {
+      "verification_state": "candidate",
+      "expect_valid": true,
+      "facts": {
+        "service": "Firestore",
+        "offer_type": "recurring_quota",
+        "requires_card": true,
+        "has_paid_dependencies": true,
+        "quotas": ["automatic_billing"]
+      },
+      "evidence_url": "https://cloud.google.com/firestore/pricing",
+      "evidence_selector": "quota_document row[2]"
+    }
+  ],
+  "contradiction": {
+    "field": "requires_card",
+    "shared": {
+      "service": "Firestore",
+      "offer_type": "recurring_quota"
+    },
+    "values": [false, true],
+    "note": "offer_type is part of the reconciler identity key, so a conflict must live in a non-identity material field to be detectable. This case uses the GENERIC quota_document profile: every Google Cloud profile pins its material facts to verbatim prose, which makes two rows of one Google Cloud page structurally incapable of disagreeing about them."
+  }
+}
