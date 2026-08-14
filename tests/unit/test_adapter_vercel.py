@@ -156,6 +156,123 @@ def test_old_pr50_synthetic_table_ids_are_absent() -> None:
     assert all(synthetic_id not in corpus for synthetic_id in SYNTHETIC_IDS)
 
 
+#: The live header cell, verbatim, as https://vercel.com/docs/sandbox/pricing
+#: serves it. Spelled ``<br/>`` because that is what the page emits -- not
+#: ``<br />`` and not ``<br>``.
+LIVE_HOBBY_HEADER_CELL = "<th><strong>Hobby</strong><br/>(Included)</th>"
+LIVE_TIER_HEADER_CELLS = (
+    LIVE_HOBBY_HEADER_CELL,
+    "<th><strong>Pro</strong><br/>(Per month)</th>",
+    "<th><strong>Enterprise</strong><br/>(Per month)</th>",
+)
+
+
+def _replace_once(source: str, old: str, new: str) -> str:
+    """Replace ``old`` exactly once, refusing to mutate on a non-unique anchor.
+
+    A mutation whose anchor matches zero times is not a weak test, it is a
+    *mislabelled* one: it silently degrades into "an unmutated document still
+    extracts", which passes for the wrong reason while advertising that it
+    guards something. Two of the mutations below were vacuous in exactly this
+    way -- the fixture indents each ``<th>`` onto its own line, so anchors that
+    concatenated two tags never matched. The count is asserted rather than
+    assumed so the degradation is loud.
+    """
+
+    found = source.count(old)
+    assert found == 1, f"mutation anchor matched {found} times, expected exactly 1: {old!r}"
+    return source.replace(old, new, 1)
+
+
+def test_the_capture_carries_the_live_nested_header_markup() -> None:
+    """The capture must not be easier than the page it claims to represent.
+
+    A prior slice flattened these cells to ``<th>Hobby (Included)</th>``. That
+    left extraction unchanged against the engine as it stands, which is exactly
+    why it survived review -- and it removed the only input anywhere in the
+    fixture tree capable of detecting the loss of the ``<br>``-to-space branch.
+    """
+
+    source = (FIXTURE_ROOT / "vercel-sandbox-pricing" / "source.html").read_text(encoding="utf-8")
+    for cell in LIVE_TIER_HEADER_CELLS:
+        assert source.count(cell) == 1, f"capture lost the live nested header cell: {cell}"
+    for flattened in (
+        "<th>Hobby (Included)</th>",
+        "<th>Pro (Per month)</th>",
+        "<th>Enterprise (Per month)</th>",
+    ):
+        assert flattened not in source, (
+            f"capture re-flattened {flattened}; the live page serves nested markup"
+        )
+
+
+def test_nested_header_markup_normalises_to_the_label_the_profile_requires() -> None:
+    """THE guard: this fails if the ``<br>``-to-space branch is removed.
+
+    ``normspace`` is ``" ".join(value.split())`` -- it collapses whitespace and
+    never inserts any. The space in ``Hobby (Included)`` therefore exists solely
+    because the collector maps a ``<br>`` inside a cell to a space. Delete that
+    branch and this header normalises to ``Hobby(Included)``.
+    """
+
+    fixture = load_case("vercel", "html", "vercel-sandbox-pricing")
+    collector = _DocumentCollector()
+    collector.feed(fixture.content.decode("utf-8"))
+    collector.close()
+
+    header_index, header = _header_row(collector.tables[0])
+    assert header_index is not None, header
+    assert header.cells == (
+        "",
+        "Hobby (Included)",
+        "Pro (Per month)",
+        "Enterprise (Per month)",
+    )
+    assert "Hobby(Included)" not in header.cells, (
+        "the <br> inside the header cell was not mapped to a space"
+    )
+
+    profile = resolve_profile(fixture.profile)
+    assert set(profile.header_signature) <= {cell.lower() for cell in header.cells}
+
+
+def test_a_flattened_header_would_be_indistinguishable_without_the_br_branch() -> None:
+    """Pin *why* the nested form is load-bearing rather than decorative.
+
+    Feeding the nested and flattened spellings through the collector must yield
+    the same normalised label. That equality is produced by the ``<br>`` branch;
+    it is not a property of ``normspace``, which cannot invent a space.
+    """
+
+    def normalise(cell: str) -> tuple[str, ...]:
+        collector = _DocumentCollector()
+        collector.feed(f"<table><thead><tr><th></th>{cell}</tr></thead></table>")
+        collector.close()
+        return collector.tables[0].rows[0].cells
+
+    assert normalise(LIVE_HOBBY_HEADER_CELL) == normalise("<th>Hobby (Included)</th>")
+    assert normalise(LIVE_HOBBY_HEADER_CELL) == ("", "Hobby (Included)")
+    assert normalise("<th><strong>Hobby</strong>(Included)</th>") == ("", "Hobby(Included)")
+
+
+def test_some_ingest_fixture_still_exercises_nested_header_markup() -> None:
+    """Repo-wide regression guard on the coverage this slice restores.
+
+    The defect was not that one capture changed; it was that the *only* input
+    exercising a branch vanished and nothing noticed. This fails if the tree
+    ever again holds zero nested header markup.
+    """
+
+    corpus = [
+        path.read_text(encoding="utf-8")
+        for path in (REPO_ROOT / "tests" / "fixtures" / "ingest").glob("*/*/*/source.html")
+    ]
+    assert corpus, "no HTML fixtures discovered; this guard would be vacuous"
+    assert any("<br" in text and "<strong" in text for text in corpus), (
+        "no ingest fixture exercises nested header markup any more"
+    )
+
+
 @pytest.mark.parametrize(
     ("mutation", "expected_error"),
     [
@@ -166,6 +283,7 @@ def test_old_pr50_synthetic_table_ids_are_absent() -> None:
         ("rowspan", "irregular_row_width"),
         ("mapped_row_removed", "missing_matrix_rows"),
         ("whitespace_entities", None),
+        ("flattened_header", "table_not_found"),
     ],
 )
 def test_predicted_structural_mutations_match_observation(
@@ -177,36 +295,51 @@ def test_predicted_structural_mutations_match_observation(
     source = fixture.source_path.read_text(encoding="utf-8")
     if mutation == "extra_column":
         before_body, body = source.split("<tbody>", 1)
-        before_body = before_body.replace(
-            "<th>Enterprise (Per month)</th>",
-            "<th>Extra</th><th>Enterprise (Per month)</th>",
+        before_body = _replace_once(
+            before_body,
+            "<th><strong>Enterprise</strong><br/>(Per month)</th>",
+            "<th>Extra</th><th><strong>Enterprise</strong><br/>(Per month)</th>",
         )
         source = before_body + "<tbody>" + body.replace("</tr>", "<td>x</td></tr>")
     elif mutation == "reordered_columns":
-        source = source.replace(
-            "<th>Hobby (Included)</th><th>Pro (Per month)</th>",
-            "<th>Pro (Per month)</th><th>Hobby (Included)</th>",
+        source = _replace_once(
+            source,
+            "          <th><strong>Hobby</strong><br/>(Included)</th>\n"
+            "          <th><strong>Pro</strong><br/>(Per month)</th>\n",
+            "          <th><strong>Pro</strong><br/>(Per month)</th>\n"
+            "          <th><strong>Hobby</strong><br/>(Included)</th>\n",
         )
-        source = source.replace(
-            "<td>5 hours/month</td><td>$0.128/hour</td>",
-            "<td>$0.128/hour</td><td>5 hours/month</td>",
+        source = _replace_once(
+            source,
+            "          <td>5 hours/month</td>\n          <td>$0.128/hour</td>\n",
+            "          <td>$0.128/hour</td>\n          <td>5 hours/month</td>\n",
         )
     elif mutation == "renamed_tier":
-        source = source.replace("Hobby (Included)", "Hobby Included")
+        source = _replace_once(
+            source,
+            "<th><strong>Hobby</strong><br/>(Included)</th>",
+            "<th><strong>Hobby</strong><br/>Included</th>",
+        )
     elif mutation == "duplicated_table":
         table = source.split("<table>", 1)[1].split("</table>", 1)[0]
-        source = source.replace("</table>", f"</table><table>{table}</table>", 1)
+        source = _replace_once(source, "</table>", f"</table><table>{table}</table>")
     elif mutation == "rowspan":
-        source = source.replace(
-            "<td>Sandbox Active CPU</td>", '<td rowspan="2">Sandbox Active CPU</td>'
+        source = _replace_once(
+            source, "<td>Sandbox Active CPU</td>", '<td rowspan="2">Sandbox Active CPU</td>'
         )
     elif mutation == "mapped_row_removed":
         row_label = source.index("<td>Sandbox Active CPU</td>")
         start = source.rfind("<tr>", 0, row_label)
         end = source.index("</tr>", start) + len("</tr>")
         source = source[:start] + source[end:]
+    elif mutation == "flattened_header":
+        source = _replace_once(
+            source,
+            "<th><strong>Hobby</strong><br/>(Included)</th>",
+            "<th><strong>Hobby</strong>(Included)</th>",
+        )
     else:
-        source = source.replace("Sandbox Active CPU", "  Sandbox&nbsp;Active CPU  ")
+        source = _replace_once(source, "Sandbox Active CPU", "  Sandbox&nbsp;Active CPU  ")
 
     from tests.support.fixtures import build_fixture_adapter
 

@@ -22,6 +22,22 @@ agent-state/
 config/
 planning-manifest.json
 
+# Live-derived ingest captures: these are EVIDENCE ARTEFACTS, not source code.
+# Each must stay byte-identical to the page it was captured from, and Prettier
+# rewrites markup -- it respells `<br/>` as `<br />`, the exact spelling the
+# Vercel sandbox capture exists to pin. Formatting one destroys the property
+# its tests depend on, which is the same reason the malformed fixture below is
+# excluded. Deliberately adapter-agnostic so a future live-derived JSON or XML
+# capture is covered without editing this file, and deliberately provider-
+# agnostic so a new provider does not have to rediscover the collision.
+# The `example` corpus is hand-written rather than captured -- it is faithful to
+# nothing, so it stays formatted and is re-included here.
+**/fixtures/ingest/*/*/*/source.*
+!**/fixtures/ingest/example/**
+
 # Intentionally-malformed JSON ingest fixtures: these MUST stay invalid so the
 # adapter's rejected-candidate path is exercised, so Prettier cannot parse them.
+# MUST remain below the re-inclusion above: the last matching pattern wins, so
+# moving this line higher would let the `example` negation format it and make
+# the rejected-candidate fixture valid.
 **/fixtures/ingest/example/*/malformed/source.json
