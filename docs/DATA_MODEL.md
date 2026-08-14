@@ -578,6 +578,16 @@ into pure, independently-testable policy functions over a thin I/O layer
   `169.254.169.254` cloud-metadata address) and IPv6 `fe80::/10`, ULA
   `fc00::/7`, the unspecified address, multicast/reserved ranges, and unmasks
   IPv4-mapped IPv6 so a private v4 cannot be smuggled.
+- **Rebinding-proof connection** — validating resolved addresses and then handing
+  the URL to an HTTP client leaves the client to resolve the name a second time
+  at connect, so the vetted address need not be the one reached. Each hop
+  therefore resolves **once**, requires **every** answer to pass (a mixed safe/
+  unsafe host fails closed), dials those validated address literals rather than
+  the name, and re-checks the socket's real peer with `check_peer_address` before
+  the TLS handshake and before any request byte. Both checks call the one
+  `address_block_reason` classifier, so they cannot drift apart, and the `Host`
+  header, TLS SNI and certificate hostname verification all still use the URL's
+  hostname.
 - **MIME validation**, a **bounded redirect count**, and a **streamed max-size
   cap** (`validate_mime`, `check_redirect_budget`, `check_size`).
 
@@ -588,8 +598,10 @@ The typed `FetchResult` carries `content`, `mime`, `final_url`, a SHA-256
   `NetworkDisabledError`).
 - `LiveFetcher` — a stdlib `urllib` transport **disabled by default**; it must be
   constructed with `enable_network=True`. It re-runs the scheme, host-allowlist
-  and SSRF checks on **every redirect hop**, streams the body with an early size
-  abort, and enforces connect/read timeouts.
+  and SSRF checks on **every redirect hop**, pins each hop's connection to the
+  addresses that hop validated and re-checks the socket peer before any request
+  byte, streams the body with an early size abort, and enforces connect/read
+  timeouts.
 - `FixtureFetcher` — a deterministic, offline test transport that still applies
   the pure URL/MIME policy checks.
 
