@@ -767,22 +767,46 @@ def test_every_absence_claim_carries_a_rationale(config) -> None:
 def test_no_published_category_is_left_undeclared(config) -> None:
     """Q9-A derived-contradiction rule, checked without a database.
 
-    Every category this slice publishes an offer into must be declared
+    Every category this slice actually publishes an offer into must be declared
     verified_free or offered_no_z0 -- never unknown, never not_offered.
+
+    "Publishes" is not the same as "extracts". A candidate whose material Z0
+    conditions are UNKNOWN classifies UNKNOWN, and the publication gate withholds
+    it, so its category has nothing published behind it. GitHub Pages is exactly
+    that case: measured on real PostgreSQL, it extracts a candidate and produces
+    NO offer row. Declaring `verified_free` for a category with nothing published
+    would be an unsupported free claim, which is the defect this control exists
+    to prevent -- so the rule is asserted in BOTH directions rather than assuming
+    every extracted case publishes.
     """
 
-    published = {
-        config.service_categories[service]
-        for case in OFFICIAL_CASES
-        for service in [
-            load_case(PROVIDER, ADAPTER, case).expected_candidates[0]["facts"]["service"]
-        ]
-    }
-    assert published, "the control is vacuous if nothing is published"
-    for slug in published:
+    publishable: set[str] = set()
+    withheld: set[str] = set()
+    for case in OFFICIAL_CASES:
+        facts = load_case(PROVIDER, ADAPTER, case).expected_candidates[0]["facts"]
+        slug = config.service_categories[facts["service"]]
+        # The gate needs every material condition to be known; a missing one is
+        # UNKNOWN, never a default (see test_pages_claims_no_billing_fact...).
+        if all(
+            facts.get(field) is not None for field in ("requires_card", "has_paid_dependencies")
+        ):
+            publishable.add(slug)
+        else:
+            withheld.add(slug)
+
+    assert publishable, "the control is vacuous if nothing is published"
+    for slug in publishable:
         assert config.coverage[slug].state in ("verified_free", "offered_no_z0"), (
             f"{slug}: an offer is published here, so the declaration cannot be "
             f"{config.coverage[slug].state!r}"
+        )
+    # The other direction: a category we publish NOTHING into must not claim a
+    # verified free tier. This is the half that would have let the Pages claim
+    # survive in config after it was removed from the profile.
+    for slug in withheld - publishable:
+        assert config.coverage[slug].state not in ("verified_free", "offered_no_z0"), (
+            f"{slug}: nothing is published here because a material condition is "
+            f"unknown, so the declaration cannot be {config.coverage[slug].state!r}"
         )
 
 
