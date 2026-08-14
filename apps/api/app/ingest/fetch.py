@@ -20,13 +20,24 @@ blocking, an https-only scheme allowlist, MIME validation, a bounded redirect
 count with the allowlist *and* SSRF checks re-run on **every** hop, connect/read
 timeouts, and a streamed maximum-size cap that aborts early. No new runtime
 dependency: everything here is the Python standard library.
+
+Resolving a hostname, vetting the addresses, and then handing the *URL* to an
+HTTP client is not enough: the client resolves the name again at TCP connect, so
+the address that was vetted need not be the address that is reached. That
+time-of-check/time-of-use window is a DNS-rebinding surface. It is closed from
+both ends -- the connection is **pinned** to the addresses that passed
+validation, and the socket's real peer is **re-checked** before any byte is
+written -- while the ``Host`` header, TLS SNI, and the hostname the certificate
+is verified against all stay the original name.
 """
 
 from __future__ import annotations
 
 import hashlib
+import http.client
 import ipaddress
 import socket
+import ssl
 import urllib.request
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
@@ -282,7 +293,9 @@ def check_addresses(addresses: Iterable[str], *, allow_loopback: bool = False) -
     """Raise :class:`BlockedAddressError` if any resolved address is unsafe.
 
     Returns the validated addresses as a tuple. An empty address set is itself an
-    error (nothing safe to connect to).
+    error (nothing safe to connect to). **Every** address must pass: a host that
+    resolves to a mix of safe and unsafe addresses fails closed rather than
+    opportunistically using a safe one while the unsafe one stays reachable.
     """
 
     addrs = tuple(addresses)
@@ -293,6 +306,34 @@ def check_addresses(addresses: Iterable[str], *, allow_loopback: bool = False) -
         if reason is not None:
             raise BlockedAddressError(f"Refusing to connect: {reason}")
     return addrs
+
+
+def _peer_address(sock: socket.socket) -> str:
+    """Return a connected socket's actual peer IP, without any IPv6 scope id."""
+
+    peer = sock.getpeername()
+    host = peer[0] if isinstance(peer, tuple) and peer else peer
+    return str(host).split("%", 1)[0]
+
+
+def check_peer_address(sock: socket.socket, *, allow_loopback: bool = False) -> str:
+    """Raise :class:`BlockedAddressError` unless a socket's real peer is safe.
+
+    This answers the one question a pre-connect check cannot: which address did
+    this socket *actually* reach? It is the second half of the rebinding guard,
+    and it runs before the TLS handshake and before any request byte is written,
+    so a connection that landed on a blocked address is closed unused.
+
+    Address classification is not restated here -- it defers to
+    :func:`address_block_reason`, so this check and the pre-connect check can
+    never drift apart. An unparseable peer is refused, so it fails closed.
+    """
+
+    ip = _peer_address(sock)
+    reason = address_block_reason(ip, allow_loopback=allow_loopback)
+    if reason is not None:
+        raise BlockedAddressError(f"Refusing to use the connection: {reason}")
+    return ip
 
 
 def parse_mime(content_type: str | None) -> str:
@@ -408,19 +449,122 @@ class FixtureFetcher:
         )
 
 
+class _PinnedConnector:
+    """Connects only to addresses that already passed the SSRF policy.
+
+    Handing a URL to an HTTP client lets the client resolve the hostname a second
+    time at TCP connect, so the address that was validated need not be the one
+    reached. This connector closes that window from both ends:
+
+    * it dials the **validated address literals**, never the hostname, so there
+      is no second name lookup left to rebind (resolve once, then pin); and
+    * it re-checks the socket's real peer with ``getpeername()`` before handing
+      the socket back -- which is before the TLS handshake and before any request
+      byte is written -- so a connection that somehow landed elsewhere is closed
+      unused.
+
+    Every validated address is tried in resolution order, so multi-address
+    failover is preserved; that is safe precisely because :func:`check_addresses`
+    already required *all* of them to pass.
+    """
+
+    def __init__(self, addresses: Sequence[str], *, allow_loopback: bool) -> None:
+        self._addresses = tuple(addresses)
+        self._allow_loopback = allow_loopback
+
+    def __call__(self, address, timeout=None, source_address=None) -> socket.socket:
+        """A ``socket.create_connection`` replacement for ``http.client``.
+
+        Only the *port* of the requested ``(host, port)`` is honoured; the host
+        is replaced by each validated address in turn.
+        """
+
+        port = address[1]
+        last_error: OSError | None = None
+        for ip in self._addresses:
+            try:
+                sock = socket.create_connection((ip, port), timeout, source_address)
+            except OSError as exc:
+                last_error = exc
+                continue
+            accepted = False
+            try:
+                check_peer_address(sock, allow_loopback=self._allow_loopback)
+                accepted = True
+            finally:
+                if not accepted:
+                    sock.close()
+            return sock
+        raise last_error or OSError("No validated address for this host was reachable.")
+
+
+def _pinned_connection_factory(connection_class, connect):
+    """Return a ``http.client`` connection builder whose TCP connect is pinned.
+
+    Only ``_create_connection`` is replaced. ``self.host`` keeps the original
+    hostname, so the ``Host`` header and -- for https -- the TLS SNI and the name
+    the certificate is verified against are all left exactly as they were.
+    """
+
+    def _build(host, **kwargs):
+        connection = connection_class(host, **kwargs)
+        connection._create_connection = connect
+        return connection
+
+    return _build
+
+
+class _PinnedHTTPHandler(urllib.request.HTTPHandler):
+    """``HTTPHandler`` whose connections may target only pre-validated addresses."""
+
+    def __init__(self, connect) -> None:
+        super().__init__()
+        self._connect = connect
+
+    def http_open(self, req):
+        return self.do_open(
+            _pinned_connection_factory(http.client.HTTPConnection, self._connect), req
+        )
+
+
+class _PinnedHTTPSHandler(urllib.request.HTTPSHandler):
+    """``HTTPSHandler`` whose connections may target only pre-validated addresses.
+
+    TLS is untouched. ``http.client.HTTPSConnection.connect`` wraps the socket
+    with ``server_hostname=self.host``, and ``self.host`` is still the URL's
+    hostname, so SNI *and* certificate hostname verification continue to use the
+    name. Pinning changes which IP is dialled, never what the certificate must
+    say -- trading an SSRF hole for a TLS-verification hole would be worse than
+    the defect being fixed.
+    """
+
+    def __init__(self, connect, context) -> None:
+        super().__init__(context=context)
+        self._connect = connect
+
+    def https_open(self, req):
+        return self.do_open(
+            _pinned_connection_factory(http.client.HTTPSConnection, self._connect),
+            req,
+            context=self._context,
+        )
+
+
 class _NoRedirectNoErrorOpener:
     """Build a urllib opener that neither follows redirects nor raises on 3xx/4xx.
 
     We manage redirects manually so the allowlist and SSRF checks re-run on every
     hop, and we omit the proxy handler so requests can never be diverted through a
-    proxy (another SSRF vector).
+    proxy (another SSRF vector). The http/https handlers are the *pinned*
+    variants, so the socket can only reach an address that already passed the
+    SSRF policy.
     """
 
     @staticmethod
-    def build() -> urllib.request.OpenerDirector:
+    def build(connect, ssl_context) -> urllib.request.OpenerDirector:
         opener = urllib.request.OpenerDirector()
-        opener.add_handler(urllib.request.HTTPHandler())
-        opener.add_handler(urllib.request.HTTPSHandler())
+        opener.add_handler(_PinnedHTTPHandler(connect))
+        opener.add_handler(_PinnedHTTPSHandler(connect, ssl_context))
         # Intentionally NO HTTPRedirectHandler (manual redirects), NO
         # HTTPErrorProcessor (3xx/4xx returned as responses, not raised), and NO
         # ProxyHandler (no proxy diversion).
@@ -434,19 +578,37 @@ class LiveFetcher:
     :meth:`fetch` raise :class:`NetworkDisabledError`, so a live socket is only
     ever possible when a caller *explicitly* opts in. When enabled, each request
     (and each redirect hop) is validated by the pure policy functions before any
-    connection, the resolved addresses are SSRF-checked, the body is streamed with
-    an early size abort, and connect/read timeouts are enforced.
+    connection, the resolved addresses are SSRF-checked, the connection is pinned
+    to those addresses and its peer re-checked before a byte is written, the body
+    is streamed with an early size abort, and connect/read timeouts are enforced.
     """
 
     def __init__(self, policy: FetchPolicy, *, enable_network: bool = False) -> None:
         self.policy = policy
         self.enable_network = enable_network
-        self._opener = _NoRedirectNoErrorOpener.build()
 
     # -- resolution is the only DNS I/O; kept tiny and override-friendly --
     def _resolve(self, host: str) -> tuple[str, ...]:
         infos = socket.getaddrinfo(host, None, proto=socket.IPPROTO_TCP)
-        return tuple({info[4][0] for info in infos})
+        # Deduplicate while preserving the resolver's own order, which encodes
+        # its address-family preference. Order matters now that these addresses
+        # are what the connection actually dials.
+        return tuple(dict.fromkeys(info[4][0] for info in infos))
+
+    def _ssl_context(self) -> ssl.SSLContext:
+        """The TLS context used for https fetches.
+
+        ``ssl.create_default_context`` keeps ``check_hostname`` on and
+        ``verify_mode`` at ``CERT_REQUIRED``, and the pinned handler passes the
+        URL's hostname as ``server_hostname``, so the certificate is still
+        verified against the name rather than the address that was dialled.
+        """
+
+        return ssl.create_default_context()
+
+    def _build_opener(self, addresses: Sequence[str]) -> urllib.request.OpenerDirector:
+        connect = _PinnedConnector(addresses, allow_loopback=self.policy.allow_loopback)
+        return _NoRedirectNoErrorOpener.build(connect, self._ssl_context())
 
     def fetch(self, url: str) -> FetchResult:
         if not self.enable_network:
@@ -461,12 +623,18 @@ class LiveFetcher:
             #    Runs on EVERY hop, so a redirect target is validated too.
             check_scheme(current, self.policy.allowed_schemes)
             host = check_host(current, self.policy.official_domains)
-            # 2. SSRF: resolve and reject private/loopback/link-local/metadata.
-            #    Re-checked on EVERY hop.
-            check_addresses(self._resolve(host), allow_loopback=self.policy.allow_loopback)
+            # 2. SSRF: resolve ONCE and reject private/loopback/link-local/
+            #    metadata. Every answer must pass, so a host mixing safe and
+            #    unsafe addresses fails closed. Re-checked on EVERY hop.
+            addresses = check_addresses(
+                self._resolve(host), allow_loopback=self.policy.allow_loopback
+            )
 
-            # 3. Perform the request without auto-following redirects.
-            response = self._open(current)
+            # 3. Perform the request without auto-following redirects, pinned to
+            #    the addresses just validated so no second name lookup can
+            #    rebind, and with the socket's real peer re-checked before any
+            #    request byte is written.
+            response = self._open(current, addresses)
             status = getattr(response, "status", None) or response.getcode()
 
             if status in (301, 302, 303, 307, 308):
@@ -498,10 +666,10 @@ class LiveFetcher:
             f"Exceeded the maximum of {self.policy.max_redirects} redirect(s)."
         )
 
-    def _open(self, url: str):
+    def _open(self, url: str, addresses: Sequence[str]):
         request = urllib.request.Request(url, method="GET")
         try:
-            return self._opener.open(request, timeout=self.policy.read_timeout)
+            return self._build_opener(addresses).open(request, timeout=self.policy.read_timeout)
         except TimeoutError as exc:
             raise FetchTimeoutError(
                 f"Timed out after {self.policy.read_timeout}s fetching '{url}'."
@@ -548,6 +716,7 @@ __all__: Sequence[str] = (
     "check_host",
     "address_block_reason",
     "check_addresses",
+    "check_peer_address",
     "parse_mime",
     "validate_mime",
     "check_redirect_budget",

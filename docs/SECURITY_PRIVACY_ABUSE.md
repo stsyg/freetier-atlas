@@ -47,6 +47,32 @@ GitHub OAuth, explicit `stsyg` allowlist, CSRF protection, secure cookies, audit
 
 Official-domain allowlists, SSRF protection, private-network blocking, timeouts, size caps, MIME validation, safe archives, browser sandboxing, and MCP capability allowlists.
 
+Validating the addresses a hostname resolves to is not sufficient on its own: an
+HTTP client handed a URL resolves the name again at TCP connect, so the address
+that was vetted need not be the address that is reached. A hostile authoritative
+server can answer the two lookups differently — returning a public address to the
+validation lookup and a private, loopback or `169.254.169.254` metadata address
+to the connect lookup — which is DNS rebinding, and it defeats an
+address-validation SSRF control entirely.
+
+`app.ingest.fetch.LiveFetcher` closes that window from both ends, on every
+redirect hop:
+
+- **Resolve once, then pin.** The host is resolved a single time per hop and
+  **every** returned address must pass the policy (a host mixing safe and unsafe
+  answers fails closed). The connection then dials those validated address
+  literals, so no second name lookup remains to rebind.
+- **Re-check the peer before any byte is written.** The socket's actual peer is
+  read with `getpeername()` and re-classified before the TLS handshake and before
+  the request is sent, so a connection that landed elsewhere is closed unused.
+
+Both checks call the single `address_block_reason` classifier, so the rules
+cannot drift apart. Pinning changes only which IP is dialled: the `Host` header,
+the TLS SNI, and the name the certificate is verified against all remain the
+URL's hostname, on a context that keeps `check_hostname` on and `verify_mode` at
+`CERT_REQUIRED`. Trading an SSRF hole for a TLS-verification hole would be worse
+than the defect being fixed, so that property is asserted directly by the tests.
+
 ## Abuse-control enforcement (F007 slice 2)
 
 The controls listed under *Initial limits* are enforced on the public adviser

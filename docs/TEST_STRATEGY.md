@@ -45,6 +45,20 @@ CI performs **zero socket operations**. `LiveFetcher` may be constructed only by
 (a loopback-only server started by the test itself). `tests/unit/test_no_live_fetcher_in_tests.py`
 enforces that with an AST check.
 
+The fetch guard's SSRF controls are tested adversarially rather than only
+positively. `tests/unit/test_ingest_fetch.py` drives `LiveFetcher` through a
+**hostile resolver** that answers the validation lookup and the connect-time
+lookup differently — the DNS-rebinding shape — and asserts the connection is
+refused and the stand-in internal service records nothing. Those tests open no
+external connection: the hostile resolver steers every lookup after the first to
+the loopback server the test started, so even the "public" address it advertises
+is never contacted. A **positive control** runs the same sequence with no guard
+in the way and asserts the bad outcome *is* observable, because a green test that
+cannot detect the failure it guards against proves nothing. TLS is covered in
+both directions: that a pinned connection still negotiates and verifies against
+the URL's hostname, and that a certificate for a different name is still
+rejected.
+
 Committed real-provider fixtures carry a `capture.json` provenance sidecar whose
 presence, completeness and `sha256_stored` are asserted by
 `tests/unit/test_capture_sidecar.py`. That test deliberately asserts **nothing
