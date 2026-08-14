@@ -177,6 +177,49 @@ Use `costgoat/aws-free-tier` for regression topics and gotcha test ideas only. D
 
 Use managed Google/Google Cloud MCP servers, free-program docs, product pricing, release-note data/feeds, and public APIs.
 
+F008 P3 configures four official sources over three documents. The central
+hazard for this provider is that Google publishes **two different offers on one
+page**: a perpetual Always Free tier and a 90-day, credit-backed Free Trial.
+They are extracted as two separate profiles reading the page's own `#free-tier`
+and `#free-trial` section anchors, so conflating them is structurally impossible
+rather than merely discouraged. Each profile pins its identity, its offer type
+and its exhaustion behaviour to prose inside its own section.
+
+| Profile | Mode | Live structure it reads |
+| --- | --- | --- |
+| `gcp_free_tier_products` | matrix | the 29-row `Google Cloud product` / `Free Tier usage limits` table |
+| `gcp_free_trial` | assertions | no table: the page publishes the trial's terms only as prose |
+| `gcp_firestore_free_tier` | matrix | the 5-row `Free tier` / `Quota` table |
+| `gcp_bigquery_free_tier` | matrix | the 2-row `Resource` / `Monthly free usage limits` / `Details` table |
+
+**Nothing in this provider is Z0, and that is the finding rather than a gap.**
+The free-program page states, verbatim, "Any usage that exceeds the Free Tier
+usage limits is billed at standard rates." That is `automatic_billing`, which the
+classifier treats as a definite billing exposure, so the Always Free tier
+classifies Z1. The Free Trial page states, verbatim, "During the sign up, you
+must provide a credit card or other payment method that is valid for the period
+of the Free Trial", so `requires_card=True` is quoted rather than inferred and
+the trial classifies Z1 as well. Firestore classifies UNKNOWN because its page
+proves nothing about card requirements. BigQuery classifies Z1.
+
+`requires_card` is deliberately **absent** from the three non-trial profiles.
+The free-program page says a *billing account* is required ("To use products that
+have a Free Tier, you need a Google Cloud billing account.") but no single block
+says that account requires a payment method; the card sentence that exists is
+scoped to Free Trial signup. Composing the two would be an inference rather than
+a quotation, so the billing-account requirement is recorded as its own evidenced
+fact and the card fact stays UNKNOWN. The Z0 verdict does not depend on it.
+
+`gcp_free_tier_products` and `gcp_bigquery_free_tier` are `always_free` and
+`recurring_quota` respectively, and the difference follows `docs/DATA_MODEL.md`
+-> "Choosing between `always_free` and `recurring_quota`" applied per document.
+The free-program page states "The Free Tier has no end date", which satisfies
+rule 1. The two product pricing pages state no end date and no zero-priced tier
+of their own; each identifies a replenishing free allowance on a service that is
+itself metered, which is rule 2. Those three legs are pinned as separate facts on
+the product profiles so a reviewer can check the determination against the rule
+rather than against an author's intuition.
+
 ## Azure
 
 Use Microsoft Learn MCP, Azure free/pricing pages, Azure updates, Azure Retail Prices API where useful, and Azure MCP for deployment/operational verification.

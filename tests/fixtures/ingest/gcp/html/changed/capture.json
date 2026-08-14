@@ -1,0 +1,17 @@
+{
+  "captured_by": "F008 P3 Google Cloud provider slice (synthetic scaffold)",
+  "fetched_at": "2026-08-14T15:30:00Z",
+  "http_status": null,
+  "synthetic": true,
+  "negative_fixture_note": "NEGATIVE TEST FIXTURE, NOT A CLAIMED COMPLETE CAPTURE. It is not a record of anything Google Cloud publishes and must never be cited as evidence.",
+  "derived_from": "tests/fixtures/ingest/gcp/html/gcp-firestore-free-tier/source.html",
+  "mutation": "the Firestore document-read free quota was edited 50,000 per day -> 60,000 per day so a re-scan raises a change event on a published quota instead of silently overwriting it",
+  "mutation_intent": "A changed allowance must remain extractable and must surface as a change, not vanish.",
+  "extraction_profile": "gcp_firestore_free_tier",
+  "sha256_original": null,
+  "sha256_stored": "97dd61d599462a321c316dc43258fdc1f0e078f08ea833a5e96edfcdd9f34b29",
+  "robots_allowed": true,
+  "tos_note": "No provider bytes were retrieved for this fixture. It is a NEGATIVE test scaffold produced locally; the official Firestore capture it derives from carries the retrieval provenance and terms note.",
+  "trim_method": "not a capture: this document was produced locally by applying one named mutation to the committed official Firestore capture. Mutation: the Firestore document-read free quota was edited 50,000 per day -> 60,000 per day so a re-scan raises a change event on a published quota instead of silently overwriting it",
+  "url": "https://cloud.google.com/firestore/pricing"
+}

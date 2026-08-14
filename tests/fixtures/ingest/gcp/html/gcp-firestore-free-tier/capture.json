@@ -1,0 +1,42 @@
+{
+  "captured_by": "F008 P3 Google Cloud provider slice (live capture, generated from the live parse)",
+  "fetched_at": "2026-08-14T15:30:00Z",
+  "http_status": 200,
+  "robots_allowed": true,
+  "sha256_original": "4f92119eebe0b28953a335f50269cbb0074855849afd4c7a717459d9f99d36c9",
+  "sha256_original_note": "sha256_original is the digest of the exact live bytes this capture was derived from on 2026-08-14. It is NOT reproducible across fetches: cloud.google.com serves per-build markup, so a later fetch of an unchanged page yields a different digest. STRUCTURE, not digest, is the invariant.",
+  "sha256_stored": "e91b57b061bd35c37f94fa3c614c1641727a2a536196e4e3e0efbfab0fb30c6d",
+  "tos_note": "Official Google Cloud documentation (cloud.google.com). https://cloud.google.com/robots.txt has a single 'User-agent: *' group whose Disallow rules cover /console, /landing/, /walkthroughs/, /terms/looker/*, /log, two /partners/resources pages, and the per-language /*/docs/reference/* trees; none of /free/docs/, /firestore/ or /bigquery/ is disallowed, so automated retrieval of this path is permitted. A minimal excerpt is committed for offline, deterministic extraction testing; every retained value and every pinned sentence is reproduced verbatim from the cited live page.",
+  "trim_method": "Removed scripts, navigation, styling and unrelated prose. This capture was GENERATED from the live document's own parse: the retained prose blocks are the exact normalised strings the engine collected from the live page, and the retained table's headers and cells are the exact normalised strings the engine collected from the live target table. Inline markup inside those blocks and cells (anchors, list items, nested elements) was flattened to plain text; the engine normalises a block or cell to its text content, so every retained normalised string is identical to live. This is a deliberate minimal excerpt, not a complete copy of the page.",
+  "live_table_count": 5,
+  "live_table_present": true,
+  "live_table_note": "The live page publishes a dedicated two-column free-allowance table. Exactly one live table carries the declared header signature, so selection is unambiguous.",
+  "non_target_tables_removed": 4,
+  "non_target_tables_removed_note": "MEASURED: the declared header signature matched EXACTLY ONE live table, and the committed capture retains exactly that table, so removing the others cannot change which table the engine selects. For the assertion-only profile no table is read at all.",
+  "target_table_rows_removed": [],
+  "target_table_cells_removed": [],
+  "unpivoted_target_table_columns": [],
+  "ignored_extraction_rows": [],
+  "duplicate_live_blocks_not_retained": [],
+  "live_reconciliation": "LIVE -> FIXTURE (primary): all 6 pinned block(s) occur EXACTLY ONCE in the live document and EXACTLY ONCE in this capture; all 5 live target-table row(s) are present, none removed, none added.",
+  "url": "https://cloud.google.com/firestore/pricing",
+  "structure": {
+    "asserted_block_sha256": [
+      "10c521244f256a49c7d0834f93ba050c6ce0e8ef2f8ed175150451e964115312",
+      "78f3520f732c7353b4ec1be5bb8b2263902c7a41a153d7a5f57fd2e48d3ef204",
+      "7dd98a6ac88183313389f3e4e7f032db0b77c161cacdf4b1a27d4d608e3fb36e",
+      "7dd98a6ac88183313389f3e4e7f032db0b77c161cacdf4b1a27d4d608e3fb36e",
+      "4ba932e3858db900e162d2326f99504394736ba0f82ff81ae8c0ed91da88c4ef",
+      "f17daa0409f83c8ae64a731ab067d009caff9c54b0df9253d8cc4015028f5b56",
+      "d591d0b9898557804306a3eca273e071386f3d9dbca0f22198def2dcd55f18cd"
+    ],
+    "headers": ["Free tier", "Quota"],
+    "rows": [
+      ["Stored data", "1 GiB"],
+      ["Document reads", "50,000 per day"],
+      ["Document writes", "20,000 per day"],
+      ["Document deletes", "20,000 per day"],
+      ["Outbound data transfer", "10 GiB per month"]
+    ]
+  }
+}

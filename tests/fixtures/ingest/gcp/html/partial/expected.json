@@ -1,0 +1,19 @@
+{
+  "profile": "gcp_firestore_free_tier",
+  "mime": "text/html",
+  "source_url": "https://cloud.google.com/firestore/pricing",
+  "candidate_count": 1,
+  "candidates": [
+    {
+      "verification_state": "rejected",
+      "expect_valid": false,
+      "facts": {
+        "error": "assertion_not_found",
+        "detail": "assertion=2; scope=document; text='Firestore offers free quota that lets you get started at no cost. The free quota amounts are listed below. If you need more quota, you must enable billing for your Google Cloud project.'"
+      },
+      "evidence_url": "https://cloud.google.com/firestore/pricing",
+      "evidence_selector": null,
+      "validate_contains": ["assertion_not_found"]
+    }
+  ]
+}

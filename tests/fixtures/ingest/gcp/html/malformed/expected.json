@@ -1,0 +1,19 @@
+{
+  "profile": "gcp_firestore_free_tier",
+  "mime": "text/html",
+  "source_url": "https://cloud.google.com/firestore/pricing",
+  "candidate_count": 1,
+  "candidates": [
+    {
+      "verification_state": "rejected",
+      "expect_valid": false,
+      "facts": {
+        "error": "table_not_found",
+        "detail": "required_headers=['free tier', 'quota']; table[0] headers=['free tier', 'quotas']"
+      },
+      "evidence_url": "https://cloud.google.com/firestore/pricing",
+      "evidence_selector": null,
+      "validate_contains": ["table_not_found"]
+    }
+  ]
+}
