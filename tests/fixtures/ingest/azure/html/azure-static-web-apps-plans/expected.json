@@ -1,0 +1,33 @@
+{
+  "profile": "azure_static_web_apps_plans",
+  "mime": "text/html",
+  "source_url": "https://learn.microsoft.com/en-us/azure/static-web-apps/plans",
+  "candidate_count": 1,
+  "candidates": [
+    {
+      "verification_state": "candidate",
+      "expect_valid": true,
+      "facts": {
+        "web_hosting": "✔",
+        "github_integration": "✔",
+        "azure_devops_integration": "✔",
+        "globally_distributed_static_content": "✔",
+        "free_ssl_certificates": "✔",
+        "staging_environments": "3 per app",
+        "max_app_size": "250 MB per app",
+        "custom_domains": "2 per app",
+        "apis_via_azure_functions": "Managed",
+        "authentication_provider_integration": "Preconfigured (Service defined)",
+        "assign_custom_roles_with_a_function": "✗",
+        "private_endpoints": "✗",
+        "service_level_agreement": "None",
+        "service": "Azure Static Web Apps",
+        "offer_type": "other",
+        "plan_structure": "Azure Static Web Apps is available through two different plans, Free and Standard. See the pricing page for Standard plan costs. For information service level agreement details, see Service Level Agreements (SLA) for Online Services.",
+        "notes": "You can move between Free or Standard plans via the Azure portal."
+      },
+      "evidence_url": "https://learn.microsoft.com/en-us/azure/static-web-apps/plans",
+      "evidence_selector": "azure_static_web_apps_plans matrix row[1:Web hosting] column[Free plan (For personal projects)] -> fact[web_hosting]"
+    }
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "captured_by": "F008 P5 Azure provider slice (synthetic scaffold)",
+  "derived_from": "tests/fixtures/ingest/azure/html/azure-app-service-quotas/source.html",
+  "extraction_profile": "azure_app_service_quotas",
+  "fetched_at": "2026-08-14T22:10:00Z",
+  "http_status": null,
+  "mutation": "the block stating what happens when the free plan's quota is exhausted ('the app is stopped until the quota resets') was deleted. The page still publishes the whole quota table, so a reader that trusted the table alone would still see a free plan with limits; the pinned assertion rejects the document instead. A material Z0 condition can never be assumed from a table.",
+  "mutation_intent": "Proves the evidence floor: a quota table without its supporting prose is not enough.",
+  "negative_fixture_note": "NEGATIVE TEST FIXTURE, NOT A CLAIMED COMPLETE CAPTURE. It is not a record of anything Microsoft publishes and must never be cited as evidence.",
+  "robots_allowed": true,
+  "sha256_original": null,
+  "sha256_stored": "dd5ef71311103e5a9e9981f6233527bdc98f7f5487c221cdd79320bec449a37e",
+  "synthetic": true,
+  "tos_note": "No provider bytes were retrieved for this fixture. It is a NEGATIVE test scaffold produced locally; the official Azure App Service quotas capture it derives from carries the retrieval provenance and terms note.",
+  "trim_method": "not a capture: this document was produced locally by applying one named mutation to the committed official Azure App Service quotas capture. Mutation: the block stating what happens when the free plan's quota is exhausted ('the app is stopped until the quota resets') was deleted. The page still publishes the whole quota table, so a reader that trusted the table alone would still see a free plan with limits; the pinned assertion rejects the document instead. A material Z0 condition can never be assumed from a table.",
+  "url": "https://learn.microsoft.com/en-us/azure/app-service/web-sites-monitor"
+}

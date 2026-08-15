@@ -1,0 +1,17 @@
+{
+  "captured_by": "F008 P5 Azure provider slice (synthetic scaffold)",
+  "derived_from": "tests/fixtures/ingest/azure/html/azure-app-service-quotas/source.html",
+  "extraction_profile": "azure_app_service_quotas",
+  "fetched_at": "2026-08-14T22:10:00Z",
+  "http_status": null,
+  "mutation": "the Description cell of the 'Bandwidth' quota row was edited 'This quota resets every 24 hours at midnight UTC.' -> 'This quota resets every 24 hours at 00:00 UTC.' so a re-scan raises a change event on a published quota instead of silently overwriting it",
+  "mutation_intent": "A changed published value must remain extractable and must surface as a change, not vanish.",
+  "negative_fixture_note": "NEGATIVE TEST FIXTURE, NOT A CLAIMED COMPLETE CAPTURE. It is not a record of anything Microsoft publishes and must never be cited as evidence.",
+  "robots_allowed": true,
+  "sha256_original": null,
+  "sha256_stored": "2028e282d229c74a17a986fcd6175e9a08f630de9d3770b77f9dd66bf9d22c52",
+  "synthetic": true,
+  "tos_note": "No provider bytes were retrieved for this fixture. It is a NEGATIVE test scaffold produced locally; the official Azure App Service quotas capture it derives from carries the retrieval provenance and terms note.",
+  "trim_method": "not a capture: this document was produced locally by applying one named mutation to the committed official Azure App Service quotas capture. Mutation: the Description cell of the 'Bandwidth' quota row was edited 'This quota resets every 24 hours at midnight UTC.' -> 'This quota resets every 24 hours at 00:00 UTC.' so a re-scan raises a change event on a published quota instead of silently overwriting it",
+  "url": "https://learn.microsoft.com/en-us/azure/app-service/web-sites-monitor"
+}

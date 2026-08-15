@@ -1,0 +1,30 @@
+{
+  "profile": "azure_app_service_quotas",
+  "mime": "text/html",
+  "source_url": "https://learn.microsoft.com/en-us/azure/app-service/web-sites-monitor",
+  "candidate_count": 1,
+  "candidates": [
+    {
+      "verification_state": "candidate",
+      "expect_valid": true,
+      "facts": {
+        "cpu_short_quota": "The amount of CPU allowed for this app in a five-minute interval. This quota resets every five minutes.",
+        "cpu_day_quota": "The total amount of CPU allowed for this app in a day. This quota resets every 24 hours at midnight UTC.",
+        "memory_quota": "The total amount of memory allowed for this app.",
+        "bandwidth_quota": "The total amount of outgoing bandwidth allowed for this app in a day. This quota resets every 24 hours at midnight UTC.",
+        "filesystem_quota": "The total amount of storage allowed.",
+        "service": "Azure App Service",
+        "offer_type": "other",
+        "quota_basis": "If the app is hosted in a Free or Shared plan, quotas define the limits on the resources that the app can use. Quotas for apps in a Free or Shared plan are:",
+        "exhaustion_behaviour": "site_disabled_until_reset",
+        "exhaustion_basis": "If an app exceeds the CPU (Short), CPU (Day), or Bandwidth quota, the app is stopped until the quota resets. During this time, all incoming requests result in an HTTP 403 error.",
+        "memory_exhaustion_note": "If the app exceeds its Memory quota, it stops temporarily.",
+        "filesystem_exhaustion_note": "If app exceeds the Filesystem quota, any write operation fails. Write operation failures include any writes to logs.",
+        "notes": "App Service Free and Shared (preview) service plans are base tiers that run on the same Azure virtual machines as other App Service apps. Some apps might belong to other customers. These tiers are intended only for development and testing purposes.",
+        "quota_increase_note": "You can increase or remove quotas from your app by upgrading your App Service plan."
+      },
+      "evidence_url": "https://learn.microsoft.com/en-us/azure/app-service/web-sites-monitor",
+      "evidence_selector": "azure_app_service_quotas matrix row[1:CPU (Short)] column[Description] -> fact[cpu_short_quota]"
+    }
+  ]
+}

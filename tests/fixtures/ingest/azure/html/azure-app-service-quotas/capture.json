@@ -1,0 +1,58 @@
+{
+  "captured_by": "F008 P5 Azure provider slice (live capture, generated from the live parse)",
+  "duplicate_live_blocks_not_retained": [],
+  "duplicate_live_blocks_retained": [],
+  "fetched_at": "2026-08-14T22:10:00Z",
+  "http_status": 200,
+  "ignored_extraction_rows": [],
+  "live_reconciliation": "LIVE -> FIXTURE (primary): all 7 retained live block(s) occur EXACTLY ONCE in the live document and EXACTLY ONCE in this capture; all 5 live target-table row(s) and all 10 target-table cell(s) are present, none removed, none added. FIXTURE -> LIVE (supporting only): every block and every cell in this capture was taken from the live parse; the generator refuses to write a fixture containing any block or cell that is not a live one, so a synthesized sentence cannot reach disk. RETAINED is not the same as ASSERTED: a retained block the profile does not read (a document <title>, say) is live content kept for context, and the count above is of blocks in this file rather than of profile assertions.",
+  "live_table_count": 1,
+  "live_table_note": "MATRIX. MEASURED: the live document contains exactly ONE <table>, with the live header row ['Quota', 'Description'] and 5 body rows. It is the Free and Shared plan quota table and every row is mapped.",
+  "live_table_present": true,
+  "non_target_tables_removed": 0,
+  "non_target_tables_removed_note": "MEASURED: the live document contains exactly one table and it is the target, so no non-target table exists and none is synthesized.",
+  "retained_context_blocks": [],
+  "retained_context_blocks_note": "",
+  "retained_live_block_count": 7,
+  "robots_allowed": true,
+  "sha256_original": "e58fbf1d7d96e4ac4c36418eae5617d78f23953a7ecb03a23d40756b38476c72",
+  "sha256_original_note": "sha256_original is the digest of the exact live bytes this capture was derived from on 2026-08-14. It is NOT reproducible across fetches: Microsoft serves per-build markup, rotating correlation ids and localised banner content, so a later fetch of an unchanged page yields a different digest. STRUCTURE, not digest, is the invariant.",
+  "sha256_stored": "d12bd6fead49e96aed9864a2e1ccdd152f3d7bdcb4f28c4466b3a9d5bae018b3",
+  "sha256_stored_note": "sha256_stored attests the COMMITTED BYTES ONLY. It is a tamper-evidence seal on this file, not a link to the live page, and it must never be read as a fidelity control.",
+  "structure": {
+    "asserted_block_sha256": [
+      "432e8650c6d2775f6c0e9856bef183d5975a20a55af1f54bf8249cc005071c48",
+      "1880495cbf2442bae51fc738c6b36842ed1ca64e60ccf00fbc61113f19dfe77e",
+      "1880495cbf2442bae51fc738c6b36842ed1ca64e60ccf00fbc61113f19dfe77e",
+      "42a1a3d44e93f0b90539f3107db11eaa6632489dda499afcbc0e8876b3db5bdd",
+      "42a1a3d44e93f0b90539f3107db11eaa6632489dda499afcbc0e8876b3db5bdd",
+      "02c6667a6dbe892745693cf819eaf18a1e5a80b9a31b901098c480476716448b",
+      "aeb1065de2af290d7b1d5f8dba0456effa0184499d516fced87ace921a76abba",
+      "e80039de456c901bee63af810f37464c28e61ba3d4732e34b600153e88cee2a8",
+      "ac600f8cb26c457f0172e1f2ff3ab40c2774101aae15fb2a2107db66eccda762"
+    ],
+    "headers": ["Quota", "Description"],
+    "rows": [
+      [
+        "CPU (Short)",
+        "The amount of CPU allowed for this app in a five-minute interval. This quota resets every five minutes."
+      ],
+      [
+        "CPU (Day)",
+        "The total amount of CPU allowed for this app in a day. This quota resets every 24 hours at midnight UTC."
+      ],
+      ["Memory", "The total amount of memory allowed for this app."],
+      [
+        "Bandwidth",
+        "The total amount of outgoing bandwidth allowed for this app in a day. This quota resets every 24 hours at midnight UTC."
+      ],
+      ["Filesystem", "The total amount of storage allowed."]
+    ]
+  },
+  "target_table_cells_removed": [],
+  "target_table_rows_removed": [],
+  "tos_note": "Official Microsoft Learn documentation (learn.microsoft.com). https://learn.microsoft.com/robots.txt has a single 'User-agent: *' group with 19 Disallow rules, all of which target /*/answers/, /*/opbuildpdf/, /*/search/ and /api/ paths; none matches this path, so automated retrieval of this path is permitted. A minimal excerpt is committed for offline, deterministic extraction testing; every retained value and every pinned block is reproduced verbatim from the cited live page.",
+  "trim_method": "Removed scripts, navigation, styling and unrelated prose. This capture was GENERATED from the live document's own parse by an owner-run reconciling generator: every retained block is the exact normalised string the engine collected from the live page, and (where a table is retained) the headers and cells are the exact normalised strings the engine collected from the live target table. The generator re-parses what it is about to write and REFUSES to write when any pinned block or any target-table cell differs from live in either direction. This is a deliberate minimal excerpt, not a complete copy of the page.",
+  "unpivoted_target_table_columns": [],
+  "url": "https://learn.microsoft.com/en-us/azure/app-service/web-sites-monitor"
+}

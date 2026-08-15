@@ -1,0 +1,44 @@
+<!doctype html>
+<html>
+<head>
+  <title>Azure App Service Quotas and Metrics - Azure App Service | Microsoft Learn</title>
+</head>
+<body>
+  <p>App Service Free and Shared (preview) service plans are base tiers that run on the same Azure virtual machines as other App Service apps. Some apps might belong to other customers. These tiers are intended only for development and testing purposes.</p>
+  <p>If the app is hosted in a Free or Shared plan, quotas define the limits on the resources that the app can use. Quotas for apps in a Free or Shared plan are:</p>
+  <p>If an app exceeds the CPU (Short), CPU (Day), or Bandwidth quota, the app is stopped until the quota resets. During this time, all incoming requests result in an HTTP 403 error.</p>
+  <p>If the app exceeds its Memory quota, it stops temporarily.</p>
+  <p>If app exceeds the Filesystem quota, any write operation fails. Write operation failures include any writes to logs.</p>
+  <p>You can increase or remove quotas from your app by upgrading your App Service plan.</p>
+  <table>
+    <thead>
+      <tr>
+        <th scope="col">Quotas</th>
+        <th scope="col">Description</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <th scope="row">CPU (Short)</th>
+        <td>The amount of CPU allowed for this app in a five-minute interval. This quota resets every five minutes.</td>
+      </tr>
+      <tr>
+        <th scope="row">CPU (Day)</th>
+        <td>The total amount of CPU allowed for this app in a day. This quota resets every 24 hours at midnight UTC.</td>
+      </tr>
+      <tr>
+        <th scope="row">Memory</th>
+        <td>The total amount of memory allowed for this app.</td>
+      </tr>
+      <tr>
+        <th scope="row">Bandwidth</th>
+        <td>The total amount of outgoing bandwidth allowed for this app in a day. This quota resets every 24 hours at midnight UTC.</td>
+      </tr>
+      <tr>
+        <th scope="row">Filesystem</th>
+        <td>The total amount of storage allowed.</td>
+      </tr>
+    </tbody>
+  </table>
+</body>
+</html>
