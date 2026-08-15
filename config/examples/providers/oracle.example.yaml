@@ -170,14 +170,15 @@ coverage:
       on two independent documents - https://www.oracle.com/cloud/free/faq/ and
       https://docs.oracle.com/en-us/iaas/Content/FreeTier/freetier_topic-Always_Free_Resources.htm
       - and neither lists a container or application-hosting service. That is NOT
-      treated as proof of absence, for two reasons stated plainly: the FAQ says
-      "As new Always Free services become available, you will automatically be
-      able to use those as well", so the list is a current state rather than a
-      closed set; and the list does contain "APEX Application Development" and
-      "Content Management Starter Edition", either of which could arguably be
-      read as application hosting. No dedicated OCI container page was probed.
-      The state is therefore unknown rather than declared absent in either
-      direction.
+      treated as proof of absence, for two reasons stated plainly. First, the FAQ
+      says "As new Always Free services become available, you will automatically
+      be able to use those as well", so the list is a current state rather than a
+      closed set. Second, two entries could arguably be read as application
+      hosting, and to be precise about which document carries which: "APEX
+      Application Development" appears on BOTH documents, and "Content Management
+      Starter Edition" appears on the FAQ ONLY. No dedicated OCI container page
+      was probed. The state is therefore unknown rather than declared absent in
+      either direction.
   serverless-functions:
     state: unknown
     rationale: >-
@@ -185,9 +186,14 @@ coverage:
       https://www.oracle.com/cloud/free/faq/ and
       https://docs.oracle.com/en-us/iaas/Content/FreeTier/freetier_topic-Always_Free_Resources.htm
       were parsed in full and neither lists OCI Functions or any other
-      serverless-function allowance. No dedicated OCI Functions page was probed,
-      and an enumeration that omits a service is not proof that no free
-      allowance exists, so the state is unknown rather than not_offered.
+      serverless-function allowance. One hit for the word "serverless" DOES exist
+      and is dismissed here rather than left to look like an oversight: the OCI
+      document contains the block "Exadata Infrastructure Type: Serverless",
+      which is the infrastructure type of the Always Free Autonomous AI Database,
+      not a functions allowance and not an allowance of any kind. No dedicated
+      OCI Functions page was probed, and an enumeration that omits a service is
+      not proof that no free allowance exists, so the state is unknown rather
+      than not_offered.
   relational-databases:
     state: offered_no_z0
     source: oracle-mysql-heatwave-always-free

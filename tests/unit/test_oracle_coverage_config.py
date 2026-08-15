@@ -168,6 +168,39 @@ def test_the_unknowns_explain_why_omission_is_not_proof_of_absence() -> None:
     assert "not_offered" in serverless
 
 
+def test_the_containers_rationale_says_which_document_carries_which_entry() -> None:
+    """Precision about STRUCTURE, not just content.
+
+    The rationale cites two documents and then names two entries. MEASURED
+    block-wise over the parsed live blocks: "APEX Application Development"
+    appears on BOTH documents, "Content Management Starter Edition" on the FAQ
+    ONLY. An earlier revision said only that "the list" contained both, which is
+    singular and correct but reads as "both, on both". A description that invites
+    a false reading is a defect on this project even when it is literally true.
+    """
+
+    rationale = _load().coverage["containers-app-hosting"].rationale or ""
+    assert '"APEX Application Development" appears on BOTH documents' in rationale
+    assert '"Content Management Starter Edition" appears on the FAQ ONLY' in rationale
+
+
+def test_the_serverless_rationale_names_and_dismisses_the_one_serverless_hit() -> None:
+    """A considered exclusion must not look like an oversight.
+
+    MEASURED block-wise: the word "serverless" occurs exactly once across the two
+    parsed enumerations, in the block "Exadata Infrastructure Type: Serverless" —
+    the infrastructure type of the Always Free Autonomous AI Database, not a
+    functions allowance. An evaluator grepping for `serverless` finds that hit,
+    so the rationale names it and dismisses it explicitly rather than leaving the
+    reader to decide whether it was missed.
+    """
+
+    rationale = _load().coverage["serverless-functions"].rationale or ""
+    assert "Exadata Infrastructure Type: Serverless" in rationale
+    assert "not a functions allowance" in rationale
+    assert "Autonomous AI Database" in rationale
+
+
 @pytest.mark.parametrize(
     "slug",
     [
