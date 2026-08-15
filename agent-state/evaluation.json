@@ -537,5 +537,105 @@
       "worktree": "detached probe worktree at 85ef245dfce2df2aaac5a90db89f820dd6bbcf42; left tracked-clean; PR #73 never modified, rebased, merged or commented on"
     },
     "recommendation": "DO NOT MERGE AS-IS. One blocking defect, and it is a two-sentence documentation fix: delete or correct 'Three providers have now been measured and all three agree: perpetual is not free.' in docs/PROVIDER_ADAPTERS.md and apps/api/app/ingest/adapters/profiles/oracle.py, and the matching 'the third provider to demonstrate it' in tests/unit/test_adapter_oracle.py:256. An accurate replacement is available and is a stronger claim: Oracle's Always Free tier is genuinely perpetual by quotation AND card-gated by quotation on the same document, which is what makes it Z1 rather than Z0 - stated without generalising to providers whose perpetual offers this repository correctly publishes as Z0. Recommend also correcting the capture reconciliation wording so a counted <title> is not called a pinned block (F2), and refreshing current_contract.json measured_results after the rebase (F3). Everything else in this slice is verified correct: the six verdicts, the card reading, the absence refusals, the load-bearing positive control, the publication mechanism, the mutation battery, the protected state and the append-only ledger. No false-free claim exists anywhere in the slice, and the central product risk - Oracle marketed as 'Always Free' being published as Z0 - is correctly and provably refused. Re-evaluation after the prose fix should be cheap: no code, fixture or verdict changes are implied."
+  },
+  {
+    "schema_version": 1,
+    "feature_id": "F008",
+    "increment": "p6-oracle-provider-recheck",
+    "evaluated_commit": "c4a7180f560594151e84a4c10f4eeba65ff805ff",
+    "commit_sha_evaluated": "c4a7180f560594151e84a4c10f4eeba65ff805ff",
+    "evaluator": "fresh independent Level 2 evaluator (Copilot CLI Chief)",
+    "evaluated_at": "2026-08-15T04:05:00Z",
+    "harness": {
+      "version": "2026-08-12.1",
+      "content_hash": "7209c820e7833b8a",
+      "loaded_first": true
+    },
+    "required_evaluation_level": 2,
+    "evaluation_level": 2,
+    "disposition": "passed",
+    "overall_disposition": "passed",
+    "supersedes": "F008 p6-oracle-provider (evaluated_commit 85ef245dfce2df2aaac5a90db89f820dd6bbcf42, disposition failed)",
+    "base_commit": "741e1aab684fcf9dc9586aa119cc42d96de18083",
+    "blocking_issues": [],
+    "summary": "SCOPED RE-CHECK of the corrected head c4a7180f560594151e84a4c10f4eeba65ff805ff, which fixes the single blocking defect (F1) plus F2, F3 and F4 from the prior FAILED evaluation of 85ef245d. Scope was bounded by a composition guard rather than by re-running the whole evaluation: exactly 14 files changed in one commit, no source.html fixture changed, and the classification engine plus all six other provider profile modules are blob-identical to base, so the prior findings on extraction integrity, the mutation battery, the positive control and the publication mechanism carry forward unchanged. Everything the change COULD have moved was re-derived. All four fixes verified. Every number in the corrected prose was independently recomputed and matched. The three prose guards were proven non-vacuous by mutation with byte-exact restoration proven by git hash-object. Suite 2668 passed / 2 skipped against a live PostgreSQL; check.ps1 -NodeAudit ALL CHECKS PASSED at exit 0; 31 protected paths blob-identical; progress.md a strict raw-byte prefix of BOTH base and the prior head. Disposition PASSED. No blocking issues remain.",
+    "acceptance_steps": [
+      {
+        "step": 1,
+        "name": "f1_false_universal_retracted_and_replacement_is_true_of_the_full_data_set",
+        "acceptance_step": "The refuted generalisation is gone; the replacement is true of the FULL data set and every number in it is re-derived.",
+        "result": "passed",
+        "method": "Drove the real classifier over every provider fixture independently of the builder's new test, then compared every number in the corrected prose against my own table.",
+        "measured": "Re-derived: 14 perpetual (always_free) offers across 7 provider configurations -- 5 Z0_TRUE_FREE, 5 Z1_BILLING_EXPOSURE, 4 UNKNOWN. Matches the corrected prose exactly. Scope claims also re-derived and correct: repository-wide 5 Z0 across 2 providers (github, cloudflare); restricted to the six F008 providers, 3 from GitHub alone; Cloudflare correctly identified as F005 and not an F008 provider. The distinctive claim re-derived across all 14: AWS, Azure and GCP are each blocked by automatic_billing, and Oracle alone is blocked by a quoted payment-card requirement. The correction also explicitly states Oracle is NOT the only provider whose perpetual offer is withheld, which was the specific false-reading risk in a corrected sentence. Present in BOTH oracle.py and docs/PROVIDER_ADAPTERS.md."
+      },
+      {
+        "step": 2,
+        "name": "the_retraction_guard_forbids_assertion_not_occurrence_and_resists_rewording",
+        "acceptance_step": "Verify the guard forbids ASSERTION rather than OCCURRENCE, and that it cannot be evaded by rewording.",
+        "result": "passed",
+        "method": "Six mutations against the shipped prose, each with the anchor asserted present before patching, each file restored and the restoration proven with git hash-object against the pre-mutation blob. Baseline asserted GREEN first.",
+        "measured": "M1 bare assertion of 'Perpetual is not free.' with no refuting context -> guard RED (correct: it forbids assertion). M2 the same phrase QUOTED inside a refuting passage -> guard GREEN (correct: the retraction may name what it retracts). M3 the rewording evasion the builder itself flagged, 'not' -> 'never' -> guard RED (evasion blocked; the variant is in the phrase list). M5 swapping the scoped count 3 -> 5 -> guard RED. M6 reinstating the misleading APEX 'BOTH documents' claim -> guard RED. All six restorations byte-exact (oracle.py 2942b9cdbb1b, oracle.example.yaml d3780d167dc3), worktree left clean. DOCUMENTED LIMIT, not a defect: M4, a novel phrasing outside the list ('A perpetual tier is always billed eventually'), is NOT caught -- inherent to any phrase-list guard. The semantic backstop is test_perpetuity_neither_entails_nor_precludes_zero_cost, which asserts the underlying FACT in both directions regardless of wording, and which fails if the data ever stops supporting the corrected statement."
+      },
+      {
+        "step": 3,
+        "name": "f2_capture_counts_now_count_only_real_guards",
+        "acceptance_step": "Re-verify the load-bearing pin counts (24, 6, 7, 6, 5, 7) rather than taking the new numbers on trust.",
+        "result": "passed",
+        "method": "Recomputed pinned_block_count from the registered profile objects, then MUTATED every declared-pinned block to confirm it actually rejects, and mutated the <title> on all six to confirm the exclusion is consistent in both directions.",
+        "measured": "All six corrected pinned_block_count values (24, 6, 7, 6, 5, 7) agree exactly with my independent derivation from the prior evaluation. Every declared-pinned block REJECTS the document when reworded -- none is furniture miscounted as a guard. The <title> check is consistent in BOTH directions: pinned==guards on all six (True/True for oracle-always-free-resources, False/False for the other five), so the fix did not overcorrect by declaring a real guard to be furniture. The builder fixed the root cause rather than the wording: the five unused *_TITLE constants are DELETED and removed from __all__, and test_every_exported_constant_is_pinned_by_some_profile now prevents dead evidence-looking constants from returning. Two machine-readable fields (pinned_block_count, retained_not_pinned_count) replace a prose-only number."
+      },
+      {
+        "step": 4,
+        "name": "f4_apex_claim_corrected_by_the_right_mechanism",
+        "acceptance_step": "Re-derive the APEX finding independently; the evaluator's previously stated REASON was wrong and must not be inherited.",
+        "result": "passed",
+        "method": "Searched the committed captures for every APEX occurrence, then corroborated the workload-type mechanism from an independent source rather than relying on either party's account.",
+        "measured": "MY PRIOR REASON WAS WRONG and the builder's is right. I had reported the OCI occurrence as lowercase-in-prose only. The committed OCI capture contains exactly one APEX occurrence, the lowercase prose one inside the pinned AFR_AUTONOMOUS_DB block; the FAQ capture contains none (its Always Free list is trimmed out, as trim_method discloses). Independently corroborated that 'APEX Application Development' is a genuine Oracle Autonomous Database WORKLOAD TYPE, alongside Data Warehouse, Transaction Processing and JSON Database -- so the builder's account is correct: the original claim was literally true as a substring and still misleading, because a workload type is not a service listing. The corrected rationale states both list entries are FAQ-only and names the OCI occurrence as a workload type that is not counted. The coverage state remains unknown, so no false-free claim is reachable in either direction. Verified non-vacuous by mutation (M6)."
+      },
+      {
+        "step": 5,
+        "name": "substring_versus_exact_set_fix_is_load_bearing",
+        "acceptance_step": "Confirm the blocking-condition fix is exact-set membership and not a narrower substring.",
+        "result": "passed",
+        "method": "Implemented BOTH the buggy and the fixed predicate side by side over every perpetual offer and compared their outputs.",
+        "measured": "The bug is REAL and the fix is load-bearing. Substring matching on the phrase 'payment card is required' reports ['github', 'oracle', 'vercel'] as card-blocked; exact set membership on 'A payment card is required.' reports ['oracle']. GitHub Pages, Vercel Hobby and Oracle Always Free Resources all carry gate 4's 'Whether a payment card is required is unknown.', which CONTAINS the gate 3 phrase. The shipped test uses `conditions = set(result.blocking_conditions)` with exact `in` membership -- correct. EVALUATOR ERROR: my first attempt at this probe used the full gate 3 sentence including its leading article and trailing period, which is NOT a substring of gate 4, so the two implementations agreed and I nearly recorded the builder's bug report as unreproducible. Testing the realistic buggy predicate (the phrase, as an author would actually write it) reproduced it exactly."
+      },
+      {
+        "step": 6,
+        "name": "f3_contract_refreshed_and_the_retracted_heuristic_is_itself_false",
+        "acceptance_step": "Verify the stale contract numbers are corrected, and check the builder's retraction of its own baseline heuristic.",
+        "result": "passed",
+        "method": "Compared secrets-baseline file/entry counts across base, prior head and corrected head, and counted substantive diff lines excluding generated_at.",
+        "measured": "The builder's retraction is correct and I confirmed the specific number. File and entry counts are IDENTICAL across the prior and corrected heads (68 files / 289 entries -> 68 files / 289 entries) while 134 substantive lines changed excluding generated_at. So 'same counts means timestamp-only churn' is demonstrably false -- digests and line numbers move while counts hold. Baseline progression base 54/214 -> head 68/289 is the true figure, replacing the contract's stale '42 -> 56 files, 156 -> 231 entries'."
+      },
+      {
+        "step": 7,
+        "name": "nothing_that_was_previously_verified_regressed",
+        "acceptance_step": "Confirm the correction did not disturb any previously verified result.",
+        "result": "passed",
+        "method": "Composition guard first (diff the two heads), then re-derived only what the changed files could affect.",
+        "measured": "Composition guard: exactly 14 files changed in one commit; NO source.html fixture changed; apps/api/app/classify/engine.py, apps/api/app/ingest/adapters/html.py and all six other provider profile modules blob-identical to base. Because oracle.py did change, the Oracle verdicts were re-derived rather than assumed: sequence still UNKNOWN / Z1 / Z1 / Z1 / UNKNOWN / Z1 with ANY Z0 = False. Both absence-based refusals still confirmed by a 12-term block-wise scan with zero hits. Coverage unchanged at 9 offered_no_z0 / 5 unknown / 0 not_offered / 0 verified_free over 14 categories and 6 sources. Oracle-specific tests 238 total (230 passed + 8 DB-skipped without a database), matching the reported 227 -> 238."
+      },
+      {
+        "step": 8,
+        "name": "gates_ledger_and_protected_state",
+        "acceptance_step": "Suite, check.ps1, protected state, append-only ledger, feature_list untouched.",
+        "result": "passed",
+        "method": "Full suite against a real PostgreSQL on an isolated port; check.ps1 only after installing node dependencies and reading each tool's own stderr; protected state by git hash-object blob comparison; append-only by raw byte prefix.",
+        "measured": "Suite 2668 passed / 2 skipped with DATABASE_URL set -- exactly as reported. scripts/check.ps1 -NodeAudit ALL CHECKS PASSED at exit 0 (Ruff lint, Ruff format, Pytest, Prettier, ESLint, Secrets baseline shape, Secret scan, URL host allowlist, five dependency audits). Protected state: 31 paths compared by blob hash, 0 differences, 0 missing, including agent-state/feature_list.json still at 154de1fef2ba with F008 passes:false. progress.md is a strict raw-byte prefix of BOTH the base blob (642068 bytes) AND the prior head (664992 -> 671719 bytes), so the fix appended and rewrote nothing. Merge-base still equals main; main unchanged at 741e1aab throughout."
+      }
+    ],
+    "evaluator_errors_self_reported": [
+      "My substring-bug probe initially used the FULL gate 3 sentence ('A payment card is required.') including its leading article and trailing period. That string is not contained in gate 4, so both implementations agreed and I was one step from recording the builder's bug report as unreproducible. The builder's report was accurate; my test was wrong. Testing the phrase an author would actually write reproduced the false positives exactly.",
+      "My guard-mutation probe's M6 anchor spanned a line break in the YAML and did not match -- the SAME line-wrapping failure mode this project keeps encountering. My own exactly-once anchor assertion caught it loudly and aborted before writing anything, rather than silently testing nothing. That is the trap working as designed, on me.",
+      "My first check.ps1 run on the fresh re-check worktree again reported 'CHECKS FAILED: Prettier check, ESLint'. Same cause as the previous round: node_modules absent in a new worktree. Confirmed by running the tools directly (npx installed them on demand) rather than trusting the summary line. After npm ci: ALL CHECKS PASSED. I hit this trap twice across two rounds.",
+      "In the prior evaluation I reported the F4 mechanism incorrectly -- lowercase-prose-only -- when the OCI document also carries a title-cased occurrence as an Autonomous Database workload type. The finding's substance was right and its stated reason was wrong."
+    ],
+    "known_issues_or_risks": [
+      "The retraction guard is a phrase-list guard and cannot catch an arbitrary novel rephrasing of the refuted claim (measured: M4 passes). This is inherent rather than a defect. The semantic backstop is test_perpetuity_neither_entails_nor_precludes_zero_cost, which asserts the underlying fact in both directions independently of wording.",
+      "test_perpetuity_neither_entails_nor_precludes_zero_cost deliberately pins directional facts rather than exact counts, so the prose's numbers (14/5/5/4) are NOT test-pinned and can drift as provider slices are added. The builder states this tradeoff explicitly, and the alternative would force unrelated slices to edit Oracle's documentation. Recommend the next provider slice re-derives these numbers as part of its own contract.",
+      "The coverage rationales remain wording-pinned rather than truth-pinned, because the captures are honestly declared minimal excerpts. Unchanged from the prior evaluation and cannot produce a false-free claim."
+    ],
+    "recommendation": "MERGE-READY from this evaluator's perspective. The single blocking defect is fully corrected in both files plus the test docstring, and the replacement is true of the full 14-offer data set with every number independently re-derived and its scope stated. F2, F3 and F4 are also fixed, F2 at the root cause rather than in wording. The retraction is recorded rather than quietly replaced, which is the right call for a claim that shipped. Three prose guards proven non-vacuous by mutation with byte-exact restoration. Gates green: 2668/2 with PostgreSQL, check.ps1 -NodeAudit all passed, 31 protected paths blob-identical, feature_list.json untouched at 154de1fef2ba with F008 still passes:false, progress.md append-only by raw byte prefix from both base and the prior head. Merge decision remains the orchestrator's; F008 should stay passes:false until epic close-out."
   }
 ]
