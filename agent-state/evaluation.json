@@ -371,5 +371,171 @@
       "Draft-PR CI and live-fetch session artifacts remain builder-level evidence to verify after the first push."
     ],
     "recommendation": "Accept this provider increment for owner review while keeping F008 passes:false. Do not merge automatically; verify the draft PR head and CI, including exact dependency-audit failure attribution."
+  },
+  {
+    "schema_version": 1,
+    "feature_id": "F008",
+    "increment": "p6-oracle-provider",
+    "evaluated_commit": "85ef245dfce2df2aaac5a90db89f820dd6bbcf42",
+    "commit_sha_evaluated": "85ef245dfce2df2aaac5a90db89f820dd6bbcf42",
+    "evaluator": "fresh independent Level 2 evaluator (Copilot CLI Chief)",
+    "evaluated_at": "2026-08-15T02:40:00Z",
+    "harness": {
+      "version": "2026-08-12.1",
+      "content_hash": "7209c820e7833b8a",
+      "loaded_first": true
+    },
+    "required_evaluation_level": 2,
+    "evaluation_level": 2,
+    "disposition": "failed",
+    "overall_disposition": "failed",
+    "base_commit": "741e1aab684fcf9dc9586aa119cc42d96de18083",
+    "base_and_head_re_derived_at_start_and_end": true,
+    "blocking_issues": [
+      "FALSE GENERALISATION SHIPPED IN DOCUMENTATION. 'Three providers have now been measured and all three agree: perpetual is not free.' appears in docs/PROVIDER_ADAPTERS.md (line 618) and in apps/api/app/ingest/adapters/profiles/oracle.py (line 31). The repository's own data refutes it: FIVE distinct always_free (perpetual) offers classify Z0_TRUE_FREE under the real engine - github_actions_billing, github_packages_billing, github_codespaces_billing, cloudflare_pages_limits, cloudflare_workers_limits. GitHub is F008 slice P1, measured FIVE slices BEFORE Oracle, and tests/integration/test_ingest_github.py:244 asserts zero_cost_class == 'Z0_TRUE_FREE'. 'Three providers have now been measured' is also inaccurate on its face: six F008 providers are complete (github, vercel, gcp, aws, azure, oracle) and at least six have a perpetual offer. The claim is true only of the three cherry-picked providers named in the same sentence, and is stated as a general law. This is precisely the class the slice's own test docstring condemns: test_the_containers_rationale_says_which_document_carries_which_entry states 'A description that invites a false reading is a defect on this project even when it is literally true' - and this one is not literally true. NO Oracle verdict is affected and NO false-free claim results; the defect is a false NOT-free generalisation in shipped prose. Fix is two sentences in two files."
+    ],
+    "summary": "Level-2 fresh-context evaluation of PR #73 (branch stsyg-oracle-provider-p6, head 85ef245dfce2df2aaac5a90db89f820dd6bbcf42, base main 741e1aab684fcf9dc9586aa119cc42d96de18083). Both SHAs re-derived with git ls-remote at start AND end of the evaluation; neither moved. All nine reported claims were independently re-derived and ALL NINE MATCHED, including the exact suite count (2657 passed / 2 skipped against a live PostgreSQL on an isolated port) and scripts/check.ps1 -NodeAudit ALL CHECKS PASSED at exit 0. The card reading was attacked hardest, as briefed, and it SURVIVES - strengthened by evidence the builder did not cite. Disposition is FAILED on ONE documentation defect only: a false generalisation ('perpetual is not free') shipped in docs/PROVIDER_ADAPTERS.md and the oracle.py docstring, refuted by the repository's own five Z0 perpetual offers across GitHub and Cloudflare. Every engineering claim, every Oracle verdict, the extraction integrity, the classification, the publication mechanism, the mutation battery, the positive control, the protected state and the append-only ledger are CORRECT and verified. No false-free claim exists anywhere in the slice.",
+    "acceptance_steps": [
+      {
+        "step": 1,
+        "name": "six_sources_six_verdicts_no_z0",
+        "acceptance_step": "Six sources; verdicts UNKNOWN/Z1/Z1/Z1/UNKNOWN/Z1; no Z0; perpetuity extracted not hedged.",
+        "result": "passed",
+        "method": "Independent probe drove the real HtmlDocAdapter over the six committed captures and classified each with the real app.classify.engine, without using the builder's test helpers for the verdict.",
+        "measured": "VERDICT SEQUENCE = [UNKNOWN, Z1_BILLING_EXPOSURE, Z1_BILLING_EXPOSURE, Z1_BILLING_EXPOSURE, UNKNOWN, Z1_BILLING_EXPOSURE]. ANY Z0 AMONG ORACLE = False. offer_type='always_free' on oracle-always-free-resources, oracle-always-free-services and oracle-mysql-heatwave-always-free, each with a quoted availability string ('for the life of the account' / 'available for an unlimited time'). Perpetuity is extracted, not hedged."
+      },
+      {
+        "step": 2,
+        "name": "positive_control_proven_load_bearing",
+        "acceptance_step": "SAFE_EXHAUSTION monkeypatched to frozenset() -> control goes RED while the six-offer no-Z0 sweep stays GREEN; plus 8 parametrised gate cases.",
+        "result": "passed",
+        "method": "Evaluator broke the control itself rather than trusting the builder's test. Baseline asserted GREEN first, patched attribute printed, then re-measured.",
+        "measured": "baseline control = Z0_TRUE_FREE; after eng.SAFE_EXHAUSTION = frozenset() (was 9) the control = UNKNOWN (RED); the six-offer no-Z0 sweep still returned no Z0 (GREEN). The asymmetry is real, so the sweep alone genuinely cannot distinguish a real refusal from a classifier that never says yes. SAFE_EXHAUSTION restored to 9. The 8 parametrised gate cases exist at test_adapter_oracle.py:501-531 and pass, with the all-clear case reaching Z0_TRUE_FREE."
+      },
+      {
+        "step": 3,
+        "name": "publication_and_z0_are_different_gates",
+        "acceptance_step": "All six withheld as uncertain evidence via schema_complete/deterministic, NOT by the card; a Z1 offer publishes correctly labelled.",
+        "result": "passed",
+        "method": "Read the corrected mechanism and confirmed the control isolates the variable; ran the DB-backed integration suite against a real PostgreSQL 16 on an isolated port (55432) so these tests RAN rather than skipped.",
+        "measured": "test_runner_persists_six_official_review_candidates_and_zero_offers: total_published=0, total_reviewed=6, zero Offer/OfferVersion/Quota rows for the Oracle provider. test_the_catalogue_never_labels_a_card_required_offer_z0 seeds two candidates on the SAME scan run, SAME source, SAME publish_scan call, SAME frozen clock, differing ONLY in requires_card, and both carry numeric quota amounts so they satisfy the gate's deterministic condition: BOTH publish (outcome.published == 2), cleared -> Z0_TRUE_FREE, Oracle-shaped -> Z1_BILLING_EXPOSURE, distinct offer_ids. The variable is properly isolated. The builder's self-caught correction is genuine and correctly implemented."
+      },
+      {
+        "step": 4,
+        "name": "reconciliation_both_directions_and_generator_refusals",
+        "acceptance_step": "Pins/rows 24,6/6 - 7,0/0 - 8,0/0 - 7,0/0 - 6,0/0 - 8,0/0; generator refuses on zero/multiple needle matches, duplicate live block, table-row divergence.",
+        "result": "passed_with_finding",
+        "method": "Recomputed both numbers from the registered profile objects rather than reading the capture prose, then tested whether every block the capture calls 'pinned' is actually load-bearing by mutating it.",
+        "measured": "Capture prose matches the reported numbers exactly (24/6, 7/0, 8/0, 7/0, 6/0, 8/0). BUT the recomputed count of DISTINCT asserted blocks is 24, 6, 7, 6, 5, 7 - one lower on five of six sources. Mechanism identified: the count includes the document <title>, and only oracle_always_free_resources actually pins its title as an assertion (scope='title'). MEASURED: mutating the <title> on the other five leaves extraction completely unaffected (error=None), while the same mutation on oracle_always_free_resources yields assertion_not_found. So 'all 7 pinned block(s)' describes 6 guards. See finding F2. The duplicate-block refusal is real and proven necessary: the block '50,000 Object Storage API requests per month' occurs exactly twice in the live parse, is retained twice in the capture, and pinning it yields ambiguous_assertion."
+      },
+      {
+        "step": 5,
+        "name": "eleven_mutation_predictions",
+        "acceptance_step": "11 mutation predictions, 11 matched first run, including 3 false-positive controls.",
+        "result": "passed",
+        "method": "Re-ran the parametrised battery and inspected the anchor mechanism for the 'a mutation that does not apply looks like a control that does not fire' trap.",
+        "measured": "11 passed, 180 deselected. Predictions are recorded in the parametrisation before the run. 8 rejection cases (assertion_deleted/reworded/truncated -> assertion_not_found; assertion_duplicated -> ambiguous_assertion; undeclared_matrix_row -> unknown_matrix_rows; mapped_row_removed -> missing_matrix_rows; renamed_tier -> table_not_found; duplicated_table -> ambiguous_table) plus 3 false-positive controls expecting None (extra_column, whitespace_entities, unrelated_paragraph_added). The trap is closed: _block_containing asserts the anchor matched EXACTLY ONE block and _mutate's once() asserts source.count(old) == 1, so a non-applying mutation raises loudly instead of passing silently."
+      },
+      {
+        "step": 6,
+        "name": "coverage_counts",
+        "acceptance_step": "9 offered_no_z0, 5 unknown, 0 not_offered, 0 verified_free.",
+        "result": "passed",
+        "method": "Parsed the shipped YAML directly and counted coverage states, independent of the config loader and of the builder's tests.",
+        "measured": "{offered_no_z0: 9, unknown: 5}. Total categories = 14. not_offered = 0. verified_free = 0. sources declared = 6."
+      },
+      {
+        "step": 7,
+        "name": "two_prose_tightenings_non_vacuous",
+        "acceptance_step": "test_the_serverless_rationale_names_and_dismisses_the_one_serverless_hit and test_the_containers_rationale_says_which_document_carries_which_entry are non-vacuous.",
+        "result": "passed_with_finding",
+        "method": "Proved non-vacuity by MUTATION rather than by reading: reverted the tightened phrases in the shipped YAML and re-ran the two tests, then restored the file and confirmed the worktree tracked-clean.",
+        "measured": "Both tests FAILED when the prose was reverted ('assert Exadata Infrastructure Type: Serverless in rationale' -> AssertionError), and the YAML was restored byte-clean (git status empty). So both are non-vacuous WITH RESPECT TO WORDING. However they verify wording only, never truth. The underlying factual claims are NOT re-derivable from the repository: the committed captures are honestly declared minimal excerpts (capture.json trim_method: 'a deliberate minimal excerpt, not a complete copy of the page') and the Always Free enumerations are trimmed out - measured block-wise, the FAQ capture holds 8 blocks and the OCI capture 38, and none contains 'APEX Application Development', 'Content Management Starter Edition' or 'Serverless'. Evaluator fetched the LIVE FAQ and confirmed both 'APEX Application Development' and 'Content Management Starter Edition' DO appear in its Always Free list. See finding F4."
+      },
+      {
+        "step": 8,
+        "name": "rebase_integrity_and_append_only_ledger",
+        "acceptance_step": "progress.md append-only verified by raw byte prefix (never numstat); Azure's handoff preserved byte-for-byte; protected state intact by blob comparison.",
+        "result": "passed",
+        "method": "git merge-base for rebase linearity; raw byte-array prefix comparison for append-only; git rev-parse blob-hash comparison for protected state. numstat and ancestry were deliberately NOT used.",
+        "measured": "merge-base(main, head) == 741e1aab684fcf9dc9586aa119cc42d96de18083 exactly, so the rebase is clean and linear. progress.md: main = 642068 bytes, head = 664992 bytes, and main's bytes are a BYTE-EXACT PREFIX of head's with zero divergence (45 lines appended). Azure's handoff is the tail of main's blob and is therefore preserved byte-for-byte by construction. Protected state: 24 paths compared by blob hash, 0 differences, including agent-state/feature_list.json at 154de1fef2ba (the exact hash the builder claimed), apps/api/app/classify/engine.py at 900d27399040, tests/support/source_scan.py at 3a86f03aeb17, tests/unit/test_secrets_baseline.py at 183619e00375, tests/support/fixtures.py at 96b054cacdb7, the profiles/__init__.py seam at 4623ba19c58f, and all six other providers' profile modules. The 44-file diff contains exactly the declared in-scope set and no protected path."
+      },
+      {
+        "step": 9,
+        "name": "suite_and_check_ps1",
+        "acceptance_step": "Suite 2657 passed / 2 skipped; check.ps1 -NodeAudit all passed.",
+        "result": "passed",
+        "method": "Ran the full suite twice - once without a database and once against a real PostgreSQL 16 container on an isolated port - and ran the check suite only after installing node dependencies, reading each tool's own stderr rather than the summary line.",
+        "measured": "With DATABASE_URL set: 2657 passed, 2 skipped - EXACT match to the claim. Without a database: 2415 passed, 244 skipped. Both total 2659 collected, which is what exposed the evaluator's own first-run error. scripts/check.ps1 -NodeAudit: ALL CHECKS PASSED at exit 0 - Ruff lint, Ruff format, Pytest, Prettier, ESLint, Secrets baseline shape (68 tracked files, 289 entries, nothing lost), Secret scan, URL host allowlist (1243 URLs, 56 hosts, all allowlisted) and all five dependency audits with 0 vulnerabilities."
+      },
+      {
+        "step": 10,
+        "name": "the_card_reading_attacked_hardest",
+        "acceptance_step": "Test the requires_card=True reading hard; confirm that rejecting it moves three offers Z1->UNKNOWN and produces no Z0 in either direction.",
+        "result": "passed",
+        "method": "Fetched the LIVE oracle.com FAQ independently rather than re-reading the builder's quotation, then measured the counterfactual by re-classifying every Oracle offer with the card fact removed and with it forced to the OPPOSITE of the builder's reading.",
+        "measured": "THE READING IS CORRECT, and corroborated by evidence the builder did not cite. The live FAQ presents the identity-verification block under its own question heading: 'Why do I need to provide credit or debit card information when I sign up for Oracle Cloud Free Tier?' - an explicit statement that a card IS needed to sign up for the FREE tier. The builder could not pin it (the collector does not capture those div containers, as its docstring discloses for the separate PAYG trap) and did not cite it, but it removes the ambiguity the builder honestly flagged. COUNTERFACTUAL, measured: rejecting ONLY the identity-verification block moves EXACTLY 3 offers Z1->UNKNOWN (oracle-always-free-services, oracle-cloud-free-tier, oracle-mysql-heatwave-always-free) - matching the brief's 'three' precisely; rejecting ONLY the 'most users' block moves 1 (oracle-free-tier). In EVERY scenario ANY Z0 = False. Stronger than claimed: even forcing requires_card=False on all six - the strongest possible reading against the builder - still yields UNKNOWN for all six and no Z0, because has_paid_dependencies is unknown on every Oracle source and gate 4 blocks Z0 independently. The disputed judgement provably cannot produce a false-free claim in either direction."
+      },
+      {
+        "step": 11,
+        "name": "absence_based_refusals_attacked",
+        "acceptance_step": "Attack the two absence-based refusals; verify test_an_absence_based_refusal_is_declared_as_such is non-vacuous.",
+        "result": "passed",
+        "method": "Scanned the two documents BLOCK-WISE over the repository's own parsed blocks using a 12-term payment-instrument vocabulary, deliberately broader than the guard's two phrases ('credit card', 'credit/debit card').",
+        "measured": "NO payment-instrument term found in ANY parsed block of oracle-always-free-resources or oracle-free-credit-promotion - searched for credit card, credit/debit card, debit card, payment card, payment method, payment verification, card, visa, mastercard, billing information, purchase, invoice. The absence is genuine and the refusal to import the requirement across documents is the honest call. The test is non-vacuous: it asserts the profile carries no requires_card assertion, asserts the normalised document contains no card phrase, drives the real extraction to confirm requires_card is None, and classifies to UNKNOWN with the matching blocking condition - it would fail if a card assertion were added or if the document acquired a card phrase. Correctly characterised as the structurally weaker shape: anything that later supplies the field flips it."
+      },
+      {
+        "step": 12,
+        "name": "named_check_technically_true_reads_false",
+        "acceptance_step": "Hunt for claims that are technically true but reliably read false, re-deriving block-wise rather than line-wise.",
+        "result": "failed",
+        "method": "Re-derived the docstring's empirical claim by EXECUTION across every provider in the repository rather than by re-reading the Oracle slice: extracted and classified every fixture case for all seven provider profile modules through the real engine.",
+        "measured": "FOUND. 'Three providers have now been measured and all three agree: perpetual is not free.' is refuted by the repository's own data. FIVE distinct always_free offers classify Z0_TRUE_FREE: github_actions_billing, github_packages_billing, github_codespaces_billing, cloudflare_pages_limits, cloudflare_workers_limits (7 fixture cases; github 'unchanged' and 'changed' are document-case duplicates of github_actions_billing). github.py pins offer_type=always_free + requires_card=False + has_paid_dependencies=False + exhaustion_behaviour=hard_stop and its own docstring says 'That safe stop is precisely why these offers can reach Z0'. GitHub is F008 slice P1 - measured five slices BEFORE Oracle. The claim appears in docs/PROVIDER_ADAPTERS.md:618 and oracle.py:31. See blocking_issues."
+      }
+    ],
+    "findings_not_disclosed_by_builder": [
+      {
+        "id": "F1",
+        "severity": "blocking",
+        "title": "False generalisation 'perpetual is not free' shipped in documentation",
+        "detail": "docs/PROVIDER_ADAPTERS.md:618 and apps/api/app/ingest/adapters/profiles/oracle.py:31. Five perpetual (always_free) offers in this repository classify Z0_TRUE_FREE under the real engine, across GitHub (F008 P1) and Cloudflare. 'Three providers have now been measured' is also inaccurate: six F008 providers are complete. No Oracle verdict is affected and no false-free claim results - the error is a false NOT-free generalisation. tests/unit/test_adapter_oracle.py:256 carries the same framing ('the third provider to demonstrate it')."
+      },
+      {
+        "id": "F2",
+        "severity": "low-medium",
+        "title": "Capture 'pinned block' counts overstate the guard by one on five of six sources",
+        "detail": "The count in capture.json live_reconciliation includes the document <title>, which only oracle_always_free_resources actually pins. MEASURED: mutating the <title> on the other five leaves extraction unaffected (error=None); the same mutation on oracle_always_free_resources yields assertion_not_found. Correct load-bearing counts are 24, 6, 7, 6, 5, 7 rather than 24, 7, 8, 7, 6, 8. The unused FT_TITLE, AFS_TITLE, CFT_TITLE, FCP_TITLE and MHW_TITLE constants are defined and exported in __all__ but referenced by no profile. Claim 4's reported numbers inherit the overstatement."
+      },
+      {
+        "id": "F3",
+        "severity": "low",
+        "title": "agent-state/current_contract.json measured_results is stale after the mid-slice rebase",
+        "detail": "Two numbers disagree with the shipped head. full_suite records '2465 passed / 2 skipped with PostgreSQL; 2232 / 235 without' but the measured values are 2657 / 2 and 2415 / 244. secrets_baseline records '42 -> 56 tracked files, 156 -> 231 entries' but the committed baseline goes from 54 files / 214 entries at base to 68 files / 289 entries at head, which is what scripts/check.ps1 itself reports. The builder's report to the reviewer used the CORRECT suite number, so this is an un-refreshed ledger file rather than a misreport - but current_contract.json is what the next agent reads."
+      },
+      {
+        "id": "F4",
+        "severity": "low-informational",
+        "title": "Coverage rationale facts are not re-derivable from the repository",
+        "detail": "The two prose tightenings assert wording only. Their factual content ('APEX Application Development' on BOTH documents, 'Content Management Starter Edition' on the FAQ ONLY, 'serverless' occurring exactly once) cannot be checked offline because the captures are minimal excerpts with the enumerations trimmed - which capture.json trim_method discloses honestly, so this is a verifiability limit rather than a defect. Evaluator confirmed via a live fetch that both entries DO appear in the live FAQ's Always Free list. NOT fully confirmed: 'APEX Application Development' on the OCI document appears as 'Oracle APEX application development' inside a prose sentence rather than as a title-cased list entry, so the BOTH-documents claim may be case- or context-imprecise. Cannot produce a false-free claim in either direction; both categories remain state=unknown."
+      }
+    ],
+    "evaluator_errors_self_reported": [
+      "First baseline run reported 2415 passed / 244 skipped and I was one step from recording a discrepancy against the claimed 2657 / 2. The claim was right and I was wrong: I had installed only requirements-dev.txt, not apps/api/requirements.txt, and had no PostgreSQL. The two runs agreeing on 2659 COLLECTED is what exposed it - the disagreement was in my environment, not in the branch.",
+      "First scripts/check.ps1 run exited 1 and printed 'CHECKS FAILED: Prettier check, ESLint', which I could have recorded as a regression. Reading the tool's own stderr rather than the summary showed \"'eslint' is not recognized\" - node_modules was absent in my probe worktree. After npm ci the suite reported ALL CHECKS PASSED at exit 0. This is exactly the trap the brief named.",
+      "I hand-counted oracle_free_tier at 6 distinct pins against a claimed 7 and initially suspected a transcription error in the capture. Recomputing from the profile objects instead of by hand identified the real mechanism - an unpinned <title> included in the count - which is a narrower and more precise defect than the one I first assumed.",
+      "I initially counted 7 Z0 offers across the repository and had to correct to 5 DISTINCT offers: github 'unchanged' and 'changed' are document-case fixtures bound to the same github_actions_billing profile, not separate offers."
+    ],
+    "known_issues_or_risks": [
+      "Absence-based refusals (oracle_always_free_resources, oracle_free_credit_promotion) are the structurally weaker shape and will flip to Z1 the moment either document acquires a payment statement. Correctly disclosed by the builder and asserted by test.",
+      "has_paid_dependencies is stated by no Oracle document and is claimed nowhere in either direction. This is the gate that makes the Oracle no-Z0 result robust to any reading of the card blocks.",
+      "The evaluation was run against the committed captures plus two independent live fetches of oracle.com and docs.oracle.com. Live pages can drift; the quotations verified verbatim on 2026-08-14/15."
+    ],
+    "verification_environment": {
+      "postgres": "postgres:16-alpine via docker compose on isolated host port 55432, healthy, so the DB-backed integration tests RAN rather than skipped",
+      "python": "dedicated .venv at the PR head worktree, requirements-dev.txt + apps/api/requirements.txt, pytest 9.0.3",
+      "node": "npm ci at repo root and apps/web, required before Prettier/ESLint report meaningfully",
+      "worktree": "detached probe worktree at 85ef245dfce2df2aaac5a90db89f820dd6bbcf42; left tracked-clean; PR #73 never modified, rebased, merged or commented on"
+    },
+    "recommendation": "DO NOT MERGE AS-IS. One blocking defect, and it is a two-sentence documentation fix: delete or correct 'Three providers have now been measured and all three agree: perpetual is not free.' in docs/PROVIDER_ADAPTERS.md and apps/api/app/ingest/adapters/profiles/oracle.py, and the matching 'the third provider to demonstrate it' in tests/unit/test_adapter_oracle.py:256. An accurate replacement is available and is a stronger claim: Oracle's Always Free tier is genuinely perpetual by quotation AND card-gated by quotation on the same document, which is what makes it Z1 rather than Z0 - stated without generalising to providers whose perpetual offers this repository correctly publishes as Z0. Recommend also correcting the capture reconciliation wording so a counted <title> is not called a pinned block (F2), and refreshing current_contract.json measured_results after the rebase (F3). Everything else in this slice is verified correct: the six verdicts, the card reading, the absence refusals, the load-bearing positive control, the publication mechanism, the mutation battery, the protected state and the append-only ledger. No false-free claim exists anywhere in the slice, and the central product risk - Oracle marketed as 'Always Free' being published as Z0 - is correctly and provably refused. Re-evaluation after the prose fix should be cheap: no code, fixture or verdict changes are implied."
   }
 ]
