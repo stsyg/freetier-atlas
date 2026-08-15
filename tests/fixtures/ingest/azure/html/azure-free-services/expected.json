@@ -1,0 +1,22 @@
+{
+  "profile": "azure_free_services",
+  "mime": "text/html",
+  "source_url": "https://azure.microsoft.com/en-us/pricing/free-services/",
+  "candidate_count": 1,
+  "candidates": [
+    {
+      "verification_state": "candidate",
+      "expect_valid": true,
+      "facts": {
+        "service": "Azure 12 months free services",
+        "offer_type": "trial",
+        "trial_length_months": "12",
+        "eligibility": "[*] *12 months free services is available only to new customers who have not previously had an Azure account or received 12 months of free services. It is not currently available to customers who sign up directly for pay as you go in China and India. Customers who try Azure free must move to pay as you go within 30 days to continue receiving 12 months free services.",
+        "term_heading": "Free for your first 12 months",
+        "always_free_services_note": "65+ always-free services with an Azure account"
+      },
+      "evidence_url": "https://azure.microsoft.com/en-us/pricing/free-services/",
+      "evidence_selector": "azure_free_services assertion[0] document[0] -> fact[service]"
+    }
+  ]
+}

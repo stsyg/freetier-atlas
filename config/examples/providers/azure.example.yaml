@@ -1,0 +1,329 @@
+provider:
+  id: azure
+  name: Microsoft Azure
+  official_domains:
+    - azure.microsoft.com
+    - learn.microsoft.com
+
+# OFFICIAL sources only. Every source below is an azure.microsoft.com or
+# learn.microsoft.com page.
+#
+# NOTE ON THE FOUR OFFER KINDS. Azure publishes a credit-backed "Azure free
+# account", a "12 months free services" introductory window, per-service free
+# plans and free tiers, and eligibility-gated programmes such as Azure for
+# Students. Only the third kind could ever be perpetual, and conflating them is
+# the largest correctness risk in this provider. Each source below therefore
+# pins its identity, its offer type and its term to blocks that describe THAT
+# offer, and no source is allowed to borrow a fact from another. Microsoft
+# itself draws the distinction on the Cosmos DB page, verbatim: "Azure Cosmos DB
+# free tier is different from the Azure free account."
+#
+# NOTE ON THE HEADLINE FINDING. Azure DOES state a perpetual free tier in a
+# block of its own. https://learn.microsoft.com/en-us/azure/cosmos-db/free-tier
+# is titled "Lifetime Free Tier - Azure Cosmos DB" and says "Free tier lasts
+# indefinitely for the lifetime of the account". That is a genuinely PERPETUAL
+# Azure allowance. It is still NOT Z0, because the block that grants it also
+# says "The throughput and storage consumed beyond these limits are billed at
+# regular price." PERPETUAL DOES NOT MEAN Z0.
+#
+# NOTE ON PAGES THAT COULD NOT BE USED. MEASURED (live):
+# https://azure.microsoft.com/en-us/pricing/details/static-web-apps/ returns
+# HTTP 404, and https://azure.microsoft.com/en-us/pricing/details/active-directory/
+# REDIRECTS to a www.microsoft.com URL that is outside this provider's
+# official-domain allowlist, so the repository's own fetch policy refused it
+# (disallowed_host) before any content was read. Neither is used, and neither
+# was worked around.
+sources:
+  # The ONLY Azure page in this sweep that states the payment-method
+  # requirement, which is what makes this offer Z1 by quotation rather than by
+  # inference. Assertion-only: the live document's two tables are the
+  # country/currency availability grid and neither carries a header row.
+  - id: azure-free-account
+    type: html
+    trust_level: official
+    url: https://azure.microsoft.com/en-us/pricing/offers/ms-azr-0044p/
+    schedule_ref: official_pages
+    extraction_profile: azure_free_account
+
+  # The 12-month introductory window, taken from the free-services hub's own
+  # footnote. Assertion-only: the live page has ZERO tables and its per-service
+  # free list is client-rendered.
+  - id: azure-free-services
+    type: html
+    trust_level: official
+    url: https://azure.microsoft.com/en-us/pricing/free-services/
+    schedule_ref: official_pages
+    extraction_profile: azure_free_services
+
+  # The one genuinely PERPETUAL offer in this provider, and the proof that
+  # perpetual does not mean Z0: the same page calls the tier lifetime AND says
+  # usage above it is billed at regular price.
+  - id: azure-cosmos-db-free-tier
+    type: html
+    trust_level: official
+    url: https://learn.microsoft.com/en-us/azure/cosmos-db/free-tier
+    schedule_ref: official_pages
+    extraction_profile: azure_cosmos_db_free_tier
+
+  # The closest any Azure offer comes to Z0. Its exhaustion behaviour is a
+  # genuinely SAFE stop ("the app is stopped until the quota resets"), so it
+  # clears the billing gate entirely. It is TWO unknowns from Z0, not one: no
+  # block on its document states whether a payment card is required OR whether
+  # the offer has paid dependencies, and resolving the card alone still yields
+  # UNKNOWN.
+  - id: azure-app-service-quotas
+    type: html
+    trust_level: official
+    url: https://learn.microsoft.com/en-us/azure/app-service/web-sites-monitor
+    schedule_ref: official_pages
+    extraction_profile: azure_app_service_quotas
+
+  - id: azure-static-web-apps-plans
+    type: html
+    trust_level: official
+    url: https://learn.microsoft.com/en-us/azure/static-web-apps/plans
+    schedule_ref: official_pages
+    extraction_profile: azure_static_web_apps_plans
+
+  - id: azure-devops-services
+    type: html
+    trust_level: official
+    url: https://azure.microsoft.com/en-us/pricing/details/devops/azure-devops-services/
+    schedule_ref: official_pages
+    extraction_profile: azure_devops_services
+
+  # Carried because it publishes the ONLY block in this entire sweep stating
+  # that a card is not required. Omitting it would under-report a real free
+  # offer, which this product treats as a defect equal to overstating one.
+  - id: azure-students
+    type: html
+    trust_level: official
+    url: https://azure.microsoft.com/en-us/free/students/
+    schedule_ref: official_pages
+    extraction_profile: azure_students
+
+publishing:
+  automatic_threshold: 0.90
+  uncertain_threshold: 0.70
+  require_official_source: true
+  require_deterministic_numeric_validation: true
+
+# Declared service-to-category assignments. These are taxonomy decisions, not
+# inferences from quota units. Each is preceded by its rationale.
+service_categories:
+  # ARGUABLE: the Azure free account is an ACCOUNT-level offer spanning every
+  # category Microsoft sells, and one slug cannot express that. Compute VMs is
+  # chosen because it is the category the account is popularly identified by.
+  # The category assignment does NOT assert that Azure offers a free compute VM;
+  # the coverage block below is where that claim would have to live, and it does
+  # not make it.
+  Azure free account: compute-vms
+  # ARGUABLE: same reasoning. The 12 months free services window is an
+  # account-level offer, and placing it beside the free account is what makes
+  # the difference between a credit and an introductory window visible.
+  Azure 12 months free services: compute-vms
+  # ARGUABLE: same reasoning again. Azure for Students is an account-level
+  # programme spanning many products rather than a single service.
+  Azure for Students: compute-vms
+  # Azure Cosmos DB is a managed document/key-value database; the taxonomy's
+  # NoSQL bucket is its unambiguous home.
+  Azure Cosmos DB: nosql-key-value
+  # App Service hosts web applications on managed compute; Containers and
+  # application hosting is its unambiguous home.
+  Azure App Service: containers-app-hosting
+  # ARGUABLE: Static Web Apps serves static assets with managed Functions APIs
+  # attached. It was CONSIDERED and REJECTED for object-file-storage, which
+  # describes durable blob storage rather than an application hosting product,
+  # and for serverless-functions, because the plan being read is the hosting
+  # plan and the managed Functions are one feature row within it.
+  Azure Static Web Apps: containers-app-hosting
+  # Azure DevOps Services provides source control, boards and CI/CD pipelines;
+  # the published free allowance read here is build minutes, which is CI/CD.
+  Azure DevOps Services: cicd-source-control
+
+# Explicit provider x category coverage. All fourteen canonical categories are
+# declared; a pair with no declaration is a config error, not an implicit
+# unknown.
+#
+# NOTHING here is verified_free, and that is the finding, not an omission.
+# MEASURED on https://azure.microsoft.com/en-us/pricing/offers/ms-azr-0044p/,
+# verbatim: "All you need is a phone number, a credit card or a debit card
+# (non-prepaid), and a Microsoft account or a GitHub account." A payment method
+# is therefore required to open an Azure free account. MEASURED on
+# https://learn.microsoft.com/en-us/azure/cosmos-db/free-tier, verbatim: "The
+# throughput and storage consumed beyond these limits are billed at regular
+# price." Publishing any Azure category as verified_free would be exactly the
+# unsupported free claim this product forbids.
+#
+# ELEVEN of the fourteen are `unknown`, and that is a deliberate, measured
+# outcome rather than laziness. Azure publishes its per-category free-offer list
+# through a CLIENT-RENDERED widget: MEASURED on
+# https://azure.microsoft.com/en-us/pricing/free-services/, the served HTML
+# carries the headings "Free for your first 12 months" and "65+ always-free
+# services with an Azure account" with NO accompanying prose, and the page
+# contains zero tables. There is therefore no official served document
+# establishing which categories carry a free allowance. Each `unknown` below
+# records what WAS probed. Declaring these categories `offered_no_z0` would
+# assert offers this slice cannot evidence, and declaring them `not_offered`
+# would be an unsupported claim in the other direction; both are refused.
+coverage:
+  compute-vms:
+    state: unknown
+    rationale: >-
+      MEASURED (live): https://azure.microsoft.com/en-us/pricing/free-services/
+      was probed and served ZERO tables. Its per-service free-tier list is
+      client-rendered, so the served HTML carries the headings "Free for your
+      first 12 months" and "65+ always-free services with an Azure account" with
+      no allowance prose beneath either. https://azure.microsoft.com/en-us/free/
+      redirects to the purchase-options page, which serves the same shape. This
+      slice therefore verified no official Azure page establishing a free
+      compute-VM allowance, so the state is unknown rather than guessed in
+      either direction.
+  containers-app-hosting:
+    state: offered_no_z0
+    source: azure-app-service-quotas
+    rationale: >-
+      The App Service quotas and metrics page publishes the Free and Shared plan
+      quota set - CPU (Short), CPU (Day), Memory, Bandwidth and Filesystem - and
+      states, in a block of its own, "If an app exceeds the CPU (Short), CPU
+      (Day), or Bandwidth quota, the app is stopped until the quota resets.
+      During this time, all incoming requests result in an HTTP 403 error." That
+      is a genuinely SAFE, non-billing stop, and the only one found on any Azure
+      page in this sweep. The category is therefore offered. No Z0 offer is
+      produced, and the reason is unusually narrow: this offer clears the billing
+      gate entirely, so every blocking condition it has is an unknown rather than
+      an exposure. It is TWO unknowns from Z0, not one - no block on its document
+      states whether a payment card is required, and none states whether the
+      offer has paid dependencies. Resolving the card alone still yields unknown;
+      measured by exhaustive enumeration, exactly 1 of 9 tri-state combinations
+      reaches Z0 and it needs both facts. Azure Static Web Apps
+      (azure-static-web-apps-plans) is also mapped to this category and produces
+      no Z0 offer either; its document establishes no commercial structure at
+      all, so docs/DATA_MODEL.md rule 3 applies and its offer type is `other`.
+      Note that `other` is not itself a safety gate - it is Z0-capable in the
+      classifier - so what withholds Z0 there is likewise the unknown facts.
+  serverless-functions:
+    state: unknown
+    rationale: >-
+      MEASURED (live): https://azure.microsoft.com/en-us/pricing/details/functions/
+      was probed and DOES publish free grants, including "Consumption plan
+      pricing includes a monthly free grant of 1 million requests and 400,000
+      GB-s of resource consumption per month". The same page states, verbatim,
+      "Free grants apply to paid, consumption subscriptions only." A free grant
+      that its own page conditions on a PAID subscription is not evidence of a
+      free offer, so no offer is published and the state is unknown rather than
+      offered_no_z0. MEASURED (live):
+      https://learn.microsoft.com/en-us/azure/azure-functions/functions-consumption-costs
+      was also probed and defers every grant figure to the pricing page ("For
+      the most current cost and grant information, see the Azure Functions
+      pricing page"), so it evidences no allowance either.
+  relational-databases:
+    state: unknown
+    rationale: >-
+      NOT PROBED in this slice. No official Azure page establishing a free
+      relational-database allowance was retrieved or verified here, so the state
+      is unknown. Asserting absence would be a positive claim this slice cannot
+      support.
+  nosql-key-value:
+    state: offered_no_z0
+    source: azure-cosmos-db-free-tier
+    rationale: >-
+      The Azure Cosmos DB lifetime free tier page publishes a free allowance of
+      "the first 1000 RU/s and 25 GB of storage in the account" and states, in a
+      block of its own, "Free tier lasts indefinitely for the lifetime of the
+      account". That is a genuinely PERPETUAL Azure allowance. The category is
+      therefore offered. It still produces no Z0 offer: the same block that
+      grants the allowance states "The throughput and storage consumed beyond
+      these limits are billed at regular price", which is automatic billing on
+      exhaustion and a definite billing exposure, so the offer classifies Z1.
+      Perpetual does not mean free.
+  object-file-storage:
+    state: unknown
+    rationale: >-
+      MEASURED (live): https://azure.microsoft.com/en-us/pricing/details/storage/blobs/
+      was probed and served 163 tables and 730 text blocks. Its ONLY free-tier
+      prose block in served HTML is "Get free cloud services and a $200 credit to
+      explore Azure for 30 days", which is the account-level free-account
+      cross-sell and states no Blob storage allowance at all. No storage
+      allowance was evidenced, so the state is unknown.
+  networking-cdn-dns:
+    state: unknown
+    rationale: >-
+      NOT PROBED in this slice. No official Azure page establishing a free
+      networking, CDN or DNS allowance was retrieved or verified here, so the
+      state is unknown rather than declared absent.
+  queues-messaging-jobs:
+    state: unknown
+    rationale: >-
+      NOT PROBED in this slice. No official Azure page establishing a free
+      queue, messaging or scheduled-job allowance was retrieved or verified here,
+      so the state is unknown rather than declared absent.
+  auth-identity:
+    state: unknown
+    rationale: >-
+      MEASURED (live): https://azure.microsoft.com/en-us/pricing/details/active-directory/
+      redirects to a www.microsoft.com URL outside this provider's
+      official-domain allowlist, so the repository's own fetch policy refused it
+      before any content was read. https://learn.microsoft.com/en-us/entra/fundamentals/licensing
+      was probed instead and DOES publish unique free blocks, including
+      "Microsoft Entra External ID core features are free for your first 50,000
+      monthly active users" and "Microsoft Entra ID Free: Included with Microsoft
+      cloud subscriptions such as Microsoft Azure, Microsoft 365, and others."
+      This slice deliberately did NOT add it as a source, to keep the covered set
+      small enough that every claim is fully evidenced and fixture-backed.
+      Because no source is declared for this category, no coverage claim is made
+      and the state stays unknown; it is a strong candidate for the next Azure
+      slice rather than an unchecked absence.
+  cicd-source-control:
+    state: offered_no_z0
+    source: azure-devops-services
+    rationale: >-
+      The Azure DevOps Services pricing page publishes a monthly free allowance -
+      "Each Azure DevOps organization gets one parallel job with 1,800 minutes
+      (30 hours) of build time every month using Microsoft-hosted agents" plus
+      "one free self-hosted agent that can be used to run one parallel job with
+      unlimited minutes" - and states that "The free amounts of build and
+      cloud-based load testing reset on the first day of the month" while the
+      service itself is priced ("First 5 users free, then $6 per user per
+      month"). The category is therefore offered. No Z0 offer is produced: the
+      page proves nothing about whether a payment card is required, and it states
+      how to obtain MORE capacity rather than what happens on exhaustion, so the
+      exhaustion behaviour is left unknown rather than inferred from a purchase
+      instruction and the classifier withholds Z0.
+  monitoring-logs-tracing:
+    state: unknown
+    rationale: >-
+      MEASURED (live): https://azure.microsoft.com/en-us/pricing/details/monitor/
+      was probed and served 21 tables and 406 text blocks. It DOES carry free
+      statements, including "The first 5 GB/month per billing account in this
+      tier are free" and "Platform metrics are free", but each is a numbered
+      FOOTNOTE attached to a paid pricing table rather than a description of a
+      free offer, and the page states no card requirement and no exhaustion
+      behaviour. Publishing an offer from a footnote to a price table would be
+      inference, so the state is unknown.
+  ai-inference-embeddings:
+    state: unknown
+    rationale: >-
+      NOT PROBED in this slice. No official Azure page establishing a free AI
+      inference or embeddings allowance was retrieved or verified here, so the
+      state is unknown rather than declared absent.
+  email-notifications-comms:
+    state: unknown
+    rationale: >-
+      NOT PROBED in this slice. No official Azure page establishing a free email,
+      notification or communications allowance was retrieved or verified here, so
+      the state is unknown rather than declared absent.
+  secrets-config-devtools:
+    state: unknown
+    rationale: >-
+      MEASURED (live): https://learn.microsoft.com/en-us/azure/azure-app-configuration/faq
+      was probed and DOES publish a Free tier with allowances and, unusually for
+      Azure, a SAFE exhaustion behaviour stated in a block of its own: "Free tier
+      stores are limited to 1,000 requests per day. When a store reaches 1,000
+      requests, it returns HTTP status code 429 for all requests until midnight
+      UTC." This slice deliberately did NOT add it as a source, for the same
+      bounding reason as auth-identity: the covered set is kept small enough that
+      every claim is fully evidenced and fixture-backed. Because no source is
+      declared for this category, no coverage claim is made and the state stays
+      unknown; it is the strongest candidate for the next Azure slice rather than
+      an unchecked absence.

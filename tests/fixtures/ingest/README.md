@@ -94,6 +94,13 @@ the attribution row below, and write `expected.json`.
 | `aws/html/aws-dynamodb-free-tier/` | <https://aws.amazon.com/dynamodb/pricing/> | Amazon Web Services, Inc. |
 | `aws/html/aws-api-gateway-free-tier/` | <https://aws.amazon.com/api-gateway/pricing/> | Amazon Web Services, Inc. |
 | `aws/html/aws-step-functions-free-tier/` | <https://aws.amazon.com/step-functions/pricing/> | Amazon Web Services, Inc. |
+| `azure/html/azure-free-account/` | <https://azure.microsoft.com/en-us/pricing/offers/ms-azr-0044p/> | Microsoft Corporation |
+| `azure/html/azure-free-services/` | <https://azure.microsoft.com/en-us/pricing/free-services/> | Microsoft Corporation |
+| `azure/html/azure-cosmos-db-free-tier/` | <https://learn.microsoft.com/en-us/azure/cosmos-db/free-tier> | Microsoft Corporation |
+| `azure/html/azure-app-service-quotas/` | <https://learn.microsoft.com/en-us/azure/app-service/web-sites-monitor> | Microsoft Corporation |
+| `azure/html/azure-static-web-apps-plans/` | <https://learn.microsoft.com/en-us/azure/static-web-apps/plans> | Microsoft Corporation |
+| `azure/html/azure-devops-services/` | <https://azure.microsoft.com/en-us/pricing/details/devops/azure-devops-services/> | Microsoft Corporation |
+| `azure/html/azure-students/` | <https://azure.microsoft.com/en-us/free/students/> | Microsoft Corporation |
 | `oracle/html/oracle-always-free-resources/` | <https://docs.oracle.com/en-us/iaas/Content/FreeTier/freetier_topic-Always_Free_Resources.htm> | Oracle Corporation |
 | `oracle/html/oracle-free-tier/` | <https://docs.oracle.com/en-us/iaas/Content/FreeTier/freetier.htm> | Oracle Corporation |
 | `oracle/html/oracle-always-free-services/` | <https://www.oracle.com/cloud/free/faq/> | Oracle Corporation |

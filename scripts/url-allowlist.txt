@@ -59,13 +59,15 @@ freetier-atlas.pages.dev
 
 # --- Provider and vendor documentation cited by the catalogue and docs --------
 aws.amazon.com
+azure.microsoft.com
 cloud.google.com
 developers.cloudflare.com
-www.cloudflare.com
 firebase.google.com
+learn.microsoft.com
 vercel.com
 www.oracle.com
 docs.oracle.com
+www.cloudflare.com
 
 # --- Toolchain and reference documentation -----------------------------------
 eslint.org

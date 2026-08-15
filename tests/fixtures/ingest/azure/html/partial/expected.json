@@ -1,0 +1,19 @@
+{
+  "profile": "azure_app_service_quotas",
+  "mime": "text/html",
+  "source_url": "https://learn.microsoft.com/en-us/azure/app-service/web-sites-monitor",
+  "candidate_count": 1,
+  "candidates": [
+    {
+      "verification_state": "rejected",
+      "expect_valid": false,
+      "facts": {
+        "error": "assertion_not_found",
+        "detail": "assertion=3; scope=document; text='If an app exceeds the CPU (Short), CPU (Day), or Bandwidth quota, the app is stopped until the quota resets. During this time, all incoming requests result in an HTTP 403 error.'"
+      },
+      "evidence_url": "https://learn.microsoft.com/en-us/azure/app-service/web-sites-monitor",
+      "evidence_selector": null,
+      "validate_contains": ["assertion_not_found"]
+    }
+  ]
+}

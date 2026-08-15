@@ -1,0 +1,24 @@
+{
+  "profile": "azure_students",
+  "mime": "text/html",
+  "source_url": "https://azure.microsoft.com/en-us/free/students/",
+  "candidate_count": 1,
+  "candidates": [
+    {
+      "verification_state": "candidate",
+      "expect_valid": true,
+      "facts": {
+        "service": "Azure for Students",
+        "offer_type": "student_program",
+        "eligibility": "Available only to full-time university students*",
+        "card_claim": "No credit card required",
+        "twelve_month_services": "Free monthly amounts of 20+ popular services for 12 months (new Azure customers only)",
+        "always_free_services_note": "Free monthly amounts of 65+ always-free services",
+        "credit_and_catalog": "Access to full catalog of services up to free amounts and $100 credit",
+        "renewal": "Renew your subscription annually and continue to get free access to Azure as long as you're a student"
+      },
+      "evidence_url": "https://azure.microsoft.com/en-us/free/students/",
+      "evidence_selector": "azure_students assertion[0] heading[0] -> fact[service]"
+    }
+  ]
+}

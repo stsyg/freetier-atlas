@@ -1,0 +1,17 @@
+{
+  "captured_by": "F008 P5 Azure provider slice (synthetic scaffold)",
+  "derived_from": "tests/fixtures/ingest/azure/html/azure-app-service-quotas/source.html",
+  "extraction_profile": "azure_app_service_quotas",
+  "fetched_at": "2026-08-14T22:10:00Z",
+  "http_status": null,
+  "mutation": "none: byte-identical to the official Azure App Service quotas capture, so a re-scan must produce an identical content hash and raise no change event",
+  "mutation_intent": "Positive control. If this case ever fails, a failure reported by the other four means nothing.",
+  "negative_fixture_note": "NEGATIVE TEST FIXTURE, NOT A CLAIMED COMPLETE CAPTURE. It is not a record of anything Microsoft publishes and must never be cited as evidence.",
+  "robots_allowed": true,
+  "sha256_original": null,
+  "sha256_stored": "d12bd6fead49e96aed9864a2e1ccdd152f3d7bdcb4f28c4466b3a9d5bae018b3",
+  "synthetic": true,
+  "tos_note": "No provider bytes were retrieved for this fixture. It is a NEGATIVE test scaffold produced locally; the official Azure App Service quotas capture it derives from carries the retrieval provenance and terms note.",
+  "trim_method": "not a capture: this document was produced locally by applying one named mutation to the committed official Azure App Service quotas capture. Mutation: none: byte-identical to the official Azure App Service quotas capture, so a re-scan must produce an identical content hash and raise no change event",
+  "url": "https://learn.microsoft.com/en-us/azure/app-service/web-sites-monitor"
+}

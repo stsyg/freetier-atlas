@@ -1,0 +1,17 @@
+{
+  "captured_by": "F008 P5 Azure provider slice (synthetic scaffold)",
+  "derived_from": "tests/fixtures/ingest/azure/html/azure-app-service-quotas/source.html",
+  "extraction_profile": "azure_app_service_quotas",
+  "fetched_at": "2026-08-14T22:10:00Z",
+  "http_status": null,
+  "mutation": "the metric column header was renamed 'Quota' -> 'Quotas' so the declared header signature no longer selects any table. The adapter must reject with table_not_found rather than scrape whatever table it can find and publish values from the wrong column.",
+  "mutation_intent": "Proves the profile is pinned to the live header text, not to column position.",
+  "negative_fixture_note": "NEGATIVE TEST FIXTURE, NOT A CLAIMED COMPLETE CAPTURE. It is not a record of anything Microsoft publishes and must never be cited as evidence.",
+  "robots_allowed": true,
+  "sha256_original": null,
+  "sha256_stored": "b6573d656d1151afb397b7284019013dda9048ac658d386044aa1395fae39fcf",
+  "synthetic": true,
+  "tos_note": "No provider bytes were retrieved for this fixture. It is a NEGATIVE test scaffold produced locally; the official Azure App Service quotas capture it derives from carries the retrieval provenance and terms note.",
+  "trim_method": "not a capture: this document was produced locally by applying one named mutation to the committed official Azure App Service quotas capture. Mutation: the metric column header was renamed 'Quota' -> 'Quotas' so the declared header signature no longer selects any table. The adapter must reject with table_not_found rather than scrape whatever table it can find and publish values from the wrong column.",
+  "url": "https://learn.microsoft.com/en-us/azure/app-service/web-sites-monitor"
+}
