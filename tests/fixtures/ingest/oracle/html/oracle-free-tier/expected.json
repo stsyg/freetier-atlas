@@ -1,0 +1,27 @@
+{
+  "profile": "oracle_free_tier",
+  "mime": "text/html",
+  "source_url": "https://docs.oracle.com/en-us/iaas/Content/FreeTier/freetier.htm",
+  "candidate_count": 1,
+  "candidates": [
+    {
+      "verification_state": "candidate",
+      "expect_valid": true,
+      "facts": {
+        "service": "Oracle Cloud Infrastructure Free Trial",
+        "offer_type": "new_customer_credit",
+        "credit_amount": "$300",
+        "trial_length_days": "30",
+        "requires_card": true,
+        "payment_method_note": "For security purposes, most users need a mobile phone number and a credit card to create an account. Your credit card will not be charged unless you upgrade your account.",
+        "exhaustion_behaviour": "resource_reclaimed",
+        "notes": "Paid resources that were provisioned with your credits during your free trial are reclaimed by Oracle unless you upgrade your account.",
+        "always_free_cross_reference": "Oracle Cloud Infrastructure's Free Tier includes a free time-limited promotional trial that allows you to explore a wide range of Oracle Cloud Infrastructure products, and a set of Always Free offers that never expire.",
+        "post_trial_note": "After your trial ends, your account remains active. There is no interruption to the availability of the Always Free Resources you have provisioned. You can delete and provision Always Free resources as needed.",
+        "eligibility": "The Free Tier and Always Free resources are not available in US Government Cloud regions."
+      },
+      "evidence_url": "https://docs.oracle.com/en-us/iaas/Content/FreeTier/freetier.htm",
+      "evidence_selector": "oracle_free_tier assertion[0] document[0] -> fact[service]"
+    }
+  ]
+}

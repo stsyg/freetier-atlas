@@ -94,3 +94,9 @@ the attribution row below, and write `expected.json`.
 | `aws/html/aws-dynamodb-free-tier/` | <https://aws.amazon.com/dynamodb/pricing/> | Amazon Web Services, Inc. |
 | `aws/html/aws-api-gateway-free-tier/` | <https://aws.amazon.com/api-gateway/pricing/> | Amazon Web Services, Inc. |
 | `aws/html/aws-step-functions-free-tier/` | <https://aws.amazon.com/step-functions/pricing/> | Amazon Web Services, Inc. |
+| `oracle/html/oracle-always-free-resources/` | <https://docs.oracle.com/en-us/iaas/Content/FreeTier/freetier_topic-Always_Free_Resources.htm> | Oracle Corporation |
+| `oracle/html/oracle-free-tier/` | <https://docs.oracle.com/en-us/iaas/Content/FreeTier/freetier.htm> | Oracle Corporation |
+| `oracle/html/oracle-always-free-services/` | <https://www.oracle.com/cloud/free/faq/> | Oracle Corporation |
+| `oracle/html/oracle-cloud-free-tier/` | <https://www.oracle.com/cloud/free/> | Oracle Corporation |
+| `oracle/html/oracle-free-credit-promotion/` | <https://docs.oracle.com/en-us/iaas/Content/GSG/Tasks/signingup_topic-What_Happens_When_the_Promotion_Expires.htm> | Oracle Corporation |
+| `oracle/html/oracle-mysql-heatwave-always-free/` | <https://www.oracle.com/mysql/free/> | Oracle Corporation |

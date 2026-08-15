@@ -1,0 +1,17 @@
+{
+  "captured_by": "F008 P6 Oracle provider slice (synthetic scaffold)",
+  "derived_from": "tests/fixtures/ingest/oracle/html/oracle-always-free-resources/source.html",
+  "extraction_profile": "oracle_always_free_resources",
+  "fetched_at": "2026-08-14T23:55:00Z",
+  "http_status": null,
+  "mutation": "the Always Free cell of the 'Private endpoints' Resource Manager limit row was edited '1' -> '2' so a re-scan raises a change event on a published limit instead of silently overwriting it",
+  "mutation_intent": "A changed published value must remain extractable and must surface as a change, not vanish.",
+  "negative_fixture_note": "NEGATIVE TEST FIXTURE, NOT A CLAIMED COMPLETE CAPTURE. It is not a record of anything Oracle publishes and must never be cited as evidence.",
+  "robots_allowed": true,
+  "sha256_original": null,
+  "sha256_stored": "553a5c2e0971e29930f34620d9a317abc8d7a9eaa51bc2e2b50701d349c31aae",
+  "synthetic": true,
+  "tos_note": "No provider bytes were retrieved for this fixture. It is a NEGATIVE test scaffold produced locally; the official Oracle Always Free Resources capture it derives from carries the retrieval provenance and terms note.",
+  "trim_method": "not a capture: this document was produced locally by applying one named mutation to the committed official Oracle capture. Mutation: the Always Free cell of the 'Private endpoints' Resource Manager limit row was edited '1' -> '2' so a re-scan raises a change event on a published limit instead of silently overwriting it",
+  "url": "https://docs.oracle.com/en-us/iaas/Content/FreeTier/freetier_topic-Always_Free_Resources.htm"
+}

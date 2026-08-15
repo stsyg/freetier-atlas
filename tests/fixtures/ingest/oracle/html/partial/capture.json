@@ -1,0 +1,17 @@
+{
+  "captured_by": "F008 P6 Oracle provider slice (synthetic scaffold)",
+  "derived_from": "tests/fixtures/ingest/oracle/html/oracle-always-free-resources/source.html",
+  "extraction_profile": "oracle_always_free_resources",
+  "fetched_at": "2026-08-14T23:55:00Z",
+  "http_status": null,
+  "mutation": "the block that states the Always Free resources are 'free of charge in the home region of the tenancy, for the life of the account' was deleted. The page still publishes the whole limits table and every allowance paragraph, so a reader that trusted the table alone would still call the offer perpetual; the pinned assertion rejects the document instead. A material condition can never be assumed.",
+  "mutation_intent": "Proves the evidence floor: allowances without their supporting perpetuity statement are not enough to publish an always_free offer.",
+  "negative_fixture_note": "NEGATIVE TEST FIXTURE, NOT A CLAIMED COMPLETE CAPTURE. It is not a record of anything Oracle publishes and must never be cited as evidence.",
+  "robots_allowed": true,
+  "sha256_original": null,
+  "sha256_stored": "b1a2cc45b12b69b379bf637311f6db4fddc70b36b1062e1e2628972a5ac66df6",
+  "synthetic": true,
+  "tos_note": "No provider bytes were retrieved for this fixture. It is a NEGATIVE test scaffold produced locally; the official Oracle Always Free Resources capture it derives from carries the retrieval provenance and terms note.",
+  "trim_method": "not a capture: this document was produced locally by applying one named mutation to the committed official Oracle capture. Mutation: the block that states the Always Free resources are 'free of charge in the home region of the tenancy, for the life of the account' was deleted. The page still publishes the whole limits table and every allowance paragraph, so a reader that trusted the table alone would still call the offer perpetual; the pinned assertion rejects the document instead. A material condition can never be assumed.",
+  "url": "https://docs.oracle.com/en-us/iaas/Content/FreeTier/freetier_topic-Always_Free_Resources.htm"
+}

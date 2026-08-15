@@ -1,0 +1,26 @@
+{
+  "profile": "oracle_always_free_services",
+  "mime": "text/html",
+  "source_url": "https://www.oracle.com/cloud/free/faq/",
+  "candidate_count": 1,
+  "candidates": [
+    {
+      "verification_state": "candidate",
+      "expect_valid": true,
+      "facts": {
+        "service": "Oracle Cloud Always Free services",
+        "offer_type": "always_free",
+        "availability": "Always Free services are part of Oracle Cloud Free Tier. Always Free services are available for an unlimited time. Some limitations apply. As new Always Free services become available, you will automatically be able to use those as well.",
+        "requires_card": true,
+        "payment_verification_note": "To provide free Oracle Cloud accounts to our valued customers, we need to ensure that you are who you say you are. We use your contact information and credit/debit card information for account setup and identity verification. Oracle may periodically check the validity of your card, resulting in a temporary “authorization” hold. These holds are removed by your bank, typically within three to five days, and do not result in actual charges to your account.",
+        "accepted_payment_instruments": "We accept credit cards and debit cards that function like credit cards. We do not accept debit cards with a PIN or virtual, single-use, or prepaid cards.",
+        "post_trial_availability": "Resources identified as Always Free will not be reclaimed. After your Free Trial expires, you'll continue to be able to use and manage your existing Always Free resources and can create new Always Free resources according to tenancy limits.",
+        "eligibility": "One Oracle Cloud Free Trial or Always Free account is permitted per person. Please note:",
+        "support_note": "Oracle Cloud Free Tier does not include SLAs. Community support through our forums is available to all customers. Customers using only Always Free resources are not eligible for Oracle Support. Limited support is available for Oracle Cloud Free Tier with Free Trial credits. After you use all of your credits or after your trial period ends (whichever comes first), you must upgrade to a paid account to access Oracle Support. If you choose not to upgrade and continue to use Always Free Services, you will not be eligible to raise a service request in My Oracle Support.",
+        "arm_capacity_note": "However, if you have more Ampere A1 Compute instances provisioned than are available for an Always Free tenancy, all existing Ampere A1 instances are disabled and then deleted after 30 days unless you upgrade to a paid account. To continue using your existing Arm-based instances as an Always Free user, before your trial ends, ensure that your total use of OCPUs and memory across all the Ampere A1 Compute instances in your tenancy is within the Always Free limit."
+      },
+      "evidence_url": "https://www.oracle.com/cloud/free/faq/",
+      "evidence_selector": "oracle_always_free_services assertion[0] document[0] -> fact[service]"
+    }
+  ]
+}

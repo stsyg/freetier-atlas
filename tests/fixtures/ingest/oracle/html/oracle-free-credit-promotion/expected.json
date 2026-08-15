@@ -1,0 +1,24 @@
+{
+  "profile": "oracle_free_credit_promotion",
+  "mime": "text/html",
+  "source_url": "https://docs.oracle.com/en-us/iaas/Content/GSG/Tasks/signingup_topic-What_Happens_When_the_Promotion_Expires.htm",
+  "candidate_count": 1,
+  "candidates": [
+    {
+      "verification_state": "candidate",
+      "expect_valid": true,
+      "facts": {
+        "service": "Oracle Cloud Free Credit Promotion",
+        "offer_type": "new_customer_credit",
+        "exhaustion_behaviour": "resource_reclaimed",
+        "notes": "In both cases, Oracle Cloud sends you warning messages that you are nearing the end of your promotion period or getting close to your free credit limit. Another email will let you know when the promotion actually expires. You will have a grace period of 30 days. You can continue to use paid resources during the grace period. However, you can't create new paid resources during the grace period unless you upgrade your account. If you don't upgrade your account during this period, then your paid resources will be reclaimed. Your Always Free resources will continue to be available.",
+        "promotion_length_days": "30",
+        "promotion_end_condition": "When you use up the free credits available in your promotion offer.",
+        "always_free_cross_reference": "All Oracle Cloud Infrastructure accounts (whether free or paid) have a set of resources that are available free of charge for the life of the account. These resources are called Always Free resources. If you have subscribed to a free credit promotion, your account continues to be available to you after the trial period ends (or after you use all of your credits). You can continue to use the Always Free resources in your account for as long as your account remains active. Free accounts remain active and available to you as long as the account has been used within the past 60 days. If you have a paid account, you will not be billed for any Always Free resources you are using. See Oracle Cloud Infrastructure Free Tier for more information.",
+        "scope_note": "If you don't upgrade your free credit promotion to a paid subscription, then it's important to understand what happens to your cloud account."
+      },
+      "evidence_url": "https://docs.oracle.com/en-us/iaas/Content/GSG/Tasks/signingup_topic-What_Happens_When_the_Promotion_Expires.htm",
+      "evidence_selector": "oracle_free_credit_promotion assertion[0] document[0] -> fact[service]"
+    }
+  ]
+}

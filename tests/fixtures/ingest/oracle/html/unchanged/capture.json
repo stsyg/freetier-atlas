@@ -1,0 +1,17 @@
+{
+  "captured_by": "F008 P6 Oracle provider slice (synthetic scaffold)",
+  "derived_from": "tests/fixtures/ingest/oracle/html/oracle-always-free-resources/source.html",
+  "extraction_profile": "oracle_always_free_resources",
+  "fetched_at": "2026-08-14T23:55:00Z",
+  "http_status": null,
+  "mutation": "none: byte-identical to the official Oracle Always Free Resources capture, so a re-scan must produce an identical content hash and raise no change event",
+  "mutation_intent": "Positive control. If this case ever fails, a failure reported by the other four means nothing.",
+  "negative_fixture_note": "NEGATIVE TEST FIXTURE, NOT A CLAIMED COMPLETE CAPTURE. It is not a record of anything Oracle publishes and must never be cited as evidence.",
+  "robots_allowed": true,
+  "sha256_original": null,
+  "sha256_stored": "9ab69e6dc46d0612dfd254ac8bf2e4072797973aecec8459544d2aacc80a93b4",
+  "synthetic": true,
+  "tos_note": "No provider bytes were retrieved for this fixture. It is a NEGATIVE test scaffold produced locally; the official Oracle Always Free Resources capture it derives from carries the retrieval provenance and terms note.",
+  "trim_method": "not a capture: this document was produced locally by applying one named mutation to the committed official Oracle capture. Mutation: none: byte-identical to the official Oracle Always Free Resources capture, so a re-scan must produce an identical content hash and raise no change event",
+  "url": "https://docs.oracle.com/en-us/iaas/Content/FreeTier/freetier_topic-Always_Free_Resources.htm"
+}

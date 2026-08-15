@@ -1,0 +1,75 @@
+{
+  "captured_by": "F008 P6 Oracle provider slice (live capture, generated from the live parse)",
+  "duplicate_live_blocks_not_retained": [],
+  "duplicate_live_blocks_retained": [
+    {
+      "live_occurrences": 2,
+      "retained_occurrences": 2,
+      "text": "50,000 Object Storage API requests per month",
+      "why_not_pinned": "Oracle publishes this block more than once on this document. Whole-block equality requires exactly one match, so pinning it would return ambiguous_assertion against the live page. Both occurrences are retained so the fixture reproduces the live ambiguity rather than hiding it."
+    }
+  ],
+  "fetched_at": "2026-08-14T23:55:00Z",
+  "http_status": 200,
+  "ignored_extraction_rows": [],
+  "live_reconciliation": "LIVE -> FIXTURE (primary): all 24 pinned block(s) occur EXACTLY ONCE in the live document and EXACTLY ONCE in this capture; all 6 live target-table row(s) are present, none removed, none added. FIXTURE -> LIVE (supporting only): every block in this capture occurs in the live document.",
+  "live_table_count": 1,
+  "live_table_note": "MEASURED: the live document's ONE header-selectable table is retained complete.",
+  "live_table_present": true,
+  "non_target_tables_removed": 0,
+  "non_target_tables_removed_note": "MEASURED: no non-target table feeds this profile's outcome, so none is retained and none is synthesized.",
+  "robots_allowed": true,
+  "sha256_original": "c7f9be4d8dbfe96060dd0fa128f236a0f819bc5b0acdf4b4c753f6c3857c56d6",
+  "sha256_original_note": "sha256_original is the digest of the exact live bytes this capture was derived from on 2026-08-14. It is NOT reproducible across fetches: oracle.com serves per-build markup and rotating inline tokens, so a later fetch of an unchanged page yields a different digest. STRUCTURE, not digest, is the invariant.",
+  "sha256_stored": "9ab69e6dc46d0612dfd254ac8bf2e4072797973aecec8459544d2aacc80a93b4",
+  "sha256_stored_note": "sha256_stored attests the COMMITTED BYTES ONLY. It is a tamper-evidence seal on this file, not a link to the live page, and it must never be read as a fidelity control.",
+  "structure": {
+    "asserted_block_sha256": [
+      "5fda8a3921f503e2725262626f7f218ed13e0738878d74b1e483c16a59ccb8ba",
+      "f7bf56bdd49e3cba845058966542861336b280e87c0d1f061e438eb232508bc4",
+      "f7bf56bdd49e3cba845058966542861336b280e87c0d1f061e438eb232508bc4",
+      "de6451288e3073bdce9d22e7e6d7c69dc186af1bca9d7a5dd24bae78d8c64a80",
+      "de6451288e3073bdce9d22e7e6d7c69dc186af1bca9d7a5dd24bae78d8c64a80",
+      "2cc07559b314f5aae1a39cf8a759cee27e472558fb45559d4688ccfd53678699",
+      "8ce72d24cf7dcc613a9dfe0f772bf21488f8d6e34ec5168cd0477b80b27295aa",
+      "82a7650973dedf8709c3e56f19f5022f9cd3deb26708941590b9b012af2e436f",
+      "ba87731c8c267adbbfd5d470792b983316bd137f5a945edfc743e5a758984ac9",
+      "74e859cf3b4f7d438b6952ca5e1d8529f62b666ebe7bfe969044cd46abe35979",
+      "6a42685a5b0c3b696e8bec8e6ae2c44f00ecc63978fc5f7e8a5311cbafdae004",
+      "81deacc6353ee387aab46f0fa0599ecde8767b93357fb75c32a58014272bafd7",
+      "c30e6add03bd5441cc88113ecfd9aab06709b6072d2e5bf7f63425d99a7c5568",
+      "6b7c2818f34e6fbc45c4d21f2974e9fbc4982114c7dce9ba8682ff0fdab52e62",
+      "1dd7f3715c70c2f775a7bb3aa85154bf73148390118af000eb44a6c8930ac7fa",
+      "afbab8e16dde23b7e5907fe8f95e2ee8187a0a6223ecd2f72e7198ba52b58797",
+      "3343d9b431192bf77fcd9192a7970b8e1ae5586b0b651fd9a61678e41eaff193",
+      "c798e02da33cb1e204ada345ec2abc1d3449d4b5bace8dd1c6cc85f5b12aab88",
+      "c354773172848d29f8be0ad6545c0e66c43e8b16c0ea25082090d2164f44db73",
+      "a88be1336d3bcded359f184432d2884f849bbfa02e69d575b27630e83e1fdfa9",
+      "2a7e727b8b21096032452e61f10c056d03dfd956eaee8eac199546d74a5a076b",
+      "763a1da41a9189e59a07cb498bb68bfd168d28a1decde4c20b88123a8d82485c",
+      "c177bdde625b107d4a0e75fad28095e88717dd738a3a688d911e1177a16b9122",
+      "8cf539a77f02d4f5b37c52fe1e0bfc33589472fd39f6388b9c4b5c1c8d2aab7c",
+      "abf91eeb5b44c5f5cdace5914c1efb94860cd5675bb5a10699e507288d61c954",
+      "5730ef3ea5cc87df8769151ee2fab0396ac1b1b6bfaced7d9a179771e8b23085"
+    ],
+    "headers": ["Resource", "Limit Name", "Always Free"],
+    "rows": [
+      ["Configuration source providers", "configuration-source-provider-count", "100"],
+      ["Jobs (concurrent) Job duration: 24 hours", "concurrent-job-count", "2"],
+      ["Private endpoints", "private-endpoint-count", "1"],
+      ["Private endpoint reachable IP addresses", "private-endpoint-reachable-ip-count", "100"],
+      ["Private templates", "template-count", "100"],
+      [
+        "Stacks Variables per stack: 250 Size per variable: 8192 bytes Zip file per stack: 11 MB",
+        "stack-count",
+        "100"
+      ]
+    ]
+  },
+  "target_table_cells_removed": [],
+  "target_table_rows_removed": [],
+  "tos_note": "Official Oracle Cloud Infrastructure documentation (docs.oracle.com). https://docs.oracle.com/robots.txt was retrieved and its 'User-agent: *' group does not disallow /en-us/iaas/Content/, so automated retrieval of this path is permitted. A minimal excerpt is committed for offline, deterministic extraction testing; every retained value and every pinned block is reproduced verbatim from the cited live page.",
+  "trim_method": "Removed scripts, navigation, styling and unrelated prose. This capture was GENERATED from the live document's own parse: every retained block is the exact normalised string the engine collected from the live page, resolved by a unique needle rather than transcribed, and (where a table is retained) the headers and cells are the exact normalised strings the engine collected from the live target table. Inline markup inside those blocks and cells was flattened to plain text; the engine normalises a block or cell to its text content, so every retained normalised string is identical to live. This is a deliberate minimal excerpt, not a complete copy of the page.",
+  "unpivoted_target_table_columns": ["Limit Name"],
+  "url": "https://docs.oracle.com/en-us/iaas/Content/FreeTier/freetier_topic-Always_Free_Resources.htm"
+}

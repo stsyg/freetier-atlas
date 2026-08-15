@@ -1,0 +1,17 @@
+{
+  "captured_by": "F008 P6 Oracle provider slice (synthetic scaffold)",
+  "derived_from": null,
+  "extraction_profile": "quota_document",
+  "fetched_at": "2026-08-14T23:55:00Z",
+  "http_status": null,
+  "mutation": "two synthetic rows for one offer identity disagree on requires_card, on paid dependencies and on exhaustion behaviour. Read with the pre-existing GENERIC quota_document profile, because every Oracle profile pins those facts to verbatim prose and cannot express an intra-page disagreement about them.",
+  "mutation_intent": "Proves a disagreement is surfaced for reconciliation rather than silently merged.",
+  "negative_fixture_note": "NEGATIVE TEST FIXTURE, NOT A CLAIMED COMPLETE CAPTURE. It is not a record of anything Oracle publishes and must never be cited as evidence.",
+  "robots_allowed": true,
+  "sha256_original": null,
+  "sha256_stored": "19a12a739182a6d20e1c8ea4c2c0fd50961a29d31a1b09759a2b0e08ffe524b7",
+  "synthetic": true,
+  "tos_note": "No provider bytes were retrieved for this fixture. It is a wholly SYNTHETIC document written locally to exercise intra-document contradiction; no Oracle page has this shape.",
+  "trim_method": "not a capture: this document was authored locally and declares its synthetic provenance in its own visible body text.",
+  "url": "https://docs.oracle.com/en-us/iaas/Content/FreeTier/freetier_topic-Always_Free_Resources.htm"
+}

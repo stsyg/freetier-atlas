@@ -1,0 +1,17 @@
+{
+  "captured_by": "F008 P6 Oracle provider slice (synthetic scaffold)",
+  "derived_from": "tests/fixtures/ingest/oracle/html/oracle-always-free-resources/source.html",
+  "extraction_profile": "oracle_always_free_resources",
+  "fetched_at": "2026-08-14T23:55:00Z",
+  "http_status": null,
+  "mutation": "the tier column header was renamed 'Always Free' -> 'Always Frees' so the declared header signature no longer selects any table. The adapter must reject with table_not_found rather than scrape whatever table it can find and publish values from the wrong column.",
+  "mutation_intent": "Proves the profile is pinned to the live header text, not to column position.",
+  "negative_fixture_note": "NEGATIVE TEST FIXTURE, NOT A CLAIMED COMPLETE CAPTURE. It is not a record of anything Oracle publishes and must never be cited as evidence.",
+  "robots_allowed": true,
+  "sha256_original": null,
+  "sha256_stored": "6698fcd78d75cd4b352aec2afd6e9a409f409a27189328277bf187626941d280",
+  "synthetic": true,
+  "tos_note": "No provider bytes were retrieved for this fixture. It is a NEGATIVE test scaffold produced locally; the official Oracle Always Free Resources capture it derives from carries the retrieval provenance and terms note.",
+  "trim_method": "not a capture: this document was produced locally by applying one named mutation to the committed official Oracle capture. Mutation: the tier column header was renamed 'Always Free' -> 'Always Frees' so the declared header signature no longer selects any table. The adapter must reject with table_not_found rather than scrape whatever table it can find and publish values from the wrong column.",
+  "url": "https://docs.oracle.com/en-us/iaas/Content/FreeTier/freetier_topic-Always_Free_Resources.htm"
+}

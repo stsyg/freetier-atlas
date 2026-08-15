@@ -64,6 +64,8 @@ developers.cloudflare.com
 www.cloudflare.com
 firebase.google.com
 vercel.com
+www.oracle.com
+docs.oracle.com
 
 # --- Toolchain and reference documentation -----------------------------------
 eslint.org
