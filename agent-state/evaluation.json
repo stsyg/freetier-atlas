@@ -491,5 +491,104 @@
       "No live fetching was performed by this evaluation; CI performs zero socket operations by design and tests/unit/test_no_live_fetcher_in_tests.py enforces it."
     ],
     "recommendation": "Do NOT merge as-is. The remedy is text-only and cheap: correct the App Service characterisation in the six committed locations to say that the offer clears the billing gate entirely and fails at the unknown-conditions gate on TWO unknowns - the payment card and paid dependencies - neither of which its document states; rename test_the_safest_azure_offer_fails_only_on_the_card_gate accordingly; and strengthen that test to assert the EXACT blocking-condition set so the claim becomes verified rather than asserted. No fixture, profile, verdict or classifier change is required, and no published verdict is wrong today. Re-run the suite and re-evaluate step 8 only."
+  },
+  {
+    "schema_version": 1,
+    "feature_id": "F008",
+    "increment": "F008 P5 - Microsoft Azure provider - SCOPED RE-CHECK of the corrected head",
+    "evaluated_commit": "979c5efc4ff6c8dc4171c950d20109b00e37703f",
+    "commit_sha_evaluated": "979c5efc4ff6c8dc4171c950d20109b00e37703f",
+    "supersedes": "59916656d7fa3e3615c08fa3116a20a54c980b4f",
+    "evaluator": "fresh-context Level-2 evaluator (independent session, same evaluator as the FAILED entry for 5991665)",
+    "evaluated_at": "2026-08-14T19:05:00-06:00",
+    "harness": "own detached worktree at the corrected head, own scratch PostgreSQL 16 database atlas_eval_l2_azure2; scoped re-check composing with the full evaluation of 5991665 rather than repeating it",
+    "required_evaluation_level": 2,
+    "evaluation_level": 2,
+    "disposition": "passed",
+    "overall_disposition": "passed",
+    "blocking_issues": [],
+    "summary": "The single blocking defect is corrected and the correction is proven rather than asserted. App Service is now stated as TWO unknowns from Z0 in every location, the test is renamed AND strengthened to assert the exact blocking set, and the strengthening is measurably load-bearing. The change is documentation-only in the profile module, verified structurally rather than by reading the diff: 7 profiles, 57 assertions and 18 matrix rows are identical across the two revisions, and all 36 Azure fixture blobs are byte-identical. Every claim from the FAILED evaluation that the composition guard shows unchanged was NOT re-derived, per the brief.",
+    "acceptance_steps": [
+      {
+        "step": 1,
+        "name": "correction_is_text_only_and_composition_guard_holds",
+        "passed": true,
+        "evidence": [
+          "7 paths changed. 6 are the expected text locations; the 7th is .secrets.baseline and its ENTIRE diff is a one-line generated_at timestamp (2026-08-14T23:19:56Z -> 2026-08-15T00:44:28Z). My allowlist was incomplete, not the artefact.",
+          "All 9 composition-guard blobs IDENTICAL, including apps/api/app/classify/engine.py, app/models/vocab.py, adapters/html.py and ingest/fetch.py: no classifier or extraction behaviour moved.",
+          "All 36 tests/fixtures/ingest/azure/** blobs byte-identical between 5991665 and 979c5ef; no evidence was re-cut to fit the correction.",
+          "tests/unit/test_azure_coverage_config.py and tests/integration/test_ingest_azure.py byte-identical to the evaluated head, so the changed YAML is validated by an UNCHANGED contract test."
+        ]
+      },
+      {
+        "step": 2,
+        "name": "azure_py_change_is_documentation_only_verified_structurally",
+        "passed": true,
+        "evidence": [
+          "Reproduced the builder's method independently: both revisions imported from their own trees under isolated module namespaces and compared field by field.",
+          "MEASURED: 7 profiles, 57 assertions, 18 matrix rows - every one IDENTICAL across name, mode, header signature, matrix headers, matrix rows, required fields, trusted_assertions, and every assertion's text/field/value/scope/required flag.",
+          "Counts match the builder's report exactly (7 / 57 / 18)."
+        ]
+      },
+      {
+        "step": 3,
+        "name": "strengthened_assertion_is_non_vacuous",
+        "passed": true,
+        "evidence": [
+          "The non-vacuity battery flipped from NOT PROVEN (on 5991665) to PROVEN.",
+          "Probe locates the test by CONTENT, not by name, so the rename could not hide a lost subject. It found TWO qualifying tests where the pre-fix tree had one.",
+          "test_the_safest_azure_offer_is_two_unknowns_from_z0: baseline GREEN; FAILS when the paid-dependency blocker is dropped; FAILS when a spurious blocker is added; PASSES the identical-set discrimination control.",
+          "test_offer_type_other_is_not_a_safety_mechanism: identical result on all four.",
+          "For contrast, the pre-fix test passed under BOTH perturbations - it was provably incapable of detecting the regression its name asserted."
+        ]
+      },
+      {
+        "step": 4,
+        "name": "surviving_occurrences_are_attributed_quotations_not_live_claims",
+        "passed": true,
+        "evidence": [
+          "10 occurrences of the old wording survive by design, as recorded history.",
+          "MEASURED: 10 of 10 are bound by an attribution marker within a 320-character window ('An earlier revision', 'CORRECTED AFTER', 'This test previously', 'the now-corrected wording', or the replacement test name).",
+          "DISCRIMINATION CONTROL: the same probe run against 5991665 reports 14 of 14 UNATTRIBUTED, so it distinguishes a live claim from a quotation rather than passing everything.",
+          "Read in full context, each surviving occurrence is a self-attributing quotation that also states why the old wording misread."
+        ]
+      },
+      {
+        "step": 5,
+        "name": "true_adjacent_statements_survived",
+        "passed": true,
+        "evidence": [
+          "'clears the billing gate entirely' and 'fails only at the unknown-conditions gate' are both still present and measured TRUE: gate 3 is cleared and gate 4 is the only gate that fires.",
+          "Present across 5 files / 7 lines at the corrected head, up from 4 files / 6 lines. The overclaim was not traded for a loss of accurate detail."
+        ]
+      },
+      {
+        "step": 6,
+        "name": "drift_detector_failure_message_is_honest",
+        "passed": true,
+        "evidence": [
+          "test_offer_type_other_is_not_a_safety_mechanism asserts 'other' is absent from TEMPORARY_CONDITIONAL_OFFER_TYPES, and positively measures that 'other' reaches Z0_TRUE_FREE when every billing gate is explicitly clear.",
+          "Its failure message states the engine 'has become SAFER ... this is an IMPROVEMENT, not a regression', instructs the reader to update the test and the two docstrings deliberately, and says 'Do not delete this test and do not weaken it to green'. It reddens on an improvement and says so.",
+          "This closes the observation I raised as non-blocking on the first pass."
+        ]
+      },
+      {
+        "step": 7,
+        "name": "suite_lint_ci_and_protected_state",
+        "passed": true,
+        "evidence": [
+          "Full suite on my own scratch DB atlas_eval_l2_azure2: 2374 passed, 2 skipped (+2 over the evaluated head, exactly the two new tests; zero broken).",
+          "ruff check . and ruff format --check . clean over 223 files.",
+          "All 5 CI checks pass and the run's headSha is 979c5efc4ff6c8dc4171c950d20109b00e37703f, the exact corrected head. main unchanged at 3b382aa and still at zero red.",
+          "11 protected blobs identical between base and the corrected head; F008 remains passes:false with last_verified_at null."
+        ]
+      }
+    ],
+    "known_issues_or_risks": [
+      "The App Service verdict still rests on an ABSENCE of payment evidence rather than a quotation. That is the honest outcome and it is now stated precisely, but it remains structurally weaker than a quoted Z1: two fields would have to be supplied to flip it.",
+      "The reconciling fixture generator remains outside the repository, so its refuse-to-write behaviour is still attested by output and in-repo recomputation rather than inspected.",
+      "F008 is not complete: this is one provider slice and the ledger flag correctly stays false."
+    ],
+    "recommendation": "PASSED. Recommend merge on owner review. The blocking defect is corrected in all locations, the fix is proven load-bearing by mutation rather than asserted, no fixture, profile, verdict or classifier moved, and the surviving old wording is attributed history rather than live claims. F008 must remain passes:false: this is a single provider slice, not the feature."
   }
 ]
