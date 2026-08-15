@@ -85,13 +85,31 @@ does, in a block of its own::
     result in an HTTP 403 error.
 
 That is a non-billing stop. :data:`AZURE_APP_SERVICE_QUOTAS` is therefore the
-closest any offer in this slice comes to Z0: it clears gate 3 entirely and fails
-**only** on gate 4, because no block on its document states whether a payment
-card is required. One unknown separates it from Z0, and the honest response to
-that is ``UNKNOWN`` rather than a guess in either direction. ``hard_stop`` would
-classify identically -- both values are in ``SAFE_EXHAUSTION`` -- and
-``site_disabled_until_reset`` is chosen because "stopped until the quota resets"
-is what the sentence actually says.
+closest any offer in this slice comes to Z0: it clears gate 3 -- definite billing
+exposure -- entirely, so every one of its blocking conditions is an *unknown*
+rather than an exposure.
+
+**It is TWO unknowns from Z0, not one, and the distinction is load-bearing.**
+Gate 4 reports ``requires_card`` and ``has_paid_dependencies`` independently, and
+no block on this document states either::
+
+    [1] Whether a payment card is required is unknown.
+    [2] Whether the offer has paid dependencies is unknown.
+
+**Resolving the card alone still yields ``UNKNOWN``.** MEASURED by exhaustive
+enumeration over the tri-state combinations, holding this document's own
+``offer_type`` and ``exhaustion_behaviour``: exactly **1 of 9** reaches Z0, and
+it needs BOTH facts resolved favourably. Pinned by
+``test_the_safest_azure_offer_is_two_unknowns_from_z0``.
+
+An earlier revision of this module said "fails **only** on gate 4 ... one unknown
+separates it from Z0". Every word of that was true -- gate 4 *is* the only gate
+that fires -- and it still reliably read as "one FACT is missing", which is
+false. It is recorded here rather than quietly rewritten, because a later slice
+that supplied the card fact expecting Z0 would get ``UNKNOWN`` and go hunting for
+a bug that does not exist. ``hard_stop`` would classify identically -- both values
+are in ``SAFE_EXHAUSTION`` -- and ``site_disabled_until_reset`` is chosen because
+"stopped until the quota resets" is what the sentence actually says.
 
 **Why ``requires_card`` is UNKNOWN on the other six profiles.** The
 payment-method block lives on the free-account terms page and describes that
@@ -140,6 +158,19 @@ Use ``other`` and route the candidate for review until the structure is
 evidenced." These are the first two applications of rule 3 in this repository,
 and they are recorded here so a reviewer can check the determination against the
 rule rather than against an author's intuition.
+
+**``other`` is NOT a safety mechanism, and nothing here should be read as
+implying it is.** MEASURED against the real engine: ``other`` appears in neither
+``TEMPORARY_CONDITIONAL_OFFER_TYPES`` nor ``SELF_HOSTED_OFFER_TYPES``, so it is
+gated nowhere, and ``other`` + ``requires_card=False`` +
+``has_paid_dependencies=False`` + a safe stop classifies **Z0_TRUE_FREE**. The
+Z0-capable offer types are ``always_free``, ``recurring_quota``,
+``personal_use_free`` and ``other``. What actually withholds Z0 from these two
+rule-3 offers is the unknown card and paid-dependency facts, plus the publication
+gate -- **not the offer type**. Rule 3's "route the candidate for review" is an
+instruction to the *author*, not a behaviour of the classifier. That is pinned by
+``test_offer_type_other_is_not_a_safety_mechanism`` so the assumption is a tested
+property rather than something a reader has to take on trust.
 
 **Why DevOps is ``recurring_quota``.** Both legs of rule 2 are quoted from the
 same document: the service is not itself zero-priced ("First 5 users free, then
@@ -321,9 +352,11 @@ COSMOS_KEEP_ACCOUNT_FREE = (
 # --------------------------------------------------------------------------- #
 
 #: THE decisive fact, and the one that makes this the closest Azure offer to Z0:
-#: exceeding the quota STOPS the app rather than billing for it. Deleting this
-#: block must reject the document rather than leave the offer's exhaustion
-#: merely unknown.
+#: exceeding the quota STOPS the app rather than billing for it, which clears the
+#: billing gate entirely. It does NOT make the offer one fact from Z0 -- both
+#: ``requires_card`` and ``has_paid_dependencies`` remain unknown on this
+#: document, so the offer is TWO unknowns away. Deleting this block must reject
+#: the document rather than leave the offer's exhaustion merely unknown.
 APP_SERVICE_QUOTA_STOP = (
     "If an app exceeds the CPU (Short), CPU (Day), or Bandwidth quota, the app is stopped until "
     "the quota resets. During this time, all incoming requests result in an HTTP 403 error."

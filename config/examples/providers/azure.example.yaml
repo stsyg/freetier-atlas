@@ -67,8 +67,10 @@ sources:
 
   # The closest any Azure offer comes to Z0. Its exhaustion behaviour is a
   # genuinely SAFE stop ("the app is stopped until the quota resets"), so it
-  # clears the billing gate entirely and fails ONLY because no block on its
-  # document states whether a payment card is required.
+  # clears the billing gate entirely. It is TWO unknowns from Z0, not one: no
+  # block on its document states whether a payment card is required OR whether
+  # the offer has paid dependencies, and resolving the card alone still yields
+  # UNKNOWN.
   - id: azure-app-service-quotas
     type: html
     trust_level: official
@@ -189,13 +191,17 @@ coverage:
       is a genuinely SAFE, non-billing stop, and the only one found on any Azure
       page in this sweep. The category is therefore offered. No Z0 offer is
       produced, and the reason is unusually narrow: this offer clears the billing
-      gate entirely and fails ONLY at the unknown-conditions gate, because no
-      block on its document states whether a payment card is required. One
-      unknown separates it from Z0, and the honest response to that is unknown
-      rather than a guess. Azure Static Web Apps
+      gate entirely, so every blocking condition it has is an unknown rather than
+      an exposure. It is TWO unknowns from Z0, not one - no block on its document
+      states whether a payment card is required, and none states whether the
+      offer has paid dependencies. Resolving the card alone still yields unknown;
+      measured by exhaustive enumeration, exactly 1 of 9 tri-state combinations
+      reaches Z0 and it needs both facts. Azure Static Web Apps
       (azure-static-web-apps-plans) is also mapped to this category and produces
       no Z0 offer either; its document establishes no commercial structure at
       all, so docs/DATA_MODEL.md rule 3 applies and its offer type is `other`.
+      Note that `other` is not itself a safety gate - it is Z0-capable in the
+      classifier - so what withholds Z0 there is likewise the unknown facts.
   serverless-functions:
     state: unknown
     rationale: >-

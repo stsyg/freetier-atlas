@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import dataclasses
 import hashlib
+import itertools
 import json
 import re
 from pathlib import Path
@@ -93,6 +94,28 @@ PAYMENT_METHOD_REQUIRED = (
     "Microsoft account or a GitHub account. Only credit cards are accepted in Hong Kong and "
     "Brazil."
 )
+
+#: The three reasons the classifier emits at gate 3, its DEFINITE billing gate.
+#: Asserting the absence of these is the accurate way to say "clears the billing
+#: gate" -- an earlier draft of this module asserted the substring "unknown"
+#: appeared in every blocker instead, which is a claim about WORDING rather than
+#: about the gate, and it was wrong: gate 4's "No quota data is available to
+#: confirm a safe exhaustion behaviour." contains no such word. That draft was
+#: caught by this file's own Static Web Apps case.
+BILLING_GATE_REASONS = (
+    "A payment card is required.",
+    "The offer has paid dependencies.",
+    "A quota triggers automatic billing when exhausted.",
+)
+
+#: The EXACT blocking conditions the real classifier returns for App Service, in
+#: sorted order. Written out literally rather than derived, so a change to the
+#: engine's wording or to the number of blockers fails loudly here instead of
+#: being absorbed by a membership test. This offer is the closest thing in the
+#: slice to a Z0 claim, so its blocking set is pinned rather than sampled.
+PAID_DEPS_UNKNOWN = "Whether the offer has paid dependencies is unknown."
+CARD_UNKNOWN = "Whether a payment card is required is unknown."
+APP_SERVICE_BLOCKERS = tuple(sorted((CARD_UNKNOWN, PAID_DEPS_UNKNOWN)))
 
 
 def _classify(facts) -> engine.ClassificationResult:
@@ -461,14 +484,25 @@ def test_a_payment_method_is_required_and_that_is_published() -> None:
     assert any("payment card is required" in reason for reason in result.blocking_conditions)
 
 
-def test_the_safest_azure_offer_fails_only_on_the_card_gate() -> None:
+def test_the_safest_azure_offer_is_two_unknowns_from_z0() -> None:
     """App Service is the closest Azure comes to Z0, and the reason is narrow.
 
     Its page states a genuinely SAFE, non-billing exhaustion behaviour, so it
-    clears the billing gate entirely. It fails ONLY because no block on its
-    document states whether a payment card is required. Recording that precisely
-    matters: "not Z0" for a good reason and "not Z0" for want of one fact are
-    different findings, and only the second is a candidate for a later slice.
+    clears the billing gate entirely and every blocking condition it has is an
+    *unknown* rather than an exposure.
+
+    **It is TWO unknowns away, not one.** Gate 4 reports ``requires_card`` and
+    ``has_paid_dependencies`` independently and this document states neither, so
+    resolving the card alone still yields ``UNKNOWN``.
+
+    This test previously read ``..._fails_only_on_the_card_gate`` and asserted
+    only that every blocker was an unknown and that *some* blocker mentioned the
+    card. Both held with TWO blockers present, so **it passed while its own name
+    was false**. The fix is not the rename: it is asserting the EXACT blocking
+    set, plus the discrimination control below which proves that assertion
+    changes when the set changes. A test renamed accurately but asserting no more
+    than before would be worse than the false name, because the name would then
+    invite trust the assertions still could not support.
     """
 
     _, (candidate,) = run_extraction_case(
@@ -477,13 +511,127 @@ def test_the_safest_azure_offer_fails_only_on_the_card_gate() -> None:
     assert candidate.facts["exhaustion_behaviour"] == "site_disabled_until_reset"
     assert candidate.facts["exhaustion_behaviour"] in engine.SAFE_EXHAUSTION
     assert "requires_card" not in candidate.facts
+    assert "has_paid_dependencies" not in candidate.facts
 
     result = _classify(candidate.facts)
     assert result.zero_cost_class == "UNKNOWN"
-    # Every blocking condition is an UNKNOWN, never a billing exposure.
-    assert result.blocking_conditions
-    assert all("unknown" in reason.lower() for reason in result.blocking_conditions)
-    assert any("payment card is required is unknown" in r for r in result.blocking_conditions)
+
+    # THE EXACT BLOCKING SET. Equality, not membership: an added, removed or
+    # reworded blocker fails here rather than slipping past an `any(...)`.
+    assert tuple(sorted(result.blocking_conditions)) == APP_SERVICE_BLOCKERS
+    assert len(result.blocking_conditions) == 2
+    # Neither blocker is a DEFINITE billing exposure. That is what "clears the
+    # billing gate entirely" means, asserted against gate 3's own reason
+    # vocabulary rather than by searching for the word "unknown".
+    assert not set(result.blocking_conditions) & set(BILLING_GATE_REASONS)
+
+    # DISCRIMINATION CONTROL, in the same test so the equality above is
+    # non-vacuous BY CONSTRUCTION rather than by a reader's inspection. Resolving
+    # the card leaves ONE blocker, so the exact-set assertion must no longer
+    # hold -- and the offer is still not Z0, which is the substantive half of the
+    # correction that failed evaluation.
+    card_resolved = dict(candidate.facts) | {"requires_card": False}
+    narrowed = _classify(card_resolved)
+    assert tuple(sorted(narrowed.blocking_conditions)) != APP_SERVICE_BLOCKERS
+    assert narrowed.blocking_conditions == (PAID_DEPS_UNKNOWN,)
+    assert narrowed.zero_cost_class == "UNKNOWN"
+    assert narrowed.zero_cost_class != "Z0_TRUE_FREE"
+
+
+def test_exactly_one_of_nine_combinations_would_reach_z0() -> None:
+    """The measurement behind "two unknowns", enumerated rather than asserted.
+
+    Holding the document's own ``offer_type`` and ``exhaustion_behaviour``, the
+    two tri-state billing facts admit nine combinations. Exactly one reaches Z0
+    and it needs BOTH resolved favourably. This is what makes "two unknowns"
+    a count rather than a turn of phrase.
+    """
+
+    _, (candidate,) = run_extraction_case(
+        "azure", "html", "azure-app-service-quotas", official_domains=DOMAINS
+    )
+    reaching = []
+    for card, deps in itertools.product([None, True, False], repeat=2):
+        result = classify(
+            OfferFacts(
+                offer_type=str(candidate.facts["offer_type"]),
+                requires_card=card,
+                has_paid_dependencies=deps,
+                exhaustion_behaviours=(str(candidate.facts["exhaustion_behaviour"]),),
+            )
+        )
+        if result.zero_cost_class == "Z0_TRUE_FREE":
+            reaching.append((card, deps))
+
+    assert reaching == [(False, False)], f"expected exactly one Z0 route, saw {reaching}"
+    assert len(reaching) == 1
+
+
+def test_offer_type_other_is_not_a_safety_mechanism() -> None:
+    """`other` is Z0-CAPABLE. Rule 3 protects nothing on its own.
+
+    ``docs/DATA_MODEL.md`` rule 3 says to use ``other`` and "route the candidate
+    for review until the structure is evidenced". That is an instruction to the
+    AUTHOR; the classifier implements no such routing. Both rule-3 offers in this
+    slice (App Service, Static Web Apps) are withheld from Z0 by their unknown
+    billing facts and by the publication gate -- **never by their offer type**.
+
+    Pinned so the assumption is a tested property rather than something a reader
+    takes on trust, because it is what keeps this slice's near-miss safe.
+
+    DRIFT DETECTOR, read the failure message before "fixing" this. If a later
+    slice adds ``other`` to ``TEMPORARY_CONDITIONAL_OFFER_TYPES`` this test goes
+    RED **because the engine became SAFER**. That is not a regression: update
+    this test deliberately to record the new behaviour. Do NOT delete it and do
+    NOT weaken it to green.
+    """
+
+    safer = "other" in engine.TEMPORARY_CONDITIONAL_OFFER_TYPES
+    assert not safer, (
+        "'other' is now in TEMPORARY_CONDITIONAL_OFFER_TYPES. The engine has become "
+        "SAFER than when this test was written -- this is an IMPROVEMENT, not a "
+        "regression. Update this test deliberately to record that rule-3 offers are "
+        "now gated by their offer type, and update the docstrings in "
+        "app/ingest/adapters/profiles/azure.py and docs/PROVIDER_ADAPTERS.md that "
+        "state the opposite. Do not delete this test and do not weaken it to green."
+    )
+    assert "other" not in engine.SELF_HOSTED_OFFER_TYPES
+
+    # The positive measurement: `other` reaches Z0 when every billing gate is
+    # explicitly clear, so it cannot be what withholds Z0 anywhere.
+    probe = classify(
+        OfferFacts(
+            offer_type="other",
+            requires_card=False,
+            has_paid_dependencies=False,
+            exhaustion_behaviours=("site_disabled_until_reset",),
+        )
+    )
+    assert probe.zero_cost_class == "Z0_TRUE_FREE"
+    assert not probe.blocking_conditions
+
+    # And the two rule-3 offers really do carry that type, so this is not an
+    # abstract statement about a value nothing uses.
+    rule_three = {}
+    for case in ("azure-app-service-quotas", "azure-static-web-apps-plans"):
+        _, (candidate,) = run_extraction_case("azure", "html", case, official_domains=DOMAINS)
+        rule_three[case] = dict(candidate.facts)
+        assert candidate.facts["offer_type"] == "other"
+        # Each is still withheld, and no blocker is a DEFINITE billing
+        # exposure -- which is what "clears the billing gate" means. Asserted
+        # against gate 3's own reason vocabulary rather than by looking for
+        # the word "unknown", because gate 4's "No quota data is available to
+        # confirm a safe exhaustion behaviour." does not contain it.
+        result = _classify(candidate.facts)
+        assert result.zero_cost_class == "UNKNOWN"
+        assert not set(result.blocking_conditions) & set(BILLING_GATE_REASONS)
+        assert not any("offer type" in reason.lower() for reason in result.blocking_conditions)
+
+    # Static Web Apps carries a THIRD blocker (no quota data at all), so the two
+    # rule-3 offers are not equally close to Z0 and this test does not imply they
+    # are.
+    swa = _classify(rule_three["azure-static-web-apps-plans"])
+    assert len(swa.blocking_conditions) == 3
 
 
 @pytest.mark.parametrize("case", SOURCE_CASES)

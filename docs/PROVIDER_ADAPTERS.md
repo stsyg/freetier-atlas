@@ -320,7 +320,7 @@ profile can borrow another's facts. Microsoft itself draws the line, verbatim:
 | `azure_free_account` | assertions | no selectable table: 2 live tables are the country/currency grid | **Z1** (card quoted) |
 | `azure_free_services` | assertions | no table: the hub's free list is client-rendered | UNKNOWN |
 | `azure_cosmos_db_free_tier` | assertions | no table: the lifetime tier is prose | **Z1** (perpetual, still billed) |
-| `azure_app_service_quotas` | matrix | the 5-row `Quota` / `Description` table | UNKNOWN (card gate alone) |
+| `azure_app_service_quotas` | matrix | the 5-row `Quota` / `Description` table | UNKNOWN (two unknowns: card + paid deps) |
 | `azure_static_web_apps_plans` | matrix | the 13-row `Feature` / `Free plan (For personal projects)` table | UNKNOWN |
 | `azure_devops_services` | assertions | 1 live table, irregular by width (one-cell section rows) | UNKNOWN |
 | `azure_students` | assertions | no table: the FAQ answers are client-rendered | UNKNOWN |
@@ -359,10 +359,46 @@ narrow.** Its page states, in a block of its own, *"If an app exceeds the CPU
 (Short), CPU (Day), or Bandwidth quota, the app is stopped until the quota
 resets. During this time, all incoming requests result in an HTTP 403 error."*
 That is a genuinely safe, non-billing stop — the only one found on any Azure page
-in this sweep — so the offer clears the billing gate entirely and fails **only**
-at the unknown-conditions gate. One unknown separates it from Z0. Recording that
-precisely matters: "not Z0 for a good reason" and "not Z0 for want of one fact"
-are different findings, and only the second is a candidate for a later slice.
+in this sweep — so the offer clears the billing gate entirely and every blocking
+condition it has is an *unknown* rather than an exposure.
+
+**It is two unknowns from Z0, not one.** Gate 4 reports `requires_card` and
+`has_paid_dependencies` independently, and this document states neither:
+
+```
+[1] Whether a payment card is required is unknown.
+[2] Whether the offer has paid dependencies is unknown.
+```
+
+Resolving the card alone still yields `UNKNOWN`. Measured by exhaustive
+enumeration over the tri-state combinations, holding the document's own
+`offer_type` and `exhaustion_behaviour`, exactly **1 of 9** reaches Z0 and it
+needs both facts. Recording that precisely matters: a later slice that supplied
+the card fact expecting Z0 would get `UNKNOWN` and go looking for a bug that does
+not exist.
+
+An earlier revision of this document said the offer "fails **only** at the
+unknown-conditions gate. One unknown separates it from Z0." Every word was true —
+gate 4 *is* the only gate that fires — and it still reliably read as *one fact is
+missing*, which is false. It is recorded rather than silently rewritten, because
+this is the third instance in this slice of the same class: a technically true
+claim whose most natural reading is false. That class is **review-only** by
+construction — the author already knows the intended reading and cannot un-know
+it — which is a concrete argument for the fresh-context requirement rather than a
+restatement of it.
+
+**`other` is not a safety gate, and no rule-3 offer should be read as protected
+by its offer type.** Measured against the real engine: `other` appears in neither
+`TEMPORARY_CONDITIONAL_OFFER_TYPES` nor `SELF_HOSTED_OFFER_TYPES`, and `other` +
+no card + no paid dependencies + a safe stop classifies **`Z0_TRUE_FREE`**. The
+Z0-capable types are `always_free`, `recurring_quota`, `personal_use_free` and
+`other`. `DATA_MODEL` rule 3's "route the candidate for review" is an instruction
+to the author, not a behaviour of the classifier, so what withholds Z0 from both
+rule-3 offers here is the unknown facts and the publication gate. Pinned by
+`test_offer_type_other_is_not_a_safety_mechanism`, written as a deliberate drift
+detector: if a later slice gates `other`, that test fails **because the engine
+became safer**, and its failure message says so explicitly rather than presenting
+as a regression.
 
 **The favourable card statement is published, and deliberately not used as a
 gate.** `https://azure.microsoft.com/en-us/free/students/` publishes the bare
