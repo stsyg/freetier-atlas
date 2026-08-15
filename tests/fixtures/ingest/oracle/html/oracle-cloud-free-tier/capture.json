@@ -1,0 +1,43 @@
+{
+  "captured_by": "F008 P6 Oracle provider slice (live capture, generated from the live parse)",
+  "duplicate_live_blocks_not_retained": [],
+  "duplicate_live_blocks_retained": [],
+  "fetched_at": "2026-08-14T23:55:00Z",
+  "http_status": 200,
+  "ignored_extraction_rows": [],
+  "live_reconciliation": "LIVE -> FIXTURE (primary): all 6 PINNED block(s) - the blocks this profile actually asserts, and therefore the ones that guard it - occur EXACTLY ONCE in the live document and EXACTLY ONCE in this capture; all 0 live target-table row(s) are present, none removed, none added. FIXTURE -> LIVE (supporting only): every block in this capture occurs in the live document. RETAINED BUT NOT PINNED: this capture additionally contains 1 block(s) that no assertion pins - the document <title> ('Oracle Cloud Free Tier | Oracle'). They are document furniture or disclosed duplication, NOT guards, and they are deliberately excluded from the pinned count above: an earlier revision counted them and so reported this capture as better-guarded than it is.",
+  "live_table_count": 0,
+  "live_table_note": "ASSERTION-ONLY. MEASURED: the live document contains no <table> at all, so this profile is mode='assertions', reads no table, and none was synthesized.",
+  "live_table_present": false,
+  "non_target_tables_removed": 0,
+  "non_target_tables_removed_note": "MEASURED: no non-target table feeds this profile's outcome, so none is retained and none is synthesized.",
+  "pinned_block_count": 6,
+  "retained_not_pinned_count": 1,
+  "robots_allowed": true,
+  "sha256_original": "6ef72867fe89f937a27130f4d3276c9966817b654cf76c29c876f44b8af134a1",
+  "sha256_original_note": "sha256_original is the digest of the exact live bytes this capture was derived from on 2026-08-14. It is NOT reproducible across fetches: oracle.com serves per-build markup and rotating inline tokens, so a later fetch of an unchanged page yields a different digest. STRUCTURE, not digest, is the invariant.",
+  "sha256_stored": "d291c1f1c14255694265d59fb6dbba81f5c5aa50a7a4369ff56a4f581bbf7974",
+  "sha256_stored_note": "sha256_stored attests the COMMITTED BYTES ONLY. It is a tamper-evidence seal on this file, not a link to the live page, and it must never be read as a fidelity control.",
+  "structure": {
+    "asserted_block_sha256": [
+      "b03572d1bc9d2e5348bf258ed1fd2c7d2b85f77b85c4c52b14747d7775383cca",
+      "b03572d1bc9d2e5348bf258ed1fd2c7d2b85f77b85c4c52b14747d7775383cca",
+      "b03572d1bc9d2e5348bf258ed1fd2c7d2b85f77b85c4c52b14747d7775383cca",
+      "b03572d1bc9d2e5348bf258ed1fd2c7d2b85f77b85c4c52b14747d7775383cca",
+      "76aa50d2aa13ca36d2efc2233c16c88557c6577cc5ff356af85d0bed97bbd6f0",
+      "e3c1a46f430dad90ff597a2e32c5c7287b64770a8e519a0229cf0a7c24bb4cb2",
+      "e9e25c6545393836c86c4ad661259dc271f33b411bc8888a22bd8f8497ed7047",
+      "e9e25c6545393836c86c4ad661259dc271f33b411bc8888a22bd8f8497ed7047",
+      "76e3733813d54edcf5094e8ec8a889eddc602937f275ddb2343db8882c0d2200",
+      "d3577ea4e83a5facd2002f1f063d889debae58da9299c5e50adfb8063d150bbb"
+    ],
+    "headers": [],
+    "rows": []
+  },
+  "target_table_cells_removed": [],
+  "target_table_rows_removed": [],
+  "tos_note": "Official Oracle pages (www.oracle.com). https://www.oracle.com/robots.txt was retrieved and its 'User-agent: *' group disallows neither /cloud/free/ nor /mysql/free/, so automated retrieval of this path is permitted. A minimal excerpt is committed for offline, deterministic extraction testing; every retained value and every pinned block is reproduced verbatim from the cited live page.",
+  "trim_method": "Removed scripts, navigation, styling and unrelated prose. This capture was GENERATED from the live document's own parse: every retained block is the exact normalised string the engine collected from the live page, resolved by a unique needle rather than transcribed, and (where a table is retained) the headers and cells are the exact normalised strings the engine collected from the live target table. Inline markup inside those blocks and cells was flattened to plain text; the engine normalises a block or cell to its text content, so every retained normalised string is identical to live. This is a deliberate minimal excerpt, not a complete copy of the page.",
+  "unpivoted_target_table_columns": [],
+  "url": "https://www.oracle.com/cloud/free/"
+}

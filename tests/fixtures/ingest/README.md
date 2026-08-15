@@ -101,3 +101,9 @@ the attribution row below, and write `expected.json`.
 | `azure/html/azure-static-web-apps-plans/` | <https://learn.microsoft.com/en-us/azure/static-web-apps/plans> | Microsoft Corporation |
 | `azure/html/azure-devops-services/` | <https://azure.microsoft.com/en-us/pricing/details/devops/azure-devops-services/> | Microsoft Corporation |
 | `azure/html/azure-students/` | <https://azure.microsoft.com/en-us/free/students/> | Microsoft Corporation |
+| `oracle/html/oracle-always-free-resources/` | <https://docs.oracle.com/en-us/iaas/Content/FreeTier/freetier_topic-Always_Free_Resources.htm> | Oracle Corporation |
+| `oracle/html/oracle-free-tier/` | <https://docs.oracle.com/en-us/iaas/Content/FreeTier/freetier.htm> | Oracle Corporation |
+| `oracle/html/oracle-always-free-services/` | <https://www.oracle.com/cloud/free/faq/> | Oracle Corporation |
+| `oracle/html/oracle-cloud-free-tier/` | <https://www.oracle.com/cloud/free/> | Oracle Corporation |
+| `oracle/html/oracle-free-credit-promotion/` | <https://docs.oracle.com/en-us/iaas/Content/GSG/Tasks/signingup_topic-What_Happens_When_the_Promotion_Expires.htm> | Oracle Corporation |
+| `oracle/html/oracle-mysql-heatwave-always-free/` | <https://www.oracle.com/mysql/free/> | Oracle Corporation |

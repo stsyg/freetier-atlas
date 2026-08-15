@@ -585,6 +585,151 @@ All fourteen provider-category states remain explicitly declared and none is
 
 Use Oracle free-tier and service docs, changelogs/release notes, APIs, and database-specific MCP only where relevant.
 
+F008 P6 configures six official sources over six documents, split evenly between
+`www.oracle.com` and `docs.oracle.com`. Oracle is the last of the six providers
+and the riskiest, because it markets **"Always Free"** more prominently than any
+other provider here — and, unlike the marketing-only cases, its Always Free tier
+really is perpetual.
+
+| Profile | Mode | Live structure it reads |
+| --- | --- | --- |
+| `oracle_always_free_resources` | matrix | the 6-row `Resource` / `Limit Name` / `Always Free` table |
+| `oracle_free_tier` | assertions | no table: the OCI Free Tier doc is prose |
+| `oracle_always_free_services` | assertions | no table: the Free Tier FAQ is prose |
+| `oracle_cloud_free_tier` | assertions | no table: the Free Tier hub page is prose |
+| `oracle_free_credit_promotion` | assertions | no table: the promotion-expiry doc is prose |
+| `oracle_mysql_heatwave_always_free` | assertions | no table: the MySQL free page is prose |
+
+**Oracle's Always Free tier IS perpetual, and this slice says so.** A
+wrongly-omitted free offer is as much a defect as a wrongly-published one, so the
+favourable finding is extracted rather than hedged away. Two independent
+documents state it in blocks describing Always Free alone: the OCI docs say the
+resources are "free of charge in the home region of the tenancy, for the life of
+the account", and the FAQ says "Always Free services are available for an
+unlimited time." Both satisfy rule 1 of `docs/DATA_MODEL.md` by quotation, so
+`always_free` is not inferred from the word "free".
+
+**And it is still not Z0.** Oracle states a payment-card requirement in blocks of
+its own on four independent documents. From `docs.oracle.com` `.../FreeTier/freetier.htm`:
+"For security purposes, most users need a mobile phone number and a credit card
+to create an account. Your credit card will not be charged unless you upgrade
+your account." From the FAQ, the hub page and the MySQL page: "We use your
+contact information and credit/debit card information for account setup and
+identity verification."
+
+**That is a fact about Oracle, not a law about perpetuity.** Perpetuity does not
+*entail* zero cost, and it does not preclude it either. MEASURED by driving the
+real classifier over every provider fixture committed to this repository. Scope,
+stated because the two numbers below are **not** interchangeable: 7 provider
+configurations exist here — the six F008 providers plus **Cloudflare, which is
+F005 and not an F008 provider**. Of **14** perpetual (`always_free`) offers
+across all seven: **5 classify `Z0_TRUE_FREE`**, **5 classify
+`Z1_BILLING_EXPOSURE`**, and **4 remain `UNKNOWN`**. Those five Z0 offers come
+from **two** providers — GitHub Actions, Packages and Codespaces, and Cloudflare
+Pages and Workers. **Restricted to the six F008 providers the Z0 count is 3, all
+from GitHub alone.** "Perpetual" therefore establishes nothing on its own; every
+material condition must be evidenced separately, per offer.
+
+**What is distinctive about Oracle is the reason, not the outcome.** Oracle is
+*not* the only provider whose perpetual offer is withheld — AWS Step Functions,
+Azure Cosmos DB and Google Cloud's free tier are all perpetual and all `Z1`, and
+four further perpetual offers sit at `UNKNOWN`. Measured across all 14: AWS,
+Azure and GCP are each blocked by `automatic_billing` on exhaustion, whereas
+**Oracle is the only provider in this repository whose perpetual offer is
+withheld by a quoted payment-card requirement.**
+
+**An earlier revision of this section stated a general law instead**, to the
+effect that perpetual offers are never free, on the strength of three providers.
+It was FALSE — this repository had already measured perpetual offers reaching
+`Z0_TRUE_FREE` five slices earlier, and `tests/integration/test_ingest_github.py`
+asserts exactly that on real ingested rows. It was wrong in the
+**omission-favouring** direction: a blanket "perpetual is never free"
+under-reports genuinely free offers, which this product forbids exactly as much
+as over-claiming. It was **also** wrong in the opposite direction at the same
+time, by under-counting its own support — GCP is a fourth provider whose
+perpetual offer is non-Z0, already in the tree and unmentioned. It is recorded
+rather than quietly replaced, because the claim shipped.
+
+**The reading is stated so a reviewer can check it rather than trust it.**
+Neither block contains the word "required", and the first hedges with "most
+users". They are read as `requires_card=True` because each states that supplying
+a card is part of creating a *free* Oracle Cloud account, and the second goes on
+to say Oracle periodically checks the validity of "your card". No Oracle document
+probed states that a card is *not* required. Leaving the field absent would
+withhold Z0 too, via gate 4 rather than gate 3, so the choice changes no Z0
+verdict — only whether the refusal is reported as a definite billing exposure or
+as an unknown.
+
+**Blocking conditions are reported by SHAPE, because the two shapes are not
+equally strong.** Four offers are `Z1_BILLING_EXPOSURE` on a **quoted** card
+sentence found on that offer's own document. Two are `UNKNOWN` on the **absence**
+of any payment statement: the OCI Always Free Resources document and the
+promotion-expiry document say nothing about payment, and importing the
+requirement from another Oracle page would be cross-document composition. An
+absence-based refusal can be flipped by anything that later supplies the field;
+a quotation cannot. `tests/unit/test_adapter_oracle.py` asserts which sources
+fall into which group so the distinction cannot quietly drift.
+
+**A trap that was measured and avoided.** The block "You will only be charged for
+services that you use that exceeds Always Free." reads like an automatic-billing
+statement for Always Free. Its FAQ question — held in a `<div class="cb105w3">`
+the parser does not capture — is "How do I know how much I am going be charged
+for Pay As You Go services?". Its own context is a PAID account, so it is pinned
+as an exhaustion behaviour nowhere in this slice. The nearest equivalent on the
+hub page is carried whole as a note so the boundary stays visible.
+
+**Publication and Z0 are different gates and are not conflated.** MEASURED
+against a real PostgreSQL: all six Oracle candidates are held for review as
+"uncertain evidence", and the reason is that their facts are pinned to prose
+rather than to numeric quota rows, so they fail the gate's `schema_complete` and
+`deterministic` hard conditions. It is *not* the card that stops publication — a
+Z1 offer is a legitimate catalogue entry, it is simply not free.
+`test_the_catalogue_never_labels_a_card_required_offer_z0` seeds two otherwise
+identical candidates that differ only in `requires_card`: both publish, the
+cleared one is labelled `Z0_TRUE_FREE` and the Oracle-shaped one
+`Z1_BILLING_EXPOSURE`. The Z0 label is therefore reachable through that exact
+path, which is what makes "no Oracle offer is Z0" a measurement.
+
+**Only one probed Oracle page is matrix-extractable.** MEASURED with the
+repository's own parser: the OCI Always Free Resources document carries one
+`<table>` with the live header row `Resource` / `Limit Name` / `Always Free` and
+6 body rows of Resource Manager limits. `www.oracle.com/cloud/price-list/` served
+120 tables of which exactly one is header-selectable, and that one is a PAID
+comparison table; `www.oracle.com/cloud/compute/pricing/` and
+`.../networking/load-balancing/pricing/` both redirect to it, so they are one
+document and not three. `www.oracle.com/database/nosql/pricing/` served 23
+tables, one header-selectable and also paid, with no free-tier prose in its
+served HTML at all. `.../storage/object-storage/pricing/` redirects to a
+client-rendered cost estimator carrying no allowance. Two candidate URLs returned
+HTTP 404. None is used and none was worked around.
+
+**Nine of the fourteen categories are `offered_no_z0`** — far more than any other
+provider here — because Oracle publishes a comprehensive Always Free enumeration
+on two independent documents. The remaining five are `unknown` and **zero are
+`not_offered`**: the enumeration omits them, which is suggestive but not proof,
+and Oracle's own FAQ says "As new Always Free services become available, you will
+automatically be able to use those as well". For `containers-app-hosting` the
+rationale names the strongest counter-example against itself — "APEX Application
+Development" and "Content Management Starter Edition" are in the list and could
+arguably be read as application hosting — which is precisely why it is `unknown`
+rather than `not_offered`.
+
+**One block Oracle publishes twice is retained, not hidden.** "50,000 Object
+Storage API requests per month" appears in both the Always-Free-only list and the
+paid/trial list on the OCI docs page. It is not pinned, both occurrences are
+retained in the capture so the fixture reproduces the live ambiguity, and
+`test_a_block_oracle_publishes_twice_would_be_ambiguous_if_pinned` proves that
+pinning it yields `ambiguous_assertion`.
+
+**Every quotation was generated, not transcribed.** Each pinned block was
+resolved against the live document's own parse by a short unique needle, and the
+committed fixture was written from the resolved literal by a generator that
+refuses to write when a needle matches zero or more than one live block, when a
+resolved block occurs more than once live, or when the parsed target-table rows
+differ from live. Transcription is where a *composed* quotation creeps in, and
+generating from the resolved literal removes the opportunity rather than guarding
+against it.
+
 ## Provider onboarding requirements
 
 A new provider needs:

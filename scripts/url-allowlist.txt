@@ -65,6 +65,8 @@ developers.cloudflare.com
 firebase.google.com
 learn.microsoft.com
 vercel.com
+www.oracle.com
+docs.oracle.com
 www.cloudflare.com
 
 # --- Toolchain and reference documentation -----------------------------------

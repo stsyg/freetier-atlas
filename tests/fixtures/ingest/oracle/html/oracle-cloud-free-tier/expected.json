@@ -1,0 +1,26 @@
+{
+  "profile": "oracle_cloud_free_tier",
+  "mime": "text/html",
+  "source_url": "https://www.oracle.com/cloud/free/",
+  "candidate_count": 1,
+  "candidates": [
+    {
+      "verification_state": "candidate",
+      "expect_valid": true,
+      "facts": {
+        "service": "Oracle Cloud Free Tier",
+        "offer_type": "new_customer_credit",
+        "credit_amount": "US$300",
+        "trial_length_days": "30",
+        "notes": "At any time during or after the 30-day period,* switch to a Pay As You Go account. Pay only for services that exceed the monthly free amounts from Always Free Services.",
+        "post_trial_note": "If you do nothing after 30 days, you’ll continue to get Always Free Services in your Free Tier account.",
+        "requires_card": true,
+        "payment_verification_note": "To provide free Oracle Cloud accounts to our valued customers, we need to ensure that you are who you say you are. We use your contact information and credit/debit card information for account setup and identity verification. Oracle may periodically check the validity of your card, resulting in a temporary “authorization” hold. These holds are removed by your bank, typically within three to five days, and do not result in actual charges to your account.",
+        "eligibility": "One Oracle Cloud Free Trial or Always Free account is permitted per person. Please note:",
+        "account_idle_note": "Accounts left idle for 30 days or more may be deemed abandoned and become eligible for suspension or termination."
+      },
+      "evidence_url": "https://www.oracle.com/cloud/free/",
+      "evidence_selector": "oracle_cloud_free_tier assertion[0] document[0] -> fact[service]"
+    }
+  ]
+}

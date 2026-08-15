@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <title>Always Free Resources</title>
+  </head>
+  <body>
+    <p>You can have a maximum of five Always Free volume backups at any time. This applies to both boot volume and block volume backups. For example, you could have three boot volume backups for your Always Free instance and two block volume backups for your Always Free block volumes. In this example, if you try to create new backups, the operation will fail with an error until you delete existing Always Free volume backups. For more information about volume backups, see Overview of Block Volume Backups and Overview of Boot Volume Backups.</p>
+    <p>Micro instances (AMD processor): All tenancies get up to two Always Free VM instances using the VM.Standard.E2.1.Micro shape, which has an AMD processor.</p>
+    <p>OCI Ampere A1 Compute instances (Arm processor): All tenancies get the first 1,500 OCPU hours and 9,000 GB hours per month for free for VM instances using the VM.Standard.A1.Flex shape, which has an Arm processor. For Always Free tenancies, this is equivalent to 2 OCPUs and 12 GB of memory.</p>
+    <p>Idle Always Free compute instances may be reclaimed by Oracle. Oracle will deem virtual machine and bare metal compute instances as idle if, during a 7-day period, the following are true:</p>
+    <p>All tenancies receive a total of 200 GB of Block Volume storage, and five volume backups included in the Always Free resources. These amounts apply to both boot volumes and block volumes combined. When you provision a compute instance, the instance automatically receives a 50 GB boot volume for storage. You can also create and attach block volumes to expand the storage capacity of a compute instance. For more information, see Creating a Block Volume and Attaching a Block Volume to an Instance.</p>
+    <p>To create an Always Free block volume, the volume must be created in the home region of the tenancy. Volumes created outside of the home region incur regular block volume costs.</p>
+    <p>20 GB of combined Standard tier, Infrequent Access tier, and Archive tier data</p>
+    <p>All master encryption keys protected by software are free. All tenancies get 20 key versions of master encryption keys protected by a hardware security module (HSM) and 150 Always Free Vault secrets. You can spread these keys or secrets across any number of vaults in the tenancy, although virtual private vaults are not included in the Always Free resources.</p>
+    <p>All tenancies get a set of Always Free resources in the Resource Manager service that allow you to automate the process of provisioning infrastructure using Terraform. See Quickly Launch Your Always Free Resources Using Resource Manager for instructions on using Resource Manager to create your Always Free resources.</p>
+    <p>Oracle Autonomous AI Database: All tenancies get two Always Free Oracle Autonomous AI Databases. You can use these databases for transaction processing, data warehousing, Oracle APEX application development, or JSON-based application development. For current regional availability, see the Always Free Cloud Services table in Cloud Regions—Infrastructure and Platform Services.</p>
+    <p>Oracle NoSQL Database: All tenancies get an Oracle NoSQL Database with up to 133 million reads per month, 133 million writes per month, and 3 tables with 25 GB storage per table. Learn more about Oracle NoSQL Database.</p>
+    <p>Oracle MySQL HeatWave: All tenancies get a standalone MySQL HeatWave DB system with a single node HeatWave cluster in the home region. The Always Free DB system has 50 GB of storage to store data and log files. An extra 50 GB of backup storage is available. Learn more about Oracle MySQL HeatWave.</p>
+    <p>All Oracle Cloud Infrastructure tenancies created December 15, 2020 or later get one Always Free Flexible Load Balancer with a minimum and maximum bandwidth set to 10 Mbps.</p>
+    <p>As part of your Always Free resources, you get one Network Load Balancer.</p>
+    <p>Free Tier tenancies (tenancies that are not paid and do not have Free Trial credits) can have up to 2 virtual cloud networks (VCNs). A VCN is a software-defined network that you set up in the Oracle Cloud Infrastructure data centers in a particular region. VCNs include IPv4 and IPv6 support.</p>
+    <p>All tenancies get five certificate authorities (CAs) and 150 certificates included in the Always Free resources.</p>
+    <p>All tenancies get 1000 Application Performance Monitoring tracing events and 10 Synthetic Monitor runs per hour included in the Always Free resources. Learn more.</p>
+    <p>All tenancies get 500 million Monitoring service ingestion data points, and 1 billion retrieval data points included in the Always Free resources.</p>
+    <p>As part of your Always Free resources, you can send 1 million https notifications per month, and 1000 email notifications per month. Learn more about OCI&#x27;s Notifications service.</p>
+    <p>As part of your Always Free resources, you can send 3000 emails for free per month. Learn more about OCI&#x27;s Email Delivery service.</p>
+    <p>As part of your Always Free resources, you get 10 TB per month of outbound data.</p>
+    <p>OCI&#x27;s Bastion service provides restricted and time-limited Secure Shell Protocol (SSH) access to target resources that don&#x27;t have public endpoints. Bastion is free for both free and paid accounts. See Bastion for more information.</p>
+    <p>50,000 Object Storage API requests per month</p>
+    <p>50,000 Object Storage API requests per month</p>
+    <table>
+      <thead>
+        <tr>
+          <th>Resource</th>
+          <th>Limit Name</th>
+          <th>Always Free</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Configuration source providers</td>
+          <td><p>configuration-source-provider-count</p></td>
+          <td><p>100</p></td>
+        </tr>
+        <tr>
+          <td>Jobs (concurrent) Job duration: 24 hours</td>
+          <td><p>concurrent-job-count</p></td>
+          <td><p>2</p></td>
+        </tr>
+        <tr>
+          <td>Private endpoints</td>
+          <td><p>private-endpoint-count</p></td>
+          <td><p>1</p></td>
+        </tr>
+        <tr>
+          <td>Private endpoint reachable IP addresses</td>
+          <td><p>private-endpoint-reachable-ip-count</p></td>
+          <td><p>100</p></td>
+        </tr>
+        <tr>
+          <td>Private templates</td>
+          <td><p>template-count</p></td>
+          <td><p>100</p></td>
+        </tr>
+        <tr>
+          <td>Stacks Variables per stack: 250 Size per variable: 8192 bytes Zip file per stack: 11 MB</td>
+          <td><p>stack-count</p></td>
+          <td><p>100</p></td>
+        </tr>
+      </tbody>
+    </table>
+  </body>
+</html>

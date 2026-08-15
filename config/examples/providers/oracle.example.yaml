@@ -1,0 +1,328 @@
+provider:
+  id: oracle
+  name: Oracle Cloud Infrastructure
+  official_domains:
+    - www.oracle.com
+    - docs.oracle.com
+
+# OFFICIAL sources only. Six sources over six DISTINCT documents, split between
+# Oracle's marketing host and its Oracle Cloud Infrastructure documentation host.
+#
+# NOTE ON WHY THIS PROVIDER IS THE RISKIEST OF THE SIX. Oracle markets "Always
+# Free" more prominently than any other provider in this set, and its Always Free
+# tier is GENUINELY PERPETUAL - Oracle says so in blocks that describe Always
+# Free alone: "free of charge in the home region of the tenancy, for the life of
+# the account", and "Always Free services are available for an unlimited time."
+# Both satisfy rule 1 of docs/DATA_MODEL.md by quotation. Perpetual is still not
+# Z0, and Oracle is the third provider in this repository to prove it.
+#
+# NOTE ON WHAT STOPS Z0, AND BY WHAT SHAPE. Four of the six offers are
+# Z1_BILLING_EXPOSURE because `requires_card` is True BY QUOTATION on each
+# offer's own document - never carried across documents. Two are UNKNOWN because
+# their documents state no payment condition at all, so the field is ABSENT. An
+# absence-based refusal is structurally weaker than a quotation-based one, and it
+# is called out here rather than blurred together with the others.
+#
+# NOTE ON A TRAP THAT WAS MEASURED AND AVOIDED. The block "You will only be
+# charged for services that you use that exceeds Always Free." reads like an
+# automatic-billing statement for Always Free. Its FAQ question - held in a
+# <div class="cb105w3"> the parser does not capture - is "How do I know how much
+# I am going be charged for Pay As You Go services?". Its own context is a PAID
+# account, so it is pinned as an exhaustion behaviour nowhere in this slice.
+#
+# NOTE ON PAGES THAT COULD NOT BE USED. MEASURED (live): www.oracle.com/cloud/
+# price-list/ served 120 tables of which exactly ONE is header-selectable, and
+# that one is a PAID comparison table; www.oracle.com/cloud/compute/pricing/ and
+# www.oracle.com/cloud/networking/load-balancing/pricing/ both REDIRECT to it, so
+# they are one document and not three. www.oracle.com/database/nosql/pricing/
+# served 23 tables, one header-selectable and also paid, with no free-tier prose
+# in its served HTML at all. www.oracle.com/cloud/storage/object-storage/pricing/
+# redirects to a client-rendered cost estimator carrying no allowance. Two URLs
+# returned HTTP 404. None is used and none was worked around.
+sources:
+  # The ONLY Oracle page in the sweep that publishes a free-tier fact in a table
+  # the engine can select: one <table>, live headers `Resource` / `Limit Name` /
+  # `Always Free`, 6 body rows, all mapped. Also the authoritative technical
+  # statement of what Always Free contains.
+  - id: oracle-always-free-resources
+    type: html
+    trust_level: official
+    url: https://docs.oracle.com/en-us/iaas/Content/FreeTier/freetier_topic-Always_Free_Resources.htm
+    schedule_ref: official_pages
+    extraction_profile: oracle_always_free_resources
+
+  # The Free TRIAL, from Oracle's own Free Tier documentation, and the clearest
+  # card requirement Oracle states in prose.
+  - id: oracle-free-tier
+    type: html
+    trust_level: official
+    url: https://docs.oracle.com/en-us/iaas/Content/FreeTier/freetier.htm
+    schedule_ref: official_pages
+    extraction_profile: oracle_free_tier
+
+  # THE FLAGSHIP. Perpetual by quotation AND card-gated by quotation, on one
+  # document, so the offer classifies Z1 rather than merely UNKNOWN.
+  - id: oracle-always-free-services
+    type: html
+    trust_level: official
+    url: https://www.oracle.com/cloud/free/faq/
+    schedule_ref: official_pages
+    extraction_profile: oracle_always_free_services
+
+  - id: oracle-cloud-free-tier
+    type: html
+    trust_level: official
+    url: https://www.oracle.com/cloud/free/
+    schedule_ref: official_pages
+    extraction_profile: oracle_cloud_free_tier
+
+  # The authoritative statement of what happens when the credit promotion ends.
+  # States no payment condition, so its refusal rests on ABSENCE.
+  - id: oracle-free-credit-promotion
+    type: html
+    trust_level: official
+    url: https://docs.oracle.com/en-us/iaas/Content/GSG/Tasks/signingup_topic-What_Happens_When_the_Promotion_Expires.htm
+    schedule_ref: official_pages
+    extraction_profile: oracle_free_credit_promotion
+
+  # One real SERVICE whose own page states both its perpetuity and the card
+  # requirement, giving relational-databases an independently evidenced source.
+  - id: oracle-mysql-heatwave-always-free
+    type: html
+    trust_level: official
+    url: https://www.oracle.com/mysql/free/
+    schedule_ref: official_pages
+    extraction_profile: oracle_mysql_heatwave_always_free
+
+publishing:
+  automatic_threshold: 0.90
+  uncertain_threshold: 0.70
+  require_official_source: true
+  require_deterministic_numeric_validation: true
+
+# Declared service-to-category assignments. These are taxonomy decisions, not
+# inferences from quota units. Each is preceded by its rationale.
+service_categories:
+  # ARGUABLE: the OCI Always Free tier spans most categories Oracle sells, and
+  # one slug cannot express that. Compute VMs is chosen because the tier's most
+  # concrete published allowance is "up to two Always Free VM instances", and
+  # because it is the category the tier is popularly identified by. The category
+  # assignment does NOT carry the coverage claim; the coverage block below does,
+  # and it declares each category from its own quoted allowance.
+  Oracle Cloud Infrastructure Always Free: compute-vms
+  # ARGUABLE: same reasoning. The Always Free services offer is an account-level
+  # program rather than a product, and it is mapped alongside the technical tier
+  # so a reader sees the perpetual program and its published limits side by side.
+  Oracle Cloud Always Free services: compute-vms
+  # ARGUABLE: same reasoning. The Free Trial is an account-level credit offer
+  # spanning every eligible OCI service; placing it beside the two Always Free
+  # entries is exactly what makes the difference between a 30-day credit and a
+  # perpetual allowance visible at a glance.
+  Oracle Cloud Infrastructure Free Trial: compute-vms
+  # ARGUABLE: same reasoning; this is the public hub page's view of the same
+  # credit-backed account offer.
+  Oracle Cloud Free Tier: compute-vms
+  # ARGUABLE: same reasoning; this is the documentation's view of the credit
+  # promotion's end state, and it belongs beside the offer it describes.
+  Oracle Cloud Free Credit Promotion: compute-vms
+  # MySQL HeatWave is a managed MySQL database service; the taxonomy's relational
+  # bucket is its unambiguous home.
+  Oracle MySQL HeatWave: relational-databases
+
+# Explicit provider x category coverage. All fourteen canonical categories are
+# declared; a pair with no declaration is a config error, not an implicit
+# unknown.
+#
+# NOTHING here is verified_free, and that is the finding rather than an omission.
+# MEASURED on https://docs.oracle.com/en-us/iaas/Content/FreeTier/freetier.htm,
+# verbatim: "For security purposes, most users need a mobile phone number and a
+# credit card to create an account." MEASURED on
+# https://www.oracle.com/cloud/free/faq/, verbatim: "We use your contact
+# information and credit/debit card information for account setup and identity
+# verification." A payment card is therefore part of obtaining the account that
+# carries every offer below, and publishing any Oracle category as verified_free
+# would be exactly the unsupported free claim this product forbids.
+#
+# NINE of the fourteen are offered_no_z0 and FIVE are unknown. ZERO are
+# not_offered. Oracle publishes a comprehensive Always Free enumeration on two
+# independent documents, which is why so many categories are evidenced here -
+# but an enumeration that omits a category is not proof that the category is
+# absent, so the remaining five are unknown rather than declared absent.
+coverage:
+  compute-vms:
+    state: offered_no_z0
+    source: oracle-always-free-resources
+    rationale: >-
+      The OCI Always Free Resources document publishes "up to two Always Free VM
+      instances using the VM.Standard.E2.1.Micro shape" and "the first 1,500 OCPU
+      hours and 9,000 GB hours per month for free" for Arm Ampere A1 shapes, both
+      belonging to resources it calls "free of charge in the home region of the
+      tenancy, for the life of the account". The category is therefore offered
+      and the offer is genuinely perpetual. No Z0 offer is produced: that
+      document states no payment condition at all, so requires_card is ABSENT
+      rather than false and the classifier returns UNKNOWN. The same tier read
+      from https://www.oracle.com/cloud/free/faq/, which does state the card
+      condition, classifies Z1_BILLING_EXPOSURE.
+  containers-app-hosting:
+    state: unknown
+    rationale: >-
+      MEASURED (live): Oracle's own Always Free enumerations were parsed in full
+      on two independent documents - https://www.oracle.com/cloud/free/faq/ and
+      https://docs.oracle.com/en-us/iaas/Content/FreeTier/freetier_topic-Always_Free_Resources.htm
+      - and neither lists a container or application-hosting service. That is NOT
+      treated as proof of absence, for two reasons stated plainly. First, the FAQ
+      says "As new Always Free services become available, you will automatically
+      be able to use those as well", so the list is a current state rather than a
+      closed set. Second, two entries in the FAQ's Always Free list could
+      arguably be read as application hosting - "APEX Application Development"
+      and "Content Management Starter Edition" - and BOTH of those list entries
+      appear on the FAQ ONLY. The OCI document does contain the string "Oracle
+      APEX Application Development", but NOT as an Always Free service entry: it
+      is one of the workload types you may choose for an Always Free Autonomous
+      AI Database, which is a different claim and is not counted here. No
+      dedicated OCI container page was probed. The state is therefore unknown
+      rather than declared absent in either direction.
+  serverless-functions:
+    state: unknown
+    rationale: >-
+      MEASURED (live): the same two Always Free enumerations at
+      https://www.oracle.com/cloud/free/faq/ and
+      https://docs.oracle.com/en-us/iaas/Content/FreeTier/freetier_topic-Always_Free_Resources.htm
+      were parsed in full and neither lists OCI Functions or any other
+      serverless-function allowance. One hit for the word "serverless" DOES exist
+      and is dismissed here rather than left to look like an oversight: the OCI
+      document contains the block "Exadata Infrastructure Type: Serverless",
+      which is the infrastructure type of the Always Free Autonomous AI Database,
+      not a functions allowance and not an allowance of any kind. No dedicated
+      OCI Functions page was probed, and an enumeration that omits a service is
+      not proof that no free allowance exists, so the state is unknown rather
+      than not_offered.
+  relational-databases:
+    state: offered_no_z0
+    source: oracle-mysql-heatwave-always-free
+    rationale: >-
+      https://www.oracle.com/mysql/free/ publishes "A standalone Oracle MySQL
+      HeatWave database system with a single-node MySQL HeatWave cluster in your
+      home region", 50 GB of storage and 50 GB of backup storage, under its own
+      statement that "Always Free services are available for an unlimited time."
+      The OCI Always Free Resources document independently publishes two Always
+      Free Oracle Autonomous AI Databases. The category is therefore offered and
+      perpetual. No Z0 offer is produced: the same MySQL page states that Oracle
+      uses "credit/debit card information for account setup and identity
+      verification" for free Oracle Cloud accounts, which is a definite billing
+      exposure, so the offer classifies Z1.
+  nosql-key-value:
+    state: offered_no_z0
+    source: oracle-always-free-resources
+    rationale: >-
+      The OCI Always Free Resources document publishes "an Oracle NoSQL Database
+      with up to 133 million reads per month, 133 million writes per month, and 3
+      tables with 25 GB storage per table" among resources that are "free of
+      charge ... for the life of the account". The category is offered. No Z0
+      offer is produced: requires_card is unstated on that document, so the field
+      is absent rather than false and the classifier withholds Z0 on the unknown.
+  object-file-storage:
+    state: offered_no_z0
+    source: oracle-always-free-resources
+    rationale: >-
+      The OCI Always Free Resources document publishes "20 GB of combined
+      Standard tier, Infrequent Access tier, and Archive tier data" for an
+      Always-Free-only account and "a total of 200 GB of Block Volume storage,
+      and five volume backups". The category is offered. No Z0 offer is produced:
+      requires_card is unstated on that document. The same document also carries
+      the UNFAVOURABLE sentence "Volumes created outside of the home region incur
+      regular block volume costs", which is published as a note and deliberately
+      NOT converted into an exhaustion behaviour, because it states a placement
+      rule rather than the consequence of exhausting the allowance.
+  networking-cdn-dns:
+    state: offered_no_z0
+    source: oracle-always-free-resources
+    rationale: >-
+      The OCI Always Free Resources document publishes one Always Free Flexible
+      Load Balancer at 10 Mbps, one Network Load Balancer, "up to 2 virtual cloud
+      networks (VCNs)" for tenancies "that are not paid and do not have Free
+      Trial credits", and "10 TB per month of outbound data". The category is
+      offered and perpetual. No Z0 offer is produced: requires_card is unstated
+      on that document.
+  queues-messaging-jobs:
+    state: offered_no_z0
+    source: oracle-always-free-resources
+    rationale: >-
+      ARGUABLE mapping, stated so a reviewer can check it. The OCI Always Free
+      Resources document publishes an Always Free Resource Manager allowance
+      "that allow you to automate the process of provisioning infrastructure
+      using Terraform", and the one table this slice extracts publishes its
+      limits, including the row "Jobs (concurrent) Job duration: 24 hours" with
+      an Always Free value of 2. The taxonomy has no infrastructure-automation
+      category, and Queues, messaging and scheduled jobs is the least misleading
+      of the fourteen because the published allowance is expressed in concurrent
+      JOBS. This follows the precedent set by the merged AWS slice, which mapped
+      Step Functions to the same category on the same reasoning. No Z0 offer is
+      produced: requires_card is unstated on that document.
+  auth-identity:
+    state: unknown
+    rationale: >-
+      MEASURED (live): the Always Free enumerations at
+      https://www.oracle.com/cloud/free/faq/ and
+      https://docs.oracle.com/en-us/iaas/Content/FreeTier/freetier_topic-Always_Free_Resources.htm
+      were parsed in full. Neither lists an identity or authentication product as
+      an Always Free service; the closest entries are Vault and Security Advisor,
+      which are secrets management and posture advice rather than auth. No
+      dedicated OCI IAM page was probed, so the state is unknown rather than
+      declared absent.
+  cicd-source-control:
+    state: unknown
+    rationale: >-
+      MEASURED (live): the same two Always Free enumerations at
+      https://www.oracle.com/cloud/free/faq/ and
+      https://docs.oracle.com/en-us/iaas/Content/FreeTier/freetier_topic-Always_Free_Resources.htm
+      were parsed in full and neither lists OCI DevOps, a build service or a
+      source-control service as an Always Free service. Resource Manager appears,
+      but it provisions infrastructure with Terraform rather than building or
+      hosting source, and it is declared under queues-messaging-jobs instead. No
+      dedicated OCI DevOps page was probed, and an enumeration that omits a
+      service is not proof that no free allowance exists, so the state is unknown
+      rather than not_offered.
+  monitoring-logs-tracing:
+    state: offered_no_z0
+    source: oracle-always-free-resources
+    rationale: >-
+      The OCI Always Free Resources document publishes "500 million Monitoring
+      service ingestion data points, and 1 billion retrieval data points" and
+      "1000 Application Performance Monitoring tracing events and 10 Synthetic
+      Monitor runs per hour" among the Always Free resources. The category is
+      offered and perpetual. No Z0 offer is produced: requires_card is unstated
+      on that document.
+  ai-inference-embeddings:
+    state: unknown
+    rationale: >-
+      MEASURED (live): the same two Always Free enumerations were parsed in full
+      and neither lists an AI inference, embeddings or generative-AI allowance.
+      https://www.oracle.com/mysql/free/ does mention "Oracle MySQL HeatWave
+      AutoML" and "HeatWave Vector Store" as capabilities INCLUDED IN the Always
+      Free HeatWave system, but that block states no inference or embedding
+      allowance of its own, so reading it as an AI category allowance would be
+      inference. No dedicated OCI AI services page was probed, so the state is
+      unknown.
+  email-notifications-comms:
+    state: offered_no_z0
+    source: oracle-always-free-resources
+    rationale: >-
+      The OCI Always Free Resources document publishes "you can send 3000 emails
+      for free per month" for Email Delivery and "1 million https notifications
+      per month, and 1000 email notifications per month" for Notifications, both
+      "As part of your Always Free resources". The category is offered and
+      perpetual. No Z0 offer is produced: requires_card is unstated on that
+      document.
+  secrets-config-devtools:
+    state: offered_no_z0
+    source: oracle-always-free-resources
+    rationale: >-
+      The OCI Always Free Resources document publishes "20 key versions of master
+      encryption keys protected by a hardware security module (HSM) and 150
+      Always Free Vault secrets", and separately "five certificate authorities
+      (CAs) and 150 certificates". The category is offered and perpetual. The
+      same block records the UNFAVOURABLE exclusion that "virtual private vaults
+      are not included in the Always Free resources", which is published rather
+      than dropped. No Z0 offer is produced: requires_card is unstated on that
+      document.
