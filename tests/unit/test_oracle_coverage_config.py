@@ -172,16 +172,25 @@ def test_the_containers_rationale_says_which_document_carries_which_entry() -> N
     """Precision about STRUCTURE, not just content.
 
     The rationale cites two documents and then names two entries. MEASURED
-    block-wise over the parsed live blocks: "APEX Application Development"
-    appears on BOTH documents, "Content Management Starter Edition" on the FAQ
-    ONLY. An earlier revision said only that "the list" contained both, which is
-    singular and correct but reads as "both, on both". A description that invites
-    a false reading is a defect on this project even when it is literally true.
+    block-wise over the parsed live blocks: both are standalone Always Free LIST
+    ENTRIES on the FAQ only. The OCI document does contain the string "Oracle
+    APEX Application Development", but as one of the Autonomous AI Database's
+    WORKLOAD TYPES, not as an Always Free service entry.
+
+    Two successive revisions of this rationale got that wrong in the same
+    direction. The first said only that "the list" contained both, which reads as
+    "both, on both". The second said "APEX Application Development" appears on
+    BOTH documents - literally true as a substring, and still misleading, because
+    it invites the reader to count a workload type as a service listing. A
+    description that invites a false reading is a defect on this project even
+    when it is literally true, and a substring match is not evidence of the same
+    claim appearing twice.
     """
 
     rationale = _load().coverage["containers-app-hosting"].rationale or ""
-    assert '"APEX Application Development" appears on BOTH documents' in rationale
-    assert '"Content Management Starter Edition" appears on the FAQ ONLY' in rationale
+    assert "BOTH of those list entries appear on the FAQ ONLY" in rationale
+    assert "NOT as an Always Free service entry" in rationale
+    assert "workload types" in rationale
 
 
 def test_the_serverless_rationale_names_and_dismisses_the_one_serverless_hit() -> None:

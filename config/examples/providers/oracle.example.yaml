@@ -173,12 +173,15 @@ coverage:
       treated as proof of absence, for two reasons stated plainly. First, the FAQ
       says "As new Always Free services become available, you will automatically
       be able to use those as well", so the list is a current state rather than a
-      closed set. Second, two entries could arguably be read as application
-      hosting, and to be precise about which document carries which: "APEX
-      Application Development" appears on BOTH documents, and "Content Management
-      Starter Edition" appears on the FAQ ONLY. No dedicated OCI container page
-      was probed. The state is therefore unknown rather than declared absent in
-      either direction.
+      closed set. Second, two entries in the FAQ's Always Free list could
+      arguably be read as application hosting - "APEX Application Development"
+      and "Content Management Starter Edition" - and BOTH of those list entries
+      appear on the FAQ ONLY. The OCI document does contain the string "Oracle
+      APEX Application Development", but NOT as an Always Free service entry: it
+      is one of the workload types you may choose for an Always Free Autonomous
+      AI Database, which is a different claim and is not counted here. No
+      dedicated OCI container page was probed. The state is therefore unknown
+      rather than declared absent in either direction.
   serverless-functions:
     state: unknown
     rationale: >-

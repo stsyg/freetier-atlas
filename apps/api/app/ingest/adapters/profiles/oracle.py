@@ -28,11 +28,45 @@ perpetual, in Oracle's own words and in blocks that describe Always Free alone::
     Always Free services are available for an unlimited time.
 
 Both satisfy rule 1 of ``docs/DATA_MODEL.md`` by quotation, so ``always_free``
-here is not inferred from the word "free". Three providers have now been
-measured and all three agree: **perpetual is not free.** AWS Step Functions is
-perpetual and billed above the tier; Azure Cosmos DB lasts indefinitely and is
-billed at regular price on overage; Oracle Always Free is perpetual and requires
-a payment card.
+here is not inferred from the word "free".
+
+**Perpetuity does not ENTAIL zero cost -- and it does not preclude it either.**
+MEASURED by driving the real classifier over every provider fixture committed to
+this repository. Scope, stated because the two numbers below are NOT
+interchangeable: 7 provider configurations exist here -- the six F008 providers
+plus **Cloudflare, which is F005 and not an F008 provider**. Of **14** perpetual
+(``always_free``) offers across all seven: **5 classify ``Z0_TRUE_FREE``**, **5
+classify ``Z1_BILLING_EXPOSURE``**, and **4 remain ``UNKNOWN``**. Those five Z0
+offers come from **two** providers -- GitHub Actions, Packages and Codespaces,
+and Cloudflare Pages and Workers. **Restricted to the six F008 providers the Z0
+count is 3, all from GitHub alone.**
+
+So "perpetual" establishes nothing on its own: it is neither evidence for Z0 nor
+evidence against it, and every material condition has to be evidenced separately,
+per offer.
+
+**What is distinctive about Oracle, stated narrowly enough to be checkable.**
+Oracle is *not* the only provider whose perpetual offer is withheld -- AWS Step
+Functions, Azure Cosmos DB and Google Cloud's free tier are all perpetual and all
+``Z1``, and four further perpetual offers sit at ``UNKNOWN``. What is unique is
+the REASON. Measured across all 14: AWS, Azure and GCP are each blocked by
+``automatic_billing`` on exhaustion, whereas **Oracle is the only provider in
+this repository whose perpetual offer is withheld by a quoted payment-card
+requirement.**
+
+**An earlier revision of this docstring stated a general law instead**, to the
+effect that perpetual offers are never free, on the strength of three providers.
+It was FALSE: this repository had already measured perpetual offers reaching
+``Z0_TRUE_FREE`` five slices earlier, and
+``tests/integration/test_ingest_github.py`` asserts exactly that on real ingested
+rows. It was wrong in the **omission-favouring** direction -- a blanket
+"perpetual is never free" under-reports genuinely free offers, and
+under-reporting is a defect here exactly as much as over-claiming. It was ALSO
+wrong in the opposite direction at the same time, by under-counting its own
+support: GCP is a fourth provider whose perpetual offer is non-Z0, already in the
+tree and unmentioned. It is recorded rather than quietly replaced, because the
+claim shipped. ``tests/unit/test_adapter_oracle.py`` now pins the corrected
+statement in both directions and forbids the refuted one from returning.
 
 **What blocks Z0, and by what SHAPE.** The distinction matters, because a gate
 that fails on a quoted sentence cannot be flipped by anything that later supplies
@@ -298,8 +332,6 @@ AFR_BASTION = (
     "free and paid accounts. See Bastion for more information."
 )
 
-#: Pinned only as the capture's title; the offer identity comes from the block below.
-FT_TITLE = "Oracle Cloud Infrastructure Free Tier"
 
 #: Identity and offer type pinned to the SAME block, so a reworded credit sentence
 #: rejects the document rather than leaving a stale ``new_customer_credit`` behind.
@@ -346,8 +378,6 @@ FT_NOT_IN_GOV_REGIONS = (
     "The Free Tier and Always Free resources are not available in US Government Cloud regions."
 )
 
-#: Pinned only as the capture's title.
-AFS_TITLE = "FAQ on Oracle's Cloud Free Tier"
 
 #: THE perpetuity block for Oracle's flagship offer, describing Always Free services
 #: ALONE: 'Always Free services are available for an unlimited time.' Identity, offer
@@ -418,8 +448,6 @@ AFS_ARM_OVER_LIMIT = (
     "is within the Always Free limit."
 )
 
-#: Pinned only as the capture's title.
-CFT_TITLE = "Oracle Cloud Free Tier | Oracle"
 
 #: Identity, offer type, credit amount and term pinned to one block whose SUBJECT is the
 #: credit. The trailing clause names Always Free by contrast; it is not used to claim
@@ -467,8 +495,6 @@ CFT_IDLE_ACCOUNTS = (
     "suspension or termination."
 )
 
-#: Pinned only as the capture's title.
-FCP_TITLE = "What Happens When the Promotion Expires"
 
 #: Identity, offer type and exhaustion behaviour pinned to one block that describes the
 #: promotion's end: warnings, a 30-day grace period, and reclamation of paid resources.
@@ -510,8 +536,6 @@ FCP_UPGRADE_SCOPE = (
     "important to understand what happens to your cloud account."
 )
 
-#: Pinned only as the capture's title.
-MHW_TITLE = "MySQL HeatWave Free Cloud Trial | Oracle"
 
 #: Identity: the Always Free MySQL HeatWave system, quoted.
 MHW_SYSTEM = (
@@ -908,14 +932,12 @@ __all__: Sequence[str] = (
     "AFR_EMAIL_DELIVERY",
     "AFR_OUTBOUND_DATA",
     "AFR_BASTION",
-    "FT_TITLE",
     "FT_TRIAL_CREDITS",
     "FT_CARD_REQUIRED",
     "FT_TRIAL_END_RECLAIM",
     "FT_ALWAYS_FREE_NEVER_EXPIRE",
     "FT_TRIAL_END_NO_INTERRUPTION",
     "FT_NOT_IN_GOV_REGIONS",
-    "AFS_TITLE",
     "AFS_UNLIMITED_TIME",
     "AFS_CARD_IDENTITY",
     "AFS_CARD_TYPES",
@@ -923,20 +945,17 @@ __all__: Sequence[str] = (
     "AFS_ONE_ACCOUNT",
     "AFS_NO_SLA_NO_SUPPORT",
     "AFS_ARM_OVER_LIMIT",
-    "CFT_TITLE",
     "CFT_CREDIT_30_DAYS",
     "CFT_SWITCH_TO_PAYG",
     "CFT_DO_NOTHING",
     "CFT_CARD_IDENTITY",
     "CFT_ONE_ACCOUNT",
     "CFT_IDLE_ACCOUNTS",
-    "FCP_TITLE",
     "FCP_GRACE_AND_RECLAIM",
     "FCP_EXPIRES_30_DAYS",
     "FCP_EXPIRES_CREDITS_USED",
     "FCP_ALWAYS_FREE_LIFE_OF_ACCOUNT",
     "FCP_UPGRADE_SCOPE",
-    "MHW_TITLE",
     "MHW_SYSTEM",
     "MHW_UNLIMITED_TIME",
     "MHW_UNLIMITED_LEADIN",

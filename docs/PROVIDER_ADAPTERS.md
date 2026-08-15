@@ -615,8 +615,40 @@ its own on four independent documents. From `docs.oracle.com` `.../FreeTier/free
 to create an account. Your credit card will not be charged unless you upgrade
 your account." From the FAQ, the hub page and the MySQL page: "We use your
 contact information and credit/debit card information for account setup and
-identity verification." Three providers have now been measured and all three
-agree: **perpetual is not free.**
+identity verification."
+
+**That is a fact about Oracle, not a law about perpetuity.** Perpetuity does not
+*entail* zero cost, and it does not preclude it either. MEASURED by driving the
+real classifier over every provider fixture committed to this repository. Scope,
+stated because the two numbers below are **not** interchangeable: 7 provider
+configurations exist here — the six F008 providers plus **Cloudflare, which is
+F005 and not an F008 provider**. Of **14** perpetual (`always_free`) offers
+across all seven: **5 classify `Z0_TRUE_FREE`**, **5 classify
+`Z1_BILLING_EXPOSURE`**, and **4 remain `UNKNOWN`**. Those five Z0 offers come
+from **two** providers — GitHub Actions, Packages and Codespaces, and Cloudflare
+Pages and Workers. **Restricted to the six F008 providers the Z0 count is 3, all
+from GitHub alone.** "Perpetual" therefore establishes nothing on its own; every
+material condition must be evidenced separately, per offer.
+
+**What is distinctive about Oracle is the reason, not the outcome.** Oracle is
+*not* the only provider whose perpetual offer is withheld — AWS Step Functions,
+Azure Cosmos DB and Google Cloud's free tier are all perpetual and all `Z1`, and
+four further perpetual offers sit at `UNKNOWN`. Measured across all 14: AWS,
+Azure and GCP are each blocked by `automatic_billing` on exhaustion, whereas
+**Oracle is the only provider in this repository whose perpetual offer is
+withheld by a quoted payment-card requirement.**
+
+**An earlier revision of this section stated a general law instead**, to the
+effect that perpetual offers are never free, on the strength of three providers.
+It was FALSE — this repository had already measured perpetual offers reaching
+`Z0_TRUE_FREE` five slices earlier, and `tests/integration/test_ingest_github.py`
+asserts exactly that on real ingested rows. It was wrong in the
+**omission-favouring** direction: a blanket "perpetual is never free"
+under-reports genuinely free offers, which this product forbids exactly as much
+as over-claiming. It was **also** wrong in the opposite direction at the same
+time, by under-counting its own support — GCP is a fourth provider whose
+perpetual offer is non-Z0, already in the tree and unmentioned. It is recorded
+rather than quietly replaced, because the claim shipped.
 
 **The reading is stated so a reviewer can check it rather than trust it.**
 Neither block contains the word "required", and the first hedges with "most

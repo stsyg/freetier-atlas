@@ -980,3 +980,259 @@ def test_captures_declare_synthetic_provenance_where_it_applies() -> None:
         assert "tamper-evidence" in capture["sha256_stored_note"]
         assert "LIVE -> FIXTURE (primary)" in capture["live_reconciliation"]
         assert "FIXTURE -> LIVE (supporting only)" in capture["live_reconciliation"]
+
+
+# --------------------------------------------------------------------------- #
+# Guards against claims that read stronger than the evidence supports          #
+# --------------------------------------------------------------------------- #
+
+
+PROVIDER_CONFIG_DIR = REPO_ROOT / "config" / "examples" / "providers"
+ORACLE_MODULE = (
+    REPO_ROOT / "apps" / "api" / "app" / "ingest" / "adapters" / "profiles" / "oracle.py"
+)
+ADAPTERS_DOC = REPO_ROOT / "docs" / "PROVIDER_ADAPTERS.md"
+
+
+def _perpetual_offers_by_class() -> dict[str, list[str]]:
+    """Classify EVERY perpetual offer in the repository, across all providers.
+
+    Deliberately cross-provider. The claim this guards is a claim about the whole
+    data set, and a claim about the whole data set cannot be checked from inside
+    one slice -- which is precisely how a false generalisation shipped from here.
+    """
+
+    found: dict[str, list[str]] = {}
+    for config_path in sorted(PROVIDER_CONFIG_DIR.glob("*.example.yaml")):
+        provider = config_path.name.split(".")[0]
+        model = load_and_validate(config_path)
+        domains = tuple(model.provider.official_domains)
+        source_ids = {source.id for source in model.sources}
+        for case in available_cases(provider, "html"):
+            if case not in source_ids:
+                continue
+            _, candidates = run_extraction_case(provider, "html", case, official_domains=domains)
+            for candidate in candidates:
+                facts = candidate.facts
+                if facts.get("offer_type") != "always_free":
+                    continue
+                behaviours = ()
+                if facts.get("exhaustion_behaviour"):
+                    behaviours = (str(facts["exhaustion_behaviour"]),)
+                result = classify(
+                    OfferFacts(
+                        offer_type="always_free",
+                        requires_card=facts.get("requires_card"),
+                        has_paid_dependencies=facts.get("has_paid_dependencies"),
+                        exhaustion_behaviours=behaviours,
+                    )
+                )
+                found.setdefault(result.zero_cost_class, []).append(
+                    f"{provider}: {facts.get('service')}"
+                )
+    return found
+
+
+def test_perpetuity_neither_entails_nor_precludes_zero_cost() -> None:
+    """THE pin for a claim this module already shipped WRONG once.
+
+    An earlier revision of ``oracle.py`` and ``docs/PROVIDER_ADAPTERS.md`` stated
+    as a general law that "perpetual is not free". It was false: this repository
+    had already measured perpetual offers reaching ``Z0_TRUE_FREE`` five slices
+    earlier. It was also wrong in the OMISSION-FAVOURING direction, which this
+    product forbids exactly as much as over-claiming.
+
+    Both directions are asserted, because the corrected statement is a claim
+    about entailment and needs both halves to be true:
+
+    * at least one perpetual offer DOES reach Z0 -- so "perpetual is not free"
+      is refuted, and stays refuted;
+    * at least one perpetual offer does NOT -- so "perpetual means free" is
+      refuted too, which is the error in the opposite direction.
+
+    Exact counts are deliberately NOT pinned. They will move when a provider
+    slice is added, and a test that forces an unrelated slice to edit Oracle's
+    documentation would be coupling rather than a guard. The directional facts
+    are what the corrected sentence actually asserts.
+    """
+
+    by_class = _perpetual_offers_by_class()
+    z0 = by_class.get("Z0_TRUE_FREE", [])
+    not_z0 = [
+        name for label, names in by_class.items() if label != "Z0_TRUE_FREE" for name in names
+    ]
+
+    assert z0, (
+        "no perpetual offer reaches Z0 anywhere in the repository, so the corrected "
+        "statement in oracle.py is no longer supported by the data and must be re-derived"
+    )
+    assert not_z0, (
+        "every perpetual offer reaches Z0, so the claim that perpetuity does not ENTAIL "
+        "zero cost is no longer demonstrated and must be re-derived"
+    )
+
+
+#: Phrasings of the universal claim this slice shipped and had to retract. The
+#: guard below forbids ASSERTING any of them; it deliberately permits QUOTING one
+#: inside a passage that refutes it, because the retraction has to name what was
+#: retracted or it documents nothing.
+REFUTED_UNIVERSALS = (
+    "perpetual is not free",
+    "perpetual is never free",
+    "all three agree",
+    "perpetual offers are never free",
+)
+#: Words that mark a passage as refuting rather than asserting.
+REFUTATION_MARKERS = ("false", "refuted", "under-reports", "earlier revision", "retract")
+
+
+def test_no_shipped_prose_ASSERTS_the_refuted_universal() -> None:
+    """The specific false claim must not come back as an assertion.
+
+    Checked over the whole file with whitespace collapsed, not line by line: the
+    claim wrapped across lines in both files, and a line-wise search would have
+    missed it -- which is exactly how it survived review here.
+
+    A blanket ban on the string would be the wrong guard. It would push the next
+    author into rewording the claim rather than dropping it, and it would forbid
+    the retraction from naming what it retracts. So each occurrence must sit
+    within a refuting context.
+    """
+
+    for path in (ORACLE_MODULE, ADAPTERS_DOC):
+        flat = " ".join(path.read_text(encoding="utf-8").split()).lower()
+        for phrase in REFUTED_UNIVERSALS:
+            start = 0
+            while (index := flat.find(phrase, start)) != -1:
+                window = flat[max(0, index - 500) : index + 500]
+                assert any(marker in window for marker in REFUTATION_MARKERS), (
+                    f"{path.name}: {phrase!r} appears without any refuting context nearby; "
+                    "this claim was measured FALSE and may only be quoted in order to retract it"
+                )
+                start = index + len(phrase)
+
+
+def test_the_corrected_prose_states_its_scope_and_does_not_misfile_cloudflare() -> None:
+    """The correction's own numbers must carry the scope they are true of.
+
+    Repository-wide the Z0 perpetual count is 5 across two providers; restricted
+    to the six F008 providers it is 3, from GitHub alone. Those are different
+    numbers about different sets, and swapping them would be a new false claim
+    inside the correction for the old one. Cloudflare is F005.
+    """
+
+    for path in (ORACLE_MODULE, ADAPTERS_DOC):
+        flat = " ".join(path.read_text(encoding="utf-8").split())
+        assert "Cloudflare, which is F005 and not an F008 provider" in flat, path.name
+        assert "Restricted to the six F008 providers the Z0 count is 3" in flat, path.name
+        # The correction must not imply Oracle is the only withheld perpetual offer.
+        assert "Oracle is *not* the only provider whose perpetual offer is withheld" in flat, (
+            path.name
+        )
+
+
+def test_oracle_is_the_only_provider_withheld_by_a_quoted_card_requirement() -> None:
+    """Pins the one distinctive claim the corrected prose does make.
+
+    Re-derived across every perpetual offer in the repository: AWS, Azure and GCP
+    are each blocked by ``automatic_billing``; Oracle alone is blocked by a
+    quoted payment-card requirement. If another provider later gains a
+    card-blocked perpetual offer, this fails and the prose must be re-derived.
+    """
+
+    by_reason: dict[str, set[str]] = {"card": set(), "billing": set()}
+    for config_path in sorted(PROVIDER_CONFIG_DIR.glob("*.example.yaml")):
+        provider = config_path.name.split(".")[0]
+        model = load_and_validate(config_path)
+        domains = tuple(model.provider.official_domains)
+        source_ids = {source.id for source in model.sources}
+        for case in available_cases(provider, "html"):
+            if case not in source_ids:
+                continue
+            _, candidates = run_extraction_case(provider, "html", case, official_domains=domains)
+            for candidate in candidates:
+                facts = candidate.facts
+                if facts.get("offer_type") != "always_free":
+                    continue
+                behaviours = ()
+                if facts.get("exhaustion_behaviour"):
+                    behaviours = (str(facts["exhaustion_behaviour"]),)
+                result = classify(
+                    OfferFacts(
+                        offer_type="always_free",
+                        requires_card=facts.get("requires_card"),
+                        has_paid_dependencies=facts.get("has_paid_dependencies"),
+                        exhaustion_behaviours=behaviours,
+                    )
+                )
+                # EXACT condition strings, never substrings. The engine emits both
+                # "A payment card is required." (gate 3, a definite exposure) and
+                # "Whether a payment card is required is unknown." (gate 4), and
+                # the second CONTAINS the first as a substring. A substring test
+                # here reported GitHub and Vercel as card-blocked when their
+                # offers are merely card-UNKNOWN -- caught by this test failing
+                # rather than by review, and the same confusion of "stated" with
+                # "unstated" that the absence/quotation distinction exists to keep
+                # apart.
+                conditions = set(result.blocking_conditions)
+                if "A payment card is required." in conditions:
+                    by_reason["card"].add(provider)
+                if "A quota triggers automatic billing when exhausted." in conditions:
+                    by_reason["billing"].add(provider)
+
+    assert by_reason["card"] == {"oracle"}, by_reason["card"]
+    # And the claim is only interesting because OTHER providers are withheld for
+    # a different reason; if that stopped being true the sentence would mislead.
+    assert by_reason["billing"], "no provider is billing-blocked; the contrast no longer holds"
+    assert "oracle" not in by_reason["billing"]
+
+
+@pytest.mark.parametrize("case", SOURCE_CASES)
+def test_the_capture_counts_only_blocks_that_actually_guard(case: str) -> None:
+    """A capture may not describe a retained block as a pinned one.
+
+    An earlier revision counted every block the generator retained and called
+    them all "pinned". On five of six sources that overstated the guard by one,
+    because the document <title> is retained as furniture but asserted by only
+    one profile. The number now comes from the profile's own assertions, and the
+    retained-but-not-pinned blocks are declared separately.
+    """
+
+    fixture = load_case("oracle", "html", case)
+    capture = json.loads((fixture.directory / "capture.json").read_text(encoding="utf-8"))
+    profile = resolve_profile(fixture.profile)
+
+    pinned = {(a.scope, a.text) for a in profile.assertions}
+    assert capture["pinned_block_count"] == len(pinned)
+    assert f"all {len(pinned)} PINNED block(s)" in capture["live_reconciliation"]
+
+    collector = _DocumentCollector()
+    collector.feed(fixture.content.decode("utf-8"))
+    collector.close()
+    retained = [(b.scope, b.text) for b in collector.text_blocks]
+    not_pinned = [b for b in retained if b not in pinned]
+    assert capture["retained_not_pinned_count"] == len(not_pinned)
+    if not_pinned:
+        assert "RETAINED BUT NOT PINNED" in capture["live_reconciliation"]
+
+
+def test_every_exported_constant_is_pinned_by_some_profile() -> None:
+    """Dead evidence-looking constants imply guards that do not exist.
+
+    Five ``*_TITLE`` constants were exported while no profile asserted any of
+    them, which made the module read as if six documents pinned their titles when
+    exactly one does.
+    """
+
+    import app.ingest.adapters.profiles.oracle as oracle_module
+
+    pinned_texts = set()
+    for name in PROFILE_NAMES:
+        pinned_texts |= {a.text for a in resolve_profile(name).assertions}
+
+    dead = []
+    for name in oracle_module.__all__:
+        value = getattr(oracle_module, name)
+        if isinstance(value, str) and value not in pinned_texts:
+            dead.append(name)
+    assert not dead, f"exported but pinned by no profile: {dead}"
