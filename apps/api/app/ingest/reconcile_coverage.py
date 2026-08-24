@@ -187,8 +187,10 @@ def assert_no_coverage_contradictions(session: Session, *, provider_slug: str) -
             f"{provider_slug}: {len(offending)} coverage declaration(s) contradict the "
             f"published catalogue:\n  {lines}\n"
             "Update the provider's coverage: block to match the evidence (or fix the "
-            "evidence); an unknown/not_offered declaration over a real published offer "
-            "is exactly the dishonesty F008 exists to prevent."
+            "evidence). An unknown/not_offered declaration over a real published offer, "
+            "a verified_free claim whose backing snapshot has expired, and a "
+            "verified_free claim the catalogue has never corroborated are all forms of "
+            "the dishonesty F008 exists to prevent."
         )
 
 

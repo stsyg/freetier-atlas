@@ -303,8 +303,16 @@ class ProviderCoverage(BaseModel):
       ``not_offered``: an empty catalogue means "not verified", not "not
       offered".
     * ``state`` -- what to display: ``unknown`` when undeclared, ``conflicting``
-      when the declaration and the derivation materially disagree, otherwise the
-      declaration. The other two fields stay visible so nothing is hidden.
+      when the declaration and the derivation materially disagree, ``stale``
+      when a declared ``verified_free`` rests on evidence past its refresh
+      window, otherwise the declaration. The other two fields stay visible so
+      nothing is hidden.
+
+    ``mismatch`` and ``state`` are deliberately independent. A declared
+    ``verified_free`` in a category the catalogue has never published an offer
+    for sets ``mismatch`` (a human should reconcile it) while still displaying
+    the provenance-backed declaration, because an absent publication refutes
+    nothing.
 
     A zero published-offer count therefore never produces ``not_offered``;
     ``not_offered`` only ever arrives as an explicit, reasoned declaration.

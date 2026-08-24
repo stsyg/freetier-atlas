@@ -1,74 +1,99 @@
 {
-  "feature_id": "F001",
-  "slice": "check-scripts-honest-causes",
-  "title": "scripts/check.ps1 and scripts/check.sh may assert only causes they have established",
-  "branch": "stsyg-check-script-honest-causes",
-  "base_commit": "5a3fb24debb502544a0aa952ff39a7d306970a85",
-  "started_at": "2026-08-24",
-  "status": "in-progress",
-  "autonomy_level": "A1",
+  "feature_id": "F008",
+  "increment_id": "f008-obsB-obsC-staleness-and-absence-materiality",
+  "branch": "stsyg-staleness-materiality-rulings",
+  "base_commit": "a5548830ffe6485ee8a80b62bec3c6fb7ce7c9f6",
   "required_evaluation_level": 2,
-  "materiality": "[M]",
-  "evaluation_level_rationale": "These two scripts are the local gate every builder reads before reporting, and the defect class under repair is a report that is wrong in the ALARMING direction. A wrong summary here has already caused three false alarms on this project; a builder acting on 'a secret was found' could edit .secrets.baseline and do real damage. Level 2 because the correction must be proven in BOTH directions per branch, not merely reviewed.",
-  "objective": "Remove, from both check scripts, every place where a non-zero exit status is translated into a specific stated cause the script has not established. For each such branch either establish the cause before naming it, or surface the underlying tool's own output and report only the status actually observed.",
-  "measured_premise": [
-    "REPORTED DEFECT, reproduced by reading: scripts/check.ps1 maps detect-secrets-hook exit 1 to the single sentence 'a secret that is not in the baseline was found'. Exit 1 is also what the hook returns for an unstaged baseline, an unreadable baseline and other argument errors, so the sentence is an assertion the script has not established.",
-    "MEASURED on this host: `detect-secrets-hook --baseline .secrets.baseline` with ZERO filenames exits 0 (bare read of $LASTEXITCODE). Both scripts build the file list from git and pass it through unchecked, so a git failure yields an empty list and the scan reports PASS having scanned nothing. That is the same defect pointing the reassuring way.",
-    "MEASURED on this host: PowerShell 7.6.5 with $PSNativeCommandUseErrorActionPreference = False, so the exit-code switch in check.ps1 is genuinely reached. The switch is not dead code here, but the script's reliance on an ambient $LASTEXITCODE is host-dependent, so the fix reads status from an explicitly captured value instead.",
-    "MEASURED: this worktree began with no .venv and no node_modules, which is exactly the impostor condition recorded in agent-state/progress.md where check.ps1 reported 'Prettier check, ESLint FAILING' whose real cause was absent npm dependencies.",
-    "MEASURED with tests/support/source_scan.py on the untouched files: block depth immediately before the scripts/check_secrets_baseline.py invocation is 0 in BOTH scripts (check.sh line 102, check.ps1 line 68), and the scanner blanks string bodies. The protected guard's unconditional-top-level-early-exit case therefore requires that invocation to stay at depth 0; this contract keeps it there and re-measures after editing."
+  "user_visible_outcome": "A declared 'verified_free' coverage claim can no longer be published on evidence that has expired, and a declared 'verified_free' claim the published catalogue has never corroborated can no longer sit in the catalogue forever without a review item. When the snapshot backing a free claim goes past its refresh window the catalogue stops presenting 'verified_free' and presents 'stale' instead, and a pending review item is raised. When ingest has never published an offer in a category a provider declares 'verified_free', a pending review item is raised while the provenance-backed declaration continues to display.",
+  "rulings_implemented": {
+    "f008-obsB": {
+      "ruling": "A stale snapshot must not sustain a published free claim (owner ruling; mechanism left to the builder).",
+      "mechanism_chosen": "(c) both - raise the contradiction AND downgrade the display.",
+      "measured_queue_cost": {
+        "today_snapshots_fresh": 0,
+        "at_snapshot_expiry": 5,
+        "method": "offline FixtureFetcher ingest + publish for all 7 provider configs against an isolated PostgreSQL, then serialize_category_matrix at now and at now+5y"
+      },
+      "display_decision": "'stale', not the generic 'conflicting' collapse. Nothing is in conflict - the evidence expired. Labelling expiry as disagreement would be a guess, and 'stale' is already a first-class COVERAGE_STATE with a correct web label."
+    },
+    "f008-obsC": {
+      "ruling": "The S2 deferral's stated precondition (no adapters yet) was to be re-decided once Wave 3 landed.",
+      "decision": "Make it material NARROWLY: only a declared 'verified_free' over a derived 'unknown'. The broad rule the deferral considered is still prohibitive.",
+      "measured_queue_cost": {
+        "broad_rule_every_derived_unknown": 93,
+        "broad_rule_declared_non_unknown_over_derived_unknown": 51,
+        "narrow_rule_declared_verified_free_over_derived_unknown": 2,
+        "total_pairs": 98,
+        "why_the_brief_was_wrong": "Wave 3 landed adapters but the publication gate withholds every offer for 5 of the 6 merged providers (aws, azure, gcp, oracle, vercel each publish 0). 93 of 98 pairs still derive 'unknown', so the 14xN floor the deferral cited has NOT gone away."
+      },
+      "display_decision": "The declaration continues to display. A 'verified_free' declaration is provenance-backed (config validation rejects an offered category with no source), and 93/98 pairs derive 'unknown' because the publication gate is conservative - not because the claim is refuted. Downgrading would suppress true free claims for an ingest-coverage reason and would move a real merged-provider verdict."
+    }
+  },
+  "scope": [
+    "apps/api/app/read_api/coverage.py: add (verified_free, stale) and (verified_free, unknown) to MATERIAL_MISMATCHES; add an explicit per-pair display table so a material pair is not forced through the generic 'conflicting' collapse.",
+    "apps/api/app/ingest/reconcile_coverage.py: correct the assertion-helper message so it no longer claims every contradiction is an unknown/not_offered declaration over a published offer.",
+    "tests/support/coverage.py: a category absent from the signals map means 'this slice asserts nothing here', not 'nothing is published there'. Required because a derived 'unknown' can now be material.",
+    "tests/unit/test_coverage_derive.py: replace the S2 'derived unknown is never material' invariant with the narrower one the owner just ruled, and add both-direction coverage for both new pairs.",
+    "tests/unit/test_coverage_materiality_rulings.py (new): both-direction proofs and the mutation battery.",
+    "tests/integration/test_coverage_review_queue.py: DB-level proof that a stale free claim and an uncorroborated free claim each raise exactly one pending review item, and that the honest cases raise none.",
+    "agent-state/current_contract.json, agent-state/progress.md"
   ],
-  "in_scope": [
-    "scripts/check.ps1 - every failure branch",
-    "scripts/check.sh - every failure branch"
-  ],
-  "out_of_scope_zero_diff": [
-    "agent-state/feature_list.json - must stay byte-identical, verified by git hash-object",
-    "tests/support/source_scan.py - protected, must stay byte-identical",
-    "tests/unit/test_secrets_baseline.py - protected, must stay byte-identical",
-    "apps/web/package-lock.json - must stay byte-identical",
-    ".github/workflows/ci.yml - CARRIES THE SAME DEFECT at line 143 ('detect-secrets found a secret that is not in the baseline') and is owned by a concurrent builder in this dispatch. Reported, deliberately not repaired, to avoid a collision. Must stay byte-identical.",
-    ".secrets.baseline - not refreshed unless a tracked file is added",
-    "every application source file under apps/"
+  "out_of_scope": [
+    "agent-state/feature_list.json - F008 stays passes:false; the flip belongs to the S4 close-out",
+    "tests/support/source_scan.py, tests/unit/test_secrets_baseline.py, apps/web/package-lock.json, .github/workflows/ci.yml, scripts/check.ps1 - owned by four parallel builders",
+    "apps/web/** - the web vocabulary already renders 'stale' with a correct label and description, so no frontend change is needed",
+    "derive_coverage_state precedence - staleness already outranks an optimistic free claim, which is correct; the defect is downstream in materiality and display",
+    "any migration - head stays 0011",
+    "provider configs and adapters - no declared state is edited to make a rule pass"
   ],
   "acceptance_criteria": [
-    "AC1 - No branch in either script states a cause it has not established. Every remaining stated cause is either measured by the script itself or is the underlying tool's own output quoted back.",
-    "AC2 - detect-secrets exit 1 no longer asserts that a secret was found. The hook's own stdout and stderr are surfaced and the reported status is the one actually observed.",
-    "AC3 - A baseline REWRITE is named only when the script has established it, by comparing the digest of .secrets.baseline before and after the run, rather than inferring it from an exit code alone.",
-    "AC4 - An empty scan file list fails with that as its stated cause instead of passing vacuously.",
-    "AC5 - A missing external tool fails with 'not found in .venv nor on PATH' as its stated cause, established by resolution, not inferred from a non-zero exit.",
-    "AC6 - Absent node_modules fails as a missing-dependency condition with its own cause, not as a Prettier or ESLint failure.",
-    "AC7 - The exit status a check reports is one the check established. A stale ambient exit code can never be reported as this check's result.",
-    "AC8 - No check is weakened. Every condition that failed before still fails; only the stated cause changes.",
-    "AC9 - Both scripts remain accepted by tests/unit/test_secrets_baseline.py, including the unconditional-top-level-early-exit case, with those two test files unmodified.",
-    "AC10 - For every corrected branch, BOTH directions are demonstrated: the genuine failure still fails with a true message, and the impostor condition reports its own cause."
-  ],
-  "negative_and_regression_tests": [
-    "Genuine secret planted in a tracked file: Secret scan must still FAIL, and the message must be true.",
-    "Unstaged .secrets.baseline: Secret scan must FAIL reporting the hook's own words, not a secret finding.",
-    "Empty file list: Secret scan must FAIL rather than pass.",
-    "Baseline actually rewritten by the hook: the rewrite must be named, and established by digest change.",
-    "node_modules removed: Prettier and ESLint must report the missing dependency, not a formatting or lint verdict.",
-    "node_modules present and a genuinely mis-formatted file: Prettier must still FAIL as a formatting failure.",
-    "Tool absent from PATH and .venv: the check must FAIL naming the unresolved tool.",
-    "Tool present and genuinely failing: the check must still FAIL on the tool's own status.",
-    "Full green run: with every prerequisite present and the tree clean, both scripts must still report all checks passed.",
-    "tests/unit/test_secrets_baseline.py - 141 tests, green before and after."
+    "AC1 A declared 'verified_free' whose backing snapshot is past its refresh window is a material mismatch and raises exactly one pending review item.",
+    "AC2 That pair no longer displays 'verified_free'; it displays 'stale'.",
+    "AC3 A declared 'verified_free' in a category with no published offer at all is a material mismatch and raises exactly one pending review item.",
+    "AC4 That pair still displays 'verified_free' (the declaration is provenance-backed and is not refuted by an absent publication).",
+    "AC5 Both-direction: a FRESH declared 'verified_free' over its own published Z0 offer is NOT flagged, and 'offered_no_z0'/'not_offered'/'unknown'/'incomplete'/'stale'/'conflicting' declarations over a derived 'unknown' are NOT flagged.",
+    "AC6 The derived state of every (provider, category) pair for all six merged providers is identical to main.",
+    "AC7 The DISPLAYED state of every pair for all six merged providers is identical to main at current snapshot freshness.",
+    "AC8 Every new test is proven non-vacuous by mutation, with predictions recorded before running and byte-exact restoration proven by git hash-object.",
+    "AC9 ruff check + ruff format clean; the offline pytest suite is green and no pre-existing test is weakened; the live-DB suite is green."
   ],
   "verification_commands": [
-    ".venv/Scripts/python.exe -m pytest tests/unit/test_secrets_baseline.py -q",
-    ".venv/Scripts/python.exe -m pytest -q",
-    "pwsh -File scripts/check.ps1",
-    "bash scripts/check.sh",
-    "git hash-object <protected paths> compared against the same paths at 5a3fb24"
+    "python -m ruff check .",
+    "python -m ruff format --check .",
+    "python -m pytest -q",
+    "DATABASE_URL=<isolated stack> python -m pytest -q",
+    "python -m pytest -q tests/unit/test_coverage_derive.py tests/unit/test_coverage_materiality_rulings.py"
   ],
-  "data_security_privacy_portability_z0": "No product behaviour changes. No Z0 rule, quota, classification, schema, migration, endpoint or dependency is touched. No network access is added. No credential or internal package-feed hostname may reach any file, report, commit message or PR body. Portability is improved rather than reduced: the PowerShell script stops depending on an ambient $LASTEXITCODE whose propagation differs across PowerShell versions.",
-  "measured_results": "recorded in agent-state/progress.md on completion",
-  "reporting_rule_location": "The rule this slice enforces is written into the .NOTES/header of each script rather than a separate document, so it sits where a reader of the branch is standing. No new docs file was added; the in_scope entry that anticipated one was withdrawn rather than satisfied decoratively.",
-  "findings_reported_not_repaired": [
-    ".github/workflows/ci.yml line 143 carries the IDENTICAL defect being repaired here - it maps detect-secrets exit 1 to 'detect-secrets found a secret that is not in the baseline.' CI runs on Linux, so the false alarm is still live there. Owned by a concurrent builder in this dispatch; reported rather than repaired to avoid a collision.",
-    "The ESLint check is very close to vacuous. MEASURED: root eslint.config.js sets ignores: [..., 'apps/web/'], and `eslint . --format json` returns exactly ONE linted file, eslint.config.js itself. apps/web has its own eslint.config.js and lint script that NOTHING invokes - not check.ps1, not check.sh, not ci.yml (which runs the same root `npm run lint`). Proven in both directions: an identical no-undef error exits 1 at repo root and exits 0 inside apps/web/src. The check is not literally unfailable, but it cannot fail on any defect in the web application. Same shape on the sibling check: .prettierignore also excludes apps/web/.",
-    "scripts/check.sh and .github/workflows/ci.yml build the scan list from `git ls-files -z` (TRACKED ONLY) while scripts/check.ps1 uses `git ls-files -co --exclude-standard` (tracked AND untracked). MEASURED: a secret in an untracked file is seen by check.ps1 and NOT by check.sh. The bash route therefore matches CI and check.ps1 is the stricter outlier. Reported, deliberately not changed: altering what a check COVERS is a scope change, and it would make check.sh diverge from the CI it claims to mirror."
+  "end_to_end_steps": [
+    "Start an isolated PostgreSQL (never the shared dev stack; four builders are running).",
+    "alembic upgrade head.",
+    "Run the offline FixtureFetcher ingest + publish for all seven provider configs.",
+    "Serialize the category matrix at current time and at snapshot expiry; compare declared/derived/displayed for all six merged providers against the same run on main.",
+    "Run reconcile_coverage and count pending review items in each state."
   ],
-  "boundary": "Draft PR only. Do not merge. Do not modify agent-state/feature_list.json. Do not modify .github/workflows/ci.yml, tests/support/source_scan.py or tests/unit/test_secrets_baseline.py."
+  "migration_implications": "None. Alembic head stays 0011. Nothing is persisted: the derived state is still recomputed on every read (decision Q11) and the only durable artefact remains a pending review_item.",
+  "security_privacy": "No new inputs, endpoints, credentials or network access. Pure in-process rule change plus tests. No package-feed hostname or credential may reach any report, PR body, commit message or file.",
+  "portability": "No new dependency, runtime or service. PostgreSQL remains the only mandatory stateful service.",
+  "z0_implications": "Directly strengthens the anti-false-claim safeguard: an expired snapshot can no longer sustain a displayed free claim, and an uncorroborated free claim can no longer avoid human review. No Z0 classification rule, quota calculation or publication gate is changed.",
+  "regression_risks": [
+    "MATERIAL_MISMATCHES is consumed by the public matrix, the review queue, and the reusable Wave-3 assertion helper; a broader rule would have flooded the queue with 93 items and failed several provider config suites.",
+    "The DB-free helper previously treated an unasserted category as 'nothing published'; that reading becomes a false positive once a derived 'unknown' can be material, so it now skips unasserted categories.",
+    "effective_state's generic 'conflicting' collapse would have moved two real merged-provider verdicts; the explicit display table prevents that."
+  ],
+  "negative_and_regression_tests": [
+    "A fresh declared 'verified_free' over its own published Z0 offer must not be flagged (control for AC1).",
+    "A declared 'offered_no_z0' / 'not_offered' / 'unknown' over a derived 'unknown' must not be flagged (control for AC3; this is where the 91 suppressed items live).",
+    "A declared hedge ('incomplete' / 'stale' / 'conflicting') over any derivation must not be flagged.",
+    "All pre-existing MATERIAL_MISMATCHES pairs must still be material and must still display 'conflicting'."
+  ],
+  "attestations": [
+    "Will NOT merge. DRAFT PR only.",
+    "Will NOT touch agent-state/feature_list.json.",
+    "Will NOT modify any file owned by a parallel builder."
+  ],
+  "rebased_from": [
+    "5a3fb24debb502544a0aa952ff39a7d306970a85",
+    "78d2c736c80a369a20f21f00cdf61d80108d34e7",
+    "699481b5d3cef2615bb4071135c0dd92b5741e66"
+  ]
 }
