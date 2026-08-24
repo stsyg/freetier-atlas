@@ -3455,3 +3455,89 @@ That is the list. Where I could not verify a side, it is recorded as "could not 
 - **Recommended next action.** A separate slice, with its own owner ruling, for the offer-level Z0 display path and the frozen `freshness` signal described above. It will move real `github`/`cloudflare` verdicts, so it needs the ruling first.
 - **Evaluator disposition:** PENDING — fresh-context Level-2 evaluation required before merge.
 - **Boundary:** Draft PR only. Do not merge, do not flip any ledger flag.
+
+## 2026-08-24 - Builder - CI: a gate may assert only causes it has established, and the lint gate must be able to fail on the web app
+
+- **Objective:** two repairs in `.github/workflows/ci.yml`. (1) Stop the secret-scan step translating a `detect-secrets-hook` exit status into a cause the workflow has not established, and close the symmetric false GREEN. (2) Make the Node lint gate able to fail on a defect in the web application. Both defects were found and measured by other slices today, which reported rather than repaired them because they did not own this file.
+- **Contract:** `agent-state/current_contract.json`, taken wholesale for this slice. Evaluation level 2. Base re-derived with `git ls-remote` as `a5548830`; `main` then moved to `6b078c2e` (PR #79) mid-slice and this branch was rebased. `current_contract.json` is SINGLE-SLOT and was taken wholesale on the rebase, never merged.
+- **The class, stated once [M]:** an exit status is many-to-one with causes. A gate that turns a status into one sentence is asserting something it cannot know. This repository exists to refuse unsupported claims that a service is free; a gate that certifies less than its name claims is the mechanism by which such a claim eventually reaches a user.
+
+### Defect 1 - the alarming direction, and its quieter twin
+
+`ci.yml` mapped exit 1 to `detect-secrets found a secret that is not in the baseline.` **MEASURED here, independently of the slice that reported it**, with the pinned detect-secrets 1.5.0 invoked inside a real git repository, reading the hook's OUTPUT before interpreting any code:
+
+| Condition | Hook's own words | Exit |
+|---|---|---|
+| planted random high-entropy string | `Potential secrets about to be committed` + type + location | **1** |
+| baseline present but UNSTAGED | `Your baseline file (.secrets.baseline) is unstaged.` | **1** |
+| invalid `--baseline` path | `argument --baseline: Invalid path` | **2** |
+| ZERO filenames | **nothing at all** | **0** |
+
+Two separately produced instances of exit 1 with different causes. The repair follows PR #80: surface the tool's own words, establish a baseline REWRITE **by comparing bytes** rather than reading it off exit 3, and report only the status observed.
+
+**The symmetric false GREEN was structurally reachable here, which was not assumed [M].** Measured under the exact shell GitHub Actions uses (`bash --noprofile --norc -eo pipefail`): `nounset` is **off**, so an empty array expands to **zero arguments** (`argc=0`); and a command that fails inside a process substitution does **not** abort under `errexit` (`errexit` confirmed ON in-process via `$-` = `ehB` and `shopt -o errexit`). So a broken enumeration left `files=()` silently, the hook exited 0, and the step printed `Scanning 0 tracked file(s).` followed by `Secret scan clean.` Nothing asserted on that count. It now fails on a value that can never legitimately be zero.
+
+### Defect 2 - the lint gate covered one file
+
+Root `eslint.config.js` ignores `apps/web/` and root `.prettierignore` excludes it; `apps/web` declares its own `lint` and `format:check` that **nothing invoked** - not `check.ps1`, not `check.sh`, not CI. Both now run inside the `web` job added by PR #75, as separate steps conditioned exactly like its siblings so one finding cannot hide the rest. Stated precisely, as the discovering slice did: the `node` job is **not unfailable** - breaking `eslint.config.js` reddens it - it simply **cannot fail on a defect in the application**.
+
+### Both directions, locally, against BOTH texts. Predictions recorded BEFORE each run [M]
+
+The scan step's `run` body was parsed out of the YAML of my version AND of main's (main's extraction asserted by blob `319efabe`, so the control is main's actual bytes, not a retyping), then executed under the runner's own shell.
+
+| Case | main's step | my step | Prediction |
+|---|---|---|---|
+| L0 clean tree, 2 files | exit 0, `Secret scan clean.` | exit 0, `Secret scan clean.` | MATCHED |
+| L1 planted high-entropy string | exit 1, **claims a secret** (true here, by luck) | exit 1, hook names the finding, **no cause claimed** | MATCHED |
+| L2 baseline UNSTAGED | exit 1, **`::error::detect-secrets found a secret...`** - THE FALSE ALARM, reproduced | exit 1, hook's `is unstaged` words, **no secret claimed** | MATCHED |
+| L3 zero files | **exit 0, `Secret scan clean.`** - THE FALSE GREEN, reproduced | exit 1 naming the empty enumeration | MATCHED |
+
+### Per-gate RED evidence IN CI, read at STEP level, every other job green [M]
+
+Controls ran on scratch branch `stsyg-ci-honest-gates-controls` via throwaway PR #82, one mutation at a time, force-reset between each. Every mutation asserted its target file's IDENTITY by blob hash first, asserted the anchor matched **EXACTLY ONCE**, and printed the anchor, the replacement and the byte delta.
+
+| # | Mutation | Anchor | Delta | Predicted RED step | Observed |
+|---|---|---|---|---|---|
+| M1 | `debugger;` in `apps/web/src/catalogue/format.ts` | 1 | +12 | `ESLint (apps/web)` | **RED** - `69:3 error Unexpected 'debugger' statement no-debugger` |
+| M2 | extra indentation, same file | 1 | +6 | `Prettier check (apps/web)` | **RED** - `[warn] src/catalogue/format.ts` |
+| M3 | planted random 264-bit base64 string | n/a | new file | `Scan tracked files against baseline` | **RED** - hook names `Base64 High Entropy String` |
+| M4 | `done < <(git ls-files -z)` restricted to a nonexistent pathspec | 1 | +23 | `Scan tracked files against baseline` | **RED** - `Scanning 0 tracked file(s).` then the empty-enumeration error |
+| M5 | `printf '\n' >> .secrets.baseline` before the scan | 1 | +43 | `Scan tracked files against baseline` | **RED** - `Your baseline file (.secrets.baseline) is unstaged.` and **no secret claimed** |
+
+Attribution is not merely asserted: in **M1 the `node` job's own ESLint step stayed GREEN** on the same defect, and in **M2 the root `Prettier check` stayed GREEN** - the direct demonstration that the root gates are blind to `apps/web`. In M2, `ESLint (apps/web)` stayed green while Prettier went red, so the two new gates are independent rather than one gate wearing two names. In M1 the type check, Vitest and the build all still ran and passed, confirming that one finding does not hide the rest.
+
+- **Job floor asserted BEFORE reading any conclusion [M]:** every run checked for at least 5 Actions jobs, each asserted BY NAME. Absence of red is not evidence of green.
+- **Baseline GREEN first, and again after the rebase [M]:** run `32782412923` (pre-rebase) and `32785249200` (rebased, head `64dfea7b`) - all five jobs green at step level, `Scanning 649 tracked file(s).`
+- **Both directions on the new gates [M]:** `ESLint (apps/web)` and `Prettier check (apps/web)` **PASS on today's code**. No file in `apps/web` was reformatted; had they failed I would have reported it rather than reformatted the application inside a CI slice.
+- **Restoration proved twice per mutation [M]:** `git hash-object` (`ci.yml` `b62af6ba` -> `b62af6ba`; `format.ts` `6c3e98e7` -> `6c3e98e7`) AND raw byte equality (19150 vs 19150; 4730 vs 4730). Never `git diff --numstat`.
+
+### A dispatch gap that would have read as success
+
+At scratch head `755c153f` **no Actions run was ever created**. Not queued, not lost - never dispatched. Cause established, not guessed: `main` had moved to `6b078c2e`, `gh pr view` reported `mergeable: CONFLICTING`, and GitHub does not dispatch `pull_request` workflows when it cannot compute a merge commit. Caught only because the instrument asserts that a run EXISTS for the SHA before reading any conclusion. On a control PR this is the worst possible failure: a control that never ran shows no red, and no red is exactly what a working gate looks like from a distance.
+
+Relatedly, run `32783112497` was reported to me as a Python test failure. Read at STEP level it is `cancelled`, not `failure`, on PR #82 rather than #81, with `Pytest` cancelled and the other four jobs green - caused by this workflow's own `cancel-in-progress` concurrency when I force-pushed a control 47 seconds later. Treating that one-bit job conclusion as "the tests failed" is precisely the many-to-one-status error this slice repairs.
+
+### Findings reported, deliberately NOT repaired
+
+1. **`Secret scan`'s `URL host allowlist` step is skipped whenever the scan step fails.** MEASURED: `skipped` in the M3, M4 and M5 runs. The `dependencies` job states the opposite convention in its own comments - "Every audit below runs even when an earlier one fails, so one finding never hides the rest" - and the `web` job now follows it. The disclosure guard is a different control from the secret scan and should not be hidden by it. A one-line `if: ${{ !cancelled() }}` fixes it; not done here because it is a behaviour change that would need its own RED control, and this slice already carries two.
+2. **`Python lint, format, tests` certifies less than its name whenever it fails early.** Its four steps carry no `if:`, so they chain on implicit success: a Ruff lint failure means `Pytest` never runs, yet the job is named for all three. Established from the file, and the same mechanism was MEASURED in finding 1.
+3. **The new `ESLint (apps/web)` gate tolerates warnings.** `apps/web`'s script is `eslint .` with no `--max-warnings 0`, and its config sets `react-refresh/only-export-components` to `warn`. MEASURED: today's tree emits zero warnings, so this is latent rather than live. Not changed because it edits `apps/web/package.json`, which this contract puts at zero-diff, and because tightening it could redden the current tree - which I would then be tempted to fix, and that is a different and much larger change hiding inside a CI slice.
+4. **The root `node` job is narrow but NOT vacuous, which is worth recording precisely.** Its ESLint covers one file; its Prettier check genuinely reads `.github/workflows/ci.yml`, which is MEASURED rather than assumed - the rewritten file passed that step. The measured scope is now a comment in the job itself.
+
+### Errors I made, disclosed
+
+1. **I ran my first hook probe outside a git repository.** detect-secrets warned `Not a git repository`, so it would have measured a different condition than CI's. Re-run inside a real repo; the unstaged case does not exist at all outside one, so the central measurement would have been unobtainable and I might have concluded the condition was unreachable.
+2. **I set `$ErrorActionPreference = "Stop"` around a native call whose stderr then became a terminating ErrorRecord, twice.** The exit code was never reached. In a slice about reading output before interpreting exit codes, I twice built an instrument that could do neither.
+3. **I extracted main's `ci.yml` with PowerShell's `>` and got UTF-16LE**, so the YAML parser rejected it and the "main" control body came back EMPTY - which the comparison would have reported as "the two bodies differ", technically true and completely misleading. Caught by the blob-identity assertion, not by inspection. Replaced with `cmd`'s byte-faithful redirection. This is the same trap PR #80's builder recorded; I read that note and walked into it anyway.
+4. **I wrote a heredoc in PowerShell**, which has none, and the commit command failed to parse.
+5. **A single `set -o` reading told me `errexit` was OFF while `$-` said ON.** The discrepancy is real: bash reports `errexit` as off *inside a command substitution*. I had taken the reading through `$(set -o | grep ...)`. Resolved by measuring in-process. Care did not catch this; a second independently-obtained value did.
+
+- **Gates run [M]:** `tests/unit/test_secrets_baseline.py` **141 passed** locally against the edited `ci.yml`, with that file and `tests/support/source_scan.py` byte-identical to main. `tests/test_repo_baseline.py` 20 passed. `scripts/check_urls.py` passed at 1245 URLs / 57 distinct hosts. `scripts/check_secrets_baseline.py` passed, 68 files / 289 entries, nothing lost. The scan step's shell body was extracted from the YAML and passed `bash -n`. In CI, `Pytest` is green on the baseline and on all four control runs, so the strict secrets-route guard is not tripped. Exit codes read from BARE invocations throughout.
+- **Node side NOT verified locally, deliberately [M]:** this worktree has no `node_modules` and this machine's npm registry is not the public default. Running `npm ci` would rewrite lockfile `resolved` URLs to an internal package-feed host and, if committed, leak internal infrastructure into a PUBLIC repository - the exact disclosure `check_urls.py` exists to prevent. CI verified the Node side in a clean environment instead.
+- **Protected state verified by BLOB COMPARISON against the CURRENT `origin/main`, never remembered values and never `git diff --numstat` [M]:** `agent-state/feature_list.json` `154de1fe`; `package-lock.json` `737f9915`; `apps/web/package-lock.json` `98f786c2`; `apps/web/package.json` `644b4cde`; `tests/support/source_scan.py` `3a86f03a`; `tests/unit/test_secrets_baseline.py` `183619e0`; `.secrets.baseline` `4529811a`; `eslint.config.js` `0c779c1f`; `.prettierignore` `13c266c7`; `package.json` `c13859c6`; `scripts/check.ps1`, `scripts/check.sh`, `scripts/check_urls.py`. All identical. Both lockfiles byte-identical to main. F008 stays `passes: false`.
+- **Files changed:** `.github/workflows/ci.yml`, `agent-state/current_contract.json`, and this handoff. Three files.
+- **No secret, credential, registry URL or internal package-feed hostname reached any file, log, report, commit message or PR body.** The proof string was randomly generated at use time, is not a credential of any kind, lived only on a force-reset scratch branch, and its value was never printed.
+- **Scratch artefacts to close:** branch `stsyg-ci-honest-gates-controls` and **throwaway PR #82**, which carries deliberate defects and must be closed unmerged.
+- **Evaluator disposition:** pending - builder self-review only.
+- **Boundary:** Draft PR only. Do not merge, do not flip any ledger flag.
+- **Recommended next action:** fresh-context Level-2 evaluator. The two highest-value things to attack are (a) finding 1 - the `URL host allowlist` step being hidden by a failing secret scan, which is a live coverage-hiding defect in the same job this slice touched; and (b) whether the honest exit-status message is actually more useful to a reader who only sees the annotation summary, since it now deliberately declines to name a cause and points at the log instead.

@@ -75,6 +75,21 @@ jobs:
   node:
     name: Node format and lint
     runs-on: ubuntu-latest
+    # SCOPE, measured rather than assumed: this job runs the ROOT package's
+    # tooling and nothing else. `npm run lint` resolves through the root
+    # eslint.config.js, which sets `ignores: [..., "apps/web/"]`, and MEASURED
+    # with `eslint . --format json` it reports exactly ONE linted file --
+    # eslint.config.js itself. Root .prettierignore excludes apps/web/ for the
+    # same reason: that package carries its own Prettier and ESLint
+    # configuration, with a TypeScript parser this one does not have.
+    #
+    # So this job is real but narrow, and it is NOT the gate on the web
+    # application. Stated precisely, because overstating a gate is the defect
+    # this comment exists to prevent: it is not unfailable -- breaking
+    # eslint.config.js does redden it -- it simply covers one file, and cannot
+    # fail on a defect in the application. The `web` job below runs apps/web's
+    # own `lint` and `format:check`, which nothing in this repository invoked
+    # until they were added there.
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -125,6 +140,30 @@ jobs:
       - name: Install apps/web dependencies
         id: web_install
         run: npm ci
+      # apps/web's OWN ESLint, which nothing in this repository invoked before.
+      # Two independent slices reached the same measurement by different routes:
+      # the root eslint.config.js ignores `apps/web/`, and `eslint . --format
+      # json` at the repository root returns exactly ONE linted file. So the job
+      # named "Node format and lint" could not fail on any defect in the web
+      # application -- an identical `no-undef` error exits 1 at the root and 0
+      # under apps/web/src. This package's own config has the TypeScript parser
+      # and the React hooks rules; running it here is what makes the coverage
+      # real rather than nominal.
+      #
+      # Placed in this job rather than a new one because a job already installs
+      # this package, and rather than in `node` because that job never installs
+      # it. Conditioned exactly as the steps below are, and NOT chained to them:
+      # a lint error must not hide a failing test, nor a type error a lint
+      # error. One finding must not hide the rest.
+      - name: ESLint (apps/web)
+        if: ${{ !cancelled() && steps.web_install.outcome == 'success' }}
+        run: npm run lint
+      # The formatter has the same hole for the same reason: root
+      # .prettierignore contains `apps/web/`, so the root Prettier check never
+      # reads a single file of this package.
+      - name: Prettier check (apps/web)
+        if: ${{ !cancelled() && steps.web_install.outcome == 'success' }}
+        run: npm run format:check
       # Its own step rather than being left to `npm run build`, which is
       # `tsc -b && vite build`. Folded together, a type error and a bundler
       # error land on the same line of the step list and neither gate can be
@@ -190,23 +229,81 @@ jobs:
       #                                   that blocks a merge.
       #
       # Reading NUL-delimited names into an array keeps both.
+      #
+      # REPORTING RULE, and it is why this step is longer than the work it does:
+      # a branch may assert only what it has ESTABLISHED. This step used to map
+      # exit 1 to the single sentence "detect-secrets found a secret that is not
+      # in the baseline." MEASURED with the pinned detect-secrets 1.5.0: exit 1
+      # is ALSO what the hook returns when the baseline is present but unstaged,
+      # where its own output one line above reads "Your baseline file
+      # (.secrets.baseline) is unstaged." and no secret exists anywhere; an
+      # invalid --baseline path exits 2. One status, several causes. Wrong in
+      # the ALARMING direction: a reader who trusts the annotation raises a
+      # false alarm, and one who "fixes" it by editing .secrets.baseline does
+      # real damage. That has happened three times on this project. The same
+      # repair was merged for the two local check scripts in PR #80; CI runs on
+      # Linux, so this side stayed wrong until now.
       - name: Scan tracked files against baseline
         shell: bash
         run: |
           set -o pipefail
-          status=0
           files=()
           while IFS= read -r -d '' file; do
             files+=("$file")
           done < <(git ls-files -z)
           echo "Scanning ${#files[@]} tracked file(s)."
-          detect-secrets-hook --baseline .secrets.baseline "${files[@]}" || status=$?
-          case "${status}" in
-            0) echo "Secret scan clean." ;;
-            1) echo "::error::detect-secrets found a secret that is not in the baseline."; exit 1 ;;
-            3) echo "::error::detect-secrets REWROTE .secrets.baseline. This is not a finding: the committed baseline is stale or was written on a platform that uses a different path separator. Refresh it with scripts/refresh_secrets_baseline.py and commit the result."; git --no-pager diff --stat -- .secrets.baseline; exit 1 ;;
-            *) echo "::error::detect-secrets exited ${status}."; exit "${status}" ;;
-          esac
+          # An impossible-value assertion on this step's own instrument, not a
+          # defensive flourish. MEASURED: the hook exits 0 and prints NOTHING AT
+          # ALL when handed no filenames. MEASURED under this runner's shell
+          # (bash --noprofile --norc -eo pipefail): nounset is off, so an empty
+          # array expands to zero arguments, and errexit does NOT abort on a
+          # command that fails inside a process substitution - so a broken file
+          # enumeration leaves this list empty in silence. The line above would
+          # then print "Scanning 0 tracked file(s)." and the step would report a
+          # clean scan of nothing at all: the same defect as the exit-1 branch
+          # below, pointing the reassuring way instead of the alarming one, and
+          # therefore far likelier to survive unnoticed. This repository can
+          # never legitimately have zero tracked files.
+          if [[ "${#files[@]}" -eq 0 ]]; then
+            echo "::error::No files were enumerated, so nothing was scanned. This is NOT a clean result: a scan of zero files always exits 0, so the file enumeration itself failed or produced nothing."
+            exit 1
+          fi
+          # A REWRITE is ESTABLISHED by comparing the bytes, never read off the
+          # exit code, so it can be named whatever status the hook returned.
+          # `cmp` is POSIX and present on every runner image; `sha256sum` is not.
+          baseline_copy=""
+          if [[ -f .secrets.baseline ]]; then
+            baseline_copy="$(mktemp)"
+            cp -- .secrets.baseline "${baseline_copy}"
+          fi
+          out_file="$(mktemp)"
+          err_file="$(mktemp)"
+          status=0
+          detect-secrets-hook --baseline .secrets.baseline "${files[@]}" >"${out_file}" 2>"${err_file}" || status=$?
+          rewritten=0
+          if [[ -n "${baseline_copy}" ]] && ! cmp -s -- "${baseline_copy}" .secrets.baseline; then
+            rewritten=1
+          fi
+          if [[ "${status}" -eq 0 && "${rewritten}" -eq 0 ]]; then
+            echo "Secret scan clean."
+            exit 0
+          fi
+          # The hook's own words, surfaced immediately before the annotation
+          # rather than left further up the log, because the annotation is what
+          # a reader sees first and it deliberately no longer supplies a cause.
+          if [[ -s "${out_file}" || -s "${err_file}" ]]; then
+            echo "detect-secrets-hook said:"
+            sed -e 's/^/  /' -- "${out_file}" "${err_file}"
+          else
+            echo "detect-secrets-hook produced no output."
+          fi
+          if [[ "${rewritten}" -eq 1 ]]; then
+            echo "::error::detect-secrets REWROTE .secrets.baseline. Its bytes on disk changed, which this step established by comparison and which is NOT a secret finding: the committed baseline is stale or was written on a platform that uses a different path separator. Refresh it with scripts/refresh_secrets_baseline.py and commit the result."
+            git --no-pager diff --stat -- .secrets.baseline
+            exit 1
+          fi
+          echo "::error::detect-secrets-hook exited ${status}. Its own output is printed immediately above and is the authoritative statement of what happened; this workflow does not infer a cause from the exit code. Exit 1 alone means a secret outside the baseline OR an unstaged baseline OR an argument error, and this step cannot tell those apart."
+          exit 1
       # Disclosure guard: every URL host in a tracked file must be on the
       # reviewed public allowlist. Stdlib-only, so it needs no install step.
       # Kept inside this job rather than a new one so the existing required
