@@ -1,84 +1,73 @@
 {
   "feature_id": "F001",
-  "slice": "ci-gate-apps-web",
-  "title": "Close the apps/web CI gap: install, type-check, test and build are gated",
-  "branch": "stsyg-ci-gate-apps-web",
-  "base_commit": "5a3fb24debb502544a0aa952ff39a7d306970a85",
-  "started_at": "2026-08-24T16:50:00Z",
-  "objective": "apps/web today receives exactly ONE CI operation: `npm audit`, which reads the lockfile without installing. The package declares `test: vitest run` (9 files, 110 tests) and `build: tsc -b && vite build`, and neither runs anywhere in CI. A TypeScript error or a failing web test merges green. Because no `npm ci` ever runs there, not one of the lockfile's 336 declared `integrity` digests is enforced by any workflow. This slice makes all four things gate, and PROVES each one can go red rather than asserting it.",
-  "materiality": "[M]",
-  "autonomy_level": "A1",
+  "slice": "guard-symmetry-audit",
+  "title": "Audit every repository-owned guard against its opposite failure direction, and instrument the two highest-value gaps",
+  "branch": "stsyg-guard-symmetry-audit",
+  "base_commit": "96b2cb83a45fb8cad6fb900314f9eba55f3c39f5",
+  "base_commit_at_dispatch": "5a3fb24debb502544a0aa952ff39a7d306970a85",
+  "rebase_note": "main moved from 5a3fb24 to 96b2cb8 (PR #74, stranded Level-2 evaluation records) while this slice was in flight. Rebased: agent-state/progress.md was reconstructed as main's blob VERBATIM as the prefix (sha256 dd59066f89d0b0da, byte-identical) plus this slice's own 14671-byte block, and this contract was taken wholesale. No file that main touched was otherwise altered.",
+  "started_at": "2026-08-24T16:55:00Z",
+  "objective": "Every guard has two failure directions - wrongly ACCEPT (it misses the thing it exists to catch) and wrongly REJECT (it fires on correct work). This repository instruments the direction that motivated each guard and, in several cases, only that one. Enumerate the guards this repository OWNS by searching the tree, state both directions for each, MEASURE which direction is actually tested rather than inferring it from a test name, add the missing direction for the highest-value gaps, and file the rest as reasoned follow-ups.",
+  "materiality": "Test and guard quality only. Zero change to application behaviour, zero change to any published claim, verdict, quota or classification.",
+  "autonomy_level": "A2",
   "required_evaluation_level": 2,
-  "measured_premise": [
-    "P1 MEASURED: base re-derived with `git ls-remote origin refs/heads/main` = 5a3fb24debb502544a0aa952ff39a7d306970a85, equal to this worktree's merge base. The brief's dispatch SHA was not trusted; it was independently confirmed.",
-    "P2 MEASURED: .github/workflows/ci.yml declares four jobs - python, node, secrets, dependencies. The `node` job runs `npm ci` with NO working-directory, i.e. repository root only. Root package.json declares no `workspaces` key, so that install cannot reach apps/web. The only step in the whole workflow with `working-directory: apps/web` is `npm audit --audit-level=high` in the `dependencies` job. The brief's characterisation is confirmed exactly.",
-    "P3 MEASURED: apps/web has 9 test files under src (admin.test.tsx, adviser.test.tsx, deploymentDownload.test.tsx, zip.test.ts, browser.test.tsx, components.test.tsx, format.test.ts, api.test.ts, App.test.tsx). `npm test` reports `Test Files 9 passed (9)` / `Tests 110 passed (110)`. The brief's ~110 is exact.",
-    "P4 MEASURED: apps/web/package-lock.json contains 336 `resolved` URLs and 336 `integrity` values. Grouping every `resolved` URL by host yields exactly ONE host, registry.npmjs.org, with count 336 and zero elsewhere. Root package-lock.json is 87/87 on the same single host.",
-    "P5 MEASURED, and it is the control that makes the EINTEGRITY test meaningful: `npm ci` in apps/web on this machine SUCCEEDS against the pristine lockfile (`added 336 packages`), and `git hash-object apps/web/package-lock.json` is 98f786c2bb0d2e9152d66e6b7ba7b5c3b54b580e both before and after. So (a) npm ci does not rewrite the lockfile, and (b) the declared digests are genuinely satisfiable here, which means a corrupted digest failing is discrimination and not a blanket failure.",
-    "P6 MEASURED, and it CORRECTS an assumption I started with: `gh api repos/stsyg/freetier-atlas/branches/main/protection` returns HTTP 404 `Branch not protected`, and `gh api .../rulesets` returns `[]`. There is NO required status check on main at all. The `secrets` job's comment about keeping an existing required check name therefore does not constrain this slice, and a NEW job is exactly as gating as an extended one: in both cases the gate is the owner reading the checks UI before merging.",
-    "P7 MEASURED: apps/web/tsconfig.json is a solution file referencing tsconfig.app.json (include: src, so test files ARE type-checked) and tsconfig.node.json (include: vite.config.ts only). `npx tsc -b` exits 0 on a clean tree. Note for a future slice, NOT fixed here: vitest.config.ts is in neither project's include, so it is type-checked by nothing. Pre-existing, out of scope.",
-    "P8 MEASURED: apps/web/Dockerfile already runs `npm ci` and `npm run build` at image build time, so this job gates the same commands the shipped image depends on - it is not a new invented surface.",
-    "P9 MEASURED local baseline on the untouched tree: `npx tsc -b` exit 0; `npm test` 9 files / 110 tests passed; `npm run build` succeeded, 54 modules transformed, built in 6.31s."
-  ],
-  "design_decisions": [
-    "D1 A NEW job `web`, not extra steps on `node`. Reasons, in order of weight: (a) the four existing jobs run in PARALLEL, so a fifth job costs ZERO critical path as long as it is shorter than `python`, which installs a Python toolchain and runs 2600+ tests against a postgres service container; folding it into `node` would serialise the whole web pipeline behind Prettier/ESLint and lengthen a job that is currently one of the fastest. (b) Attribution: a red check reading `Web type-check, tests, and build` names the failing area without opening a log, whereas the same failure inside a job called `Node format and lint` is actively misleading. (c) MEASURED (P6) there is no required-check name to preserve, so the one argument for extending `node` does not apply. (d) Isolation: root tooling install and apps/web install stay in separate node_modules trees on separate runners.",
-    "D2 NO dependency cache. The existing workflow uses `actions/setup-node@v4` with no `cache:` key anywhere, and this slice follows existing conventions rather than inventing one. Caching would also buy nothing on the metric that matters: the job is off the critical path, so shaving its install shortens no one's wait. Rejected as scope creep with a cache-poisoning surface attached.",
-    "D3 A SEPARATE type-check step, which requires a new `typecheck` script in apps/web/package.json. `build` is `tsc -b && vite build`, so running only `build` would make the type gate and the build gate the same step and neither could be proven independently. `npm run typecheck` matches the workflow's existing `npm run <script>` shape (format:check, lint) and gives the same affordance locally. Adding a script does NOT touch the lockfile: npm records name/version/license/dependencies/engines for the root package, never `scripts`, and this is verified by blob hash.",
-    "D4 Post-install steps carry `if: ${{ !cancelled() && steps.web_install.outcome == 'success' }}`. This mirrors the `dependencies` job's stated convention that one finding must not hide the rest, and it is load-bearing rather than decorative: a type error does NOT fail vitest (esbuild strips types without checking them), so without this a TS error would mask a genuinely failing test and cost a second round trip. Gating on the install's outcome rather than plain `!cancelled()` is deliberate - if `npm ci` fails there is no node_modules and the remaining steps would emit `vitest: not found` noise instead of information. RISK ACCEPTED AND CONTROLLED: a mistyped step id would make the expression false and SILENTLY SKIP all three gates, which is precisely the 'looks like coverage, cannot fail' failure this slice exists to prevent; it is controlled by proving all three steps actually RUN and actually go RED in real CI, which is required evidence below anyway.",
-    "D5 scripts/check.ps1 and scripts/check.sh are deliberately NOT touched. Another builder holds that file this cycle. The local-parity gap is REPORTED, not repaired here."
-  ],
+  "measured_premise": {
+    "claim": "The false-alarm direction (wrongly REJECT) is under-instrumented relative to the false-accept direction, and it is the more expensive of the two because it damages the instrument's standing rather than the artefact.",
+    "how_the_guard_list_was_derived": "By searching the tree (git grep / git ls-files over scripts, tests, tests/support, .github, apps/api/app), never from the dispatch brief's example list. A list in a brief goes stale; deriving it is the only way to see a guard the brief does not name.",
+    "measured_baseline": "python -m pytest -q on the base commit with DATABASE_URL unset: 2426 passed, 244 skipped. This independently reproduces the figure recorded in the previous handoff (2426 / 244 without Postgres), so two derivations agree."
+  },
   "in_scope": [
-    ".github/workflows/ci.yml - one new `web` job",
-    "apps/web/package.json - add a `typecheck` script only",
-    "agent-state/current_contract.json",
-    "agent-state/progress.md (append only)"
+    "A full inventory of repository-owned guards with BOTH failure directions stated for each, and the tested/untested status of each direction MEASURED by reading the assertions, not the test names.",
+    "GAP 1 - scripts/check_urls.py (the URL host allowlist / disclosure guard) has ZERO tests in EITHER direction. Add tests/unit/test_url_allowlist.py covering both: the false-alarm direction (a legitimate, allowlisted host must never be rejected; the committed tree must stay green; a redaction marker must remain committable; --list must never fail a build) and the missed-leak direction (an unlisted host fails with exit 1; lockfile resolved URLs are in scope; a lookalike domain is not swallowed by a suffix rule; userinfo cannot disguise the real host).",
+    "GAP 1b - the two structural blind spots measured in check_urls.py (a JSON-escaped 'https:\\/\\/' authority is not matched by URL_RE; a file with a NUL byte in its first 8192 bytes is skipped whole, which a UTF-16 encoded text file would trigger) are converted from SILENT holes into MONITORED ones: pinned as the documented limits they are, plus an assertion that no tracked TEXT file currently exercises either. Scoped to text-suffixed files deliberately, so that adding a legitimate binary asset does not red the build - that would be the very false alarm this slice exists to prevent.",
+    "GAP 2 - tests/unit/test_adviser_no_llm_import.py has NO positive control: nothing in the repository demonstrates that its probe is capable of detecting a leak at all. Add a positive control that runs the identical probe shape against a module measured to import the LLM package (app.adviser.router, measured: 7 leaked modules) and requires it to REPORT the leak, plus a probe-list integrity assertion so a rename cannot silently empty the guard.",
+    "GAP 2b - the probe's module list has drifted behind the deterministic adviser core. Four core modules (explain, portability, quota_math, export) were never probed; all four measured clean, so adding them is a strict strengthening with a measured-zero risk of reddening."
   ],
   "out_of_scope_zero_diff": [
-    "apps/web/package-lock.json - HARD BOUNDARY, byte-identical to base and blob-verified. `npm install` or `npm audit fix` on this machine rewrites every `resolved` host to an internal package feed; committing that would publish internal infrastructure to a public repository.",
-    "agent-state/feature_list.json - byte-identical to base. F001 already passes; no ledger flag is flipped.",
-    "tests/support/source_scan.py and tests/unit/test_secrets_baseline.py - the merged secrets route guard. If either goes red it is REPORTED, never repaired.",
-    "scripts/check.ps1 and scripts/check.sh - held by a parallel builder.",
-    "apps/web source, tests, tsconfig, vite/vitest config - the gate runs the existing commands; it does not change what they check.",
-    "apps/web lint and format:check - the root `node` job already covers these paths; adding a duplicate is scope creep.",
-    "vitest.config.ts being outside every tsconfig include (P7) - real, pre-existing, and not this slice's contract.",
-    "any weakening of an existing check",
-    "merge or promotion of the pull request"
+    "agent-state/feature_list.json - byte-identical, blob 154de1fef2ba20f587c9ec2d1302ebe2bfb5bfa1. No feature flag flips.",
+    "tests/support/source_scan.py (blob 3a86f03aeb17) and tests/unit/test_secrets_baseline.py (blob 183619e00375) - audited and reported on, never edited. If either goes red, that is reported rather than repaired.",
+    "apps/web/package-lock.json (blob 98f786c2bb0d) - untouched; every resolved URL stays on the public registry.",
+    ".github/workflows/ci.yml (blob 4f80c771f956) and scripts/check.ps1 (blob f68e2b972997) - two other builders hold these concurrently. Not edited. scripts/check.sh (blob 4543d6f11eab) left alone for symmetry.",
+    "scripts/check_urls.py itself - the measured blind spots are REPORTED and PINNED, never repaired here. Repairing a guard's matching rules is a behaviour change to a security control and needs owner approval; and a guard that cannot hold both directions is a finding, not something to trade away.",
+    "Every application module: no change to ingest, classify, publish, read_api or adviser behaviour."
   ],
   "acceptance_criteria": [
-    "AC1 CI runs `npm ci` inside apps/web, so the lockfile's 336 integrity digests are enforced by a workflow for the first time.",
-    "AC2 CI type-checks apps/web as a step distinct from the build.",
-    "AC3 CI runs the 9 apps/web test files / 110 tests.",
-    "AC4 CI builds apps/web with `vite build`.",
-    "AC5 EACH of the four gates is PROVEN able to go RED, with the prediction recorded BEFORE the run and compared against the outcome. A gate that merely runs is not accepted.",
-    "AC6 The three post-install gates are proven to RUN rather than skip, which is what discriminates a working `if:` expression from a silently-false one.",
-    "AC7 Every deliberate break is restored BYTE-EXACTLY, proven by `git hash-object` blob comparison against the base blob, never by `git diff --numstat`.",
-    "AC8 apps/web/package-lock.json is byte-identical to base, and its `resolved` host distribution is re-derived as 336/336 registry.npmjs.org with zero elsewhere.",
-    "AC9 No internal feed hostname or credential appears in any committed file, commit message, PR body or report.",
-    "AC10 No existing check is weakened. The four pre-existing jobs are byte-unchanged in ci.yml apart from the addition of a new job block.",
-    "AC11 Critical-path impact is MEASURED from a real CI run, not estimated - the new job's duration compared against the longest pre-existing job.",
-    "AC12 Protected state verified by blob hash: feature_list.json, source_scan.py, test_secrets_baseline.py, .secrets.baseline, package-lock.json (both), check.ps1.",
-    "AC13 progress.md is proven append-only by RAW BYTE PREFIX comparison, not by numstat."
+    "The guard inventory is derived by searching the tree and names every repository-owned guard found, each with an explicit wrongly-ACCEPT and wrongly-REJECT statement.",
+    "For every guard, the tested/untested status of each direction is established by reading what the test ASSERTS, and any case where a test name overstates its assertion is reported.",
+    "tests/unit/test_url_allowlist.py exists and covers both directions of the URL host allowlist guard.",
+    "tests/unit/test_adviser_no_llm_import.py gains a positive control proving its probe can detect a leak.",
+    "EVERY added test is proven non-vacuous by mutation: baseline GREEN, the guarded thing broken, test RED, file restored byte-exactly and restoration PROVED by git hash-object (never by git diff --numstat).",
+    "Every mutation prints the patched line and asserts its anchor matched EXACTLY ONCE, so a mutation that does not apply cannot be mistaken for a control that does not fire.",
+    "No existing guard is weakened. Full suite passes at or above the 2426-passed baseline.",
+    "No internal package-feed hostname or credential appears in any file, report, commit message or PR body."
   ],
   "verification_commands": [
-    "git ls-remote origin refs/heads/main",
-    "cd apps/web && npm ci && npm run typecheck && npm test && npm run build",
-    "gh run view <id> --json jobs (per-step conclusions and timings from the real run)",
-    "git hash-object <protected paths> compared against `git rev-parse <base>:<path>`"
+    "python -m pytest -q",
+    "python -m pytest -q tests/unit/test_url_allowlist.py tests/unit/test_adviser_no_llm_import.py",
+    "python scripts/check_urls.py",
+    "python scripts/check_secrets_baseline.py",
+    "ruff check . && ruff format --check .",
+    "git hash-object <each protected path> compared against the recorded pre-change blob"
   ],
   "negative_and_regression_tests": [
-    "N1 A deliberate TypeScript type error in an apps/web source file. Prediction: typecheck RED, test GREEN (vitest strips types without checking), build RED (build re-runs tsc -b).",
-    "N2 A deliberately inverted vitest assertion. Prediction: typecheck GREEN, test RED, build GREEN.",
-    "N3 A build-only break that is invisible to tsc - index.html pointing at a module that does not exist. tsc reads no HTML, so prediction: typecheck GREEN, test GREEN, build RED on an unresolved entry.",
-    "N4 A single corrupted `integrity` digest in apps/web/package-lock.json. Prediction: `npm ci` fails EINTEGRITY. Proven LOCALLY and never pushed, because the control in P5 makes it conclusive and pushing a corrupted lockfile to a public repository is a worse trade.",
-    "N5 Control for N4: the pristine lockfile must `npm ci` cleanly on the same machine, otherwise N4's failure proves nothing about the digest."
+    "Mutation M1: break the suffix rule in is_allowed so a lookalike domain matches - the lookalike test must go RED.",
+    "Mutation M2: break userinfo stripping in normalise_host - the userinfo-disguise test must go RED.",
+    "Mutation M3: make main() return 0 on violations - the end-to-end unlisted-host test must go RED.",
+    "Mutation M4: break the leak predicate inside the adviser probe - the NEW positive control must go RED while the ORIGINAL test stays GREEN, which is the direct demonstration that the original was incapable.",
+    "Mutation M5: point the probe list at a module that does not exist - the probe-list integrity test must go RED.",
+    "Regression: full suite, plus the untouched secrets-baseline and route-guard suites."
   ],
   "data_security_privacy_portability_z0": {
-    "data": "No migration, no schema change, no data touched.",
-    "security_privacy": "The internal package-feed hostname configured on this machine is never written to any repository file, commit message, PR body or report. The new job pins no secret; the workflow's `permissions: contents: read` is unchanged and the job inherits it. Running `npm ci` in CI newly ENFORCES 336 integrity digests that nothing enforced before, which is a security improvement rather than a risk.",
-    "portability": "No new runtime, service or dependency. The job runs commands apps/web already declares and apps/web/Dockerfile already executes.",
-    "z0": "No classification, quota or cost logic is touched. Indirect Z0 benefit only: the public UI that presents Z0 verdicts can no longer ship a type error or a failing test through a green tick."
+    "data": "None. No migration, no schema change, no catalogue record touched.",
+    "security": "Positive. The disclosure guard that keeps internal hostnames out of a public repository gains its first tests, and two structural blind spots in it become monitored instead of silent.",
+    "privacy": "No secret, token, credential or internal hostname is read, printed or committed. The new tests use RFC 2606 reserved names only.",
+    "portability": "None. Standard library plus pytest; no new dependency, no network, no database.",
+    "z0": "No Z0 rule, quota or classification is read or changed."
   },
-  "evaluation_level_rationale": "Level 2. The change is to the merge gate itself, and the failure mode is invisible-by-construction: a job that runs and cannot fail looks exactly like coverage. Only adversarial re-derivation catches that, so it must not be self-certified.",
-  "boundary": "Draft PR only. Do not merge. Do not modify agent-state/feature_list.json.",
-  "status": "in-progress"
+  "evaluation_level_rationale": "Level 2. The work changes the repository's security-boundary instrumentation (the disclosure guard) and asserts claims about what other guards do and do not catch. A claim about a guard's capability is exactly the kind of claim that reads true and measures false, so it needs an adversarial fresh-context check.",
+  "boundary": "Draft PR only. Do not merge. Do not flip any ledger flag. agent-state/feature_list.json stays byte-identical and F001 keeps its existing state.",
+  "measured_results": {
+    "status": "in_progress"
+  },
+  "status": "in_progress"
 }
