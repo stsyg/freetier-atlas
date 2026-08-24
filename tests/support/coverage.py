@@ -36,14 +36,27 @@ def assert_declarations_match_signals(
     """Database-free variant: check a config against per-category signals.
 
     ``signals`` maps a canonical category slug to the signals a slice expects its
-    published catalogue to produce. Categories absent from ``signals`` are
-    treated as having nothing published, which derives ``unknown`` and is never a
-    mismatch -- so a slice can assert only the pairs it actually cares about.
+    published catalogue to produce. Categories **absent** from ``signals`` are
+    ones the slice makes no assertion about, and are skipped -- so a slice can
+    assert only the pairs it actually cares about.
+
+    That skip is load-bearing rather than cosmetic. Absence used to be modelled
+    as "nothing is published there", which derived ``unknown`` and was never
+    material. Since the ``f008-obsC`` ruling a derived ``unknown`` *can* be
+    material (under a declared ``verified_free``), so modelling silence as
+    evidence of absence would make every partial call fail on categories the
+    caller never claimed anything about. The real declared-vs-derived check
+    against an actual catalogue is
+    :func:`app.ingest.reconcile_coverage.assert_no_coverage_contradictions`;
+    this variant only judges what it was given.
     """
 
     failures: list[str] = []
     for slug, entry in sorted(config.coverage.items()):
-        derived = derive_coverage_state(signals.get(slug, CoverageSignals()))
+        expected = signals.get(slug)
+        if expected is None:
+            continue
+        derived = derive_coverage_state(expected)
         if not is_material_mismatch(entry.state, derived):
             continue
         failures.append(
@@ -53,7 +66,7 @@ def assert_declarations_match_signals(
                     category_slug=slug,
                     declared_state=entry.state,
                     derived_state=derived,
-                    signals=signals.get(slug, CoverageSignals()),
+                    signals=expected,
                 )
             )
         )

@@ -34,12 +34,25 @@ window must not be masked by an optimistic free claim. ``offered_no_z0`` is
 itself an assertion ("this category exists here but nothing in it is Z0"), so a
 published offer we could not classify degrades to ``incomplete`` rather than
 being counted as evidence for that assertion.
+
+Materiality and display are separate decisions
+----------------------------------------------
+Deriving a state, deciding whether the derivation *contradicts* the declaration
+(:data:`MATERIAL_MISMATCHES`), and deciding what the catalogue *presents*
+(:data:`MATERIAL_MISMATCH_DISPLAY`) are three separate steps on purpose. Until
+the ``f008-obsB`` ruling the second and third were fused: raising a
+contradiction forced the display to ``conflicting``, so a rule that was right
+about materiality could only be adopted by also changing what the public
+catalogue claimed. Splitting them is what lets a stale free claim stop being
+presented as free (correct) without a never-corroborated free claim being
+suppressed for an ingest-coverage reason (incorrect).
 """
 
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
+from types import MappingProxyType
 
 from app.models.vocab import COVERAGE_STATES
 
@@ -63,14 +76,22 @@ DERIVABLE_STATES: frozenset[str] = frozenset(
 #: (declared, derived) pairs that are a *material* contradiction and therefore
 #: raise a pending review item.
 #:
-#: Two rules shape this set:
+#: Three rules shape this set:
 #:
-#: * A derived ``unknown`` is never material. An evidence-backed declaration may
-#:   legitimately run ahead of the ingest pipeline (a provider slice declares
-#:   ``verified_free`` with an official URL before its offers are published), and
-#:   flooding the review queue with those would train reviewers to ignore it.
+#: * A derived ``unknown`` is material for **exactly one** declaration --
+#:   ``verified_free``. Every other evidence-backed declaration may legitimately
+#:   run ahead of the ingest pipeline (a provider slice declares
+#:   ``offered_no_z0`` or ``not_offered`` with an official URL before, or
+#:   without ever, publishing offers there), and flooding the review queue with
+#:   those would train reviewers to ignore it. A *free claim* is different in
+#:   kind: it is the one declaration that asserts the product's headline fact,
+#:   so a catalogue that has never corroborated it is a question for a human.
 #: * A declared hedge (``incomplete`` / ``stale`` / ``conflicting``) is already
 #:   honest about uncertainty, so it never contradicts anything.
+#: * Evidence past its refresh window cannot sustain a free claim. ``stale``
+#:   means the snapshot the claim rests on has expired, and an expired claim is
+#:   a guess -- "unknown is better than guessed" applies to the staleness path
+#:   exactly as it applies to the evidence path.
 #:
 #: The Q9-A cases are the first four: declaring ``unknown`` or ``not_offered``
 #: over a real published offer is the specific dishonesty this slice must catch.
@@ -88,9 +109,39 @@ MATERIAL_MISMATCHES: frozenset[tuple[str, str]] = frozenset(
         # A free claim the catalogue does not support.
         ("verified_free", "offered_no_z0"),
         ("verified_free", "conflicting"),
+        # A free claim whose backing evidence has expired (f008-obsB).
+        ("verified_free", "stale"),
+        # A free claim the catalogue has never corroborated (f008-obsC).
+        ("verified_free", UNKNOWN),
         # A "no free tier here" claim the catalogue contradicts.
         ("offered_no_z0", "verified_free"),
         ("offered_no_z0", "conflicting"),
+    }
+)
+
+#: How a material pair is *displayed*, where the generic ``conflicting`` collapse
+#: would be wrong. Any material pair absent from this table displays
+#: ``conflicting``.
+#:
+#: Raising a review item and choosing a display are two different decisions, and
+#: conflating them is how a correct materiality rule produces an incorrect
+#: public claim:
+#:
+#: * ``(verified_free, stale)`` displays ``stale``. The claim must stop being
+#:   presented as free -- that is the whole point of the ruling -- but nothing
+#:   here *disagrees*; the snapshot expired. Calling expiry a conflict would be
+#:   its own small guess, and ``stale`` already means precisely this.
+#: * ``(verified_free, unknown)`` keeps displaying ``verified_free``. A
+#:   ``verified_free`` declaration is provenance-backed (the config loader
+#:   rejects an offered category with no source), and an *absent* publication
+#:   refutes nothing: the publication gate withholds offers by design, so most
+#:   pairs derive ``unknown`` for reasons that have nothing to do with the
+#:   claim's truth. Suppressing a true free claim is a defect too. The review
+#:   item is the remedy here, not a downgrade.
+MATERIAL_MISMATCH_DISPLAY: Mapping[tuple[str, str], str] = MappingProxyType(
+    {
+        ("verified_free", "stale"): "stale",
+        ("verified_free", UNKNOWN): "verified_free",
     }
 )
 
@@ -193,16 +244,17 @@ def is_material_mismatch(declared_state: str | None, derived_state: str) -> bool
 def effective_state(declared_state: str | None, derived_state: str) -> str:
     """The state the catalogue should present for a pair.
 
-    An undeclared pair is ``unknown``; a material contradiction surfaces as
-    ``conflicting`` rather than silently preferring either side; otherwise the
-    declaration stands. ``derived_state`` is always reported alongside, so
-    nothing is hidden by this collapse.
+    An undeclared pair is ``unknown``. A material contradiction surfaces as
+    ``conflicting`` rather than silently preferring either side, unless
+    :data:`MATERIAL_MISMATCH_DISPLAY` names a truer label for that specific
+    pair. Otherwise the declaration stands. ``derived_state`` is always reported
+    alongside, so nothing is hidden by this collapse.
     """
 
     if declared_state is None:
         return UNKNOWN
     if is_material_mismatch(declared_state, derived_state):
-        return "conflicting"
+        return MATERIAL_MISMATCH_DISPLAY.get((declared_state, derived_state), "conflicting")
     return declared_state
 
 
@@ -246,6 +298,7 @@ __all__: Sequence[str] = (
     "DERIVABLE_STATES",
     "FREE_ZERO_COST_CLASS",
     "MATERIAL_MISMATCHES",
+    "MATERIAL_MISMATCH_DISPLAY",
     "UNKNOWN",
     "CoverageSignals",
     "derive_coverage_state",

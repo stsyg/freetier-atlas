@@ -189,8 +189,8 @@ def test_material_mismatches(declared: str, derived: str) -> None:
 @pytest.mark.parametrize(
     ("declared", "derived"),
     [
-        # An evidence-backed declaration may legitimately run ahead of ingestion.
-        ("verified_free", "unknown"),
+        # An evidence-backed declaration that asserts no free tier may
+        # legitimately run ahead of the ingest pipeline.
         ("offered_no_z0", "unknown"),
         ("not_offered", "unknown"),
         # A declared hedge is already honest about uncertainty.
@@ -206,10 +206,26 @@ def test_non_material_pairs(declared: str, derived: str) -> None:
     assert not is_material_mismatch(declared, derived)
 
 
-def test_derived_unknown_is_never_material() -> None:
+def test_derived_unknown_is_material_only_for_a_free_claim() -> None:
+    """The ``f008-obsC`` ruling, and the flood guard it deliberately keeps.
+
+    Slice S2 ruled a derived ``unknown`` *never* material because making it
+    material would have floored the queue at 14 items per provider. Measured
+    against the merged tree that floor is still 93 of 98 pairs, so the broad
+    rule stays rejected -- but exactly one declaration is a positive free claim,
+    and that one now raises a review item. Widening this beyond
+    ``verified_free`` re-introduces the flood; narrowing it to nothing
+    re-introduces the never-reviewed free claim.
+    """
+
+    assert is_material_mismatch("verified_free", UNKNOWN)
     for declared in COVERAGE_STATES:
+        if declared == "verified_free":
+            continue
         assert not is_material_mismatch(declared, UNKNOWN)
-    assert all(derived != UNKNOWN for _declared, derived in MATERIAL_MISMATCHES)
+    assert {declared for declared, derived in MATERIAL_MISMATCHES if derived == UNKNOWN} == {
+        "verified_free"
+    }
 
 
 def test_undeclared_pair_is_unknown_and_never_conflicting() -> None:
@@ -304,7 +320,38 @@ def test_helper_fails_a_not_offered_declared_over_a_published_offer() -> None:
         )
 
 
-def test_helper_ignores_categories_with_nothing_published() -> None:
-    """A slice may assert only the pairs it cares about; silence is not a failure."""
+def test_helper_ignores_categories_the_slice_did_not_assert() -> None:
+    """A slice may assert only the pairs it cares about; silence is not a claim.
 
-    assert_declarations_match_signals(_cloudflare_config(), {})
+    Since the ``f008-obsC`` ruling a derived ``unknown`` can be material, so
+    this must skip unasserted categories rather than model them as "nothing is
+    published". Cloudflare declares three ``verified_free`` categories, and
+    treating silence as absence would fail all three here for no reason the
+    caller stated.
+    """
+
+    config = _cloudflare_config()
+    assert sum(entry.state == "verified_free" for entry in config.coverage.values()) == 3
+    assert_declarations_match_signals(config, {})
+
+
+def test_helper_still_fails_a_free_claim_the_slice_says_is_uncorroborated() -> None:
+    """NON-VACUITY GUARD for the skip above: an ASSERTED empty catalogue fails.
+
+    Skipping silence must not become skipping everything. When a slice actually
+    states that a category publishes nothing, a ``verified_free`` declaration
+    over it is the ``f008-obsC`` contradiction and must be reported.
+    """
+
+    config = _cloudflare_config()
+    claimed = next(
+        slug for slug, entry in config.coverage.items() if entry.state == "verified_free"
+    )
+
+    with pytest.raises(AssertionError) as exc:
+        assert_declarations_match_signals(config, {claimed: CoverageSignals()})
+
+    message = str(exc.value)
+    assert claimed in message
+    assert "verified_free" in message
+    assert "unknown" in message
