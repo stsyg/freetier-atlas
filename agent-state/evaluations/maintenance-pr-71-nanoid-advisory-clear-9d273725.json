@@ -1,0 +1,219 @@
+{
+  "schema_version": 1,
+  "feature_id": "maintenance",
+  "increment": "pr-71-nanoid-advisory-clear",
+  "evaluated_commit": "9d2737255ae0e43b3a310c26204664ecb582f758",
+  "commit_sha_evaluated": "9d2737255ae0e43b3a310c26204664ecb582f758",
+  "base_commit": "80c168490ea334c61ca7944c3469045a83d80bb7",
+  "evaluator": "fresh-context independent Level 2 evaluator (Copilot CLI Chief)",
+  "evaluated_at": "2026-08-14T21:20:00Z",
+  "harness": {
+    "version": "2026-08-12.1",
+    "content_hash": "7209c820e7833b8a",
+    "loaded_first": true
+  },
+  "required_evaluation_level": 2,
+  "evaluation_level": 2,
+  "disposition": "passed",
+  "overall_disposition": "passed",
+  "blocking_issues": [],
+  "summary": "PR #71 bumps the single transitive dev dependency nanoid from 3.3.17 to 3.3.18 in apps/web/package-lock.json to clear GHSA-2v37-7h3g-55p8. Every material claim was re-derived independently. The central open question -- whether the committed sha1 integrity digest pins the true public bytes, given that this machine's npm registry is an internal mirror and the public registry is unreachable here -- is now CLOSED by direct measurement on a GitHub-hosted runner resolving from the real public registry. dist.shasum for nanoid@3.3.18 equals f66a2de1199ffde0fcf21c8a5f13106b1c081913, the 5713-byte public tarball hashes to that same value, its base64 form 9mot4Rmf/eD88hyKXxMQaxwIGRM= is byte-identical to the committed integrity, and npm ci from the committed lockfile succeeded with integrity enforcement (exit 0). The green gate is caused by the vulnerability being fixed, not by any weakening of the check.",
+  "digest_provenance_L1": {
+    "status": "closed",
+    "why_it_was_open": "The build machine's npm registry is an internal mirror, verified by SHA-256 of the hostname without ever recording the value: local host hash 2283DBF20C50 versus public registry.npmjs.org hash 0DC11026AC75, not equal. Direct HTTPS to the public registry from this machine fails at TLS and the agent web-fetch path failed at transport level. All builder-side derivations therefore traced through one mirror, which is one measurement repeated rather than independent agreement.",
+    "independent_source_used": "GitHub-hosted ubuntu-latest runner. Evaluator-owned temporary probe workflow on a throwaway branch created from the base commit, checking out the PR head read-only. The PR branch was never touched. Branch deleted after use; run logs retained as durable evidence.",
+    "probe_run_id": "31840784470",
+    "probe_conclusion": "success",
+    "runner_registry": "https://registry.npmjs.org/",
+    "measurements": {
+      "npm_view_dist_shasum_3_3_18": "f66a2de1199ffde0fcf21c8a5f13106b1c081913",
+      "committed_integrity_decoded_hex": "f66a2de1199ffde0fcf21c8a5f13106b1c081913",
+      "public_tarball_bytes": 5713,
+      "public_tarball_sha1_hex": "f66a2de1199ffde0fcf21c8a5f13106b1c081913",
+      "public_tarball_sha1_base64": "9mot4Rmf/eD88hyKXxMQaxwIGRM=",
+      "committed_integrity_literal": "sha1-9mot4Rmf/eD88hyKXxMQaxwIGRM=",
+      "npm_ci_exit_from_committed_lockfile": 0,
+      "npm_ci_packages_added": 287,
+      "installed_nanoid_version": "3.3.18",
+      "lockfile_unchanged_by_install": true
+    },
+    "controls": {
+      "positive_control_3_3_17_public_shasum": "f1c3aa253c52547956a52c50bff754316f61037a",
+      "positive_control_matches_already_committed_3_3_17_digest": true,
+      "negative_control_3_3_16_public_shasum": "a04d8ec4b1f10009d2d533947aefe4293737816c",
+      "negative_control_differs_from_subject": true,
+      "why_the_positive_control_is_non_vacuous": "The 3.3.17 digest was committed to this repository BEFORE this work began, so the method recovers a pre-existing datum that the builder did not author, from a source that never touched this machine. That is qualitatively stronger than self-consistency. The 3.3.16 digest differs from the subject, so the method also discriminates between versions and would have failed had the derivation been wrong."
+    },
+    "why_npm_ci_is_the_strong_form": "npm ci verifies each package's declared integrity against the bytes actually downloaded and aborts with EINTEGRITY on mismatch. Succeeding against the real public registry using the committed lockfile is a byte-level proof of the digest. This is categorically different from npm audit, which performs no install, downloads no tarball and verifies no hash."
+  },
+  "claims_rederived": [
+    {
+      "claim": 1,
+      "statement": "npm audit BEFORE reproduces the advisory (1 high, bare exit 1); AFTER reports 0 vulnerabilities with bare exit 0, plain and --audit-level=high.",
+      "result": "confirmed",
+      "evidence": [
+        "Reconstructed both states in isolated temp directories from the base and head blobs. BEFORE: 'nanoid <3.3.18', severity high, '1 high severity vulnerability', BARE_EXIT_CODE=1. AFTER: 'found 0 vulnerabilities', BARE_EXIT_CODE=0.",
+        "Exit codes read from a BARE invocation with no pipeline in between, per the documented Select-Object -First N hazard.",
+        "npm audit --json confirms the identifier exactly: GHSA-2v37-7h3g-55p8, range <3.3.18, severity high, CVSS 5.9, metadata high=1 total=1.",
+        "Independently reconfirmed on the public runner: AUDIT_PLAIN_EXIT=0 and AUDIT_HIGH_EXIT=0."
+      ]
+    },
+    {
+      "claim": 2,
+      "statement": "diff --numstat is exactly 3 3 apps/web/package-lock.json, one hunk, only version/resolved/integrity on node_modules/nanoid, nothing else except ledger files.",
+      "result": "confirmed",
+      "evidence": [
+        "numstat base..head: '3 3 apps/web/package-lock.json', '23 0 agent-state/progress.md', '63 78 agent-state/current_contract.json'. Three files, two of them ledger.",
+        "The lockfile diff is a single hunk changing exactly version, resolved and integrity on node_modules/nanoid; resolved stays on registry.npmjs.org.",
+        "Head is a single commit whose parent IS the base, so the comparison is not confounded by intervening history.",
+        "Zero .py and zero .ts/.tsx/.js/.css/.html files in the diff."
+      ]
+    },
+    {
+      "claim": 3,
+      "statement": "336 resolved URLs, 336 on registry.npmjs.org, 0 elsewhere; no internal hostname in diff, commit message or PR body.",
+      "result": "confirmed",
+      "evidence": [
+        "HEAD: resolved_total=336, registry.npmjs.org=336, other hosts=0, non-https=0. BASE measures identically, so the change preserved the boundary rather than merely not obviously breaking it.",
+        "Exhaustive host enumeration rather than keyword search: every host in the DIFF is {cloud.google.com, registry.npmjs.org}; COMMIT_MSG contains no URL host; PR_BODY contains only registry.npmjs.org.",
+        "Cross-checked against this machine's ACTUAL configured internal feed host, read at run time and compared by SHA-256 prefix without printing or recording it: present in DIFF=false, COMMIT_MSG=false, PR_BODY=false.",
+        "The repository's own scripts/check_urls.py passes at head content: 1012 URLs, 51 distinct hosts, all allowlisted."
+      ]
+    },
+    {
+      "claim": 4,
+      "statement": "npm ci clean from the committed lockfile, exit 0, nanoid 3.3.18, lockfile unchanged.",
+      "result": "confirmed",
+      "evidence": [
+        "Performed on the GitHub-hosted runner against the real public registry: npm ci exit 0, 'added 287 packages, and audited 288 packages', NPM_CI_EXIT=0.",
+        "INSTALLED_NANOID=3.3.18.",
+        "git diff --exit-code on package-lock.json after install returned clean: LOCKFILE_UNCHANGED=true."
+      ]
+    },
+    {
+      "claim": 5,
+      "statement": "apps/web tests (110) and tsc -b && vite build both pass.",
+      "result": "confirmed",
+      "evidence": [
+        "On the public runner at the PR head: Test Files 9 passed (9), Tests 110 passed (110), duration 6.46s. Per-file tally re-added independently: 22+19+23+18+3+6+3+8+8 = 110.",
+        "Build: 'tsc -b && vite build', vite v6.4.3, 54 modules transformed, built in 1.17s.",
+        "This is the first execution of these in CI-grade conditions for this commit, because the repository's own CI never runs them."
+      ]
+    },
+    {
+      "claim": 6,
+      "statement": "scripts/check.ps1 -NodeAudit passes overall, exit 0.",
+      "result": "partially_rederived",
+      "evidence": [
+        "In this fresh worktree the script exits 1, NOT 0. Every failure is an absent local toolchain rather than a defect in the PR: ruff, pytest, pip-audit and detect-secrets-hook are not on PATH, there is no .venv, and prettier/eslint fail because the root npm install was never performed in this worktree.",
+        "The checks that are the actual subject of this PR both PASS at head content: root tooling audit and apps/web audit each report 'found 0 vulnerabilities'.",
+        "Two environment-independent checks also PASS: Secrets baseline shape (31 tracked files, 107 entries) and URL host allowlist (1012 URLs, 51 hosts).",
+        "The remaining components are independently evidenced for this exact commit by the real CI run, where 'Node format and lint' (Prettier + ESLint) and 'Python lint, format, tests' (ruff, ruff format, pytest against a real database service) both concluded success on 9d27372. I attribute the local exit 1 to my unprovisioned environment and NOT to the change, but I record that I did not reproduce the literal exit 0 myself."
+      ]
+    },
+    {
+      "claim": 7,
+      "statement": "Python suite unaffected, zero .py diff.",
+      "result": "confirmed",
+      "evidence": [
+        "The complete changed-file set is three files; count of .py files in the diff is 0. No requirements file, pyproject, migration or Python source is touched.",
+        "Corroborated dynamically: the 'Python lint, format, tests' CI job concluded success on this exact head."
+      ]
+    },
+    {
+      "claim": 8,
+      "statement": "feature_list.json byte-identical (154de1fe...), no ledger flag flipped, progress.md strict byte-prefix append with zero deletions.",
+      "result": "confirmed",
+      "evidence": [
+        "agent-state/feature_list.json blob is 154de1fef2ba20f587c9ec2d1302ebe2bfb5bfa1 at BOTH base and head, compared by blob hash rather than numstat per the documented hazard. It does not appear in the changed-file set at all, so no flag could have been flipped.",
+        "progress.md: base 2923 lines, head 2946 lines, +23; every one of the first 2923 lines is identical, so the change is a strict prefix-preserving append. numstat corroborates '23 0', zero deletions."
+      ]
+    },
+    {
+      "claim": 9,
+      "statement": "CI run 31839541333 reported SUCCESS with all five checks passing.",
+      "result": "confirmed_with_correction_to_my_own_first_reading",
+      "evidence": [
+        "Run 31839541333: workflow CI, event pull_request, headSha 9d2737255ae0e43b3a310c26204664ecb582f758, conclusion success.",
+        "I initially mis-scoped this as FOUR checks because the Actions jobs list returns only four. Re-derived at check-run level, which is the correct instrument: total_count=5, all success; the fifth is 'GitGuardian Security Checks', an external app check rather than an Actions job. The five-check claim is correct and my first reading was wrong.",
+        "SCOPE LIMIT, verified and agreed: this green run validates the VERSION against the public advisory database. It does NOT validate the integrity digest, because npm audit performs no install and hashes nothing. Digest provenance was established separately."
+      ]
+    }
+  ],
+  "prohibited_outcomes_checked": [
+    {
+      "item": "no dependency overrides added",
+      "result": "satisfied_with_a_precision_correction",
+      "detail": "apps/web/package.json DOES already contain an overrides block (vite, esbuild, js-yaml). It is pre-existing and none of them is nanoid. The blob is byte-identical between base and head (121d8a1f8a1ccea9116c9bd098732eb26e33aac8) and the file is not in the changed-file set, so this PR adds no override. The prohibition holds FOR THIS DELTA, but the unqualified phrasing 'no dependency overrides' does not describe the file's contents and should be stated as 'no override added, and none for nanoid'."
+    },
+    {
+      "item": "no audit suppression",
+      "result": "satisfied",
+      "detail": "No .npmrc or .yarnrc exists anywhere in the tree at head. No overrides or resolutions key in the lockfile itself."
+    },
+    {
+      "item": "no --audit-level relaxation",
+      "result": "satisfied",
+      "detail": "ci.yml and scripts/check.ps1 are both absent from the changed-file set. CI already used --audit-level=high before this PR; that is pre-existing and unchanged, not a relaxation introduced here. The AFTER state additionally passes plain npm audit with no level flag, which is the stricter test."
+    },
+    {
+      "item": "no GitHub tarball source",
+      "result": "satisfied",
+      "detail": "All 336 resolved URLs are on registry.npmjs.org. The only github.com string in the nanoid entry is the pre-existing funding sponsor link, which is metadata and not a resolution source."
+    },
+    {
+      "item": "no public-registry bypass",
+      "result": "satisfied",
+      "detail": "336/336 on registry.npmjs.org, 0 elsewhere, 0 non-https."
+    },
+    {
+      "item": "no major-version jump",
+      "result": "satisfied",
+      "detail": "3.3.17 -> 3.3.18, a patch bump inside the 3.x line. postcss requires the CommonJS build and the ESM-only 4/5 lines were correctly avoided."
+    },
+    {
+      "item": "not a vacuous green",
+      "result": "satisfied",
+      "detail": "The gate passes because the installed dependency clears the advisory floor. Proven positively: advisory range is <3.3.18, installed version is 3.3.18, npm ci actually installed those exact bytes on a public runner under integrity enforcement, and audit reports 0 vulnerabilities with no flag relaxation and no suppression mechanism present anywhere in the tree."
+    }
+  ],
+  "disclosed_ci_gap": {
+    "status": "CONFIRMED",
+    "detail": "No CI job installs apps/web. The 'Node format and lint' job runs npm ci at the repository ROOT with no working-directory, then Prettier and ESLint. apps/web receives only 'npm audit --audit-level=high' in the Dependency audit job, and npm audit performs no install. Corroborated from a second independent direction: the root package.json declares no workspaces, so a root npm ci cannot reach apps/web. Consequence: apps/web's 9 test files / 110 tests, tsc -b type-checking and the production build never run in CI. Not a defect of this PR and explicitly not grounds for failing it."
+  },
+  "postcss_resolution": {
+    "status": "CONFIRMED correct; postcss needs no change",
+    "detail": "The pinned and installed postcss is 8.5.25 and its lockfile entry declares nanoid ^3.3.16. 3.3.18 satisfies ^3.3.16 and equally satisfies the ^3.3.17 required by registry-latest 8.5.26, so both readings reproduce and both are satisfied. postcss is the ONLY package in the tree declaring a nanoid dependency, so no second consumer imposes a conflicting range."
+  },
+  "findings_not_disclosed_by_the_builder": [
+    {
+      "severity": "informational",
+      "finding": "The lockfile's integrity digests are sha1 across the board: 335 sha1- and 1 sha512-, identical on base and head. The new entry correctly matches that convention. But the public registry's own canonical integrity for nanoid@3.3.18 is sha512-DTg4MJbGMWkfi6VZFdNt2/caMbQy4Ou+Op/hJQvGEWcnVfoA1QA+xzRKAzw9jD6+GVOOeYr/mIcuDSdug6F6+w==, whereas the repository pins the weaker sha1 form derived from dist.shasum. npm enforces whichever algorithm the lockfile declares, so the install is still verified and my public npm ci confirms these exact bytes. Pre-existing and repository-wide, NOT introduced by this PR, but sha1 is a weaker supply-chain primitive than sha512 and the lockfile-wide sha1 pattern is itself a fingerprint of mirror-mediated lockfile generation. Worth a separate slice."
+    },
+    {
+      "severity": "informational",
+      "finding": "nanoid is a DEV-ONLY dependency here (dev: true, reached solely through postcss, itself dev). The advisory's exposure is build-time rather than in shipped product code, which lowers real-world severity relative to the raw 'high' label. This does not reduce the value of fixing it and does not change the disposition."
+    },
+    {
+      "severity": "merge_mechanics_only",
+      "finding": "PR #71 is mergeable=CONFLICTING because main advanced to 0b3dbdecd72a8e801de6b13e1ee60e784a5d073b (PR #70, AWS provider). git merge-tree reports conflicts ONLY in agent-state/current_contract.json and agent-state/progress.md. There is NO conflict in apps/web/package-lock.json, and #70 changed 44 files with zero under apps/web. The substantive artefact is unaffected; the conflict is ledger-only."
+    }
+  ],
+  "things_i_got_wrong_myself": [
+    {
+      "error": "I first reported the CI run as having FOUR checks and flagged the five-check claim as a possible discrepancy. Wrong instrument: I read the Actions jobs list, which excludes external check-runs. At check-run level total_count=5, all success. The builder's claim was accurate; my first reading was not."
+    },
+    {
+      "error": "My first internal-hostname leak scan reported internal_host_leak=true for the DIFF and COMMIT_MSG. That was a false positive produced by my own matcher, not a real leak. I refused to accept it and disambiguated by hashing each discovered host; the genuine internal host appears in none of the diff, commit message or PR body, and exhaustive enumeration shows the only hosts present anywhere are cloud.google.com and registry.npmjs.org. Had I reported the first result I would have raised a false supply-chain alarm."
+    },
+    {
+      "error": "I mutated my own working tree with 'git checkout <head> -- .' to run check.ps1 against head content. I restored it and verified restoration by BLOB HASH for all three files against the base blobs (6b341f42..., d970247e..., f492053a...), all matching, rather than trusting git status or numstat."
+    }
+  ],
+  "known_issues_or_risks": [
+    "Ledger-only merge conflict against current main (current_contract.json, progress.md). The lockfile does not conflict.",
+    "Repository-wide sha1 lockfile integrity is weaker than sha512. Pre-existing, not introduced here.",
+    "apps/web is never installed, type-checked, tested or built by CI. Pre-existing, disclosed, filed separately."
+  ],
+  "recommendation": "MERGE after resolving the ledger-only conflict. The advisory is genuinely fixed rather than silenced, the digest is proven against the real public registry by byte-level hash and by an integrity-enforcing npm ci, the registry boundary is intact at 336/336, no internal infrastructure leaked, no ledger flag moved, and no prohibited mechanism was used. Do not treat the green Dependency audit job as evidence about the digest; it is evidence about the version."
+}

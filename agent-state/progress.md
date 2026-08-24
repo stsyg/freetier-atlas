@@ -3146,3 +3146,43 @@ not 1259 passed / 2 skipped. The CI-shaped run deliberately omits only
 - **What I would carry to the next builder [M]:** the class that produced F1, F2 and F4 is not caught by re-reading, and naming it is necessary but not sufficient. All three were caught by RE-DERIVING a claim through a different mechanism than the one that produced it - and F1 specifically could only be caught by executing across ALL providers, because the refuting evidence lived outside the slice entirely. A claim about a data set cannot be checked from inside one slice.
 - **Evaluator disposition:** FAILED on F1; remediated, pending scoped re-check.
 - **Boundary:** Draft PR only. Do not merge, do not flip any ledger flag.
+
+## 2026-08-24 - Level-2 evaluation records land on main (orchestrator)
+
+Seven Level-2 evaluation records existed only on throwaway evaluator branches
+and had never reached `main`, including **two FAILED verdicts**. Their slices
+were merged on the strength of those verdicts.
+
+The AWS evaluator's statement of the problem: *"PR #70 merged on the strength of
+a Level-2 PASS whose record is not in the repository it certifies. The artefact
+and the decision it authorised have diverged."* That is integrity, not records
+hygiene.
+
+Root cause was structural, not an oversight. Evaluators are read-only with
+respect to the branch under test and do not open pull requests, so the only
+route available to them terminated on a branch nobody reads. A second defect
+compounded it: `agent-state/evaluation.json` is a single JSON array, so any two
+concurrent evaluators conflict on the closing bracket by construction - and
+three ran concurrently on 2026-08-14.
+
+Resolution: records are now one file per evaluation under
+`agent-state/evaluations/`, landed by the orchestrator after merge and keyed by
+the evaluated commit, which is reachable from the merge itself. The requirement
+this had to satisfy, from the same evaluator: a reader arriving at a merged
+slice must be able to distinguish "evaluated and passed" from "never evaluated"
+**without knowing a branch name**.
+
+`agent-state/evaluation.json` is retained unchanged as the historical record for
+evaluations up to and including `F008 p2-vercel-provider-rebuild`.
+
+Landed: F001 harden-secrets-route-test (passed), F008 P4 AWS (passed), F008 P5
+Azure (failed, then passed on the corrected head), F008 P6 Oracle (failed, then
+passed on the corrected head), maintenance PR #71 nanoid advisory (passed).
+
+The FAILED records are retained deliberately. Deleting them would leave a
+history in which evaluation never caught anything, which is exactly the
+impression an evaluation record exists to prevent.
+
+Purely additive: 8 files, zero deletions. `evaluation.json`, `feature_list.json`
+and `current_contract.json` verified byte-identical to `main` by blob hash.
+F008 remains `passes:false`; the flip belongs to the S4 close-out.
