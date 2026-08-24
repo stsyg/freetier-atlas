@@ -87,6 +87,69 @@ jobs:
       - name: ESLint
         run: npm run lint
 
+  web:
+    name: Web type-check, tests, and build
+    runs-on: ubuntu-latest
+    # Before this job, apps/web received exactly ONE CI operation in the whole
+    # workflow: `npm audit` in the `dependencies` job, which reads the lockfile
+    # and installs nothing. The `node` job above runs `npm ci` with no
+    # working-directory -- the repository root -- and the root package.json
+    # declares no `workspaces`, so that install cannot reach this package.
+    #
+    # apps/web nonetheless declares `tsc -b`, `vitest run` (9 files, 110 tests)
+    # and `vite build`, and apps/web/Dockerfile executes `npm ci` and
+    # `npm run build` to produce the assets that actually ship. None of it ran
+    # here. A TypeScript error or a failing web test merged green, and not one
+    # of the 336 `integrity` digests in apps/web/package-lock.json was enforced
+    # by anything, because only `npm ci` checks them and `npm audit` does not.
+    #
+    # A separate job rather than more steps on `node`, deliberately: the jobs
+    # run in parallel, so this adds no critical path while `python` (a full
+    # toolchain install plus the suite against a postgres service container)
+    # remains the long pole, and a red check named for the web app is
+    # attributable without opening a log -- which the same failure buried in a
+    # job called "Node format and lint" would not be.
+    defaults:
+      run:
+        # Every `run` step here belongs to this package. Set once on the job
+        # rather than repeated per step; `uses` steps are unaffected.
+        working-directory: apps/web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          # Matches the other Node jobs, apps/web's own `engines.node` (>=20)
+          # and the node:20-alpine base in apps/web/Dockerfile, so CI exercises
+          # the major version the image is built with.
+          node-version: "20"
+      - name: Install apps/web dependencies
+        id: web_install
+        run: npm ci
+      # Its own step rather than being left to `npm run build`, which is
+      # `tsc -b && vite build`. Folded together, a type error and a bundler
+      # error land on the same line of the step list and neither gate can be
+      # shown to fail on its own -- and a gate nobody can make fail is worse
+      # than no gate, because it reads as coverage.
+      - name: TypeScript type check
+        if: ${{ !cancelled() && steps.web_install.outcome == 'success' }}
+        run: npm run typecheck
+      # Runs even when the type check failed, following the same rule the
+      # `dependencies` job states: one finding must not hide the rest. That is
+      # load-bearing here rather than tidy, because Vitest transforms
+      # TypeScript with esbuild, which strips types WITHOUT checking them -- so
+      # a type error does not fail a test run, and gating this step on the
+      # previous one would let a type error mask a genuinely failing test.
+      #
+      # Conditioned on the install rather than on `!cancelled()` alone: with no
+      # node_modules the remaining steps report a missing binary, which is
+      # noise dressed as a finding.
+      - name: Vitest
+        if: ${{ !cancelled() && steps.web_install.outcome == 'success' }}
+        run: npm test
+      - name: Vite production build
+        if: ${{ !cancelled() && steps.web_install.outcome == 'success' }}
+        run: npm run build
+
   secrets:
     name: Secret scan
     runs-on: ubuntu-latest
