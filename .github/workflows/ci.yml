@@ -247,6 +247,7 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
+          printf '\n' >> .secrets.baseline
           files=()
           while IFS= read -r -d '' file; do
             files+=("$file")
