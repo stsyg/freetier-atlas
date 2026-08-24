@@ -84,6 +84,128 @@ def test_verification_vocab_is_closed_and_matches_docs() -> None:
     assert not is_verification_state("published")
 
 
+def test_the_reserved_fact_field_registry_cannot_drift_from_the_publisher() -> None:
+    """The two halves of the registry must name exactly the same fields.
+
+    ``app.ingest.vocab.RESERVED_FACT_FIELDS`` decides which fact fields an
+    assertion may pin by name; ``app.publish.revalidate.NON_QUOTA_FIELDS``
+    decides which fact keys the publisher does NOT turn into quota metrics.
+    They are the same set viewed from two sides, and they live in two modules
+    because ``app.publish`` imports ``app.ingest`` (so the reverse import would
+    be a cycle).
+
+    A silent divergence is the exact failure the assertion-field registry
+    exists to prevent, one layer up: a name that ingest thinks is reserved but
+    publish does not would be validated as a material condition and then
+    republished as a quota row.
+    """
+
+    from app.ingest.vocab import (
+        ASSERTION_FIELD_RULES,
+        NON_ASSERTABLE_FACT_FIELDS,
+        RESERVED_FACT_FIELDS,
+    )
+    from app.publish.revalidate import NON_QUOTA_FIELDS
+
+    assert RESERVED_FACT_FIELDS == NON_QUOTA_FIELDS, (
+        "the ingest assertion registry and the publisher's non-quota registry have drifted:\n"
+        f"  only in ingest:  {sorted(RESERVED_FACT_FIELDS - NON_QUOTA_FIELDS)}\n"
+        f"  only in publish: {sorted(NON_QUOTA_FIELDS - RESERVED_FACT_FIELDS)}"
+    )
+    # The two halves partition the registry: assertable, or control plane.
+    assert set(ASSERTION_FIELD_RULES) | NON_ASSERTABLE_FACT_FIELDS == RESERVED_FACT_FIELDS
+    assert set(ASSERTION_FIELD_RULES) & NON_ASSERTABLE_FACT_FIELDS == set()
+
+
+def test_no_module_in_the_ingest_package_declares_all_twice() -> None:
+    """A module's declared public API must not be silently overwritten.
+
+    THE DEFECT THIS EXISTS FOR, found by two independent Level-2 evaluators:
+    ``app.ingest.vocab`` declared ``__all__`` TWICE. Python executes top to
+    bottom, so the second assignment silently voided the first and twelve names
+    the module meant to export never reached its declared API. Behaviourally
+    inert -- nothing star-imports it and ``app.ingest.__init__`` imports
+    explicitly -- but silently wrong, and NO existing gate caught it: ``ruff``
+    exits 0 because pyflakes ``F811`` does not cover module-level variable
+    rebinding, and no test asserted this module's ``__all__``.
+
+    That is precisely the failure mode this slice exists to end -- an implicit
+    contract a contributor can violate with no deterministic failure -- so it is
+    checked here rather than left to review. It is deliberately written for the
+    WHOLE package, not for the one module that failed: a guard shaped around the
+    single known instance would not catch the next one.
+
+    The repository already treats ``__all__`` as a contract elsewhere
+    (``tests/unit/test_adapter_oracle.py`` iterates ``oracle_module.__all__``),
+    so a truncated ``__all__`` is not merely cosmetic.
+    """
+
+    import ast
+    from pathlib import Path
+
+    package_root = Path(__file__).resolve().parents[2] / "apps" / "api" / "app" / "ingest"
+    modules = sorted(package_root.rglob("*.py"))
+    assert len(modules) >= 15, (
+        f"only {len(modules)} modules found under {package_root}; the walk stopped "
+        "seeing the ingest package"
+    )
+
+    offenders: list[str] = []
+    checked = 0
+    for path in modules:
+        if "__pycache__" in path.parts:
+            continue
+        checked += 1
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        assignments = [
+            node.lineno
+            for node in tree.body
+            if isinstance(node, ast.Assign)
+            and any(getattr(target, "id", None) == "__all__" for target in node.targets)
+        ]
+        if len(assignments) > 1:
+            offenders.append(
+                f"{path.name} assigns __all__ {len(assignments)}x at lines {assignments}"
+            )
+
+    assert checked >= 15, f"only {checked} modules actually parsed; the walk is vacuous"
+    assert not offenders, (
+        "a module's declared public API is silently overwritten by a later assignment "
+        "(the earlier one is dead, and ruff does not catch this):\n  " + "\n  ".join(offenders)
+    )
+
+
+def test_the_ingest_vocabulary_exports_what_it_declares() -> None:
+    """Every name in ``vocab.__all__`` resolves, and a star-import agrees.
+
+    Checked at RUNTIME rather than by reading the source: the defect above was
+    invisible to reading precisely because both assignments looked correct in
+    isolation. A star-import is what a consumer actually gets, so that is what
+    is measured.
+    """
+
+    from app.ingest import vocab
+
+    assert len(vocab.__all__) == len(set(vocab.__all__)), "__all__ contains duplicates"
+
+    missing = [name for name in vocab.__all__ if not hasattr(vocab, name)]
+    assert not missing, f"__all__ names that do not exist on the module: {missing}"
+
+    namespace: dict[str, object] = {}
+    exec("from app.ingest.vocab import *", namespace)  # noqa: S102 - measuring the real effect
+    exported = {name for name in namespace if not name.startswith("__")}
+    assert exported == set(vocab.__all__), (
+        "a star-import does not match the declared __all__:\n"
+        f"  declared not exported: {sorted(set(vocab.__all__) - exported)}\n"
+        f"  exported not declared: {sorted(exported - set(vocab.__all__))}"
+    )
+
+    # The two registry halves are part of the public contract, so their absence
+    # would be a silent truncation of exactly the kind this guards against.
+    for name in ("ASSERTION_FIELD_RULES", "NON_ASSERTABLE_FACT_FIELDS", "assertion_field_problem"):
+        assert name in vocab.__all__, f"{name} is public API but is not declared in __all__"
+
+
 def test_candidate_facts_cannot_be_born_verified() -> None:
     with pytest.raises(ValueError):
         CandidateFacts(

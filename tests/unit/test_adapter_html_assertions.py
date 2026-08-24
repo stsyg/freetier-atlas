@@ -381,3 +381,364 @@ def test_assertion_only_extraction_is_deterministic() -> None:
     _, first = _extract(TABLE_FREE_HTML, _assertion_profile())
     _, second = _extract(TABLE_FREE_HTML, _assertion_profile())
     assert first == second
+
+
+# --- RULE 1: the assertion field must be REGISTERED ------------------------
+#
+# The defect this closes was a fall-through, not an omission. Value validation
+# was `_ASSERTION_CLOSED_VALUES.get(field)` followed by `if allowed is not
+# None`, so a field name the vocabulary did not know skipped validation
+# ENTIRELY -- silently, which is the mode this repository has already been
+# bitten by once (see this module's docstring). It matters because nothing
+# downstream reserves such a name either: `app.publish.revalidate` treats every
+# unreserved fact key as a QUOTA METRIC, so a mistyped material condition was
+# not merely unvalidated, it was republished as a quota row while the condition
+# it resembles stayed absent. Two failures, neither of them loud.
+
+PINNED_BLOCK = "If your account has no payment method, usage stops instead of billing."
+
+
+def _one(field: str, value: object, *, text: str = PINNED_BLOCK) -> tuple[HtmlTextAssertion, ...]:
+    return (HtmlTextAssertion(text=text, field=field, value=value),)
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    (
+        # Near-misses of real material conditions. Each is a well-formed metric
+        # NAME, so shape alone would have waved it through -- and then the
+        # publisher would republish it as a quota row while the material
+        # condition it resembles stayed absent.
+        ("exhaustion_behavior", "hard_stop"),
+        ("requires_cards", False),
+        ("offer_typ", "always_free"),
+        ("offer_types", "always_free"),
+        ("servic", "Widget"),
+        ("note", "anything"),
+        # Shapes that are not metric names at all.
+        ("Requires Card", "no"),
+        ("offer type", "always_free"),
+        ("", "anything"),
+        ("_private", "anything"),
+        ("CARD", "no"),
+        ("card-required", "no"),
+    ),
+    ids=(
+        "us-spelling-of-exhaustion",
+        "pluralised-requires-card",
+        "truncated-offer-type",
+        "pluralised-offer-type",
+        "truncated-service",
+        "singular-notes",
+        "spaced-and-capitalised",
+        "spaced",
+        "empty",
+        "leading-underscore",
+        "shouting",
+        "hyphenated",
+    ),
+)
+def test_an_unregistered_assertion_field_is_refused_at_construction(
+    field: str, value: object
+) -> None:
+    """REJECT half of the pair. Not a warning, not a skip -- a hard failure.
+
+    PREDICTION, recorded before measurement: every case raises ``ValueError``,
+    and the message names BOTH the offending field and the registered
+    vocabulary, so the author is told what to write instead rather than merely
+    that they are wrong.
+    """
+
+    with pytest.raises(ValueError) as excinfo:
+        _assertion_profile(assertions=_one(field, value))
+
+    message = str(excinfo.value)
+    assert repr(field) in message, "the message must name the offending field"
+    assert "registered vocabulary" in message, "the message must name the vocabulary"
+    # A representative reserved field and the quota-metric shape both appear, so
+    # the author can see the two things a field is allowed to be.
+    assert "exhaustion_behaviour" in message
+    assert "quota metric" in message
+
+
+def test_the_near_miss_guard_names_what_the_author_probably_meant() -> None:
+    """A typo message that does not say the right spelling teaches nothing.
+
+    MEASURED before the threshold was chosen: across all 206 distinct
+    non-reserved field names registered by every profile in this repository,
+    ZERO are within edit distance 2 of any reserved name -- so distance 1 has a
+    measured margin of 2 against real work rather than being a guess.
+    """
+
+    with pytest.raises(ValueError) as excinfo:
+        _assertion_profile(assertions=_one("exhaustion_behavior", "hard_stop"), required_fields=())
+
+    message = str(excinfo.value)
+    assert "'exhaustion_behavior'" in message, "must name what was written"
+    assert "'exhaustion_behaviour'" in message, "must name what was probably meant"
+
+
+def test_a_quota_metric_that_is_not_confusable_is_still_accepted() -> None:
+    """PAIRED CONTROL for the near-miss guard.
+
+    The guard must reject typos, not metric names in general. These are real
+    names taken from the merged providers; if the confusability threshold is
+    ever widened, this is what goes red first.
+    """
+
+    for metric in (
+        "outbound_data_transfer",
+        "free_state_transitions_per_month",
+        "heatwave_backup_storage",
+        "published_site_size",
+        "notifications",
+    ):
+        profile = _assertion_profile(assertions=_one(metric, "some value"), required_fields=())
+        assert profile.assertions[0].field == metric
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    (
+        ("service", "Widget"),
+        ("offer_type", "always_free"),
+        ("eligibility", "Hobby plan"),
+        ("requires_card", False),
+        ("has_paid_dependencies", True),
+        ("exhaustion_behaviour", "hard_stop"),
+        ("commercial_use_allowed", True),
+        ("personal_use_allowed", False),
+        # An open quota metric: 89 of these exist across the six merged
+        # providers, so the vocabulary must admit them by shape, not by list.
+        ("published_site_size", "1 GB"),
+        ("minutes_per_month_github_free", "2,000"),
+    ),
+)
+def test_a_registered_assertion_field_is_accepted(field: str, value: object) -> None:
+    """PAIRED CONTROL for the test above.
+
+    Without this, every rejection could be a profile failing for some unrelated
+    reason -- an empty-evidence floor, a bad scope, anything. These differ from
+    the rejected cases ONLY in the field name and value.
+    """
+
+    profile = _assertion_profile(assertions=_one(field, value), required_fields=())
+    assert profile.assertions[0].field == field
+    assert profile.assertions[0].value == value
+
+
+@pytest.mark.parametrize("field", ("error", "detail", "provider", "quotas"))
+def test_the_adapter_control_plane_can_never_be_asserted(field: str) -> None:
+    """A profile must not be able to forge or mask a rejection.
+
+    ``HtmlDocAdapter._rejected`` writes ``{"error": ..., "detail": ...}`` and
+    ``validate()`` treats any candidate carrying ``error`` as rejected. A
+    profile able to pin those names could make a healthy document look rejected,
+    or -- far worse in this product -- be used to shape what a rejection says.
+    ``provider`` is identity and ``quotas`` is the structured list the publisher
+    builds itself.
+    """
+
+    with pytest.raises(ValueError, match="control plane"):
+        _assertion_profile(assertions=_one(field, "anything"), required_fields=())
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    (
+        ("requires_card", "no"),
+        ("requires_card", 0),
+        ("requires_card", 1),
+        ("has_paid_dependencies", "false"),
+        ("commercial_use_allowed", "yes"),
+        ("service", 42),
+        ("service", ""),
+        ("eligibility", "   "),
+        # A quota metric carrying a non-string: it would be str()-ed into the
+        # quota's raw text ("True") by the publisher.
+        ("published_site_size", True),
+        ("published_site_size", 1),
+        ("published_site_size", None),
+    ),
+)
+def test_a_registered_field_asserted_with_the_wrong_kind_of_value_is_refused(
+    field: str, value: object
+) -> None:
+    """Registration binds the VALUE too, not only the name.
+
+    ``0`` is not ``False`` here on purpose: the type check is exact, so a value
+    that merely compares equal to a boolean cannot become a material Z0 gate.
+    """
+
+    with pytest.raises(ValueError):
+        _assertion_profile(assertions=_one(field, value), required_fields=())
+
+
+# --- RULE 2: free text is QUOTED, never composed ---------------------------
+#
+# docs/PROVIDER_ADAPTERS.md: "Free-text values that reach the UI, such as
+# `notes`, must reproduce the asserted source wording verbatim rather than
+# paraphrase it." That was prose. It is machinery now.
+#
+# SCOPE, stated here so its limits cannot be discovered later. The rule binds
+# fields whose value reaches the UI as prose -- `notes`, `display_name`,
+# `service_description`. It deliberately does NOT bind:
+#
+#   * closed-vocabulary fields (`offer_type`, `exhaustion_behaviour`, the
+#     boolean gates), which are MAPPINGS onto a canonical value and are already
+#     validated against their own vocabularies;
+#   * `service`, `eligibility` and `documentation_url`, which are canonical
+#     identities, not quotations. MEASURED: ten of the six merged providers'
+#     `service` assertions map a canonical name ("AWS 12 Month Free Tier") onto
+#     a block that does not contain it, and that is correct -- requiring
+#     containment there would be a false rejection on correct work;
+#   * quota metrics, whose values are re-derived into an amount and a unit by
+#     `parse_quantity` rather than shown as prose. MEASURED: three of them
+#     normalise a spelled-out quantity ("exactly one free database" -> "1").
+#
+# The boundary is the documented one. Widening it would fail correct work, and
+# a guard that reds on correct work gets deleted rather than fixed.
+
+FREE_TEXT_BLOCK = (
+    "Vercel sends you notifications as you approach your usage quotas. "
+    "You will not be charged for any additional usage."
+)
+
+
+@pytest.mark.parametrize(
+    ("label", "value"),
+    (
+        ("paraphrased", "Vercel notifies you as you near your quotas and never charges you."),
+        ("reworded-one-word", FREE_TEXT_BLOCK.replace("notifications", "warnings")),
+        ("composed-from-two-blocks", FREE_TEXT_BLOCK + " Usage above the quota is billed."),
+        ("summarised", "No charge for additional usage."),
+        ("re-typed-with-a-typo", FREE_TEXT_BLOCK.replace("quotas", "quotos")),
+        ("whitespace-not-normalised", FREE_TEXT_BLOCK.replace(". ", ".  ")),
+    ),
+)
+def test_a_composed_free_text_value_is_refused_at_construction(label: str, value: str) -> None:
+    """REJECT half of the pair: a `notes` value that is not in its own block.
+
+    PREDICTION, recorded before measurement: all six raise. The last two matter
+    most and are the least obvious -- a re-typed sentence with a single-letter
+    slip, and one whose whitespace was not normalised the way the extractor
+    normalises it, are exactly how a "quotation" stops being one. Transcription
+    is where a composed quotation creeps in.
+    """
+
+    assert value != FREE_TEXT_BLOCK, f"the {label} case is not actually different"
+    with pytest.raises(ValueError, match="QUOTED from the block"):
+        _assertion_profile(
+            assertions=_one("notes", value, text=FREE_TEXT_BLOCK),
+            required_fields=(),
+        )
+
+
+@pytest.mark.parametrize(
+    ("label", "value"),
+    (
+        ("the whole block", FREE_TEXT_BLOCK),
+        ("a leading clause", "Vercel sends you notifications as you approach your usage quotas."),
+        ("a trailing clause", "You will not be charged for any additional usage."),
+        ("a phrase", "will not be charged"),
+    ),
+)
+def test_the_genuine_quotation_is_accepted(label: str, value: str) -> None:
+    """PAIRED CONTROL for the test above.
+
+    Truncating a quotation is still quoting it, so a clause of the pinned block
+    passes. Containment rather than whole-block equality is the deliberate
+    choice: equality would reject a legitimate partial quotation, which is a
+    false positive on correct work.
+    """
+
+    profile = _assertion_profile(
+        assertions=_one("notes", value, text=FREE_TEXT_BLOCK),
+        required_fields=(),
+    )
+    assert profile.assertions[0].value == value
+
+
+def test_the_verbatim_rule_survives_the_profile_normalising_its_own_block() -> None:
+    """Verbatim is measured against the representation the extractor SEES.
+
+    ``__post_init__`` runs ``normspace`` over ``text``, so a block declared with
+    ragged whitespace is compared in its collapsed form -- the same form
+    ``_apply_assertions`` compares at runtime. A value quoted from the RAW
+    spelling must therefore fail, and one quoted from the NORMALISED spelling
+    must pass. Getting this backwards is how a guard produces false rejections
+    on correct work.
+    """
+
+    ragged = "You  will   not\nbe charged for any additional usage."
+    normalised = "You will not be charged for any additional usage."
+
+    with pytest.raises(ValueError, match="QUOTED from the block"):
+        _assertion_profile(
+            assertions=_one("notes", "You  will   not be charged", text=ragged),
+            required_fields=(),
+        )
+
+    profile = _assertion_profile(
+        assertions=_one("notes", "will not be charged", text=ragged),
+        required_fields=(),
+    )
+    assert profile.assertions[0].text == normalised
+
+
+def test_a_mapped_field_is_not_held_to_the_quotation_rule() -> None:
+    """The documented boundary, pinned so it cannot be widened by accident.
+
+    ``service`` maps a canonical identity onto a block; ten of the six merged
+    providers' service assertions do exactly this. If this test ever fails, the
+    quotation rule has been widened onto mapped fields and every merged provider
+    is about to go red.
+    """
+
+    profile = _assertion_profile(
+        assertions=(
+            HtmlTextAssertion(
+                text="Setting up a trial of GitHub Enterprise Cloud - GitHub Enterprise Cloud Docs",
+                field="service",
+                value="GitHub Enterprise Cloud trial",
+                scope="title",
+            ),
+        ),
+        required_fields=(),
+    )
+    assert profile.assertions[0].value == "GitHub Enterprise Cloud trial"
+
+
+def test_both_new_rules_apply_in_every_mode_not_only_assertion_only_mode() -> None:
+    """A matrix profile's assertions are held to the same two rules.
+
+    The checks live in ``__post_init__``, not in the assertion-only branch, so a
+    table-backed profile cannot smuggle an unregistered field or a composed
+    quotation past them by declaring a header signature.
+    """
+
+    common: dict[str, object] = {
+        "name": "matrix_rules_probe",
+        "mode": "matrix",
+        "header_signature": ("Metric", "Free"),
+        "matrix_metric_header": "Metric",
+        "matrix_tier_header": "Free",
+        "matrix_rows": {"CPU": HtmlMatrixRow("cpu")},
+        "trusted_assertions": True,
+    }
+
+    with pytest.raises(ValueError, match="registered vocabulary"):
+        HtmlExtractionProfile(assertions=_one("exhaustion_behavior", "hard_stop"), **common)  # type: ignore[arg-type]
+
+    with pytest.raises(ValueError, match="QUOTED from the block"):
+        HtmlExtractionProfile(
+            assertions=_one("notes", "not in the block", text=FREE_TEXT_BLOCK),
+            **common,  # type: ignore[arg-type]
+        )
+
+    # Paired control: the same matrix profile with compliant assertions builds.
+    profile = HtmlExtractionProfile(
+        assertions=_one("exhaustion_behaviour", "hard_stop"),
+        **common,  # type: ignore[arg-type]
+    )
+    assert profile.mode == "matrix"

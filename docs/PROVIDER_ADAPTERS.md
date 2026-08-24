@@ -520,10 +520,54 @@ cannot supply regex. A required missing or duplicate match rejects the
 candidate; an optional missing match emits no field. Canonical mappings such as
 `offer_type`, eligibility, boolean gates, or exhaustion behavior therefore
 exist only behind reviewable source wording in the same captured document.
+
+**The assertion field must be REGISTERED — enforced, not expected.** The
+vocabulary lives in `apps/api/app/ingest/vocab.py` and a field is one of exactly
+two things. A **reserved** field (`service`, `offer_type`, `eligibility`, the
+boolean gates, `exhaustion_behaviour`, `notes`, …) is read *by name* by the
+publication, classification and reconciliation layers, and each declares the kind
+of value it may carry. Anything else is a **quota metric**, open by construction
+because the names come from the provider's own document. Nothing falls through:
+an unregistered field raises at profile construction with a message naming the
+field and the vocabulary.
+
+Three cases are refused that used to pass in silence. `error`, `detail`,
+`provider` and `quotas` are the adapter's and publisher's own control plane —
+`_rejected` writes `error`/`detail` and `validate()` reads them — so a profile
+can never pin them and forge or mask a rejection. A reserved field asserted with
+the wrong kind of value is refused, with an exact type check, so `0` cannot
+become a boolean Z0 gate. And a quota metric within one edit of a reserved name
+(`exhaustion_behavior`, `requires_cards`, `offer_typ`) is refused as a probable
+typo: `revalidate_quotas` treats every unreserved key as a quota metric, so a
+mistyped material condition would otherwise be *published as a quota row* while
+the condition it resembles stayed absent. Measured across all 206 non-reserved
+field names registered in this repository, none is within edit distance 2 of a
+reserved name, so the threshold has a measured margin against real work.
+
+**Free text is QUOTED, never composed — enforced, not expected.** Free-text
+values that reach the UI, such as `notes`, must reproduce the asserted source
+wording verbatim rather than paraphrase it, and profile construction now refuses
+a value that does not occur inside the block it is pinned to. Comparison is
+against the *normalized* block — the representation the extractor actually sees —
+so a value quoted from raw markup fails while a legitimate clause of the block
+passes; truncating a quotation is still quoting it. The rule deliberately does
+not bind closed-vocabulary fields, `service`, `eligibility` or quota metrics:
+those are **mappings** onto a canonical value, not prose, and requiring
+containment there would reject correct work (ten of the merged providers' service
+assertions map a canonical name onto a block that does not contain it).
+
+**Every pinned block must be grounded in its committed capture.** Each
+`capture.json` has always *claimed* that its profile's pinned blocks occur
+exactly once in the committed bytes. `tests/unit/test_assertion_capture_grounding.py`
+now measures it: it walks every `type: html` source declared by every provider
+configuration, parses the committed capture with the engine's own
+`_DocumentCollector`, and requires each pinned block to match exactly once in its
+declared scope. It covers `required: false` assertions, which the runtime path
+skips in silence, and it runs without a database, so the rule holds even where
+the integration suites are skipped.
+
 Profile construction also validates mapped offer types, exhaustion behaviours,
-and boolean gates against their closed field vocabularies. Free-text values that
-reach the UI, such as `notes`, must reproduce the asserted source wording
-verbatim rather than paraphrase it.
+and boolean gates against their closed field vocabularies.
 
 Each matrix cell and assertion adds a field-specific `EvidenceLocation`
 selector (for example, `matrix row[...] column[...] -> fact[...]`), so the

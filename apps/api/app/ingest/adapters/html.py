@@ -17,7 +17,10 @@ Design contract (docs/AGENT_HARNESS.md "unknown is better than guessed"):
   column into one candidate.
 * Trusted static profiles may map exact normalized title, heading, or p/li text
   blocks to facts. A missing/drifted required assertion rejects the candidate;
-  there are no unconditional profile constants or fuzzy matches.
+  there are no unconditional profile constants or fuzzy matches. Every assertion
+  must name a field registered in :mod:`app.ingest.vocab`, and a field carrying
+  free text to the UI must quote its value verbatim from the block it pins --
+  both enforced at construction, neither left to review.
 * A table is **not** required. Plenty of official pages state their free-tier
   terms entirely in prose, so ``mode="assertions"`` reads such a page exactly as
   the provider publishes it. Nothing is synthesized to satisfy the extractor: an
@@ -57,7 +60,12 @@ from app.ingest.base import (
     SourceDocument,
 )
 from app.ingest.fetch import Fetcher, FetchError, FetchResult
-from app.models.vocab import EXHAUSTION_BEHAVIOURS, OFFER_TYPES
+from app.ingest.vocab import (
+    ASSERTION_FIELD_RULES,
+    QUOTED_TEXT,
+    assertion_field_problem,
+    assertion_vocabulary_summary,
+)
 
 _EXCERPT_LIMIT = 280
 _LIST_SEPARATORS = (",", ";")
@@ -93,12 +101,6 @@ _TABLE_FIELDS = (
     "matrix_rows",
     "ignored_matrix_rows",
 )
-_ASSERTION_CLOSED_VALUES: Mapping[str, tuple[object, ...]] = {
-    "offer_type": OFFER_TYPES,
-    "exhaustion_behaviour": EXHAUSTION_BEHAVIOURS,
-    "requires_card": (False, True),
-    "has_paid_dependencies": (False, True),
-}
 
 
 class UnknownProfileError(ValueError):
@@ -133,6 +135,17 @@ class HtmlTextAssertion:
     Assertions are profile-authored trusted mappings, never runtime regex or
     user-provided inference. ``scope`` is one of ``title``, ``heading`` (h1-h6),
     or ``document`` (p/li blocks). The whole normalized block must equal ``text``.
+
+    ``field`` must be REGISTERED (:data:`app.ingest.vocab.ASSERTION_FIELD_RULES`):
+    either a reserved fact field the publication layer reads by name, or a
+    quota-metric name carrying a string value. An unregistered field is refused
+    at construction rather than silently skipped, because a fact key nothing
+    reserves is republished as a quota metric -- so a mistyped material condition
+    would vanish into a quota row instead of failing.
+
+    For a field whose value reaches the UI as prose (``notes`` and friends),
+    ``value`` must occur verbatim inside ``text``: evidence is quoted, never
+    composed.
     """
 
     text: str
@@ -159,7 +172,9 @@ class HtmlExtractionProfile:
     values, a profile must satisfy the explicit evidence floor in
     :data:`_FACT_SOURCES_BY_MODE`: one that declares neither a matrix nor any
     assertions (nor, in row mode, any column) is refused outright rather than
-    allowed to emit a candidate backed by nothing.
+    allowed to emit a candidate backed by nothing. Every assertion must also name
+    a REGISTERED field and, where that field carries free text to the UI, quote
+    its value verbatim from the block it pins.
     """
 
     name: str
@@ -241,16 +256,36 @@ class HtmlExtractionProfile:
         bad_scopes = sorted({a.scope for a in assertions} - {"title", "heading", "document"})
         if bad_scopes:
             raise ValueError(f"Unsupported assertion scope(s): {bad_scopes}.")
-        for assertion in assertions:
-            allowed = _ASSERTION_CLOSED_VALUES.get(assertion.field)
-            if allowed is not None and not any(
-                type(assertion.value) is type(value) and assertion.value == value
-                for value in allowed
-            ):
+        for index, assertion in enumerate(assertions):
+            # RULE 1 -- THE FIELD MUST BE REGISTERED. This replaces a dict lookup
+            # that fell through silently for any name it did not know, which let
+            # a mistyped material condition escape validation and then be
+            # republished as a quota metric. Every field name now lands in
+            # exactly one branch of the vocabulary; nothing falls through.
+            problem = assertion_field_problem(assertion.field, assertion.value)
+            if problem is not None:
                 raise ValueError(
-                    f"Assertion field '{assertion.field}' requires one of {allowed}; "
-                    f"got {assertion.value!r}."
+                    f"HTML profile '{self.name}' assertion[{index}]: {problem}. "
+                    f"The registered vocabulary is -- {assertion_vocabulary_summary()}."
                 )
+
+            # RULE 2 -- FREE TEXT IS QUOTED, NEVER COMPOSED. A value that reaches
+            # the UI as prose must occur verbatim inside the block it is pinned
+            # to, measured against the SAME normalised representation the
+            # extractor sees (``text`` is already normspace'd above). A
+            # paraphrase, a stitched-together sentence and a re-typed one all
+            # fail; a genuine quotation of part of the block passes, because
+            # truncating a quotation is still quoting it.
+            rule = ASSERTION_FIELD_RULES.get(assertion.field)
+            if rule is not None and rule.value_kind == QUOTED_TEXT:
+                if assertion.value not in assertion.text:
+                    raise ValueError(
+                        f"HTML profile '{self.name}' assertion[{index}]: field "
+                        f"'{assertion.field}' is free text that reaches the UI, so its value "
+                        "must be QUOTED from the block it is pinned to, never composed or "
+                        f"paraphrased. Value {assertion.value!r} does not occur verbatim in "
+                        f"the pinned {assertion.scope} block {assertion.text!r}."
+                    )
 
 
 #: Registry of extraction profiles keyed by name. This stands in for the
