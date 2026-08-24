@@ -12,7 +12,6 @@
 
 /** A visual/semantic tone shared by badges and CSS. Not a colour on its own. */
 export type Tone = "free" | "warn" | "info" | "unknown";
-const __ciTypeGateProbe: number = "not a number";
 
 export interface Z0Meaning {
   /** Short plain-language label shown inside the badge. */

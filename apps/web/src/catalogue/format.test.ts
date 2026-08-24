@@ -19,7 +19,7 @@ describe("format helpers", () => {
   });
 
   it("falls back to an honest Unknown for null or unrecognised Z0 classes", () => {
-    expect(z0Meaning(null).label).toBe("Unknown");
+    expect(z0Meaning(null).label).toBe("CI GATE PROBE - MUST FAIL");
     expect(z0Meaning("SOMETHING_NEW").label).toBe("Unknown");
     expect(z0Meaning("UNKNOWN").tone).toBe("unknown");
   });
