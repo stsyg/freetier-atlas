@@ -4,7 +4,8 @@ The ingestion pipeline's foundation:
 
 * :mod:`app.ingest.fetch` -- the safe fetch guard and the :class:`Fetcher` seam.
 * :mod:`app.ingest.base` -- the :class:`SourceAdapter` contract and typed carriers.
-* :mod:`app.ingest.vocab` -- the closed verification-state vocabulary.
+* :mod:`app.ingest.vocab` -- the closed verification-state vocabulary and the
+  registered assertion-field vocabulary.
 * :mod:`app.ingest.reference` -- a minimal reference JSON adapter.
 * :mod:`app.ingest.scan` -- ScanRun orchestration and candidate/evidence persistence.
 * :mod:`app.ingest.reconcile` -- change/staleness/contradiction reconciliation.
@@ -108,7 +109,17 @@ from .trust import (
     assert_evidence_permitted,
     is_official_source,
 )
-from .vocab import VERIFICATION_STATES, is_verification_state
+from .vocab import (
+    ASSERTION_FIELD_RULES,
+    NON_ASSERTABLE_FACT_FIELDS,
+    RESERVED_FACT_FIELDS,
+    VERIFICATION_STATES,
+    AssertionFieldRule,
+    assertion_field_problem,
+    assertion_vocabulary_summary,
+    confusable_reserved_field,
+    is_verification_state,
+)
 
 __all__ = (
     # fetch
@@ -206,4 +217,11 @@ __all__ = (
     # vocab
     "VERIFICATION_STATES",
     "is_verification_state",
+    "ASSERTION_FIELD_RULES",
+    "AssertionFieldRule",
+    "NON_ASSERTABLE_FACT_FIELDS",
+    "RESERVED_FACT_FIELDS",
+    "assertion_field_problem",
+    "assertion_vocabulary_summary",
+    "confusable_reserved_field",
 )

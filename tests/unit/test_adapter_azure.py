@@ -1115,6 +1115,10 @@ def test_a_pinned_block_published_twice_yields_ambiguous_assertion() -> None:
     source = fixture.source_path.read_text(encoding="utf-8")
     duplicated = _mutate(source, "assertion_duplicated").encode()
 
+    # `value` is a VERBATIM clause of the block this pins, not a sentinel. The
+    # free-text verbatim rule is enforced at construction now (F008 S4 prereq),
+    # so a probe that pinned `notes` to a placeholder would be refused before it
+    # could demonstrate anything about ambiguity.
     greedy = HtmlExtractionProfile(
         name="azure_duplicate_probe",
         mode="assertions",
@@ -1127,7 +1131,7 @@ def test_a_pinned_block_published_twice_yields_ambiguous_assertion() -> None:
                     "result in an HTTP 403 error."
                 ),
                 field="notes",
-                value="duplicated",
+                value="all incoming requests result in an HTTP 403 error.",
             ),
         ),
         required_fields=("notes",),
