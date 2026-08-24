@@ -3281,3 +3281,83 @@ Every file restored **byte-exactly**, proved by `git hash-object` (`scripts/chec
 - **Evaluator disposition:** pending - builder self-review only.
 - **Boundary:** Draft PR only. Do not merge, do not flip any ledger flag. `F001` state untouched.
 - **Recommended next action:** fresh-context Level-2 evaluator. The two most attackable claims are (a) that `scripts/check_urls.py` genuinely had **no** prior test - re-derive it independently, because it is the claim the whole slice rests on; and (b) that the M4 result really demonstrates the old test's incapability rather than an artefact of how the mutation was chosen.
+
+## 2026-08-24 - Builder - F001 guard-symmetry audit: addendum (full inventory, correction, and what I could NOT test)
+
+Written in answer to three orchestrator questions plus one standing question. Rebased onto `78d2c73` (PR #75); `agent-state/progress.md` was reconstructed with main's blob VERBATIM as prefix (sha256 `31353f16d8d63e26`, byte-identical over 682847 bytes) and `agent-state/current_contract.json` taken wholesale, never merged.
+
+### 1. A correction to my own count, before the table
+
+My first handoff said "**fifteen** repository-owned guards were found". **That number was wrong, and it was wrong in the direction that flatters me** - it under-counted by grouping the runtime staleness gate into the publication gate, and the fetch address-validation guard into the live-fetcher guard. Enumerated at a consistent grain the figure is **seventeen**. Correcting it here rather than quietly restating it, because the same handoff argues that a claim about a data set cannot be checked from inside the slice that made it.
+
+I also said "6 of 15 instrument both directions well". Re-derived at the corrected grain: **five** did before this slice; **seven** do after it.
+
+### 2. The full inventory, with a per-direction verdict
+
+`A` = wrongly ACCEPT (misses what it exists to catch). `R` = wrongly REJECT (fires on correct work).
+Verdicts: **BOTH** = both directions have an assertion I read; **A-only** / **R-only** = one side measured, the other absent; **NEITHER**; **NOT REACHED** = I did not read it deeply enough to classify, and am not guessing.
+
+| # | Guard | A = wrongly accept | R = wrongly reject | Verdict |
+|---|---|---|---|---|
+| 1 | URL host allowlist (`scripts/check_urls.py`) | an internal hostname reaches the public tree, green | a legitimate public host / redaction marker / new funding URL reds an honest PR | **NEITHER -> BOTH** (this slice) |
+| 2 | Secrets-baseline validator (`scripts/check_secrets_baseline.py`) | a wipe or backslash rewrite passes | a legitimate refresh or splice fails | **BOTH** (`test_legitimate_in_place_refresh_passes`, `test_growth_passes`, `test_generated_at_churn_never_fails`) |
+| 3 | Baseline refresher's refuse-to-write (`scripts/refresh_secrets_baseline.py`) | writes a baseline that would fail the check | refuses a legitimate refresh | **NOT REACHED** |
+| 4 | Secrets route/wiring guard (`tests/support/source_scan.py`) | a commented-out or deleted invocation passes | correct code (`${#FAILURES[@]}`, folded scalars, CRLF) is called a bypass | **BOTH** - the strongest example in the tree |
+| 5 | AST live-fetcher guard (`test_no_live_fetcher_in_tests.py`) | a test opens a socket in CI | a legitimate refactor reds it (it requires the literal `allow_loopback=True`) | **A-only** |
+| 6 | Capture sidecar integrity (`test_capture_sidecar.py`) | a fixture claims provenance it does not have | a legitimate URL containing `password`/`apikey` reds the build | **A-only** |
+| 7 | Prettier-exemption scope (same file) | a live capture gets reformatted, destroying the served bytes | the exemption over-reaches and silences hand-written fixtures | **BOTH** (`..._stays_scoped` is an explicit over-reach control) |
+| 8 | Anti-freshness pin (same file) | a clock read sneaks into CI | prose explaining the rule trips it | **A-only**, but R is structurally excluded by using AST rather than substring |
+| 9 | Dependency pin sync (`test_requirements_sync.py`) | container and local environments drift | a whitespace-only respelling (`foo == 1.0`) fails a semantically identical file | **A-only** |
+| 10 | Deterministic-core import boundary (`test_adviser_no_llm_import.py`) | the core imports the LLM package, green | a probe that cannot run is reported as a leak | **NEITHER-capable -> BOTH** (this slice) |
+| 11 | Repository baseline files (`test_repo_baseline.py`) | a required licence/tooling file vanishes | a legitimate rename reds it | **BOTH by construction** (existence assertions are symmetric) |
+| 12 | Non-vacuity control family (`test_the_z0_sweep_is_not_vacuous`, ~12 sites) | a parametrised sweep silently covers nothing | the floor (`>= 1`, `>= 20`) is set above legitimate shrinkage | **A-only** by design - these ARE the accept-direction control for other guards |
+| 13 | Coverage-declaration contradiction (`tests/support/coverage.py`) | a provider declares `unknown`/`not_offered` over a real published offer | a legitimate declaration is called a contradiction | **BOTH** (`is_material_mismatch` plus per-provider non-vacuity guards) |
+| 14 | Provider assertion / evidence floor (`app/ingest/adapters/html.py`) | an unpinned claim is published | a legitimate page shape fails to extract | **NOT REACHED** |
+| 15 | Fetch address validation, SSRF/DNS-rebinding (`app/ingest/fetch.py`) | a fetch reaches a private address | a legitimate public host is refused | **NOT REACHED** (`test_ingest_fetch.py` exists and is substantial; I did not read it) |
+| 16 | Runtime staleness gate (`app/ingest/trust.py`) | a stale source is published | a fresh source is called stale | **NOT REACHED** |
+| 17 | Publication gate (`app/publish/gate.py`) | a non-Z0 offer is published as Z0 | a genuinely free offer is withheld | **NOT REACHED** |
+
+**Read that table as: 7 BOTH, 5 A-only, 5 NOT REACHED.** The five NOT REACHED are the honest answer to "audited and adequate versus not reached" - they are **not reached**. I read their names, their locations and their purpose; I did not read their assertions, and classifying them from a name is the precise error this slice exists to attack.
+
+### 3. Which guard was "structurally incapable", and is it capable now
+
+Plainly: **`tests/unit/test_adviser_no_llm_import.py`**, guard #10. Every assertion in it had the form "nothing was found", which is what a probe that cannot find anything also reports.
+
+**It is capable now, and that is measured rather than asserted.** Mutation M4 breaks the leak predicate so it can never match. Before this slice, that mutation would have been invisible - there was no test that could fail. After it: the new positive control goes **RED** while the original `test_core_does_not_import_llm_package` stays **GREEN**. The old test's blindness and the new test's capability are the same experiment.
+
+The other guard with no coverage, #1 `scripts/check_urls.py`, was **untested rather than incapable** - a different failure. It now has 20 tests across both directions, and four mutations (M1, M2, M3, M6) confirm they bite.
+
+### 4. Mutation evidence, side by side
+
+Re-run in full after the rebase. For each: anchor asserted to match **exactly once**, byte delta printed, **baseline GREEN first**, then mutated, then restored and **GREEN again** - so the redness is attributable to the mutation and to nothing else that happened along the way.
+
+| # | Anchor occurrences | Byte delta | Test | Baseline | Predicted | Observed | Restored |
+|---|---|---|---|---|---|---|---|
+| M1 | 1 | -13 | `..._lookalike_domain_is_not_swallowed...` | GREEN | RED | **RED** | GREEN |
+| M2 | 1 | -1 | `..._userinfo_cannot_disguise_the_real_host` | GREEN | RED | **RED** | GREEN |
+| M3 | 1 | +0 | `..._an_unlisted_host_fails_the_build` | GREEN | RED | **RED** | GREEN |
+| M3 | 1 | +0 | `..._a_lockfile_resolved_url_is_in_scope` | GREEN | RED | **RED** | GREEN |
+| M6 | 1 | +17 | `..._the_committed_tree_passes_the_guard` | GREEN | RED | **RED** | GREEN |
+| M6 | 1 | +17 | `..._every_host_in_the_committed_tree_is_allowlisted` | GREEN | RED | **RED** | GREEN |
+| M4 | 1 | +7 | `..._the_probe_can_detect_a_leak` | GREEN | RED | **RED** | GREEN |
+| M4 | 1 | +7 | `..._core_does_not_import_llm_package` | GREEN | **GREEN** | **GREEN** | GREEN |
+| M5 | 1 | +8 | `..._every_probed_module_exists` | GREEN | RED | **RED** | GREEN |
+
+Restoration proved twice per mutation, by mechanisms that cannot fail the same way: `git hash-object` (filtered - `scripts/check_urls.py` `9ce16dd08812` -> `9ce16dd08812`, the adviser guard `08f356c45e30` -> `08f356c45e30`) **and** raw byte equality against the pre-mutation bytes. Never `git diff --numstat`.
+
+A defect in my earlier harness OUTPUT is fixed here: it printed "the line containing the match", so for M6 - an insertion whose replacement begins with the anchor line - before and after rendered identically and looked like a mutation that had not applied. It now prints the anchor, the replacement and the byte delta (+17), which is the evidence that distinguishes the two.
+
+### 5. What I could NOT test, for environment rather than design
+
+Asked directly, and the answer is yes - **five guards not reached by reading (above), and one whole family not reachable by execution here**:
+
+- **The Node-side gates cannot be exercised on this machine, and attempting it would have caused the exact incident `check_urls.py` exists to prevent.** `node` 24.11.0 and `npm` 11.6.1 are present, but `node_modules` is absent and **this machine's npm registry is not the public default** (verified as a boolean; the hostname is deliberately not read into any output). Running the repository's own `npm ci` would therefore resolve through an internal proxy and write internal `resolved` URLs into a lockfile - creating, locally, precisely the disclosure the guard under audit is designed to catch. **I did not run it.** So Prettier, ESLint, `npm audit` and the new apps/web CI gate from PR #75 are unverified by me, in both directions.
+- **The CI workflow itself** cannot be executed locally. The one part that could be reproduced was: the full-tree `detect-secrets-hook` over all 640 tracked files was run exactly as `ci.yml` runs it, under a baseline snapshot, and exited **0** with the baseline **not rewritten**.
+- **The Compose stack** was not brought up, so the two `test_stack_health` cases skip. Everything else ran against a real PostgreSQL 16.
+
+That is the list. Where I could not verify a side, it is recorded as "could not verify", not folded into a coverage claim.
+
+- **Gates re-run after the rebase onto `78d2c73` [M]:** full suite **2691 passed, 2 skipped** against real PostgreSQL 16 (scratch database `atlas_guard_audit`); base was 2668 and this slice adds 20 + 3 = 23, so 2668 + 23 = 2691 is accounted for rather than merely plausible. `ruff check .` and `ruff format --check .` clean over 228 files. `scripts/check_urls.py` passed at 1245 URLs / 57 distinct hosts. `scripts/check_secrets_baseline.py` passed, reference `78d2c73`, 68 files / 289 entries, nothing lost. All exit codes read from bare invocations.
+- **Protected state re-verified against the NEW main by raw bytes [M]:** `agent-state/feature_list.json`, `tests/support/source_scan.py`, `tests/unit/test_secrets_baseline.py`, `apps/web/package-lock.json`, `apps/web/package.json`, `.github/workflows/ci.yml`, `scripts/check.ps1`, `scripts/check.sh`, `scripts/check_urls.py`, `scripts/url-allowlist.txt` and `.secrets.baseline` - all byte-identical to `origin/main`. No guard weakened; no allowlist entry added.
+- **Evaluator disposition:** pending - builder self-review only.
+- **Boundary:** Draft PR only. Do not merge, do not flip any ledger flag.
