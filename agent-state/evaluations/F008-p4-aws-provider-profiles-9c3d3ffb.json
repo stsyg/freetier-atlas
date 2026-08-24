@@ -1,0 +1,162 @@
+{
+  "schema_version": 1,
+  "feature_id": "F008",
+  "increment": "p4-aws-provider-profiles",
+  "evaluated_commit": "9c3d3ffbaf4325ebac922ba7940a0db51f2da9a9",
+  "commit_sha_evaluated": "9c3d3ffbaf4325ebac922ba7940a0db51f2da9a9",
+  "base_commit": "80c168490ea334c61ca7944c3469045a83d80bb7",
+  "pull_request": 70,
+  "evaluator": "fresh-context independent Level 2 evaluator (Copilot CLI Chief)",
+  "evaluated_at": "2026-08-14T21:35:00Z",
+  "harness": {
+    "version": "2026-08-12.1",
+    "content_hash": "7209c820e7833b8a",
+    "loaded_first": true
+  },
+  "required_evaluation_level": 2,
+  "evaluation_level": 2,
+  "disposition": "passed",
+  "overall_disposition": "passed",
+  "blocking_issues": [],
+  "summary": "Level-2 fresh-context evaluation of PR #70 (AWS provider, F008 P4). Both SHAs re-derived with git ls-remote at start AND end of the evaluation; neither moved. All ten builder claims were INDEPENDENTLY RE-DERIVED with the repository's own parser and classifier (evaluator-authored probes, not the PR's tests) and all ten matched. The headline result is genuine: AWS Step Functions is evidenced as `always_free` by a verbatim block of its own AND is still Z1_BILLING_EXPOSURE because the same page states overage is charged. The zero-Z0 outcome is a MEASUREMENT, proven non-vacuous by direct mutation: with the classifier's Z0 gate broken the positive control FAILS while the no-AWS-offer-reaches-Z0 sweep still passes, so the control is load-bearing rather than decorative. Five further evaluator mutations (card gate, automatic_billing gate, deleted/reworded/duplicated pinned blocks) all produced the required rejections with exact reasons (assertion_not_found, ambiguous_assertion), and a false-positive control confirmed the guards discriminate rather than reject any edit. Full suite reproduced at 2089 passed / 2 skipped against a dedicated PostgreSQL 16, and 1864 / 227 with DATABASE_URL unset. Protected state verified byte-identical BY BLOB/TREE HASH. .secrets.baseline growth fully accounted for: all 49 new entries are SHA-256 digests in committed AWS fixture captures, and the six sha256_stored values were recomputed against the committed bytes and match. No real credential and no internal package-feed hostname anywhere in the diff. The one red CI job (Dependency audit, GHSA-2v37-7h3g-55p8) is identical on main and unattributable: apps/web is byte-identical to base at tree 5e5024079d4a18e614bbe022545f7efd373331d4.",
+  "sha_rederivation": {
+    "method": "git ls-remote origin refs/heads/main refs/heads/stsyg-ingest-aws-provider-profiles",
+    "at_start": {
+      "main": "80c168490ea334c61ca7944c3469045a83d80bb7",
+      "head": "9c3d3ffbaf4325ebac922ba7940a0db51f2da9a9"
+    },
+    "at_end": {
+      "main": "80c168490ea334c61ca7944c3469045a83d80bb7",
+      "head": "9c3d3ffbaf4325ebac922ba7940a0db51f2da9a9"
+    },
+    "moved": false
+  },
+  "claims_rederived": [
+    {
+      "claim": "1. Six official sources over six documents, all aws.amazon.com; one matrix over a real <thead> table, five assertion-only.",
+      "result": "CONFIRMED",
+      "measured": "6 sources, 6 DISTINCT urls, host set == {'aws.amazon.com'}, all trust_level=official. aws_free_tier_plan is the only matrix profile; its fixture parses to exactly 1 table whose row 0 carries in_thead=True with header cells ('Benefits','Free plan','Paid plan') and 6 body rows. _header_row returned index 0. The other five fixtures parse to ZERO <table> elements, so no structure was synthesized."
+    },
+    {
+      "claim": "2. Classifier verdicts: AWS Free Tier UNKNOWN, free plan Z1, 12 Month UNKNOWN, DynamoDB UNKNOWN, API Gateway Z1, Step Functions Z1; no AWS offer reaches Z0.",
+      "result": "CONFIRMED",
+      "measured": "Re-derived by extracting with the real HtmlDocAdapter and classifying with the real app.classify.engine, using production's own fact->OfferFacts mapping (_exhaustion_of + revalidate_quotas): aws-free-tier-plan new_customer_credit/card=None/exh=unknown -> UNKNOWN; aws-free-plan new_customer_credit/card=True/exh=manual_upgrade_required -> Z1_BILLING_EXPOSURE; aws-12-month-free-tier trial/card=None/exh=unknown -> UNKNOWN; aws-dynamodb-free-tier recurring_quota/card=None/exh=unknown -> UNKNOWN; aws-api-gateway-free-tier trial/exh=automatic_billing -> Z1_BILLING_EXPOSURE; aws-step-functions-free-tier always_free/exh=automatic_billing -> Z1_BILLING_EXPOSURE. Zero Z0. Matches the claim on all six."
+    },
+    {
+      "claim": "3. The zero is a measurement, not a vacuous pass: a positive control returns Z0_TRUE_FREE and is genuinely non-vacuous.",
+      "result": "CONFIRMED BY MUTATION -- the strongest result of this evaluation",
+      "measured": "MUTATION A: patched apps/api/app/classify/engine.py gate 6 to return UNKNOWN instead of Z0_TRUE_FREE (patched line printed). test_the_z0_sweep_is_not_vacuous FAILED with \"assert 'UNKNOWN' == 'Z0_TRUE_FREE'\", while test_no_aws_offer_can_reach_z0 STILL PASSED (6 passed). This proves BOTH halves: the sweep alone is vacuous, and the positive control is the thing that rescues it. engine.py restored and verified at blob 900d27399040968774456a565ca4e1ddd2f1666b."
+    },
+    {
+      "claim": "4. Step Functions is genuinely always_free ('available to both existing and new AWS customers indefinitely') and still Z1 because the same page says 'You are charged per state transition above the free tier'.",
+      "result": "CONFIRMED -- attacked hardest, survived",
+      "measured": "Both quotes exist as EXACT whole-block matches in the committed capture, each occurring exactly ONCE with zero partial/superset matches, so neither is composed or paraphrased. The Z1 verdict does NOT rest on a hand-set field: MUTATION D deleted the 'charged per state transition' block -> error='assertion_not_found', offer_type=None (8 tests failed); MUTATION E reworded 'indefinitely' to 'for a while' -> error='assertion_not_found' (7 failed); MUTATION C disabled the engine's BILLING_EXHAUSTION branch -> tests failed. So removing the evidence REJECTS the document rather than leaving a perpetual offer looking unconditionally free."
+    },
+    {
+      "claim": "5. requires_card=True is quoted, not composed, from a block that names the free plan itself.",
+      "result": "CONFIRMED",
+      "measured": "The pinned block is exactly: 'Yes, you are required to provide a valid payment method to sign up for an AWS account, whether you choose a free plan or a paid plan.' -- one exact whole-block match, zero supersets. It contains 'free plan' as well as 'paid plan', so it is NOT a paid-plan sentence generalised. MUTATION F reworded it to 'when you choose a paid plan.' -> error='assertion_not_found' (6 failed). MUTATION B disabled the engine's requires_card branch -> 3 failed. Adversarial sweep of all six profiles found ZERO requires_card=False and ZERO has_paid_dependencies=False assertions, columns or matrix rows: no AWS profile claims a card is NOT required, and only the FAQ profile asserts requires_card at all."
+    },
+    {
+      "claim": "6. Live<->fixture reconciliation; distinct pins / live rows->fixture rows: 3, 6/6; 8, 0/0; 5, 0/0; 9, 0/0; 3, 0/0; 4, 0/0.",
+      "result": "CONFIRMED",
+      "measured": "Independently recomputed from the committed fixtures with the repo's _DocumentCollector: aws-free-tier-plan 3 pins / 6 capture rows; aws-free-plan 8 / 0; aws-12-month-free-tier 5 / 0; aws-dynamodb-free-tier 9 / 0; aws-api-gateway-free-tier 3 / 0; aws-step-functions-free-tier 4 / 0. All six match exactly. Every pinned block occurs EXACTLY ONCE in its fixture (all_pins_exactly_once=True for all six). Each capture's asserted_block_sha256 array was recomputed from the profile's assertion texts and matched byte-for-byte, and each sha256_stored matched the SHA-256 of the committed source.html."
+    },
+    {
+      "claim": "7. Ten mutation predictions recorded before running, all ten matched, plus profile-level guard disables and collateral checks.",
+      "result": "CONFIRMED by independent re-execution (evaluator ran its own battery, not the builder's)",
+      "measured": "Evaluator-authored battery of 6 mutations, each restored in a finally block and verified BY BLOB HASH (never numstat): A classifier Z0 gate -> control FAILS, sweep passes; B requires_card gate -> 3 failed; C automatic_billing gate -> 1 failed; D delete pinned billing block -> assertion_not_found; E reword perpetuity block -> assertion_not_found; F reword card block -> assertion_not_found; G duplicate a pinned block -> ambiguous_assertion; H FALSE-POSITIVE CONTROL adding an unrelated <p> -> error=None, offer_type still 'always_free'. The false-positive control is what shows the guards DISCRIMINATE rather than rejecting any edit. Final sweep: 37 fixture and protected files checked by blob hash, 0 mismatches; unfiltered git status showed only evaluator-authored untracked probe files, since deleted."
+    },
+    {
+      "claim": "8. Coverage: 3 evidenced, 11 unknown, 0 not_offered, 0 verified_free, each unknown naming what was probed.",
+      "result": "CONFIRMED",
+      "measured": "14 coverage rows: {'unknown': 11, 'offered_no_z0': 3}. Zero not_offered, zero verified_free. The three evidenced rows each declare provenance: nosql-key-value <- aws-dynamodb-free-tier, networking-cdn-dns <- aws-api-gateway-free-tier, queues-messaging-jobs <- aws-step-functions-free-tier. ZERO rows have an empty rationale. Refusing both not_offered and offered_no_z0 for the other eleven is the correct reading of the product rule in both directions."
+    },
+    {
+      "claim": "9. Full suite 2089 passed / 2 skipped against real PostgreSQL 16; 1864 / 227 unset, so 225 tests are Postgres-gated.",
+      "result": "CONFIRMED EXACTLY",
+      "measured": "Dedicated postgres:16-alpine container on an isolated port, fresh venv. WITH DATABASE_URL: 2089 passed, 2 skipped in 328s (the two skips are test_stack_health, needing a live API URL). WITHOUT: 1864 passed, 227 skipped in 62s. Delta = 225, matching the claim. AWS-specific files re-run separately: 67 unit, 19 coverage-config, 7 integration -- the integration tests RAN against real Postgres, they did not skip."
+    },
+    {
+      "claim": "10. Protected state zero-diff by blob hash; feature_list.json byte-identical with F008 passes:false; progress.md a strict byte-prefix append ending 0x0A.",
+      "result": "CONFIRMED",
+      "measured": "Blob/tree hashes base vs head: html.py f1a68632326e80104e89069a4f113b586c4b9176 IDENTICAL; fetch.py b7633e38b96253dcc2093c6a59641dc64fceb9ce IDENTICAL; docker-compose.yml ee185a813285f2c288edfdecfe2e36b28858bcc5 IDENTICAL; tests/unit/test_secrets_baseline.py 4129363f60c61debf7e98cfe3b1e7d9a75399b82 IDENTICAL; apps/api/app/classify/ tree 3d9ec530d62e4c824d859212756ce44e8fe38c6e IDENTICAL; apps/web/ tree 5e5024079d4a18e614bbe022545f7efd373331d4 IDENTICAL; .github/ tree 76093b10ce46fdc314d46c789ec02fab3c9cbea5 IDENTICAL. feature_list.json blob 154de1fef2ba20f587c9ec2d1302ebe2bfb5bfa1 IDENTICAL and F008 passes=False. progress.md: head bytes start with base bytes (strict prefix), 564898 -> 578943 (+14045), final byte 0x0A."
+    }
+  ],
+  "disclosed_errors_verified": [
+    {
+      "error": "(1) First concluded AWS never states an Always Free offer in its own block -- wrong in the omission-favouring direction; correcting it produced the sixth source.",
+      "correction_landed": true,
+      "evidence": "Six sources exist including aws-step-functions-free-tier, whose page states perpetuity in a block of its own; the profile emits offer_type='always_free' pinned to that block. The module docstring records the error verbatim ('That conclusion was wrong, and it was wrong in the favourable-to-omission direction'). This is the correct direction of self-correction under the product rule: a wrongly-omitted free offer is also a defect."
+    },
+    {
+      "error": "(2) Counted three duplicated Terms blocks; there are four.",
+      "correction_landed": true,
+      "evidence": "Independently measured on the committed 12-month fixture: exactly FOUR document-scope blocks occur twice -- resource-reclaim, no-rollover, offer-termination and region-aggregation -- and the capture's duplicate_live_blocks_retained lists exactly those four. None is pinned. MUTATION G confirmed that pinning a duplicated block yields ambiguous_assertion."
+    },
+    {
+      "error": "(3) Read $LASTEXITCODE through a truncating pipeline.",
+      "correction_landed": true,
+      "evidence": "Process disclosure; not directly re-derivable from the artefact. Independently corroborated only insofar as every gate the builder reported green was re-run by this evaluator from a bare call and observed green. NOTE: this evaluator hit an analogous self-inflicted trap (see evaluator_errors) -- the warning is well-founded."
+    },
+    {
+      "error": "(4) Secrets refresh run before git add scanned only tracked files; redone properly 31->42 files, 107->156 entries.",
+      "correction_landed": true,
+      "evidence": "Measured exactly: .secrets.baseline results 31 -> 42 files, 107 -> 156 entries. All 11 new files are committed AWS fixture capture.json files (verified present in git ls-tree at HEAD). Zero baseline files removed; ZERO pre-existing files changed entry count, so nothing masked an existing detection."
+    }
+  ],
+  "security_review": {
+    "secrets_baseline_growth_scrutinised": true,
+    "finding": "CLEAN. All 49 new entries are type 'Hex High Entropy String' and every one is a SHA-256 digest: 11 sha256_stored, 6 sha256_original, and the remainder elements of asserted_block_sha256 arrays. No 'Secret Keyword', no Basic Auth, no key material. The baseline stores only hashed_secret / line_number / type -- no plaintext -- and no entry is marked is_secret=true. The 'it is just fixtures' explanation was NOT accepted on its word: all six sha256_stored values were recomputed from the committed source.html bytes and matched, proving these are content digests. 4107 added diff lines scanned against 11 credential-shape patterns (AWS AKIA/ASIA keys, AWS secret keys, GitHub/Slack/Google tokens, private-key blocks, JWTs, Azure storage keys, bearer literals, password/secret assignments, URLs with inline credentials): ZERO matches. Zero internal package-feed hostname leaks."
+  },
+  "ci_baseline": {
+    "main_rederived_at": "80c168490ea334c61ca7944c3469045a83d80bb7",
+    "main_jobs": {
+      "Node format and lint": "success",
+      "Dependency audit": "failure",
+      "Python lint, format, tests": "success",
+      "Secret scan": "success"
+    },
+    "pr_jobs": {
+      "Node format and lint": "success",
+      "Secret scan": "success",
+      "Python lint, format, tests": "success",
+      "Dependency audit": "failure"
+    },
+    "attribution": "The single red is identical on both and is GHSA-2v37-7h3g-55p8 (nanoid <3.3.18, high) in apps/web. Unattributable to this PR: apps/web tree is byte-identical to base at 5e5024079d4a18e614bbe022545f7efd373331d4, so the PR cannot have caused or worsened it. Baseline was re-derived from the live CI run rather than trusted from the brief; main had not moved."
+  },
+  "undisclosed_findings": [
+    {
+      "severity": "informational",
+      "finding": "capture.json uses TWO different counting conventions for pinned blocks within the same file. structure.asserted_block_sha256 is per-ASSERTION (so it repeats a hash when several fields pin the same block: Step Functions has 7 entries for 4 distinct blocks), while live_reconciliation counts DISTINCT blocks ('all 4 pinned block(s)'). Both are internally consistent and the reconciliation figure is the correct one, but a reader comparing the two fields can easily mis-read the array length as the number of pinned blocks. Not a correctness defect and not blocking; worth a naming clarification in a later slice."
+    },
+    {
+      "severity": "informational",
+      "finding": "test_no_aws_offer_can_reach_z0 is, in isolation, a vacuous test -- this evaluator demonstrated it passes unchanged against a classifier that can never emit Z0. This is NOT a defect because the builder shipped exactly the control that fixes it, but it is worth recording explicitly that the control is load-bearing and must never be deleted as redundant."
+    },
+    {
+      "severity": "informational",
+      "finding": "No new instance of the known project-level gaps was introduced. sha256_stored still attests committed bytes only and each capture says so; the flattened-capture convention is unchanged; the in-cell p/li latent parser gap is untouched because five of six profiles read no table at all and the sixth's target table has no in-cell block elements."
+    }
+  ],
+  "evaluator_errors": [
+    "Counted FIVE duplicated blocks in the 12-month Terms fixture and briefly treated the builder's 'four' as an under-count. WRONG: my probe ignored assertion SCOPE. 'AWS Free Tier Terms' appears once as title scope and once as heading scope, which are different scopes and cannot collide as an assertion. The document-scope duplicate count is four. The builder was right; I was wrong.",
+    "My first PowerShell mutation script aborted mid-run on an argument-quoting bug ('-k unfavourable or card' passed as one token) and, because the failure occurred before the restore line, left apps/api/app/classify/engine.py PATCHED on disk. I caught it on the next run only because I had a blob-hash PRE-check, then hard-restored with git checkout and re-verified against the committed blob. This is precisely the class of trap the brief warned about, and it is the reason the rewritten battery restores in a finally block. No mutated state reached any report or commit.",
+    "Read coverage provenance from a 'source_id' attribute when the config field is 'source', which briefly produced a false reading that the three offered_no_z0 rows had no provenance. Re-read from the YAML: all three declare a source. My probe error, not a defect.",
+    "Assumed tests/conftest.py and bs4 existed; neither does. The suite has no root conftest and the parser is stdlib html.parser. Cost one wasted probe each; no effect on findings."
+  ],
+  "method": {
+    "independence": "Every material claim was re-derived with evaluator-authored probes driving the repository's own _DocumentCollector, HtmlDocAdapter, resolve_profile, revalidate_quotas and classify. The PR's own tests were used only as mutation TARGETS (to observe whether they fail when the thing they guard is broken), never as the source of a pass.",
+    "database": "dedicated postgres:16-alpine container, isolated port, fresh venv, alembic upgrade head",
+    "live_fetching": "none; CI performs zero socket operations by design and no live fetch was attempted inside the suite",
+    "restoration_discipline": "every mutation restored in a finally block and verified by git hash-object against git rev-parse HEAD:<path>, never by git diff --numstat"
+  },
+  "boundary": {
+    "merged": false,
+    "pr_opened": false,
+    "feature_list_touched": false,
+    "branch_under_test_modified": false,
+    "note": "Read-only with respect to stsyg-ingest-aws-provider-profiles. Findings written only to the evaluator's own branch."
+  },
+  "recommendation": "PASS. Merge is justified on the evidence. F008 remains passes:false -- this slice is P4 of a six-provider feature and the ledger flag belongs to the epic close-out, not to this increment."
+}
