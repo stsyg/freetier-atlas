@@ -3361,3 +3361,71 @@ That is the list. Where I could not verify a side, it is recorded as "could not 
 - **Protected state re-verified against the NEW main by raw bytes [M]:** `agent-state/feature_list.json`, `tests/support/source_scan.py`, `tests/unit/test_secrets_baseline.py`, `apps/web/package-lock.json`, `apps/web/package.json`, `.github/workflows/ci.yml`, `scripts/check.ps1`, `scripts/check.sh`, `scripts/check_urls.py`, `scripts/url-allowlist.txt` and `.secrets.baseline` - all byte-identical to `origin/main`. No guard weakened; no allowlist entry added.
 - **Evaluator disposition:** pending - builder self-review only.
 - **Boundary:** Draft PR only. Do not merge, do not flip any ledger flag.
+
+## 2026-08-24 - Builder - check scripts: a branch may assert only what it has established
+
+- **Objective:** remove from `scripts/check.ps1` and `scripts/check.sh` every place a non-zero exit status is translated into a specific stated cause the script has not established. Reported symptom: after a baseline refresh the script announced `FAIL: Secret scan (a secret that is not in the baseline was found)` while `detect-secrets-hook` had actually said `Your baseline file (.secrets.baseline) is unstaged.`
+- **Contract:** `agent-state/current_contract.json`, rewritten for this slice. Evaluation level 2. Base `5a3fb24debb502544a0aa952ff39a7d306970a85`, re-derived with `git ls-remote` before branching; `main` then moved three times during the slice (`96b2cb83`, `78d2c736`, `699481b5`) and this branch was rebased.
+- **The class, stated once [M]:** exit statuses are many-to-one with causes. `detect-secrets-hook` returns 1 for a secret outside the baseline AND for an unstaged baseline AND for other argument errors. A branch that maps 1 to one sentence is asserting something it cannot know. The repair is not to special-case the unstaged string - that encodes the report and leaves the schema - but to stop inferring a cause from a status, and to surface the tool's own words instead. Where a cause CAN be measured, it is measured first and only then named.
+
+### Every failure branch audited
+
+| # | Branch | Verdict | Action |
+|---|---|---|---|
+| 1 | ps1 `Invoke-Check` generic non-zero -> `throw "exit code N"` | names no cause, but the STATUS itself was not established: `$LASTEXITCODE` is ambient and an action running no native command inherits the previous check's value | fixed with a `-9999` sentinel |
+| 2 | ps1 `Invoke-Check` catch -> `$_` | sound; quotes the runtime's own words | kept, narrowed to `.Exception.Message` |
+| 3 | ps1 secret scan exit 1 -> "a secret that is not in the baseline was found" | **THE DEFECT.** unestablished | replaced: hook output surfaced, status reported, no cause inferred |
+| 4 | ps1 secret scan exit 3 -> "detect-secrets REWROTE .secrets.baseline" | cause true in practice but never verified by the script | now ESTABLISHED by SHA256 of the baseline before/after, independent of the exit code |
+| 5 | ps1 secret scan `default` -> "detect-secrets exited N" | sound | folded into the honest branch |
+| 6 | ps1 apps/web npm audit -> `throw "exit code N"` | sound | kept |
+| 7 | ps1/sh tool resolution falls back to a bare name | never established that the program exists; a missing toolchain surfaced as a lint/format/audit verdict | precondition added: the tool is looked for, and its absence is named as its own cause |
+| 8 | ps1/sh npm-script checks with no `node_modules` | the recorded false alarm; reported as a Prettier and ESLint failure | precondition added on the path |
+| 9 | ps1/sh empty scan file list | **THE SYMMETRIC DEFECT, and a false GREEN.** MEASURED: the hook exits 0 given no filenames, so the check reported PASS having scanned nothing | now fails naming the empty list |
+| 10 | sh `check()` else -> `FAIL: name` | named no cause and not even the status | now reports the observed status, or a cause the callee established |
+| 11 | sh secret scan exits 1 and 3 | same as 3 and 4 | same repair; rewrite established with `cmp`, which is POSIX where `sha256sum` is not portable |
+| 12 | ps1/sh final summary `CHECKS FAILED: a, b` | named checks, no reasons; a reader scrolled back and in practice supplied a reason from imagination | each failure now carries its established reason |
+
+### Both directions, per branch. Predictions recorded BEFORE each run
+
+| Case | Condition | Prediction | Outcome |
+|---|---|---|---|
+| R0 | healthy tree, `-NodeAudit` | ALL CHECKS PASSED; the new rewrite detector does NOT fire on a clean run | **MATCHED.** exit 0, baseline blob `4529811a` identical before and after |
+| R1 / R1-sh | `.secrets.baseline` modified, not staged | FAIL; hook's own "unstaged" sentence shown; NO secret claimed | **MATCHED** both routes |
+| R2 | genuine planted secret (ps1) | still FAILS; every statement true | **MATCHED**; hook names file and line |
+| R2-sh | same, bash | still FAILS | **DID NOT MATCH - see finding 3** |
+| R2-sh-fixed | same, planted file STAGED | FAILS with the hook's finding | **MATCHED** |
+| R3 / R3-sh | `node_modules` absent | both checks FAIL naming the missing path, not a lint verdict | **MATCHED** both routes |
+| R4 | `node_modules` present + real formatting violation | Prettier still FAILS as a formatting failure | **MATCHED**; guard is specific, not a blanket excuse |
+| R5 / R5-sh | `pip-audit` absent from `.venv` and PATH | FAIL naming the unresolved tool | **MATCHED** both routes |
+| R6-A | probe action runs no native command, previous check FAILED | base: false ALARM "exit code 1"; new: "established no exit status" | **MATCHED** |
+| R6-B | same, previous check PASSED | base: false GREEN "PASS"; new: still "established no exit status" | **MATCHED** |
+| S1b / S1b-sh | genuinely empty file list | FAIL naming it, never PASS | **MATCHED** both routes |
+| S2 | one benign tracked file | guard does NOT fire; PASS | **MATCHED** |
+| S3 | baseline made stale so the hook rewrites it | rewrite named BECAUSE the bytes changed | **MATCHED**; `9F1F7891 -> AD53E2BD` |
+
+- **R6 is a mutation experiment, and says so [M]:** no shipped check has an action that runs no native command, so that branch cannot be reached in the tree as it stands. It was reached by inserting one probe line into COPIES of the new script and of the script at the base commit, both copies asserted byte-identical to their originals by blob hash first (`6b29107c`, `f68e2b97`), the anchor asserted to match EXACTLY ONCE, and the patched line printed. The causal story was then confirmed rather than inferred: with `bad.py` unused-import, base reports `FAIL: Ruff lint (exit code 1)` then `FAIL: PROOF probe (exit code 1)`; with `bad.py` clean, base reports `PASS: Ruff lint` then `PASS: PROOF probe`. The probe's verdict tracks the PREVIOUS check exactly, in both directions. The working tree's `scripts/check.ps1` was never touched.
+
+### Findings reported, deliberately NOT repaired
+
+1. **`.github/workflows/ci.yml:143` carries the identical defect** - `1) echo "::error::detect-secrets found a secret that is not in the baseline."`. CI runs on Linux, so the false alarm this slice removes locally is still live in CI. That file is owned by a concurrent builder in this dispatch; repairing it would collide.
+2. **The ESLint check is very close to vacuous.** MEASURED: root `eslint.config.js` sets `ignores: [..., "apps/web/"]`, and `eslint . --format json` returns **exactly one** linted file - `eslint.config.js` itself. `apps/web` has its own `eslint.config.js` and `lint` script that **nothing invokes**: not `check.ps1`, not `check.sh`, not `ci.yml`, which runs the same root `npm run lint`. Proven both ways: an identical `no-undef` error exits **1** at repo root and exits **0** inside `apps/web/src`. Stated precisely, because this slice is about not overstating: the check is **not literally unfailable** - breaking `eslint.config.js` does turn it red - but it **cannot fail on any defect in the web application**. `.prettierignore` excludes `apps/web/` for the same reason.
+3. **`check.sh` and `ci.yml` scan TRACKED files only; `check.ps1` scans tracked AND untracked.** Found because R2-sh returned `PASS: Secret scan` with a real planted secret present. MEASURED: the untracked file appears 0 times in `git ls-files -z` and 1 time in `git ls-files -co --exclude-standard`. So the bash route matches CI and `check.ps1` is the stricter outlier. Not changed: what a check COVERS is a scope question, and widening `check.sh` would make it diverge from the CI it claims to mirror. A secret in an untracked file cannot reach the remote in any case; the real cost is that the two local gates disagree.
+
+### Errors I made, disclosed
+
+1. **My first empty-file-list case did not produce the condition it claimed to.** A fresh `git init` still had two UNTRACKED files - the copied scripts - and `git ls-files -co` lists untracked, so the list was never empty; the scratch tree also had no `.secrets.baseline`, so the hook exited 2 on a usage error. The case was re-run with `.gitignore` set to `*`, a real baseline present, and the anchor **asserted** (`0 paths`) before any result was read. A mutation that does not apply looks exactly like a control that does not fire.
+2. **I predicted that merging native stderr with `2>&1` under `$ErrorActionPreference = "Stop"` would throw. It did not** - it produced `ErrorRecord` objects. The temp-file redirect was kept anyway, because it is the only form that keeps stdout and stderr separate AND cannot itself throw on a host where a non-zero native exit is terminating.
+3. **I extracted the base script with a PowerShell pipeline and got a NON-identical copy** (`Set-Content -NoNewline` on a line array concatenates the lines). Caught by the blob assertion, not by inspection; replaced with raw redirection through `cmd`.
+4. **I wrote `agent-state/current_contract.json` with CRLF**, against `.gitattributes` (`*.json text eol=lf`). Caught only because git's own warning appeared inside captured hook output during R1. Normalised to LF and re-validated as JSON.
+5. **R5 aborted on its first attempt** because a marker-stopped run had left `pip-audit.exe` locked. That is a property of my harness, not of the script; re-run with a retry loop.
+
+- **A measured premise that changes the fix [M]:** on this host `$PSNativeCommandUseErrorActionPreference` is **False**, so the exit-code switch really is reached - my initial worry that it was dead code on PowerShell 7.4+ was wrong, and I checked rather than assumed. The new code does not depend on the answer either way: the hook call is wrapped so the status is read from `$LASTEXITCODE` bare and immediately whether the call returns or throws.
+- **Guard compliance [M]:** `tests/unit/test_secrets_baseline.py` **141 passed** before and after, with that file and `tests/support/source_scan.py` unmodified. The constraint it imposes was measured rather than guessed: block depth immediately before the `check_secrets_baseline.py` invocation must be **0**, and string bodies are blanked by the scanner. Re-measured after editing: depth **0** in both scripts, `_terminator_before` **None**, `invocation_problems` **[]**, exactly one mention of the validator per file. `check.sh` still carries `${#FAILURES[@]}`, `read -r -d ''`, `git ls-files -z`, `done < <(git ls-files -z)` and the literal `--baseline .secrets.baseline "${files[@]}"`, and still contains no `mapfile` and no `$(git ls-files)`.
+- **Files changed:** `scripts/check.ps1`, `scripts/check.sh`, `agent-state/current_contract.json`, and this handoff. Four files.
+- **Tests and checks run [M]:** `scripts/check.ps1 -NodeAudit` **ALL CHECKS PASSED** at exit 0 (1623 s wall; `pip-audit` x3 and `npm audit` x2 are network-bound). Full `pytest -q` green as part of it. `bash -n scripts/check.sh` clean. `tests/unit/test_secrets_baseline.py` 141 passed. Exit codes read from BARE invocations throughout - never through `Select-Object`, which corrupts `$LASTEXITCODE`, a trap that is doubly relevant in a slice about exit-code handling.
+- **Protected state [M]:** verified by `git hash-object` BLOB COMPARISON, never `git diff --numstat`. `agent-state/feature_list.json` `154de1fef2ba20f587c9ec2d1302ebe2bfb5bfa1`; `tests/support/source_scan.py` `3a86f03aeb1786122081118e2e3be72705a44072`; `tests/unit/test_secrets_baseline.py` `183619e003758d2fd05bb1ffd4f649902fd85187`; `apps/web/package-lock.json` `98f786c2bb0d2e9152d66e6b7ba7b5c3b54b580e`; `.github/workflows/ci.yml` `4f80c771f9562be9df687c5cec918b36548e9d60`; `.secrets.baseline` `4529811ac39b471377afdd780e9465357346a168`. Every mutation case re-asserted the full watch list after restoring, and each reported all watched blobs byte-identical.
+- **`.secrets.baseline` NOT refreshed, deliberately:** no tracked file was added by this change, so a refresh would be timestamp churn rather than a refresh.
+- **No secret, credential or internal package-feed hostname reached any file, report, commit message or PR body.** The planted proof secret is the vendor's own published example key, used untracked and deleted, and its absence was verified.
+- **Evaluator disposition:** pending - builder self-review only.
+- **Boundary:** Draft PR only. Do not merge, do not flip any ledger flag.
+- **Recommended next action:** fresh-context Level-2 evaluator. The two highest-value things to attack are (a) finding 3 - decide whether `check.ps1` scanning untracked files while `check.sh` and CI do not is a divergence worth closing, and in which direction; and (b) whether surfacing the hook's raw output is enough for a reader who skims only the final summary, since that summary now carries the reason but the tool's own words still sit further up.
