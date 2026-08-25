@@ -1,100 +1,59 @@
 {
-  "feature_id": "F008",
-  "slice": "S5-evidence-level-staleness-adviser",
-  "title": "Make staleness a property of EVIDENCE, and stop the adviser proposing or exporting an expired free claim",
-  "branch": "stsyg-evidence-level-staleness",
-  "base_commit": "ee719f7280103c38dba3c4509f6e05d01ae3149d",
-  "started_at": "2026-08-24T17:31:00Z",
-  "objective": "PR #79 stopped a stale snapshot sustaining a free claim on ONE surface: GET /catalogue/categories. Every other surface still repeats the claim, because staleness is modelled as a property of published offer_version rows reached through a single query, not as a property of evidence. The adviser is the worst case and had never been measured: /adviser/recommend actively PROPOSES an expired Z0_TRUE_FREE, and /adviser/export writes it into a deployment bundle that LEAVES THE SYSTEM and outlives the evidence behind it. This slice introduces the missing abstraction -- evidence currency, recomputed at read time against a caller-supplied clock -- and applies it to the three adviser endpoints. The catalogue read surfaces are a separate slice; the declaration-source gap is a third.",
+  "feature_id": "F001",
+  "slice": "ci-disclosure-guard-not-masked",
+  "title": "The URL host allowlist must still run when the secret scan has just failed",
+  "branch": "stsyg-ci-allowlist-on-scan-failure",
+  "base_commit": "f033017d9a76db53491cb35c2ad15512fd7e6a20",
+  "started_at": "2026-08-25",
+  "objective": "In .github/workflows/ci.yml the `Secret scan` job runs `Validate secrets baseline`, then `Scan tracked files against baseline`, then `URL host allowlist`. The last step carries no `if:`, so its condition defaults to `success()` and GitHub SKIPS it whenever an earlier step in the job failed. MEASURED: `skipped` observed in three separate control runs during PR #81. The disclosure guard that keeps an internal package-feed hostname out of a PUBLIC repository therefore stops running at exactly the moment another guard has just fired - when the tree is known to be in an unexpected state and scrutiny should be highest. One finding hides the rest. This contradicts the rule the repository states in its own `dependencies` job comments and already follows in the `web` job added by PR #75.",
   "materiality": "[M]",
   "autonomy_level": "A1",
   "required_evaluation_level": 2,
+  "evaluation_level_rationale": "Level 2 is mandatory: this is a behaviour change to a security boundary (the guard enforcing that no internal hostname reaches a public repository), and it changes when a gate executes. A control that cannot be SHOWN to fail proves nothing, so every claim here is demonstrated at STEP level on real CI runs with the prediction recorded before the run, not inferred from the YAML.",
   "measured_premise": [
-    "P1 MEASURED: base re-derived with `git ls-remote origin refs/heads/main` = ee719f7280103c38dba3c4509f6e05d01ae3149d, equal to the SHA the brief stated. Confirmed rather than trusted.",
-    "P2 MEASURED baseline against an ISOLATED PostgreSQL 16 (own container, port 55433, own volume -- never the shared freetier-atlas-postgres-1 on 5432): `pytest tests/unit tests/integration -q` -> 2666 passed, 3 skipped, exit 0. NOTE: this baseline OMITTED tests/security, which later cost me a missed monkeypatch signature; see D3.",
-    "P3 MEASURED the adviser exposure, which the brief and the PR #79 evaluator both stated as a STRUCTURAL read and explicitly declined to assert. With expired evidence: /adviser/recommend returns fully_zero_cost=true and /adviser/export returns manifest.fully_zero_cost=true with Z0_TRUE_FREE inside MANIFEST.json and a README asserting '$0 proof: every component below is classified Z0_TRUE_FREE'. The whole bundle contained ZERO occurrences of 'stale' or 'fresh'.",
-    "P4 MEASURED the trap the brief warned about: build_candidate re-runs the classifier and marks disagreement as CONTRADICTION, so it LOOKS like a guard. pool.excluded was EMPTY in both the stale and the fresh direction. Both sides read the same frozen material_facts and agree perfectly on evidence that expired years ago. It compares two classifications, never evidence age.",
-    "P5 MEASURED the aggravating fact on the serializer path: for expired evidence, GET /offers/{id} advanced.signals.freshness = 1.0, GET /providers/{slug} freshness = 1.0, GET /providers freshness = 1.0, and OfferDetail carries no field whose name contains 'stale'. Confirmed 1.0 is genuinely what the pipeline freezes rather than a number invented for the fixture: publish/confidence.freshness_ratio(0s, window) = 1.0 for both a 1-second and a 30-day window, and publisher.py:188 computes it at PUBLISH time.",
-    "P6 MEASURED the declaration-source split independently of the orchestrator's figure, over all seven shipped provider configs (cloudflare is F005; aws/azure/gcp/github/oracle/vercel are the six merged F008 providers): 7 verified_free declarations, 5 carrying a `source`, 2 carrying `evidence_url` ONLY -- cloudflare|networking-cdn-dns and github|ai-inference-embeddings. Those two have no Source, hence no schedule, hence no Snapshot, hence no fetched_at, so assess_staleness has no timestamp to compare and they are time-invariant. This is why the declaration gap is a SEPARATE slice: it needs a signal to exist, not a clock to be threaded.",
-    "P7 MEASURED REAL-INPUT REACHABILITY through the real ingest+publish pipeline over committed fixtures for all seven providers: 6 published offer versions (5 Z0_TRUE_FREE, 1 Z2_TEMPORARY_OR_CONDITIONAL -- the GHEC trial), and EVERY Z0 published offer has evidence with a checkable fetched_at. This is what made the strict gate safe: refusing 'currency could not be established' withdraws nothing real. Offer ids are DB-local auto-increment values and are deliberately NOT quoted as identifiers.",
-    "P8 MEASURED both directions on real input: at `now` the adviser pool holds 5 Z0 candidates with confidence 'high' and an empty stale partition; at `now+5y` it holds 0 Z0 and 5 stale with confidence 'unknown', and the recommendation states 'last fetched 1824 days ago, past its 7 days refresh window'.",
-    "P9 MEASURED, first time ever observed: the DB CHECK ck_provider_category_coverage_claimed_offer_requires_evidence FIRES. A raw INSERT of a verified_free declaration with neither source_id nor evidence_url is rejected with a CheckViolation naming the constraint, while a NEGATIVE CONTROL insert carrying evidence_url is accepted -- so the rejection is the constraint, not an unwritable table. Reported as a measurement; nothing was changed."
+    "scripts/check_urls.py is stdlib-only: it imports argparse, pathlib, re, subprocess, sys, shells out to `git ls-files -z`, and reads scripts/url-allowlist.txt plus the checkout. It has NO dependency on detect-secrets or on .secrets.baseline, so no state exists in which running it after those steps failed yields noise rather than a finding.",
+    "MEASURED on the clean tree at f033017: `python scripts/check_urls.py` reports 1260 URL(s), 57 distinct host(s), exit 0. That count is the impossible-value floor for this instrument - this repository can never legitimately contain zero URLs, so a near-zero reading means the enumeration broke, not that the tree is clean.",
+    "`.invalid` is ALREADY on the allowlist as a suffix rule (RFC 2606 reserved namespace), so `example.invalid` PASSES. The negative-control host for demonstration 3 must therefore be something else; a single-label token that is on neither the exact list nor any suffix rule is used instead, and it discloses nothing because it is not a hostname anyone owns.",
+    "detect-secrets 1.5.0 Base64HighEntropyString flags above a Shannon entropy of 4.5 over the base64 charset. The planted control string measures 5.0952 by that same formula, computed locally before any CI run was spent. The probe was validated with a negative control (a repeated-character string measuring 0.0000) so an all-TRIPS result is distinguishable from a broken instrument."
   ],
-  "abstraction_introduced": {
-    "module": "apps/api/app/read_api/currency.py",
-    "why_not_a_boolean": "A single `stale` flag cannot distinguish 'we looked and it expired' (checked=True, stale=True) from 'there was nothing to look at' (checked=False, stale=False). Collapsing them is exactly how the declaration-source gap hides: an evidence_url-only declaration would read as fresh. UNCHECKED is fail-closed for a free claim but is NOT reported as stale, because absence of a timestamp is not evidence of expiry either.",
-    "no_migration": "No schema change, no Alembic revision, no stored projection. Currency is recomputed on every read against a caller-supplied `now`, per decision Q11 as restated in read_api/coverage.py: a stored projection becomes a second source of truth that silently goes stale, which is the precise failure being fixed. Persisting freshness at publish time is what made a five-year-expired claim report 1.0.",
-    "backward_compatibility": "fetch_stale_offer_version_ids keeps its exact signature and semantics and is reimplemented as a projection of fetch_evidence_currency, so PR #79's /catalogue/categories path is behaviourally untouched."
-  },
+  "decision_always_vs_not_cancelled": "`!cancelled()`, not `always()`. They differ on exactly one input - a CANCELLED run - and this workflow sets `concurrency: cancel-in-progress: true` keyed on `ci-${{ github.ref }}`, so that input occurs routinely: any second push to a branch cancels the run in flight. Under `always()` the step would execute inside that dying run, spending a runner on a result nobody will read and writing a step conclusion into a CANCELLED run, where a green step reads as 'the guard ran and passed' to anyone who does not also read the run conclusion. `cancelled` is not `failure`, and misreading one for the other has already bitten this project. `!cancelled()` retains the only behaviour this change needs - run after a FAILED step - and is the spelling the `web` and `dependencies` jobs already use, so the file gains no second idiom for the same intent.",
   "in_scope": [
-    "apps/api/app/read_api/currency.py (new) - the EvidenceCurrency abstraction, anchor keys, the free-claim predicate, the confidence cap",
-    "apps/api/app/read_api/queries.py - fetch_evidence_currency; fetch_stale_offer_version_ids reimplemented on top with unchanged semantics",
-    "apps/api/app/adviser/select.py - OfferCandidate.evidence_currency, the CandidatePool.stale partition, the `now` seam on gather_candidates",
-    "apps/api/app/adviser/recommend.py - a stale Z0 becomes an explained ImpossibleResolution, still shown as the closest candidate",
-    "apps/api/app/adviser/export.py - validate_evidence_currency, an INDEPENDENT fail-closed second gate on the artefact that leaves the system",
-    "apps/api/app/adviser/router.py - all three handlers pass the existing _now() into gather_candidates",
-    "tests/unit/test_evidence_currency.py (new), tests/unit/test_adviser_stale_evidence.py (new), tests/integration/test_adviser_stale_evidence.py (new)",
-    "tests/support/synthetic.py - the corpus declares its evidence currency explicitly instead of relying on a permissive default in production code",
-    "tests/integration/test_adviser_recommend.py - _seed now attaches official evidence, because a published offer has cleared a gate that makes evidence_backed and fresh HARD conditions",
-    "monkeypatch signatures for gather_candidates across tests/unit, tests/integration and tests/security",
-    "agent-state/current_contract.json",
-    "agent-state/progress.md (append only)"
+    ".github/workflows/ci.yml: add `if: ${{ !cancelled() }}` to the `URL host allowlist` step of the `secrets` job, with a comment recording the measurement, the reason the condition is sound for THIS step, and the always()/!cancelled() choice.",
+    ".github/workflows/ci.yml: a comment on `Scan tracked files against baseline` recording why it is deliberately NOT given the same treatment (checked, not assumed).",
+    "agent-state/current_contract.json and agent-state/progress.md."
   ],
   "out_of_scope_zero_diff": [
-    "agent-state/feature_list.json - byte-identical to base. F008 stays passes:false.",
-    "the catalogue read surfaces (/offers/{id}, /offers/{id}/evidence, /providers, /providers/{slug}, /providers/{slug}/offers, /providers/{slug}/category-states, /search, /compare) - SLICE 2, which also owns the search filter-versus-display inconsistency recorded below",
-    "the declaration-source gap (config schema requiring `source` for verified_free, plus migrating the 2 evidence_url-only declarations) - SLICE 3",
-    "tests/support/source_scan.py and tests/unit/test_secrets_baseline.py - another builder's files, not touched",
-    "apps/web/** - no front-end change is needed for this slice; RecommendationView.tsx already renders data.impossible with blocking_reason",
-    "package-lock.json - npm ci and npm audit fix were NOT run",
-    "migrations/**, docker-compose.yml, config/examples/providers/**",
-    "merge or promotion of the pull request"
+    "agent-state/feature_list.json - untouchable. F008 stays passes:false and no ledger flag is flipped.",
+    "tests/support/source_scan.py and tests/unit/test_secrets_baseline.py - the strict secrets route guard. If they go red, that is REPORTED, never repaired.",
+    "The `Scan tracked files against baseline` step's dependency on `Validate secrets baseline`. It is a REAL dependency (see findings) and changing it is outside the contract.",
+    "The `python` and `node` jobs' own masking edges. They are reported as findings; changing them is a separate slice.",
+    "Any npm command. `npm install` / `npm audit fix` rewrite lockfile `resolved` URLs to an internal package-feed host on this machine; committing one would leak internal infrastructure into a public repository.",
+    "The step ORDER in the secrets job. Unchanged - see findings."
   ],
   "acceptance_criteria": [
-    "AC1 A Z0_TRUE_FREE offer whose evidence is past its refresh window does not enter CandidatePool.z0.",
-    "AC2 PAIRED CONTROL: an otherwise identical offer whose evidence is inside its window DOES enter z0. Without this the refusal could be a gate that rejects everything.",
-    "AC3 A stale Z0 offer is routed to an explicit `stale` partition, not silently dropped, and is still surfaced to the user as the closest candidate with a stated reason. Suppressing a free offer is its own defect.",
-    "AC4 /adviser/recommend returns fully_zero_cost=false for an expired claim and states the age, the window, and what to do about it.",
-    "AC5 PAIRED CONTROL: /adviser/recommend still returns fully_zero_cost=true and names the provider for a freshly-evidenced free offer.",
-    "AC6 /adviser/recommend/assisted inherits the same gate through the same deterministic core.",
-    "AC7 An exported bundle carries NO Z0_TRUE_FREE claim in MANIFEST.json for an expired offer, carries no '$0 proof' line, and mentions the class only inside an explicit warning.",
-    "AC8 PAIRED CONTROL: an exported bundle for a freshly-evidenced offer still carries fully_zero_cost=true, the component with Z0_TRUE_FREE, and the '$0 proof' line.",
-    "AC9 build_export fails closed INDEPENDENTLY of the selection gate: a RecommendationResult carrying a non-current component raises ExportValidationError even when the pool gate is bypassed.",
-    "AC10 confidence_label never remains 'high' for an offer whose evidence is not current, and is untouched when it is.",
-    "AC11 'Could not be checked' is refused for a free claim but is NOT reported as stale, and its freshness is None rather than 0.0.",
-    "AC12 EVERY new guard is proved able to FAIL by mutation: baseline GREEN, anchor matched EXACTLY ONCE, patched line printed READ BACK FROM DISK, RED observed with the failing test named, restored and proved byte-exact by BOTH git hash-object AND a raw byte comparison.",
-    "AC13 fetch_stale_offer_version_ids behaviour is unchanged, so PR #79's coverage path is untouched.",
-    "AC14 Full suite green with the collected test count strictly increasing and none lost.",
-    "AC15 agent-state/feature_list.json byte-identical to base; agent-state/progress.md append-only proved by RAW BYTE PREFIX with a NEGATIVE CONTROL."
+    "AC1 BEFORE, reproduced not cited: on main's ci.yml with the secret scan step failing, the `URL host allowlist` step conclusion is `skipped`.",
+    "AC2 AFTER: with the secret scan failing IDENTICALLY, the `URL host allowlist` step RUNS, and its own conclusion is reported.",
+    "AC3 AFTER: the `URL host allowlist` step can still go RED on its own merits - a URL on a non-allowlisted host makes it fail while the secret scan is green.",
+    "AC4 AFTER: a clean tree still passes - both steps `success` and the job `success`.",
+    "AC5 AFTER: the JOB still FAILS when the secret scan fails. `!cancelled()` must not turn a red job green; verified at JOB conclusion, not step conclusion.",
+    "AC6: the protected files are byte-identical to CURRENT main, proved by blob hash comparison rather than by `git diff --numstat`, which lies on this repository.",
+    "AC7: agent-state/progress.md is append-only, proved by RAW BYTE PREFIX against main's CURRENT byte count, with a negative control (one flipped byte must yield False)."
   ],
   "verification_commands": [
-    "git ls-remote origin refs/heads/main",
-    "python -m pytest tests -q",
-    "python -m pytest tests/unit/test_evidence_currency.py tests/unit/test_adviser_stale_evidence.py tests/integration/test_adviser_stale_evidence.py -q",
-    "python -m ruff check apps/api tests ; python -m ruff format --check apps/api tests",
-    "session controls.ps1 - six guard mutations with byte-exact restoration",
-    "git hash-object agent-state/feature_list.json compared against git rev-parse origin/main:agent-state/feature_list.json"
+    "python scripts/check_urls.py",
+    "python -m pytest tests/unit/test_secrets_baseline.py tests/unit/test_url_allowlist.py tests/test_repo_baseline.py -q",
+    "ruff check . && ruff format --check .",
+    "gh run view <id> --json jobs -> read STEP conclusions by name, and the JOB conclusion separately",
+    "gh pr checks -> assert check-runs >= 5 and that jobs ran BY NAME (absence of red is not evidence of green)"
   ],
   "negative_and_regression_tests": [
-    "Expired evidence -> not in z0, in stale, confidence 'unknown', recommend impossible with reason, export carries no Z0 claim.",
-    "Current evidence -> in z0, confidence 'high', recommend fully_zero_cost=true, export carries the $0 proof (paired with every one of the above).",
-    "No fetch time at all -> held back like stale, but freshness None and stale False.",
-    "Classify cross-check asserted EMPTY in both directions, pinning that CONTRADICTION is not a currency guard.",
-    "Six guard mutations, each killing at least one named test and each restored byte-exactly."
+    "Demonstration 3 is the negative control on the guard itself: a guard that cannot be made to fail proves nothing.",
+    "The entropy probe carries its own negative control so an all-TRIPS reading cannot come from a broken instrument.",
+    "The append-only proof carries a flipped-byte negative control.",
+    "`gh --json ... --jq` can return a STRING ARRAY where .Length is a LINE COUNT and .Contains() is array membership; every such read is joined into one string first and carries a marker that MUST be absent, so an all-False result is distinguishable from a broken read."
   ],
-  "expiry_mechanism": {
-    "chosen": "Mechanism D: SHRINK the source's declared refresh window (Source.schedule) instead of moving a timestamp or a clock.",
-    "why_it_is_independent": "assess_staleness decides stale = (now - fetched_at) > window. The two derivations that already established this defect both moved `age` (one backdated Snapshot.fetched_at, one advanced the clock past a real ingest). Mechanism D moves `window` -- the other side of the same inequality. In the integration tests both offers share ONE fetched_at and are read at the real wall clock through the router's own _now(), so the source window is the only variable and an error in age arithmetic could not manufacture the result.",
-    "cross_checked_with": "Mechanism A (aging the evidence) is used in the unit tests and in the real-ingest reachability probe at now+5y; both agree with Mechanism D."
-  },
-  "known_deferred_problem": "GET /catalogue/search?zero_cost_class=Z0_TRUE_FREE filters on the STORED offer.zero_cost_class column in SQL. When slice 2 changes what the read surfaces DISPLAY, the filter and the display can disagree -- a stale offer would be returned by a 'show me free things' filter while displaying as unsupported. That must be resolved inside slice 2 and is recorded here so it is not discovered as a surprise.",
-  "data_security_privacy_portability_z0": {
-    "data": "No migration, no schema change, no stored projection, no fixture capture edited.",
-    "security_privacy": "No secret introduced. No registry URL or internal hostname written to any repository file, commit message, PR body or report. npm ci and npm audit fix were NOT run, so package-lock.json resolved URLs are untouched. The export validation error deliberately does not echo generated file content, asserted by test.",
-    "portability": "No new runtime dependency, no new mandatory service. Standard library plus what the app already uses.",
-    "z0": "This is the Z0 honesty path itself. The failure being closed is a free claim repeated after the evidence supporting it expired -- and, worse, actively proposed and written into an artefact that leaves the system. The gate is fail-closed in both non-current shapes, while the paired controls keep a genuinely free, freshly-evidenced offer fully served: a wrongly-withdrawn free offer is a defect of equal severity."
-  },
-  "evaluation_level_rationale": "Level 2 is mandatory: public user workflows and a publication decision, on the one path whose output leaves the system and outlives the evidence behind it.",
+  "data_security_privacy_portability_z0": "No data, schema, migration or Z0 implication. Security: strictly increases the number of runs in which the disclosure guard executes; it removes no gate and weakens no check. Portability: none - a workflow condition. No secret, registry URL or internal hostname appears in any changed file, commit message, PR body or scratch artefact.",
+  "scratch_artefacts": "Control branches and throwaway PRs are required to observe CI at step level, as PRs #75 and #81 also did. They are listed by name in the PR body for closing and are never merged.",
   "boundary": "Draft PR only. Do not merge. Do not modify agent-state/feature_list.json. F008 stays passes:false.",
   "status": "in-progress"
 }

@@ -243,6 +243,19 @@ jobs:
       # real damage. That has happened three times on this project. The same
       # repair was merged for the two local check scripts in PR #80; CI runs on
       # Linux, so this side stayed wrong until now.
+      #
+      # DELIBERATELY LEFT UNCONDITIONED, having been checked rather than assumed.
+      # This step is skipped when `Validate secrets baseline` fails, which is the
+      # same masking shape the step below was fixed for -- but here the
+      # dependency is REAL. The validator runs first precisely because
+      # detect-secrets-hook REWRITES the baseline; run this step on a baseline
+      # already ESTABLISHED corrupt and the hook rewrites that corruption, this
+      # step's own byte comparison then reports "detect-secrets REWROTE
+      # .secrets.baseline", and that annotation is a CONSEQUENCE of the finding
+      # one step above rather than an independent one. Noise dressed as a
+      # finding -- the reason the `web` job conditions on its install outcome
+      # rather than on `!cancelled()` alone. The step below has no comparable
+      # dependency, which is why it gets the opposite treatment.
       - name: Scan tracked files against baseline
         shell: bash
         run: |
@@ -308,7 +321,45 @@ jobs:
       # reviewed public allowlist. Stdlib-only, so it needs no install step.
       # Kept inside this job rather than a new one so the existing required
       # check name is unchanged.
+      #
+      # CONDITIONED, and the condition is the point. With no `if:` the default is
+      # `success()`, so GitHub SKIPPED this step whenever ANY earlier step in the
+      # job failed. MEASURED on a control PR against this file: plant one
+      # high-entropy string, `Scan tracked files against baseline` reports
+      # `failure` and this step reports `skipped`. It is skipped by the validator
+      # failing too, so two separate edges reached it. The effect is that the
+      # guard keeping an internal hostname out of a PUBLIC repository stopped
+      # running at exactly the moment another guard had just fired -- when the
+      # tree is known to be in an unexpected state and scrutiny should be
+      # highest. One finding hid the rest, which is the rule the `dependencies`
+      # job states in its own comments and the `web` job already follows.
+      #
+      # Sound HERE because this step depends on neither step above it:
+      # scripts/check_urls.py is stdlib-only, shells out to `git ls-files` and
+      # reads the checkout. It needs no detect-secrets and no valid
+      # .secrets.baseline, so there is no state in which running it after their
+      # failure yields noise instead of a finding. Contrast the note on the
+      # previous step, whose dependency IS real.
+      #
+      # `!cancelled()` rather than `always()`, deliberately. They differ on
+      # exactly one input -- a CANCELLED run -- and this workflow sets
+      # `cancel-in-progress: true` on `ci-${{ github.ref }}`, so that input
+      # occurs routinely: any second push to a branch cancels the run in flight.
+      # `always()` would execute this step inside that dying run, spending a
+      # runner on a result nobody will read and writing a green step into a
+      # CANCELLED run -- which reads as "the guard ran and passed" to anyone who
+      # does not also read the run conclusion, and `cancelled` is not `failure`.
+      # `!cancelled()` keeps the only behaviour this change needs, running after
+      # a FAILED step, and is the spelling the `web` and `dependencies` jobs
+      # already use, so the file gains no second idiom for one intent.
+      #
+      # It does not turn a red job green: a failed step fails the job whatever
+      # later steps are conditioned on or report. Only `continue-on-error` would
+      # mask that, and it is deliberately absent. VERIFIED at JOB conclusion on a
+      # control PR rather than assumed, because that is the exact way an
+      # `always()`-shaped change goes wrong unnoticed.
       - name: URL host allowlist
+        if: ${{ !cancelled() }}
         run: python scripts/check_urls.py
 
   dependencies:
