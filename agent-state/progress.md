@@ -3702,3 +3702,9 @@ Relatedly, run `32783112497` was reported to me as a Python test failure. Read a
 - **Evaluator disposition:** pending — builder self-review only. Required level **2** (provider adapters and evidence extraction, Z0 classification, and the automatic publication path all trigger it).
 - **Boundary:** Draft PR only. Not merged. No feature marked passing. `feature_list.json` untouched.
 - **Recommended next action:** independent Level-2 review of this PR. Then, as a separate slice, extend the same discovery-plus-mutation pattern to the rest of the tree — this slice fixed ten lines in seven files and deliberately made no claim about the others, and finding #E1 (executed-but-unasserted) shows a line-coverage sweep alone would under-report the problem.
+
+### 2026-08-25 addendum — CI has now run (retires "not verified" item 5)
+
+- **All six checks PASS on the draft PR** at commit `1c338d0`: `Python lint, format, tests`, `Node format and lint`, `Web type-check, tests, and build`, `Dependency audit`, `Secret scan`, `GitGuardian Security Checks`.
+- **CI's own Pytest step reports `2910 passed, 3 skipped, 1 warning`** — byte-for-byte the same counts as my local `DATABASE_URL`-set arm (2910 / 3). The +51 new tests execute in CI, and the DB-gated arm reproduces independently of my machine.
+- This retires item **5** of "NOT VERIFIED" above ("no CI run has executed these tests yet"). Items **1–4** stand unchanged: coverage is LINE granularity not branch; the trace covers only the seven contract files and makes no claim about the rest of the tree; the database was started empty; and the mutation controls ran against the sweep file only.

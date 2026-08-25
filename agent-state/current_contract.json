@@ -10,7 +10,6 @@
   "autonomy_level": "builder; draft PR only",
   "required_evaluation_level": 2,
   "evaluation_level_rationale": "Touches provider adapters and evidence extraction, Z0 classification, and the automatic publication path. Level 2 is mandatory for all three under docs/AGENT_HARNESS.md.",
-
   "step_zero_remeasurement": {
     "why": "The finding was traced twice by independent instruments, but BOTH runs had no DATABASE_URL. That is the OFFLINE suite only; the DB-gated layer -- the entire publish pipeline and read API -- was never traced. The accurate claim before this slice was 'never executed by the offline suite', NOT 'never executed by any test'.",
     "method": "Two instruments sharing no implementation (`sys.settrace` global-call filter; `sys.monitoring` LINE with DISABLE), each run as a SEPARATE pytest process, over the WHOLE suite, against a live throwaway postgres:16-alpine (the image CI uses) on an isolated port. Seven target files traced in full so a floor could be applied.",
@@ -30,13 +29,11 @@
       "I predicted `reference.py:112` was NOT HIT. MEASURED: HIT. See finding_the_brief_did_not_have."
     ]
   },
-
   "finding_the_brief_did_not_have": {
     "fifth_implementation": "The brief names FOUR implementations of the evidence floor. There are FIVE: `apps/api/app/ingest/reference.py:112` carries the identical message and `JsonOfferAdapter` there is a real concrete `SourceAdapter` subclass. Discovery over the tree finds exactly 5 concrete adapters.",
     "and_it_is_worse_not_better": "That fifth line IS executed -- by `tests/unit/test_ingest_contract.py::test_reference_adapter_validate_flags_missing_fields`, which builds a `CandidateFacts` with the default `evidence=()` and calls `validate()`. But that test asserts only the two MISSING-FIELD messages. So the evidence floor there is EXECUTED AND UNASSERTED: a line-coverage tool calls it covered, and deleting the guard would not fail a single test. Four guards are invisible to coverage; the fifth is invisible DESPITE coverage. This is why the fix asserts behaviour, not execution.",
     "no_drift": "The brief warned every line-number hint had 'PROBABLY DRIFTED'. I re-located all ten independently: ZERO drift. All ten land exactly where hinted (T10 at 476 within the hinted 475-476)."
   },
-
   "in_scope": [
     "tests/unit/test_adapter_evidence_floor.py (NEW) - ONE parameterised test sweeping the evidence floor across EVERY concrete SourceAdapter discovered on disk, plus a discovery floor that fails when a newly added adapter has no entry",
     "tests/unit/test_z0_gate_ambiguous_cell.py (NEW) - the ambiguous-cell chain: source cell -> to_bool -> None -> OfferFacts -> classify() must NOT be Z0",
@@ -52,7 +49,6 @@
     "ALL production code. This slice adds tests only; no application behaviour changes, so a test that fails is reporting a real defect rather than a moved goalpost.",
     "npm install/i/update/audit fix - never run; this slice needs no node work at all"
   ],
-
   "design_decisions": {
     "one_parameterised_test_not_five": "The defect being repaired IS DRIFT BETWEEN COPIES. Five separate tests would recreate the exact structure that let the property rot unevenly. One test, parameterised over a DISCOVERED adapter list, asserts all five emit the IDENTICAL message -- so a reworded copy fails.",
     "discovery_not_a_hand_typed_list": "The parameter list is produced by importing every module under `apps/api/app/ingest/**` and collecting concrete `SourceAdapter` subclasses whose `__module__` is that module (so re-exports are not double-counted). The list is never typed out, and never copied from the task brief.",
@@ -60,7 +56,6 @@
     "what_None_must_mean_on_the_Z0_gate": "UNKNOWN, never 'no card required'. AGENTS.md: 'A failed or unknown material Z0 condition prevents Z0 classification.' The engine already honours tri-state None; what was never tested is the BRIDGE -- that an ambiguous source cell actually arrives as None rather than being coerced to False somewhere between the table cell and OfferFacts. The test drives the whole chain and asserts the classification is not Z0.",
     "positive_controls_everywhere": "A test asserting 'rejected' passes just as well when the code rejects everything. Every check here is paired with an accepting arm: the evidence floor sweep asserts the SAME candidate WITH evidence produces no floor message and that the ONLY difference between the two arms is the floor message; the Z0 chain asserts a clean 'No' cell still classifies Z0_TRUE_FREE and a clean 'Yes' cell classifies Z1; revalidate asserts a normal value still produces its quota row; the matrix tests assert the well-formed table still extracts."
   },
-
   "acceptance_criteria": [
     "Every one of the ten target lines is EXECUTED after the change, re-measured by BOTH instruments, with the floor and all positive controls still passing",
     "The evidence floor is asserted BEHAVIOURALLY for all five adapters by ONE parameterised test whose parameter list is discovered, not typed",
@@ -74,7 +69,6 @@
     "agent-state/feature_list.json byte-identical to main; progress.md append-only, proven by raw byte prefix plus a flipped-byte negative control",
     "Every prediction recorded BEFORE the run that tests it"
   ],
-
   "verification_commands": [
     "python -m ruff check .",
     "python -m ruff format --check .",
@@ -92,5 +86,6 @@
   ],
   "data_security_privacy_portability_z0": "No schema, migration, provider, or portability change. No production code changes at all, so no behaviour is altered and no gate is weakened. Z0-POSITIVE: the slice makes the unknown-material-condition rule deterministically enforced end-to-end for the first time, instead of resting on an engine unit test plus an untested bridge.",
   "boundary": "DRAFT PR only. Do not merge. Do not mark any feature passing. feature_list.json untouched.",
-  "status": "step-zero re-measurement complete and instrument-controlled; implementation in progress"
+  "status": "implementation complete; all ten target lines re-measured as EXECUTED by both instruments; mutation controls pass; CI green (2910 passed / 3 skipped, matching the local DB arm exactly); Level-2 evaluator disposition pending",
+  "ci_corroboration": "Draft PR: all six checks pass at commit 1c338d0. CI Pytest step reports 2910 passed, 3 skipped -- identical to the local DATABASE_URL-set arm, so the measurement reproduces off this machine."
 }
