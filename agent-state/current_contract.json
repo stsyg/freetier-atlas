@@ -67,7 +67,22 @@
     "progress.md append-only proven by raw byte-prefix comparison plus a flipped-byte negative control"
   ],
   "data_security_privacy_portability_z0": "No schema, data, provider, Z0 or portability change. Security-POSITIVE: makes the `python` job's URL-allowlist route unmaskable by a lint or formatting nit. No security check is weakened, suppressed or relaxed; no `continue-on-error` is introduced, so no failing gate is converted to a pass.",
-  "scratch_artefacts": "Listed in the progress entry for closure. All scratch branches and PRs are to be deleted; none is ever merged.",
+  "demonstrations_observed": {
+    "method": "Three genuine BEFORE/AFTER pairs. Control files byte-identical across arms by `git hash-object`; BEFORE ci.yml == main's blob 124ced29, AFTER == slice blob aff7df68. All 14 byte-identity assertions passed. Every prediction written to PREDICTIONS.md BEFORE any branch was pushed.",
+    "pair_A_lint_control": "#89 BEFORE: Ruff lint failure -> Ruff format check / Apply database migrations / Pytest ALL skipped; Prettier check failure -> ESLint skipped. #90 AFTER, same bytes: Ruff lint failure -> format RAN success, migrations RAN success, Pytest RAN success; Prettier failure -> ESLint RAN failure. Both JOBS failure on both arms.",
+    "pair_B_format_control": "#91 BEFORE: Ruff lint success, Ruff format check failure -> migrations skipped, Pytest skipped. #92 AFTER: format failure -> migrations RAN success, Pytest RAN success reporting 2859 passed, 3 skipped. JOB failure. THE CENTRAL RESULT: job RED from a quote-style nit while the entire suite ran and passed.",
+    "pair_C_migration_control": "#93 BEFORE: migrations failure -> Pytest skipped. #94 AFTER: migrations failure -> Pytest RAN failure, reporting 2602 passed, 3 skipped, 257 errors - matching the local measurement exactly. JOB failure.",
+    "clean_tree": "#88: all five jobs success; Pytest 2859 passed, 3 skipped.",
+    "job_still_red": "Verified at JOB conclusion on all six control runs. Unmasking turned no red job green. `continue-on-error` remains absent.",
+    "can_still_fail_on_own_merits": "ESLint failure in #90; Pytest failure in #94.",
+    "instrument_controls": "All five expected job names asserted present in every one of the seven reads; a deliberately bogus step name returned <step-not-found> every time; mergeable state read before interpreting any conclusion (all MERGEABLE)."
+  },
+  "not_verified_stated_prominently": [
+    "No CANCELLED run was observed, so `!cancelled()` versus `always()` is NOT measured - it rests on documented Actions semantics and on the three jobs in this file that already use it.",
+    "Only `pull_request` events were observed; `workflow_dispatch` and `push`-to-main were not tested.",
+    "The 'no database' arm of the 258 figure is a LOCAL measurement only, because CI always sets DATABASE_URL. Only the 'with database' arm (2859 passed / 3 skipped) was reproduced in CI, twice."
+  ],
+  "scratch_artefacts": "PRs #89 #90 #91 #92 #93 #94 and branches scratch/ci-masking-pair{a,b,c}-{before,after}. None merged; all to be closed and deleted.",
   "boundary": "DRAFT PR only. Do not merge. Do not mark any feature passing. feature_list.json untouched.",
-  "status": "implementation complete; controls in flight; evaluator disposition pending"
+  "status": "implementation and all seven demonstrations complete; every prediction held; Level-2 evaluator disposition pending"
 }
