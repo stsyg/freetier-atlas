@@ -1,88 +1,96 @@
 {
-  "feature_id": "F001",
-  "slice": "ci-masking-edges-python-node",
-  "title": "Unmask the spurious step-to-step masking edges in the `python` and `node` CI jobs, and re-measure the stale DATABASE_URL-gated test count",
-  "branch": "stsyg-ci-masking-edges-python-node",
-  "base_commit": "3bdec4a5b71acf4bc29dbac54ffe4075efc00375",
+  "feature_id": "F003",
+  "slice": "evidence-floor-and-z0-gate-coverage",
+  "title": "Execute the never-executed safety guards: the evidence floor in every adapter, the ambiguous-cell path onto the material Z0 gate, and the None/blank fact skips on the publication path",
+  "branch": "stsyg-evidence-floor-z0-gate-coverage",
+  "base_commit": "ba598a984da9f0afebcc3daa6722195586e7eb4d",
   "started_at": "2026-08-25",
-  "objective": "In .github/workflows/ci.yml no step in the `python` or `node` job carries an `if:`, so GitHub's default `success()` makes a failing step SKIP every later step in the job, and a skipped step produces no evidence. A one-character formatting nit therefore silences the entire test suite in a job named 'Python lint, format, tests', and a Prettier difference silences every ESLint finding in `node`. Unmask the edges that are spurious while KEEPING the ones that are genuine install dependencies. Separately, a comment in the same file states a measured test count as present-tense fact with no date or command; re-measure it and restate it so it cannot silently rot.",
-  "materiality": "CI gate correctness and a security-relevant disclosure route. `tests/unit/test_url_allowlist.py` asserts over the committed tree that every URL host is allowlisted, and it runs in the `python` job's `Pytest` step, so it is the SECOND CI route to the rule that keeps an internal hostname out of this public repository. Before this change a Ruff nit switched that route off.",
+  "objective": "Nine safety-relevant lines that are reachable on ordinary provider input have never been executed by ANY test, with or without a database. The worst is the EVIDENCE FLOOR -- the guard that refuses a candidate carrying no evidence location -- which exists in FIVE separate implementations. On a product whose first rule is that no unsupported claim that a service is free may ship, the guard enforcing 'there must be evidence' has never been shown to execute. Give every one of these paths a test, with a paired positive control so none can pass vacuously, and make it impossible for a NEW adapter to escape the evidence-floor sweep.",
+  "materiality": "Zero-cost safety and evidence integrity, the two criteria the product's first rule rests on. `requires_card` and `has_paid_dependencies` are the two fields that decide Z0_TRUE_FREE versus Z1_BILLING_EXPOSURE; a provider rewording one table cell reaches the ambiguous-value path. `_coerce` returns None for an empty cell, so the publication path's None/blank skips are ONE BLANK TABLE CELL from live, and the failure mode is a published quota row whose raw text reads 'None'.",
   "autonomy_level": "builder; draft PR only",
   "required_evaluation_level": 2,
-  "evaluation_level_rationale": "Touches a security boundary's CI enforcement route and changes when build-gating checks execute. Level 2 is mandatory for security boundaries under docs/AGENT_HARNESS.md.",
-  "measured_premise": {
-    "derivation_method": "Parsed .github/workflows/ci.yml and SIMULATED each step's effective `if:` against the outcomes of the steps before it. A masking edge is an ordered pair (A,B) in one job where B is `skipped` in a run in which A fails but would have run otherwise. Counted over steps carrying a `run:` key.",
-    "total_masking_edges": 22,
-    "real_kept": 15,
-    "spurious_removed": 7,
-    "real_breakdown": "14 dependencies on an install step, plus `Validate secrets baseline` -> `Scan tracked files against baseline` in `secrets`, which is real for the reason documented on that step.",
-    "spurious_breakdown": "python: Ruff lint -> {Ruff format check, Apply database migrations, Pytest}; Ruff format check -> {Apply database migrations, Pytest}; Apply database migrations -> Pytest. node: Prettier check -> ESLint.",
-    "disagreement_with_brief_stated_prominently": "The task brief said 17 edges / 11 real / 6 spurious. MY MEASUREMENT: 22 / 15 / 7. The 17 is the SAME measurement restricted to edges whose MASKED step carries no explicit `if:`, which excludes the five deliberate install gates in `web`; that sub-population was reproduced exactly (17) as a cross-check. The 6-versus-7 difference is a genuine CLASSIFICATION difference, not a counting one: the brief left `Apply database migrations` -> `Pytest` undecided and asked for it to be settled on evidence, and the evidence settles it SPURIOUS.",
-    "instrument_negative_controls": "The edge parser was proven capable of returning a different answer: stripping all `if:` raised the count 22->49; setting `!cancelled()` everywhere drove it to 0; unmasking one known edge dropped it by exactly 1; an unsupported condition RAISES rather than being silently counted as no-edge."
+  "evaluation_level_rationale": "Touches provider adapters and evidence extraction, Z0 classification, and the automatic publication path. Level 2 is mandatory for all three under docs/AGENT_HARNESS.md.",
+
+  "step_zero_remeasurement": {
+    "why": "The finding was traced twice by independent instruments, but BOTH runs had no DATABASE_URL. That is the OFFLINE suite only; the DB-gated layer -- the entire publish pipeline and read API -- was never traced. The accurate claim before this slice was 'never executed by the offline suite', NOT 'never executed by any test'.",
+    "method": "Two instruments sharing no implementation (`sys.settrace` global-call filter; `sys.monitoring` LINE with DISABLE), each run as a SEPARATE pytest process, over the WHOLE suite, against a live throwaway postgres:16-alpine (the image CI uses) on an isolated port. Seven target files traced in full so a floor could be applied.",
+    "instrument_controls": {
+      "floor": "Refuse to report any verdict unless >=200 distinct lines were traced overall AND >=200 in html.py. MEASURED: 1471 total, 676 in html.py. Floor cleared by 7x.",
+      "attachment": "Each report reads the tracer back at session finish (`sys.gettrace() is _global`; `sys.monitoring.get_tool`/`get_events`). Both reported ATTACHED.",
+      "positive_controls": "9 lines known to execute (the first statement of all five `validate()` methods, the to_bool normalisation, the revalidate loop header, the matrix row-loop body, the _span attribute lookup). ALL 9 reported HIT by BOTH instruments.",
+      "negative_control": "A deliberately DETACHED arm (same plugin, tracer never installed) reported 0 hits and attached=False for every target AND every positive control -- establishing what a silently-failed instrument looks like, and that it is distinguishable from the real runs.",
+      "self_test_both_arms": "A planted test calling `to_bool('maybe')` made `_common.py:44` report HIT in both instruments; a sibling test exercising only unambiguous tokens made the SAME line report NOT HIT while lines 37-43 still reported HIT. The instrument can therefore both pass and fail.",
+      "cross_instrument": "The two instruments' hit sets for the DB arm are BYTE-IDENTICAL (1471 lines each, all 10 target verdicts and all 9 control verdicts agreeing)."
+    },
+    "verdict": "THE FINDING STANDS, and is now measured over the population it was previously only assumed to cover.",
+    "measured_population": "2862 collected. With DATABASE_URL set + reachable: 2859 passed, 3 skipped, exit 0. With DATABASE_URL unset: 2601 passed, 261 skipped, exit 0. The DB-gated population is therefore 258 tests, derived two independent ways that agree (2859-2601 = 258; 261-3 = 258).",
+    "what_the_db_layer_actually_added": "Across all seven target files the 258 DB-gated tests add EXACTLY ONE line of coverage -- `apps/api/app/publish/revalidate.py:284` -- and NONE of the ten target paths. The DB-gated layer, including the whole publish pipeline, does not reach a single one of these guards.",
+    "my_predictions_that_lost": [
+      "I predicted the DB-gated population was 257 (carried from the previous slice's contract). MEASURED: 258. The brief's 'roughly 258' was right and I was wrong. The 258 is derived from my own two subtractions, not retyped.",
+      "I predicted `reference.py:112` was NOT HIT. MEASURED: HIT. See finding_the_brief_did_not_have."
+    ]
   },
-  "decision_migrations_to_pytest": {
-    "verdict": "SPURIOUS - unmasked",
-    "evidence": "Every integration module owns a module-scoped `engine` fixture that calls `command.upgrade(config, 'head')` ITSELF. MEASURED 2026-08-25 against a reachable but EMPTY postgres:16-alpine with `alembic upgrade head` never run beforehand: `python -m pytest -q` reported 2859 passed, 3 skipped, exit 0. Pytest builds the schema it needs and does not consume the CI step's output.",
-    "corroboration": "With DATABASE_URL pointed at an UNREACHABLE port, `python -m pytest -q` reported 2602 passed, 3 skipped, 257 errors, exit 1 - so when the database is broken the suite still returns roughly 2600 independent verdicts rather than noise. That is the test that separates a real edge from a spurious one, and this edge passes it.",
-    "contrast_kept_real": "An install edge fails that test (pytest with no packages reports import errors only), and so does `Validate secrets baseline` -> `Scan`, which is documented on the step."
+
+  "finding_the_brief_did_not_have": {
+    "fifth_implementation": "The brief names FOUR implementations of the evidence floor. There are FIVE: `apps/api/app/ingest/reference.py:112` carries the identical message and `JsonOfferAdapter` there is a real concrete `SourceAdapter` subclass. Discovery over the tree finds exactly 5 concrete adapters.",
+    "and_it_is_worse_not_better": "That fifth line IS executed -- by `tests/unit/test_ingest_contract.py::test_reference_adapter_validate_flags_missing_fields`, which builds a `CandidateFacts` with the default `evidence=()` and calls `validate()`. But that test asserts only the two MISSING-FIELD messages. So the evidence floor there is EXECUTED AND UNASSERTED: a line-coverage tool calls it covered, and deleting the guard would not fail a single test. Four guards are invisible to coverage; the fifth is invisible DESPITE coverage. This is why the fix asserts behaviour, not execution.",
+    "no_drift": "The brief warned every line-number hint had 'PROBABLY DRIFTED'. I re-located all ten independently: ZERO drift. All ten land exactly where hinted (T10 at 476 within the hinted 475-476)."
   },
-  "decision_always_vs_not_cancelled": "`!cancelled()`, matching `web`, `dependencies` and `secrets`. They differ on exactly one input, a CANCELLED run, and this workflow sets `cancel-in-progress: true` on `ci-${{ github.ref }}`, so cancellation is routine. `always()` would write a green step into a dying run, which reads as 'the gate ran and passed'. NOT MEASURED: a cancelled run was not observed, so this rests on documented Actions semantics and in-repo precedent, not on measurement.",
+
   "in_scope": [
-    ".github/workflows/ci.yml - add `id:` to the two install steps and `if: ${{ !cancelled() && steps.<install>.outcome == 'success' }}` to the four steps carrying a spurious incoming edge",
-    ".github/workflows/ci.yml - re-measure and restate the stale '162 tests' comment",
+    "tests/unit/test_adapter_evidence_floor.py (NEW) - ONE parameterised test sweeping the evidence floor across EVERY concrete SourceAdapter discovered on disk, plus a discovery floor that fails when a newly added adapter has no entry",
+    "tests/unit/test_z0_gate_ambiguous_cell.py (NEW) - the ambiguous-cell chain: source cell -> to_bool -> None -> OfferFacts -> classify() must NOT be Z0",
+    "tests/unit/test_publish_revalidate.py (EDIT) - the None-fact and blank-fact skips in revalidate_quotas",
+    "tests/unit/test_adapter_html_matrix.py (EDIT) - the spacer/empty matrix row and the non-numeric colspan span-0 path",
     "agent-state/current_contract.json",
     "agent-state/progress.md (append-only)"
   ],
   "out_of_scope_zero_diff": [
-    "agent-state/feature_list.json - MUST stay byte-identical to main",
+    "agent-state/feature_list.json - MUST stay byte-identical to main (blob 154de1fef2ba)",
     "apps/api/app/read_api/* and apps/web/* - a parallel slice is in flight on stsyg-slice2-catalogue-currency",
-    "package-lock.json and apps/web/package-lock.json - `npm install`/`i`/`update`/`audit fix` are forbidden; only `npm ci` was used",
-    "Any application code. Step order, step names, `run:` bodies, `uses:` and `with:` are unchanged.",
-    "The 15 real masking edges, which are deliberately preserved"
+    ".github/workflows/ci.yml, scripts/check_urls.py, tests/unit/test_url_allowlist.py, .secrets.baseline, both lockfiles",
+    "ALL production code. This slice adds tests only; no application behaviour changes, so a test that fails is reporting a real defect rather than a moved goalpost.",
+    "npm install/i/update/audit fix - never run; this slice needs no node work at all"
   ],
+
+  "design_decisions": {
+    "one_parameterised_test_not_five": "The defect being repaired IS DRIFT BETWEEN COPIES. Five separate tests would recreate the exact structure that let the property rot unevenly. One test, parameterised over a DISCOVERED adapter list, asserts all five emit the IDENTICAL message -- so a reworded copy fails.",
+    "discovery_not_a_hand_typed_list": "The parameter list is produced by importing every module under `apps/api/app/ingest/**` and collecting concrete `SourceAdapter` subclasses whose `__module__` is that module (so re-exports are not double-counted). The list is never typed out, and never copied from the task brief.",
+    "the_floor_that_makes_escape_impossible": "A separate assertion requires the discovered set to equal the set of adapters this file knows how to build. Adding a sixth adapter therefore FAILS this test until its evidence floor is swept. Plus a vacuity floor (>=5 adapters, >=15 modules walked) so a broken walk cannot pass by finding nothing.",
+    "what_None_must_mean_on_the_Z0_gate": "UNKNOWN, never 'no card required'. AGENTS.md: 'A failed or unknown material Z0 condition prevents Z0 classification.' The engine already honours tri-state None; what was never tested is the BRIDGE -- that an ambiguous source cell actually arrives as None rather than being coerced to False somewhere between the table cell and OfferFacts. The test drives the whole chain and asserts the classification is not Z0.",
+    "positive_controls_everywhere": "A test asserting 'rejected' passes just as well when the code rejects everything. Every check here is paired with an accepting arm: the evidence floor sweep asserts the SAME candidate WITH evidence produces no floor message and that the ONLY difference between the two arms is the floor message; the Z0 chain asserts a clean 'No' cell still classifies Z0_TRUE_FREE and a clean 'Yes' cell classifies Z1; revalidate asserts a normal value still produces its quota row; the matrix tests assert the well-formed table still extracts."
+  },
+
   "acceptance_criteria": [
-    "The 7 spurious edges are removed and the 15 real ones remain, asserted by PARSING both files and diffing the step-condition maps rather than by reading the diff",
-    "Only the `if` and `id` keys differ anywhere in the file",
-    "For each unmasked edge: BEFORE the later step is `skipped` on the earlier step's failure; AFTER it RUNS",
-    "AFTER, an unmasked step can still FAIL on its own merits",
-    "AFTER, the JOB is still RED - unmasking must not turn a failing run green",
-    "AFTER, a clean tree is fully green",
-    "Every prediction recorded BEFORE the run that tests it",
-    "Both lockfiles remain entirely on registry.npmjs.org"
+    "Every one of the ten target lines is EXECUTED after the change, re-measured by BOTH instruments, with the floor and all positive controls still passing",
+    "The evidence floor is asserted BEHAVIOURALLY for all five adapters by ONE parameterised test whose parameter list is discovered, not typed",
+    "Deleting the evidence-floor guard from any ONE adapter fails that adapter's parameter case and only that one (mutation control)",
+    "Adding a sixth adapter without wiring it into the sweep fails the discovery floor",
+    "Every new test has a paired positive control that must come out the other way",
+    "An ambiguous requires_card / has_paid_dependencies cell can never produce Z0_TRUE_FREE, and a clean 'No' cell still can",
+    "revalidate_quotas emits NO quota row for a None or blank fact, and in particular never a row whose raw text is the string 'None'",
+    "The whole suite stays green with DATABASE_URL set and unset",
+    "The new tests are offline: they pass with DATABASE_URL unset",
+    "agent-state/feature_list.json byte-identical to main; progress.md append-only, proven by raw byte prefix plus a flipped-byte negative control",
+    "Every prediction recorded BEFORE the run that tests it"
   ],
+
   "verification_commands": [
     "python -m ruff check .",
     "python -m ruff format --check .",
     "python scripts/check_urls.py",
-    "python -m pytest tests/test_repo_baseline.py tests/unit/test_secrets_baseline.py tests/unit/test_url_allowlist.py -q",
-    "python -m pytest -q  (with and without DATABASE_URL)",
-    "npm ci && npm run format:check && npm run lint",
-    "session-scratch: edges.py / edges_controls.py / measure.py / scope.py"
+    "python -m pytest -q  (with DATABASE_URL set against postgres:16-alpine, and with it unset)",
+    "python -m pytest tests/unit/test_adapter_evidence_floor.py tests/unit/test_z0_gate_ambiguous_cell.py tests/unit/test_publish_revalidate.py tests/unit/test_adapter_html_matrix.py -q",
+    "session-scratch: fta_trace_settrace.py / fta_trace_monitoring.py / analyze.py (re-run post-fix)"
   ],
   "negative_and_regression_tests": [
-    "Edge parser: 5 controls, each of which must come out DIFFERENTLY from the baseline",
-    "Scope assertion: before-vs-itself must report zero differences; the declared spurious list must be a subset of the BEFORE edge set",
-    "Measurement: an UNREACHABLE database must produce a LOUD non-zero exit, not a silent skip",
-    "Lockfile host assertion proven to fire on a planted off-registry host",
-    "progress.md append-only proven by raw byte-prefix comparison plus a flipped-byte negative control"
+    "Instrument: detached arm must report 0 for everything; planted-hit and planted-miss arms must disagree on the same line",
+    "Mutation: remove the evidence-floor guard from each adapter in turn -- exactly one parameter case must fail each time",
+    "Mutation: reword one adapter's message -- the shared-message assertion must fail",
+    "Vacuity: pytest exit code 5 (nothing collected) must be treated as failure, not success",
+    "progress.md append-only proven by raw byte-prefix comparison plus a flipped-byte control that must FAIL the same check"
   ],
-  "data_security_privacy_portability_z0": "No schema, data, provider, Z0 or portability change. Security-POSITIVE: makes the `python` job's URL-allowlist route unmaskable by a lint or formatting nit. No security check is weakened, suppressed or relaxed; no `continue-on-error` is introduced, so no failing gate is converted to a pass.",
-  "demonstrations_observed": {
-    "method": "Three genuine BEFORE/AFTER pairs. Control files byte-identical across arms by `git hash-object`; BEFORE ci.yml == main's blob 124ced29, AFTER == slice blob aff7df68. All 14 byte-identity assertions passed. Every prediction written to PREDICTIONS.md BEFORE any branch was pushed.",
-    "pair_A_lint_control": "#89 BEFORE: Ruff lint failure -> Ruff format check / Apply database migrations / Pytest ALL skipped; Prettier check failure -> ESLint skipped. #90 AFTER, same bytes: Ruff lint failure -> format RAN success, migrations RAN success, Pytest RAN success; Prettier failure -> ESLint RAN failure. Both JOBS failure on both arms.",
-    "pair_B_format_control": "#91 BEFORE: Ruff lint success, Ruff format check failure -> migrations skipped, Pytest skipped. #92 AFTER: format failure -> migrations RAN success, Pytest RAN success reporting 2859 passed, 3 skipped. JOB failure. THE CENTRAL RESULT: job RED from a quote-style nit while the entire suite ran and passed.",
-    "pair_C_migration_control": "#93 BEFORE: migrations failure -> Pytest skipped. #94 AFTER: migrations failure -> Pytest RAN failure, reporting 2602 passed, 3 skipped, 257 errors - matching the local measurement exactly. JOB failure.",
-    "clean_tree": "#88: all five jobs success; Pytest 2859 passed, 3 skipped.",
-    "job_still_red": "Verified at JOB conclusion on all six control runs. Unmasking turned no red job green. `continue-on-error` remains absent.",
-    "can_still_fail_on_own_merits": "ESLint failure in #90; Pytest failure in #94.",
-    "instrument_controls": "All five expected job names asserted present in every one of the seven reads; a deliberately bogus step name returned <step-not-found> every time; mergeable state read before interpreting any conclusion (all MERGEABLE)."
-  },
-  "not_verified_stated_prominently": [
-    "No CANCELLED run was observed, so `!cancelled()` versus `always()` is NOT measured - it rests on documented Actions semantics and on the three jobs in this file that already use it.",
-    "Only `pull_request` events were observed; `workflow_dispatch` and `push`-to-main were not tested.",
-    "The 'no database' arm of the 258 figure is a LOCAL measurement only, because CI always sets DATABASE_URL. Only the 'with database' arm (2859 passed / 3 skipped) was reproduced in CI, twice."
-  ],
-  "scratch_artefacts": "PRs #89 #90 #91 #92 #93 #94 and branches scratch/ci-masking-pair{a,b,c}-{before,after}. None merged; all to be closed and deleted.",
+  "data_security_privacy_portability_z0": "No schema, migration, provider, or portability change. No production code changes at all, so no behaviour is altered and no gate is weakened. Z0-POSITIVE: the slice makes the unknown-material-condition rule deterministically enforced end-to-end for the first time, instead of resting on an engine unit test plus an untested bridge.",
   "boundary": "DRAFT PR only. Do not merge. Do not mark any feature passing. feature_list.json untouched.",
-  "status": "implementation and all seven demonstrations complete; every prediction held; Level-2 evaluator disposition pending"
+  "status": "step-zero re-measurement complete and instrument-controlled; implementation in progress"
 }

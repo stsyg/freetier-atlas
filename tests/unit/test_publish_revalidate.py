@@ -459,6 +459,127 @@ def test_optional_offer_field_validator_rejects_coercion_and_equality_impostors(
     assert invalid_optional_offer_fields({field_name: value}) == (field_name,)
 
 
+# ---------------------------------------------------------------------------
+# The empty-fact skips on the publication path.
+#
+# WHY THESE EXIST: measured on this tree (2026-08-25) by two independent line
+# tracers over the whole suite -- with a live PostgreSQL and without one -- the
+# two ``continue`` statements in ``revalidate_quotas`` that skip a None fact and
+# a blank fact had NEVER been executed. The surrounding conditions were covered;
+# the bodies were not, which means no test had ever supplied a None or a blank
+# fact to the publisher.
+#
+# That is one blank table cell away from live: ``app.ingest.adapters.html._coerce``
+# returns ``None`` for an empty cell, and a fact that reaches this function as
+# ``None`` and is NOT skipped becomes a published quota row whose raw text reads
+# the literal string "None" -- a fabricated quota, on the public catalogue.
+#
+# Every case below carries a positive control in the same assertion set: a real
+# metric alongside the empty one must still produce its row, so "no rows at all"
+# cannot pass for "the empty one was skipped".
+# ---------------------------------------------------------------------------
+
+#: Values that mean "this cell said nothing". ``None`` is what the HTML adapter
+#: produces for an absent or empty cell; the rest are what a whitespace-only
+#: cell survives as.
+EMPTY_FACT_VALUES = [None, "", " ", "   ", "\t", "\n", " \t\n "]
+
+
+@pytest.mark.parametrize("empty", EMPTY_FACT_VALUES)
+def test_revalidate_emits_no_quota_row_for_an_empty_fact(empty: object) -> None:
+    facts = {
+        "service": "Cloudflare Workers",
+        "offer_type": "always_free",
+        "requests_per_day": "100,000/day",
+        "storage_per_account": empty,
+    }
+    result = revalidate_quotas(facts, exhaustion_behaviour="hard_stop")
+    metrics = {q.metric for q in result.quotas}
+
+    # The path under test: the empty fact produced nothing at all.
+    assert "storage_per_account" not in metrics
+    assert "storage_per_account" not in result.unparsed_fields
+
+    # POSITIVE CONTROL: the well-formed sibling still produced its row, so this
+    # is a targeted skip rather than the function returning nothing.
+    assert "requests_per_day" in metrics
+    requests = next(q for q in result.quotas if q.metric == "requests_per_day")
+    assert requests.amount == Decimal("100000")
+    assert requests.reset_period == "day"
+    assert requests.raw == "100,000/day"
+
+
+@pytest.mark.parametrize("empty", EMPTY_FACT_VALUES)
+def test_an_empty_fact_never_becomes_a_published_quota_whose_text_is_none(empty: object) -> None:
+    """The concrete failure mode, asserted by name.
+
+    If the None skip were removed, ``str(None).strip()`` yields ``"None"`` and a
+    quota row carrying the raw text "None" reaches the catalogue. Assert against
+    the artefact a reader would see, not just against the row count.
+    """
+
+    facts = {
+        "service": "Cloudflare Workers",
+        "offer_type": "always_free",
+        "requests_per_day": "100,000/day",
+        "storage_per_account": empty,
+    }
+    result = revalidate_quotas(facts, exhaustion_behaviour="hard_stop")
+
+    raws = [q.raw for q in result.quotas]
+    assert "None" not in raws
+    assert all(q.raw.strip() for q in result.quotas), (
+        f"a quota was published with blank raw text: {raws!r}"
+    )
+    assert all(q.amount is not None or q.raw.strip() for q in result.quotas)
+    # POSITIVE CONTROL: the function is not simply emitting nothing.
+    assert raws == ["100,000/day"]
+
+
+def test_an_offer_whose_every_quota_cell_is_empty_publishes_no_quotas() -> None:
+    """The whole-row version: no quota data must mean no quota rows.
+
+    An offer whose quota cells are all blank must publish an empty quota set --
+    which the Z0 engine then treats as "no quota data available", blocking Z0 --
+    rather than a set of fabricated rows reading "None".
+    """
+
+    facts = {
+        "service": "Cloudflare Workers",
+        "offer_type": "always_free",
+        "requests_per_day": None,
+        "storage_per_account": "",
+        "cpu_time": "   ",
+    }
+    result = revalidate_quotas(facts, exhaustion_behaviour="hard_stop")
+    assert result.quotas == ()
+    assert result.unparsed_fields == ()
+
+    # POSITIVE CONTROL: the same call shape with real values does produce rows,
+    # so the empty result above is caused by the input and not by the call.
+    populated = revalidate_quotas(
+        {**facts, "requests_per_day": "100,000/day"}, exhaustion_behaviour="hard_stop"
+    )
+    assert [q.metric for q in populated.quotas] == ["requests_per_day"]
+
+
+def test_a_zero_value_is_a_real_quota_and_is_not_skipped_as_empty() -> None:
+    """NEGATIVE CONTROL for the skip: "0" is falsy-looking but is real data.
+
+    The skip is written on the *stripped string*, not on truthiness, and this is
+    what proves it: a documented limit of zero must survive to publication. A
+    skip implemented as ``if not value`` would drop it silently.
+    """
+
+    result = revalidate_quotas(
+        {"service": "Widgets", "offer_type": "always_free", "seats_included": "0"},
+        exhaustion_behaviour="hard_stop",
+    )
+    assert [q.metric for q in result.quotas] == ["seats_included"]
+    assert result.quotas[0].amount == Decimal("0")
+    assert result.quotas[0].raw == "0"
+
+
 def test_revalidate_is_deterministic_and_order_stable() -> None:
     a = revalidate_quotas(WORKERS_FACTS, exhaustion_behaviour="request_rejected")
     b = revalidate_quotas(dict(WORKERS_FACTS), exhaustion_behaviour="request_rejected")
