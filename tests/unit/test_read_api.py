@@ -12,6 +12,8 @@ These tests never touch a live database. They exercise:
 
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
+
 import pytest
 from app.db import get_session
 from app.main import app
@@ -28,7 +30,27 @@ from app.models.domain import (
     Source,
 )
 from app.read_api import confidence, queries, service
+from app.read_api.currency import ANCHOR_OFFER_VERSION, CurrencyContext, assess_currency
 from fastapi.testclient import TestClient
+
+#: Sentinel so ``fetched_at=None`` ("no fetch time at all") stays distinguishable
+#: from "caller did not say", which defaults to a genuinely fresh timestamp.
+_UNSET = object()
+
+
+def _graph_currency(graph: dict, now: datetime | None = None) -> CurrencyContext:
+    """Derive a real currency context FROM the graph's own evidence.
+
+    Deliberately derived rather than hardcoded: if the fixture's snapshot is
+    aged, these tests see "stale" without any further change. A hardcoded
+    "current" context would make every assertion below vacuous.
+    """
+
+    moment = now or datetime.now(UTC)
+    evidence = graph["evidence"]
+    verdict = assess_currency(evidence.snapshot.fetched_at, moment, evidence.source.schedule)
+    return CurrencyContext(index={(ANCHOR_OFFER_VERSION, graph["version"].id): verdict}, now=moment)
+
 
 # --------------------------------------------------------------------------- #
 # Confidence label mapping                                                    #
@@ -112,9 +134,19 @@ def _material_facts(confidence_score: float = 0.93) -> dict:
     }
 
 
-def _build_graph() -> dict:
-    """Construct a transient (unpersisted) published Cloudflare-like graph."""
+def _build_graph(*, fetched_at: datetime | None = _UNSET, schedule: str | None = "daily") -> dict:
+    """Construct a transient (unpersisted) published Cloudflare-like graph.
 
+    The graph DECLARES its own evidence currency rather than leaning on a
+    permissive default in production code (the same correction F008 S5 made to
+    ``tests/support/synthetic.py``). ``fetched_at`` defaults to "just now", so
+    the fixture is genuinely fresh and the freshness assertions below are earned
+    rather than assumed; pass an old timestamp for the expired arm, or ``None``
+    for the "no fetch time at all" arm.
+    """
+
+    if fetched_at is _UNSET:
+        fetched_at = datetime.now(UTC)
     provider = Provider(
         slug="cloudflare",
         name="Cloudflare",
@@ -176,6 +208,7 @@ def _build_graph() -> dict:
         trust_level="official_docs",
         official=True,
         endpoint="https://developers.cloudflare.com/workers/platform/pricing/",
+        schedule=schedule,
     )
     source.id = 5
     snapshot = Snapshot(
@@ -183,6 +216,7 @@ def _build_graph() -> dict:
         content_location="s3://snapshots/cf-1",
         mime_type="text/html",
         content_hash="snap-hash",
+        fetched_at=fetched_at,
     )
     snapshot.id = 7
     snapshot.source = source
@@ -230,18 +264,68 @@ def _build_graph() -> dict:
 
 def test_serialize_provider_summary_aggregates_signals() -> None:
     graph = _build_graph()
-    summary = service.serialize_provider_summary(graph["provider"])
+    summary = service.serialize_provider_summary(graph["provider"], _graph_currency(graph))
     assert summary.slug == "cloudflare"
     assert summary.service_count == 1
     assert summary.published_offer_count == 1
-    # Provider columns unset -> averaged from the published version's signals.
+    # Completeness still comes from the published version's signal: how much of
+    # the offer we captured does not decay with the calendar.
     assert summary.completeness == pytest.approx(0.8)
-    assert summary.freshness == pytest.approx(0.9)
+    # Freshness no longer does. It is recomputed from evidence currency at read
+    # time, so a just-fetched snapshot reads 1.0 -- NOT the 0.9 frozen into
+    # material_facts at publish time. That frozen figure is precisely what let a
+    # five-year-expired claim keep reporting full freshness.
+    assert graph["version"].material_facts["confidence_signals"]["freshness"] == 0.9
+    assert summary.freshness == pytest.approx(1.0)
+
+
+def test_provider_freshness_follows_the_clock_not_the_frozen_signal() -> None:
+    """The frozen signal is constant; the served freshness must not be.
+
+    Same graph, same persisted ``confidence_signals.freshness``, three clocks.
+    A surface reading the frozen value would return 0.9 in every column.
+    """
+
+    graph = _build_graph()
+    frozen = graph["version"].material_facts["confidence_signals"]["freshness"]
+    fetched = graph["evidence"].snapshot.fetched_at
+
+    fresh = service.serialize_provider_summary(graph["provider"], _graph_currency(graph, fetched))
+    half = service.serialize_provider_summary(
+        graph["provider"], _graph_currency(graph, fetched + timedelta(hours=12))
+    )
+    expired = service.serialize_provider_summary(
+        graph["provider"], _graph_currency(graph, fetched + timedelta(days=365 * 5))
+    )
+
+    assert frozen == 0.9  # unchanged throughout
+    assert fresh.freshness == pytest.approx(1.0)
+    assert half.freshness is not None and 0.0 < half.freshness < 1.0
+    assert fresh.freshness > half.freshness > (expired.freshness or -1.0)
+    # And the expired provider no longer claims currency at all.
+    assert expired.evidence_currency.stale is True
+    assert expired.evidence_currency.current is False
+    assert fresh.evidence_currency.current is True
+
+
+def test_provider_freshness_is_none_not_zero_when_unchecked() -> None:
+    """No fetch time -> no number. ``0.0`` would render as "0%" on the page."""
+
+    graph = _build_graph(fetched_at=None)
+    summary = service.serialize_provider_summary(graph["provider"], _graph_currency(graph))
+    assert summary.freshness is None
+    assert summary.evidence_currency.freshness is None
+    assert summary.evidence_currency.checked is False
+    # Absence of evidence is not evidence of expiry.
+    assert summary.evidence_currency.stale is False
+    assert summary.evidence_currency.current is False
 
 
 def test_serialize_offer_detail_label_primary_numeric_advanced_only() -> None:
     graph = _build_graph()
-    detail = service.serialize_offer_detail(graph["offer"], {1: graph["category"]})
+    detail = service.serialize_offer_detail(
+        graph["offer"], {1: graph["category"]}, _graph_currency(graph)
+    )
     # Primary confidence field is the plain-language label.
     assert detail.confidence_label == "high"
     # Reasons come straight from material_facts.classification.
@@ -260,7 +344,9 @@ def test_serialize_offer_detail_label_primary_numeric_advanced_only() -> None:
 def test_serialize_offer_detail_unknown_when_facts_missing() -> None:
     graph = _build_graph()
     graph["version"].material_facts = {}
-    detail = service.serialize_offer_detail(graph["offer"], {1: graph["category"]})
+    detail = service.serialize_offer_detail(
+        graph["offer"], {1: graph["category"]}, _graph_currency(graph)
+    )
     assert detail.confidence_label == "unknown"
     assert detail.reasons == []
     assert detail.advanced.score is None
@@ -269,7 +355,9 @@ def test_serialize_offer_detail_unknown_when_facts_missing() -> None:
 
 def test_serialize_offer_evidence_provenance() -> None:
     graph = _build_graph()
-    response = service.serialize_offer_evidence(graph["offer"], [graph["evidence"]])
+    response = service.serialize_offer_evidence(
+        graph["offer"], [graph["evidence"]], _graph_currency(graph)
+    )
     assert response.offer_version_id == 1000
     assert response.confidence_label == "high"
     assert len(response.evidence) == 1
@@ -281,7 +369,9 @@ def test_serialize_offer_evidence_provenance() -> None:
 
 def test_serialize_offer_history() -> None:
     graph = _build_graph()
-    history = service.serialize_offer_history(100, [graph["version"]], [graph["change_event"]])
+    history = service.serialize_offer_history(
+        100, [graph["version"]], [graph["change_event"]], _graph_currency(graph)
+    )
     assert [v.version_number for v in history.versions] == [1]
     assert history.change_events[0].change_type == "added"
     assert history.change_events[0].publication_status == "published"
@@ -331,6 +421,14 @@ def client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
         queries,
         "category_map",
         lambda session, ids: {1: graph["category"]} if 1 in list(ids) else {},
+    )
+    # The routes acquire their clock here. Patched to derive the verdict from the
+    # graph's OWN evidence, so aging the fixture changes what the routes serve --
+    # a hardcoded "current" context would make every route assertion vacuous.
+    monkeypatch.setattr(
+        queries,
+        "currency_context",
+        lambda session, *, now, offer_version_ids=None: _graph_currency(graph, now),
     )
 
     app.dependency_overrides[get_session] = _fake_session
@@ -436,3 +534,71 @@ def test_no_community_candidate_fields_exposed(client: TestClient) -> None:
         text = client.get(path).text.lower()
         assert "candidate" not in text
         assert "discovery" not in text
+
+
+# --------------------------------------------------------------------------- #
+# Fail-closed default: a serializer with NO clock must not read as fresh       #
+# --------------------------------------------------------------------------- #
+
+
+def test_a_serializer_given_no_currency_context_fails_closed() -> None:
+    """An un-updated call site must degrade to "cannot assert", never to "fresh".
+
+    This is the property that makes adding a NEW catalogue surface safe: forget
+    to thread the clock and the surface withholds confidence, rather than
+    silently re-acquiring the always-fresh behaviour this slice removed.
+
+    It is asserted here because a mutation control proved it was otherwise
+    untested: flipping `currency_for`'s fail-closed default to a current verdict
+    killed no test at all. A default nothing exercises is a default that will
+    quietly rot.
+    """
+
+    graph = _build_graph()  # genuinely fresh evidence
+
+    # PAIRED CONTROL: WITH a context this same graph reads "high" and current.
+    with_clock = service.serialize_offer_detail(
+        graph["offer"], {1: graph["category"]}, _graph_currency(graph)
+    )
+    assert with_clock.confidence_label == "high"
+    assert with_clock.evidence_currency.current is True
+
+    # WITHOUT one, every currency-derived field withholds rather than asserts.
+    no_clock = service.serialize_offer_detail(graph["offer"], {1: graph["category"]})
+    assert no_clock.confidence_label == "unknown"
+    assert no_clock.evidence_currency.current is False
+    assert no_clock.evidence_currency.checked is False
+    assert no_clock.evidence_currency.stale is False
+    assert no_clock.freshness is None
+    assert no_clock.advanced.score is None
+    assert no_clock.advanced.signals is None
+    # The classification itself is untouched -- we withhold confidence, not facts.
+    assert no_clock.zero_cost_class == with_clock.zero_cost_class
+    assert no_clock.quotas == with_clock.quotas
+
+
+def test_every_catalogue_serializer_fails_closed_without_a_clock() -> None:
+    """The same property across the whole serializer surface, not just one."""
+
+    graph = _build_graph()
+    cat_map = {1: graph["category"]}
+
+    assert service.serialize_provider_summary(graph["provider"]).evidence_currency.current is False
+    assert service.serialize_provider_detail(graph["provider"]).evidence_currency.current is False
+    assert service.serialize_version(graph["version"]).evidence_currency.current is False
+    assert (
+        service.serialize_offer_evidence(
+            graph["offer"], [graph["evidence"]]
+        ).evidence_currency.current
+        is False
+    )
+
+    summaries = service.serialize_offer_summaries(graph["provider"], cat_map)
+    assert summaries and all(s.evidence_currency.current is False for s in summaries)
+
+    states = service.serialize_category_states(graph["provider"], cat_map)
+    offers = [o for g in states.categories for s in g.services for o in s.offers]
+    assert offers and all(o.evidence_currency.current is False for o in offers)
+
+    history = service.serialize_offer_history(100, [graph["version"]], [graph["change_event"]])
+    assert history.versions and all(v.evidence_currency.current is False for v in history.versions)

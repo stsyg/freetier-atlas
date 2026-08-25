@@ -32,6 +32,13 @@ from app.models.domain import (
 
 from . import coverage, queries
 from .confidence import confidence_label
+from .currency import (
+    NO_CURRENCY,
+    CurrencyContext,
+    EvidenceCurrency,
+    confidence_label_for,
+    freshness_or_none,
+)
 from .normalize import normalize_amount
 from .schemas import (
     CategoryGroup,
@@ -43,6 +50,7 @@ from .schemas import (
     CompareOffer,
     CompareResponse,
     ConfidenceAdvanced,
+    EvidenceCurrencyOut,
     EvidenceOut,
     NormalizedQuotaOut,
     OfferDetail,
@@ -87,13 +95,76 @@ def _facts(version: OfferVersion | None) -> Mapping[str, object]:
     return version.material_facts
 
 
-def _label_for(version: OfferVersion | None) -> str:
+def _label_for(version: OfferVersion | None, currency: EvidenceCurrency) -> str:
+    """The confidence label, capped by what the evidence STILL supports.
+
+    ``material_facts.confidence`` was frozen at publish time and cannot know its
+    evidence later expired, so the persisted label is passed through
+    :func:`confidence_label_for`. That only ever removes unearned confidence --
+    a current claim is returned untouched.
+    """
+
     facts = _facts(version)
     gate = facts.get("gate") if isinstance(facts.get("gate"), Mapping) else {}
-    return confidence_label(
+    persisted = confidence_label(
         _as_float(facts.get("confidence")),
         automatic_threshold=_as_float(gate.get("automatic_threshold")),
         uncertain_threshold=_as_float(gate.get("uncertain_threshold")),
+    )
+    return confidence_label_for(persisted, currency)
+
+
+def _days(delta: object) -> float | None:
+    """Render a ``timedelta`` as fractional days, or ``None`` when absent."""
+
+    if delta is None:
+        return None
+    return round(delta.total_seconds() / 86400.0, 6)  # type: ignore[union-attr]
+
+
+def _currency_out(currency: EvidenceCurrency) -> EvidenceCurrencyOut:
+    """Project a read-time currency verdict onto the wire schema.
+
+    ``freshness`` goes through :func:`freshness_or_none` rather than a bare
+    ``or 0.0``-style coercion: an unchecked claim must publish NO number, and a
+    zero here would render as "0%" on the page instead of "Unknown".
+    """
+
+    return EvidenceCurrencyOut(
+        current=currency.current,
+        checked=currency.checked,
+        stale=currency.stale,
+        freshness=freshness_or_none(currency),
+        age_days=_days(currency.age),
+        window_days=_days(currency.window),
+        oldest_fetched_at=currency.oldest_fetched_at,
+        reason=currency.reason(),
+    )
+
+
+def _advanced_for(version: OfferVersion | None, currency: EvidenceCurrency) -> ConfidenceAdvanced:
+    """The advanced block, suppressed when the evidence is not current.
+
+    ``advanced`` carries the publish-time numeric score and the deterministic
+    signal dict -- including a ``freshness`` signal that read ``1.0`` on
+    five-year-expired evidence. Those are frozen values, so once the evidence
+    behind them is no longer known to be current they are not merely stale, they
+    are unsupported assertions of exactly the kind this work exists to stop.
+
+    They are therefore withheld (``None``) rather than shown with a caveat, for
+    the same reason :func:`confidence_label_for` collapses the label: this only
+    ever removes unearned confidence. The reason is not lost -- it is carried, in
+    plain language, by ``evidence_currency.reason``.
+    """
+
+    facts = _facts(version)
+    if not currency.current:
+        return ConfidenceAdvanced(score=None, signals=None)
+    return ConfidenceAdvanced(
+        score=_as_float(facts.get("confidence")),
+        signals=dict(facts.get("confidence_signals"))
+        if isinstance(facts.get("confidence_signals"), Mapping)
+        else None,
     )
 
 
@@ -128,18 +199,22 @@ def _category_ref(
     return CategoryRef(slug=category.slug, name=category.name)
 
 
-def serialize_version(version: OfferVersion) -> OfferVersionOut:
+def serialize_version(
+    version: OfferVersion, currency: CurrencyContext = NO_CURRENCY
+) -> OfferVersionOut:
     """Serialize one immutable offer version (history / current view)."""
 
     classification = _classification(version)
+    verdict = currency.for_version(version.id)
     return OfferVersionOut(
         id=version.id,
         version_number=version.version_number,
         zero_cost_class=version.zero_cost_class,
-        confidence_label=_label_for(version),
+        confidence_label=_label_for(version, verdict),
         reasons=_string_list(classification.get("reasons")),
         content_hash=version.content_hash,
         created_at=version.created_at,
+        evidence_currency=_currency_out(verdict),
     )
 
 
@@ -157,8 +232,38 @@ def serialize_quota(quota: object) -> QuotaOut:
     )
 
 
-def _provider_scores(provider: Provider) -> tuple[float | None, float | None]:
-    """Provider completeness / freshness: stored columns, else averaged signals."""
+def _published_versions(provider: Provider) -> list[OfferVersion]:
+    """Every published offer's current version for this provider."""
+
+    versions = []
+    for service in provider.services:
+        for offer in service.offers:
+            version = queries.latest_version(offer)
+            if version is not None:
+                versions.append(version)
+    return versions
+
+
+def _provider_scores(
+    provider: Provider, currency: CurrencyContext = NO_CURRENCY
+) -> tuple[float | None, float | None]:
+    """Provider completeness / freshness.
+
+    Freshness is now recomputed at READ time from evidence currency, not read
+    back from a publish-time snapshot. The stored ``freshness_score`` column is
+    still honoured if a future pipeline ever populates it (measured: nothing in
+    the application writes it today, so every real provider takes the branch
+    below), but the fallback no longer averages the frozen
+    ``confidence_signals.freshness`` -- that is the value that reported ``1.0``
+    for evidence which had expired years earlier.
+
+    ``None`` -- never ``0.0`` -- when nothing about currency could be
+    established: an absent measurement is not a bad score, and the web formatter
+    renders the two very differently.
+
+    Completeness is deliberately unchanged. It measures how much of the offer we
+    captured, which does not decay with the calendar; only freshness does.
+    """
 
     completeness = _as_float(provider.completeness_score)
     freshness = _as_float(provider.freshness_score)
@@ -174,11 +279,11 @@ def _provider_scores(provider: Provider) -> tuple[float | None, float | None]:
             if version is None:
                 continue
             comp = _signal(version, "completeness")
-            fresh = _signal(version, "freshness")
             if comp is not None:
                 comp_values.append(comp)
-            if fresh is not None:
-                fresh_values.append(fresh)
+            live = freshness_or_none(currency.for_version(version.id))
+            if live is not None:
+                fresh_values.append(live)
 
     if completeness is None and comp_values:
         completeness = round(fmean(comp_values), 4)
@@ -193,9 +298,12 @@ def _counts(provider: Provider) -> tuple[int, int]:
     return service_count, published
 
 
-def serialize_provider_summary(provider: Provider) -> ProviderSummary:
-    completeness, freshness = _provider_scores(provider)
+def serialize_provider_summary(
+    provider: Provider, currency: CurrencyContext = NO_CURRENCY
+) -> ProviderSummary:
+    completeness, freshness = _provider_scores(provider, currency)
     service_count, published = _counts(provider)
+    rollup = currency.for_versions([v.id for v in _published_versions(provider)])
     return ProviderSummary(
         slug=provider.slug,
         name=provider.name,
@@ -205,13 +313,17 @@ def serialize_provider_summary(provider: Provider) -> ProviderSummary:
         freshness=freshness,
         service_count=service_count,
         published_offer_count=published,
+        evidence_currency=_currency_out(rollup),
     )
 
 
-def serialize_provider_detail(provider: Provider) -> ProviderDetail:
-    completeness, freshness = _provider_scores(provider)
+def serialize_provider_detail(
+    provider: Provider, currency: CurrencyContext = NO_CURRENCY
+) -> ProviderDetail:
+    completeness, freshness = _provider_scores(provider, currency)
     service_count, published = _counts(provider)
     domains = provider.official_domains if isinstance(provider.official_domains, list) else []
+    rollup = currency.for_versions([v.id for v in _published_versions(provider)])
     return ProviderDetail(
         slug=provider.slug,
         name=provider.name,
@@ -222,13 +334,28 @@ def serialize_provider_detail(provider: Provider) -> ProviderDetail:
         service_count=service_count,
         published_offer_count=published,
         official_domains=[str(d) for d in domains],
+        evidence_currency=_currency_out(rollup),
     )
 
 
 def serialize_category_states(
-    provider: Provider, cat_map: Mapping[int, Category]
+    provider: Provider,
+    cat_map: Mapping[int, Category],
+    currency: CurrencyContext = NO_CURRENCY,
 ) -> CategoryStatesResponse:
     """Group the provider's published offers by category -> service -> offer state."""
+
+    def _offer_state(offer) -> OfferState:
+        version = queries.latest_version(offer)
+        verdict = currency.for_version(version.id if version is not None else None)
+        return OfferState(
+            offer_id=offer.id,
+            offer_type=offer.offer_type,
+            zero_cost_class=offer.zero_cost_class,
+            confidence_label=_label_for(version, verdict),
+            status=offer.status,
+            evidence_currency=_currency_out(verdict),
+        )
 
     groups: dict[int | None, CategoryGroup] = {}
     for service in provider.services:
@@ -240,16 +367,7 @@ def serialize_category_states(
             canonical_name=service.canonical_name,
             deployment_model=service.deployment_model,
             category=_category_ref(service.category_id, cat_map),
-            offers=[
-                OfferState(
-                    offer_id=offer.id,
-                    offer_type=offer.offer_type,
-                    zero_cost_class=offer.zero_cost_class,
-                    confidence_label=_label_for(queries.latest_version(offer)),
-                    status=offer.status,
-                )
-                for offer in published_offers
-            ],
+            offers=[_offer_state(offer) for offer in published_offers],
         )
         key = service.category_id
         if key not in groups:
@@ -271,7 +389,9 @@ def serialize_category_states(
 
 
 def serialize_offer_summaries(
-    provider: Provider, cat_map: Mapping[int, Category]
+    provider: Provider,
+    cat_map: Mapping[int, Category],
+    currency: CurrencyContext = NO_CURRENCY,
 ) -> list[OfferSummary]:
     summaries: list[OfferSummary] = []
     for service in provider.services:
@@ -279,6 +399,7 @@ def serialize_offer_summaries(
             if not queries.is_published(offer):
                 continue
             version = queries.latest_version(offer)
+            verdict = currency.for_version(version.id if version is not None else None)
             summaries.append(
                 OfferSummary(
                     offer_id=offer.id,
@@ -288,20 +409,25 @@ def serialize_offer_summaries(
                     offer_type=offer.offer_type,
                     zero_cost_class=offer.zero_cost_class,
                     status=offer.status,
-                    confidence_label=_label_for(version),
+                    confidence_label=_label_for(version, verdict),
                     current_version_number=version.version_number if version else None,
+                    evidence_currency=_currency_out(verdict),
                 )
             )
     summaries.sort(key=lambda s: s.offer_id)
     return summaries
 
 
-def serialize_offer_detail(offer: Offer, cat_map: Mapping[int, Category]) -> OfferDetail:
+def serialize_offer_detail(
+    offer: Offer,
+    cat_map: Mapping[int, Category],
+    currency: CurrencyContext = NO_CURRENCY,
+) -> OfferDetail:
     version = queries.latest_version(offer)
     service = offer.service
     provider = service.provider
     classification = _classification(version)
-    facts = _facts(version)
+    verdict = currency.for_version(version.id if version is not None else None)
 
     quotas = [serialize_quota(q) for q in (version.quotas if version else [])]
 
@@ -323,19 +449,17 @@ def serialize_offer_detail(offer: Offer, cat_map: Mapping[int, Category]) -> Off
         personal_use_allowed=offer.personal_use_allowed,
         first_seen_at=offer.first_seen_at,
         last_verified_at=offer.last_verified_at,
-        current_version=serialize_version(version) if version else None,
+        current_version=serialize_version(version, currency) if version else None,
         reasons=_string_list(classification.get("reasons")),
         blocking_conditions=_string_list(classification.get("blocking_conditions")),
         quotas=quotas,
-        confidence_label=_label_for(version),
+        confidence_label=_label_for(version, verdict),
         completeness=_signal(version, "completeness"),
-        freshness=_signal(version, "freshness"),
-        advanced=ConfidenceAdvanced(
-            score=_as_float(facts.get("confidence")),
-            signals=dict(facts.get("confidence_signals"))
-            if isinstance(facts.get("confidence_signals"), Mapping)
-            else None,
-        ),
+        # Read-time freshness, not the publish-time snapshot. This is the field
+        # that reported 1.0 on five-year-expired evidence.
+        freshness=freshness_or_none(verdict),
+        advanced=_advanced_for(version, verdict),
+        evidence_currency=_currency_out(verdict),
     )
 
 
@@ -378,20 +502,18 @@ def serialize_evidence_row(evidence: Evidence) -> EvidenceOut:
 
 
 def serialize_offer_evidence(
-    offer: Offer, evidence_rows: Sequence[Evidence]
+    offer: Offer,
+    evidence_rows: Sequence[Evidence],
+    currency: CurrencyContext = NO_CURRENCY,
 ) -> OfferEvidenceResponse:
     version = queries.latest_version(offer)
-    facts = _facts(version)
+    verdict = currency.for_version(version.id if version is not None else None)
     return OfferEvidenceResponse(
         offer_id=offer.id,
         offer_version_id=version.id if version else None,
-        confidence_label=_label_for(version),
-        advanced=ConfidenceAdvanced(
-            score=_as_float(facts.get("confidence")),
-            signals=dict(facts.get("confidence_signals"))
-            if isinstance(facts.get("confidence_signals"), Mapping)
-            else None,
-        ),
+        confidence_label=_label_for(version, verdict),
+        advanced=_advanced_for(version, verdict),
+        evidence_currency=_currency_out(verdict),
         evidence=[serialize_evidence_row(e) for e in evidence_rows],
     )
 
@@ -412,10 +534,11 @@ def serialize_offer_history(
     offer_id: int,
     versions: Sequence[OfferVersion],
     change_events: Sequence[ChangeEvent],
+    currency: CurrencyContext = NO_CURRENCY,
 ) -> OfferHistoryResponse:
     return OfferHistoryResponse(
         offer_id=offer_id,
-        versions=[serialize_version(v) for v in versions],
+        versions=[serialize_version(v, currency) for v in versions],
         change_events=[serialize_change_event(e) for e in change_events],
     )
 
@@ -429,10 +552,15 @@ def serialize_offer_history(
 _FREE_CLASS = "Z0_TRUE_FREE"
 
 
-def _search_result_item(offer: Offer, cat_map: Mapping[int, Category]) -> SearchResultItem:
+def _search_result_item(
+    offer: Offer,
+    cat_map: Mapping[int, Category],
+    currency: CurrencyContext = NO_CURRENCY,
+) -> SearchResultItem:
     service = offer.service
     provider = service.provider
     version = queries.latest_version(offer)
+    verdict = currency.for_version(version.id if version is not None else None)
     return SearchResultItem(
         offer_id=offer.id,
         provider_slug=provider.slug,
@@ -443,13 +571,17 @@ def _search_result_item(offer: Offer, cat_map: Mapping[int, Category]) -> Search
         offer_type=offer.offer_type,
         zero_cost_class=offer.zero_cost_class,
         status=offer.status,
-        confidence_label=_label_for(version),
+        confidence_label=_label_for(version, verdict),
         current_version_number=version.version_number if version else None,
+        evidence_currency=_currency_out(verdict),
     )
 
 
 def serialize_search_response(
-    page: SearchPage, params: SearchParams, cat_map: Mapping[int, Category]
+    page: SearchPage,
+    params: SearchParams,
+    cat_map: Mapping[int, Category],
+    currency: CurrencyContext = NO_CURRENCY,
 ) -> SearchResponse:
     """Serialize an executed :class:`SearchPage` into the search response schema."""
 
@@ -463,12 +595,13 @@ def serialize_search_response(
             offer_type=params.offer_type,
             commercial_use=params.commercial_use,
             status=params.status,
+            evidence_current=params.evidence_current,
         ),
         page=page.page,
         page_size=page.page_size,
         total_results=page.total,
         total_pages=total_pages,
-        results=[_search_result_item(o, cat_map) for o in page.offers],
+        results=[_search_result_item(o, cat_map, currency) for o in page.offers],
     )
 
 
@@ -602,14 +735,18 @@ def _normalized_quota(quota: object) -> NormalizedQuotaOut:
     )
 
 
-def _compare_offer(offer: Offer, cat_map: Mapping[int, Category]) -> CompareOffer:
+def _compare_offer(
+    offer: Offer,
+    cat_map: Mapping[int, Category],
+    currency: CurrencyContext = NO_CURRENCY,
+) -> CompareOffer:
     service = offer.service
     provider = service.provider
     version = queries.latest_version(offer)
     classification = _classification(version)
-    facts = _facts(version)
     quotas = version.quotas if version else []
     evidence_count = len(version.evidence) if version else 0
+    verdict = currency.for_version(version.id if version is not None else None)
 
     return CompareOffer(
         offer_id=offer.id,
@@ -628,21 +765,20 @@ def _compare_offer(offer: Offer, cat_map: Mapping[int, Category]) -> CompareOffe
         reasons=_string_list(classification.get("reasons")),
         blocking_conditions=_string_list(classification.get("blocking_conditions")),
         quotas=[_normalized_quota(q) for q in quotas],
-        confidence_label=_label_for(version),
+        confidence_label=_label_for(version, verdict),
         completeness=_signal(version, "completeness"),
-        freshness=_signal(version, "freshness"),
+        freshness=freshness_or_none(verdict),
         evidence_count=evidence_count,
-        advanced=ConfidenceAdvanced(
-            score=_as_float(facts.get("confidence")),
-            signals=dict(facts.get("confidence_signals"))
-            if isinstance(facts.get("confidence_signals"), Mapping)
-            else None,
-        ),
+        advanced=_advanced_for(version, verdict),
+        evidence_currency=_currency_out(verdict),
     )
 
 
 def serialize_compare(
-    offer_ids: Sequence[int], offers: Sequence[Offer], cat_map: Mapping[int, Category]
+    offer_ids: Sequence[int],
+    offers: Sequence[Offer],
+    cat_map: Mapping[int, Category],
+    currency: CurrencyContext = NO_CURRENCY,
 ) -> CompareResponse:
     """Serialize a bounded set of published offers into a side-by-side comparison.
 
@@ -653,5 +789,5 @@ def serialize_compare(
 
     return CompareResponse(
         offer_ids=list(offer_ids),
-        offers=[_compare_offer(o, cat_map) for o in offers],
+        offers=[_compare_offer(o, cat_map, currency) for o in offers],
     )

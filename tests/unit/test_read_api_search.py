@@ -15,6 +15,8 @@ These tests never touch a live database. They exercise:
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
+
 import pytest
 from app.db import get_session
 from app.main import app
@@ -28,8 +30,38 @@ from app.models.domain import (
     Service,
 )
 from app.read_api import normalize, queries, search, service
+from app.read_api.currency import ANCHOR_OFFER_VERSION, CurrencyContext, assess_currency
 from app.read_api.taxonomy import CATEGORY_TAXONOMY
 from fastapi.testclient import TestClient
+
+
+def _declared_currency(
+    offers: list[Offer],
+    *,
+    fetched_at: datetime | None = None,
+    now: datetime | None = None,
+    schedule: str = "daily",
+) -> CurrencyContext:
+    """Declare an explicit currency verdict for every version in ``offers``.
+
+    These fixtures carry no snapshot to derive a fetch time from, so the verdict
+    is stated rather than inferred -- but it is still produced by the REAL
+    ``assess_currency``, so the ``stale`` / ``checked`` / ``freshness`` triple is
+    internally consistent instead of hand-assembled. ``fetched_at=None`` means
+    "as of now", i.e. genuinely fresh; pass an old timestamp for the expired arm.
+    """
+
+    moment = now or datetime.now(UTC)
+    verdict = assess_currency(fetched_at or moment, moment, schedule)
+    return CurrencyContext(
+        index={
+            (ANCHOR_OFFER_VERSION, version.id): verdict
+            for offer in offers
+            for version in offer.versions
+        },
+        now=moment,
+    )
+
 
 # --------------------------------------------------------------------------- #
 # Quota-unit normalization (pure, fail-closed)                                #
@@ -285,7 +317,9 @@ def test_serialize_search_response_pagination_and_labels() -> None:
         offers=[graph["cf_offer"], graph["ex_offer"]], total=25, page=1, page_size=20
     )
     params = search.build_params(q="workers")
-    resp = service.serialize_search_response(page, params, graph["cat_map"])
+    resp = service.serialize_search_response(
+        page, params, graph["cat_map"], _declared_currency([graph["cf_offer"]])
+    )
     assert resp.total_results == 25
     assert resp.total_pages == 2  # ceil(25 / 20)
     assert resp.filters.q == "workers"
@@ -331,7 +365,12 @@ def test_serialize_compare_normalizes_and_fails_closed() -> None:
     # unnormalizable unit to prove fail-closed behaviour.
     weird_svc = graph["providers"][0].services[0]
     weird = _make_offer(offer_id=300, service=weird_svc, quota=(3, "vcpu-hours"))
-    compare = service.serialize_compare([100, 300], [graph["cf_offer"], weird], graph["cat_map"])
+    compare = service.serialize_compare(
+        [100, 300],
+        [graph["cf_offer"], weird],
+        graph["cat_map"],
+        _declared_currency([graph["cf_offer"], weird]),
+    )
     assert [o.offer_id for o in compare.offers] == [100, 300]
 
     reqs_quota = compare.offers[0].quotas[0]
@@ -363,7 +402,7 @@ def client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
     def _fake_session():
         yield object()
 
-    def _fake_search(session, params):  # noqa: ANN001
+    def _fake_search(session, params, *, now=None):  # noqa: ANN001
         # Echo the provider filter to prove filters reach the query layer.
         offers = [graph["cf_offer"], graph["ex_offer"]]
         if params.provider is not None:
@@ -371,6 +410,13 @@ def client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
         return search.SearchPage(offers=offers, total=len(offers), page=params.page, page_size=20)
 
     monkeypatch.setattr(search, "search_published_offers", _fake_search)
+    monkeypatch.setattr(
+        queries,
+        "currency_context",
+        lambda session, *, now, offer_version_ids=None: _declared_currency(
+            [graph["cf_offer"], graph["ex_offer"]], now=now
+        ),
+    )
     monkeypatch.setattr(queries, "fetch_providers", lambda session: graph["providers"])
     monkeypatch.setattr(
         queries, "category_map_for_providers", lambda session, providers: graph["cat_map"]

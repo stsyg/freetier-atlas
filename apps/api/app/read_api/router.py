@@ -19,6 +19,7 @@ Security posture (SECURITY.md):
 from __future__ import annotations
 
 import re
+from datetime import UTC, datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query
@@ -26,6 +27,7 @@ from sqlalchemy.orm import Session
 
 from ..db import get_session
 from . import queries, search, service
+from .currency import CurrencyContext
 from .schemas import (
     CategoryMatrixResponse,
     CategoryStatesResponse,
@@ -40,6 +42,19 @@ from .schemas import (
 )
 
 router = APIRouter(prefix="/catalogue", tags=["catalogue"])
+
+
+def _now() -> datetime:
+    """The single clock a catalogue request is read against.
+
+    A seam, not a convenience: every surface that repeats a Z0 claim resolves
+    evidence currency against ONE moment per request, so two fields of the same
+    payload can never disagree about what "now" was. Named like the adviser's
+    own ``_now`` so both halves of the product share the shape.
+    """
+
+    return datetime.now(UTC)
+
 
 #: Provider slugs are internal identifiers: lowercase alphanumerics + hyphens.
 #: The pattern intentionally cannot express a scheme, host, or path, so a slug
@@ -119,12 +134,30 @@ def _category_map_for(session: Session, provider) -> dict:
     return queries.category_map(session, category_ids)
 
 
+def _provider_currency(session: Session, provider) -> CurrencyContext:
+    """Currency for every version reachable from one provider's offers."""
+
+    offers = [offer for svc in provider.services for offer in svc.offers]
+    return queries.currency_context(
+        session, now=_now(), offer_version_ids=queries.version_ids_for_offers(offers)
+    )
+
+
 @router.get("/providers", response_model=list[ProviderSummary])
 def list_providers(session: SessionDep) -> list[ProviderSummary]:
-    """List all providers with summary metadata + completeness/freshness."""
+    """List all providers with summary metadata + completeness/freshness.
+
+    ``freshness`` here is recomputed from evidence currency at read time. It used
+    to be the mean of a publish-time signal, which is why it reported full
+    freshness for providers whose evidence had long since expired.
+    """
 
     providers = queries.fetch_providers(session)
-    return [service.serialize_provider_summary(p) for p in providers]
+    offers = [offer for p in providers for svc in p.services for offer in svc.offers]
+    currency = queries.currency_context(
+        session, now=_now(), offer_version_ids=queries.version_ids_for_offers(offers)
+    )
+    return [service.serialize_provider_summary(p, currency) for p in providers]
 
 
 @router.get("/providers/{provider_slug}", response_model=ProviderDetail)
@@ -132,7 +165,7 @@ def get_provider(provider_slug: SlugParam, session: SessionDep) -> ProviderDetai
     """Get a single provider (e.g. Cloudflare) with its full metadata."""
 
     provider = _require_provider(session, provider_slug)
-    return service.serialize_provider_detail(provider)
+    return service.serialize_provider_detail(provider, _provider_currency(session, provider))
 
 
 @router.get(
@@ -144,7 +177,9 @@ def get_category_states(provider_slug: SlugParam, session: SessionDep) -> Catego
 
     provider = _require_provider(session, provider_slug)
     cat_map = _category_map_for(session, provider)
-    return service.serialize_category_states(provider, cat_map)
+    return service.serialize_category_states(
+        provider, cat_map, _provider_currency(session, provider)
+    )
 
 
 @router.get(
@@ -156,7 +191,9 @@ def list_provider_offers(provider_slug: SlugParam, session: SessionDep) -> list[
 
     provider = _require_provider(session, provider_slug)
     cat_map = _category_map_for(session, provider)
-    return service.serialize_offer_summaries(provider, cat_map)
+    return service.serialize_offer_summaries(
+        provider, cat_map, _provider_currency(session, provider)
+    )
 
 
 @router.get("/offers/{offer_id}", response_model=OfferDetail)
@@ -164,12 +201,16 @@ def get_offer(offer_id: OfferIdParam, session: SessionDep) -> OfferDetail:
     """Offer detail: current version, Z0 class + reasons, quotas, confidence label.
 
     The primary confidence field is a plain-language label; the raw numeric score
-    and signals appear only inside the ``advanced`` block (D039).
+    and signals appear only inside the ``advanced`` block (D039), and are withheld
+    entirely once the evidence behind them is no longer known to be current.
     """
 
     offer = _require_published_offer(session, offer_id)
     cat_map = queries.category_map(session, [offer.service.category_id])
-    return service.serialize_offer_detail(offer, cat_map)
+    currency = queries.currency_context(
+        session, now=_now(), offer_version_ids=queries.version_ids_for_offers([offer])
+    )
+    return service.serialize_offer_detail(offer, cat_map, currency)
 
 
 @router.get("/offers/{offer_id}/evidence", response_model=OfferEvidenceResponse)
@@ -183,17 +224,28 @@ def get_offer_evidence(offer_id: OfferIdParam, session: SessionDep) -> OfferEvid
         if version is not None
         else []
     )
-    return service.serialize_offer_evidence(offer, evidence_rows)
+    currency = queries.currency_context(
+        session, now=_now(), offer_version_ids=queries.version_ids_for_offers([offer])
+    )
+    return service.serialize_offer_evidence(offer, evidence_rows, currency)
 
 
 @router.get("/offers/{offer_id}/history", response_model=OfferHistoryResponse)
 def get_offer_history(offer_id: OfferIdParam, session: SessionDep) -> OfferHistoryResponse:
-    """Append-only offer version history + published change events."""
+    """Append-only offer version history + published change events.
+
+    Every version carries its OWN currency verdict: a history view repeats a Z0
+    class per row, so inheriting the current version's verdict would let an old
+    row assert a freshness that was never checked for it.
+    """
 
     offer = _require_published_offer(session, offer_id)
     versions = queries.fetch_offer_versions(session, offer_id=offer.id)
     change_events = queries.fetch_offer_change_events(session, offer_id=offer.id)
-    return service.serialize_offer_history(offer.id, versions, change_events)
+    currency = queries.currency_context(
+        session, now=_now(), offer_version_ids=[v.id for v in versions]
+    )
+    return service.serialize_offer_history(offer.id, versions, change_events, currency)
 
 
 @router.get("/search", response_model=SearchResponse)
@@ -206,6 +258,17 @@ def search_catalogue(
     offer_type: Annotated[str | None, Query()] = None,
     commercial_use: Annotated[bool | None, Query()] = None,
     status: Annotated[str | None, Query()] = None,
+    evidence_current: Annotated[
+        bool | None,
+        Query(
+            description=(
+                "Filter by whether the official evidence behind the offer is still "
+                "inside its refresh window. Separate from zero_cost_class, which "
+                "classifies the offer's TERMS; this filters on the state of the "
+                "EVIDENCE. Omit for any."
+            )
+        ),
+    ] = None,
     page: PageParam = 1,
 ) -> SearchResponse:
     """Keyword search + composable filters over published offers (paged).
@@ -213,6 +276,15 @@ def search_catalogue(
     ``q`` is matched literally (its ``LIKE`` wildcards are escaped) against
     provider/service/offer text; every filter is validated against a closed set
     and composed with ``AND``. Results are deterministically ordered and paged.
+
+    ``zero_cost_class`` deliberately does NOT imply evidence currency. It is a
+    classification of the offer's terms; whether the evidence still supports that
+    classification is a separate axis, exposed as ``evidence_current``. An offer
+    whose evidence has expired is therefore still returned by a ``Z0_TRUE_FREE``
+    search -- carrying its own ``evidence_currency`` verdict so the result reads
+    as "classified free, evidence expired" rather than "free" -- because hiding a
+    real free offer is its own defect, and an omission is invisible in a way a
+    label is not.
     """
 
     try:
@@ -224,14 +296,19 @@ def search_catalogue(
             offer_type=offer_type,
             commercial_use=commercial_use,
             status=status,
+            evidence_current=evidence_current,
             page=page,
         )
     except search.SearchValidationError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
-    result = search.search_published_offers(session, params)
+    now = _now()
+    result = search.search_published_offers(session, params, now=now)
     cat_map = queries.category_map(session, [o.service.category_id for o in result.offers])
-    return service.serialize_search_response(result, params, cat_map)
+    currency = queries.currency_context(
+        session, now=now, offer_version_ids=queries.version_ids_for_offers(result.offers)
+    )
+    return service.serialize_search_response(result, params, cat_map, currency)
 
 
 @router.get("/categories", response_model=CategoryMatrixResponse)
@@ -249,7 +326,7 @@ def get_category_matrix(session: SessionDep) -> CategoryMatrixResponse:
 
     providers = queries.fetch_providers(session)
     cat_map = queries.category_map_for_providers(session, providers)
-    context = queries.coverage_signal_context(session, providers)
+    context = queries.coverage_signal_context(session, providers, now=_now())
     return service.serialize_category_matrix(providers, cat_map, context)
 
 
@@ -276,7 +353,10 @@ def compare_offers(
         resolved.append(offer)
 
     cat_map = queries.category_map(session, [o.service.category_id for o in resolved])
-    return service.serialize_compare(offer_ids, resolved, cat_map)
+    currency = queries.currency_context(
+        session, now=_now(), offer_version_ids=queries.version_ids_for_offers(resolved)
+    )
+    return service.serialize_compare(offer_ids, resolved, cat_map, currency)
 
 
 __all__ = ["router"]

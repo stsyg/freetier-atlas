@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import os
 from collections.abc import Iterator
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -438,7 +439,9 @@ def test_compare_normalizes_across_providers_and_fails_closed(session: Session) 
     offer_map = queries.fetch_offers_by_ids(session, ordered)
     resolved = [offer_map[i] for i in ordered]
     cat_map = queries.category_map(session, [o.service.category_id for o in resolved])
-    compare = service.serialize_compare(ordered, resolved, cat_map)
+    compare = service.serialize_compare(
+        ordered, resolved, cat_map, queries.currency_context(session, now=datetime.now(UTC))
+    )
 
     assert [o.offer_id for o in compare.offers] == ordered
     assert {o.provider_slug for o in compare.offers} == {"example-alpha", "example-beta"}
@@ -458,10 +461,48 @@ def test_compare_normalizes_across_providers_and_fails_closed(session: Session) 
     assert beta_quota.normalization_note
 
     # Confidence stays label-primary; numeric only in advanced{}.
+    #
+    # These synthetic offers are seeded with a published version but NO Evidence
+    # rows at all, so there is no snapshot, no fetch time, and therefore nothing
+    # to check currency against. The persisted confidence is 0.93 -- which would
+    # once have been served as "high" -- but a free claim with no checkable
+    # evidence behind it may not carry earned confidence, so the label collapses
+    # to "unknown" and the numeric score is withheld entirely.
+    #
+    # Note the asymmetry that keeps this honest: "we could not check" is refused,
+    # but it is NOT reported as stale. Absence of evidence is not evidence of
+    # expiry.
     dumped = alpha.model_dump()
-    assert dumped["confidence_label"] == "high"
+    assert dumped["confidence_label"] == "unknown"
     assert "confidence" not in dumped
-    assert dumped["advanced"]["score"] >= 0.90
+    assert dumped["advanced"]["score"] is None
+    assert dumped["evidence_currency"]["checked"] is False
+    assert dumped["evidence_currency"]["stale"] is False
+    assert dumped["evidence_currency"]["current"] is False
+    # None, never 0.0: an absent measurement is not a zero score.
+    assert dumped["evidence_currency"]["freshness"] is None
+    assert "cannot be established" in dumped["evidence_currency"]["reason"]
+
+    # PAIRED CONTROL: the published Cloudflare offer in the SAME comparison does
+    # carry real, freshly-fetched official evidence, and still reads "high" with
+    # its numeric score intact. Without this the assertions above could equally
+    # be satisfied by a gate that refuses everything.
+    cf_provider = queries.fetch_provider(session, "cloudflare")
+    assert cf_provider is not None
+    cf_offer = next(o for s in cf_provider.services for o in s.offers if queries.is_published(o))
+    cf_compare = service.serialize_compare(
+        [cf_offer.id],
+        [cf_offer],
+        queries.category_map(session, [cf_offer.service.category_id]),
+        queries.currency_context(session, now=datetime.now(UTC)),
+    )
+    cf_dumped = cf_compare.offers[0].model_dump()
+    assert cf_dumped["confidence_label"] == "high"
+    assert cf_dumped["advanced"]["score"] >= 0.90
+    assert cf_dumped["evidence_currency"]["current"] is True
+    assert cf_dumped["evidence_currency"]["checked"] is True
+    assert cf_dumped["evidence_currency"]["freshness"] is not None
+    assert cf_dumped["evidence_currency"]["reason"] is None
 
 
 # --------------------------------------------------------------------------- #

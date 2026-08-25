@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import os
 from collections.abc import Iterator
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -46,6 +47,18 @@ def _alembic_config() -> Config:
     cfg = Config(str(REPO_ROOT / "alembic.ini"))
     cfg.set_main_option("script_location", str(REPO_ROOT / "migrations"))
     return cfg
+
+
+def _currency(session: Session, now: datetime | None = None):
+    """The REAL read-time currency context, computed from the real evidence rows.
+
+    Not a stub: this runs the same query the routes run, against the same
+    published corpus these tests publish, so the confidence labels asserted below
+    are gated by genuine snapshot fetch times rather than by a permissive
+    default.
+    """
+
+    return queries.currency_context(session, now=now or datetime.now(UTC))
 
 
 @pytest.fixture(scope="module")
@@ -117,14 +130,14 @@ def test_providers_reflect_published_catalogue(session: Session) -> None:
     assert "cloudflare" in slugs
 
     provider = _cloudflare(session)
-    summary = service.serialize_provider_summary(provider)
+    summary = service.serialize_provider_summary(provider, _currency(session))
     assert summary.name
     assert summary.published_offer_count >= 1
     # completeness/freshness derived from the published versions' signals.
     assert summary.completeness is not None
     assert summary.freshness is not None
 
-    detail = service.serialize_provider_detail(provider)
+    detail = service.serialize_provider_detail(provider, _currency(session))
     assert detail.official_domains  # real metadata, not fabricated
 
 
@@ -138,7 +151,7 @@ def test_category_states_reflect_published_offers(session: Session) -> None:
     cat_ids = [s.category_id for s in provider.services if s.category_id is not None]
     cat_map = queries.category_map(session, cat_ids)
 
-    states = service.serialize_category_states(provider, cat_map)
+    states = service.serialize_category_states(provider, cat_map, _currency(session))
     assert states.provider_slug == "cloudflare"
     all_offers = [
         offer for group in states.categories for svc in group.services for offer in svc.offers
@@ -159,7 +172,7 @@ def test_offer_detail_has_z0_reasons_quota_and_confidence_label(session: Session
     offer = published[0]
     cat_map = queries.category_map(session, [offer.service.category_id])
 
-    detail = service.serialize_offer_detail(offer, cat_map)
+    detail = service.serialize_offer_detail(offer, cat_map, _currency(session))
     assert detail.zero_cost_class == "Z0_TRUE_FREE"
     assert detail.reasons, "Z0 reasons must be surfaced from material_facts"
     assert detail.quotas, "quota rows must be surfaced"
@@ -184,7 +197,7 @@ def test_offer_evidence_is_official_and_linked_to_version(session: Session) -> N
 
     rows = queries.fetch_offer_evidence(session, offer_version_id=version.id)
     assert rows, "published offer must have official evidence"
-    response = service.serialize_offer_evidence(offer, rows)
+    response = service.serialize_offer_evidence(offer, rows, _currency(session))
     assert response.confidence_label == "high"
     for ev in response.evidence:
         assert ev.official is True
@@ -233,7 +246,7 @@ def test_offer_history_versions_and_change_events(session: Session) -> None:
 
     versions = queries.fetch_offer_versions(session, offer_id=offer.id)
     events = queries.fetch_offer_change_events(session, offer_id=offer.id)
-    history = service.serialize_offer_history(offer.id, versions, events)
+    history = service.serialize_offer_history(offer.id, versions, events, _currency(session))
 
     assert [v.version_number for v in history.versions] == sorted(
         v.version_number for v in history.versions
@@ -253,7 +266,7 @@ def test_completeness_and_freshness_signals_present(session: Session) -> None:
     provider = _cloudflare(session)
     offer = next(o for s in provider.services for o in s.offers if queries.is_published(o))
     cat_map = queries.category_map(session, [offer.service.category_id])
-    detail = service.serialize_offer_detail(offer, cat_map)
+    detail = service.serialize_offer_detail(offer, cat_map, _currency(session))
     assert detail.completeness is not None
     assert detail.freshness is not None
     assert detail.advanced.signals is not None

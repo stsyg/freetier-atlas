@@ -30,6 +30,33 @@ export interface ApiHealth {
 // Fields that the API may return as `null` are typed as `... | null` so the UI
 // is forced to handle "unknown" honestly rather than assume a value.
 
+/**
+ * Read-time evidence currency for one claim.
+ *
+ * Every other confidence-shaped field on these types is FROZEN at publish time
+ * and cannot know that the evidence beneath it later expired. This one is
+ * recomputed by the API on every read against the request's clock.
+ *
+ * `freshness` is `null` -- never `0` -- when `checked` is false. The two
+ * render very differently (`formatSignal` shows `null` as "Unknown" and
+ * `0` as "0%"), and showing a percentage where no measurement exists would
+ * reproduce the defect this field was added to expose.
+ */
+export interface EvidenceCurrency {
+  /** The single predicate to gate a FREE claim on. */
+  current: boolean;
+  /** Was a currency check possible at all (did a fetch time exist)? */
+  checked: boolean;
+  /** True only when we checked AND the evidence is past its window. */
+  stale: boolean;
+  /** Read-time freshness in [0,1]; null when no check was possible. */
+  freshness: number | null;
+  age_days: number | null;
+  window_days: number | null;
+  oldest_fetched_at: string | null;
+  /** Plain-language explanation; null when current. */
+  reason: string | null;
+}
 export interface CategoryRef {
   slug: string;
   name: string;
@@ -44,6 +71,7 @@ export interface ProviderSummary {
   freshness: number | null;
   service_count: number;
   published_offer_count: number;
+  evidence_currency: EvidenceCurrency;
 }
 
 export interface ProviderDetail extends ProviderSummary {
@@ -63,6 +91,7 @@ export interface OfferVersion {
   reasons: string[];
   content_hash: string;
   created_at: string | null;
+  evidence_currency: EvidenceCurrency;
 }
 
 export interface Quota {
@@ -83,6 +112,7 @@ export interface OfferState {
   zero_cost_class: string;
   confidence_label: string;
   status: string;
+  evidence_currency: EvidenceCurrency;
 }
 
 export interface ServiceState {
@@ -114,6 +144,7 @@ export interface OfferSummary {
   status: string;
   confidence_label: string;
   current_version_number: number | null;
+  evidence_currency: EvidenceCurrency;
 }
 
 export interface OfferDetail {
@@ -142,6 +173,7 @@ export interface OfferDetail {
   completeness: number | null;
   freshness: number | null;
   advanced: ConfidenceAdvanced;
+  evidence_currency: EvidenceCurrency;
 }
 
 export interface EvidenceSource {
@@ -182,6 +214,7 @@ export interface OfferEvidenceResponse {
   confidence_label: string;
   advanced: ConfidenceAdvanced;
   evidence: Evidence[];
+  evidence_currency: EvidenceCurrency;
 }
 
 export interface ChangeEvent {
@@ -214,6 +247,7 @@ export interface SearchResultItem {
   status: string;
   confidence_label: string;
   current_version_number: number | null;
+  evidence_currency: EvidenceCurrency;
 }
 
 export interface SearchFilters {
@@ -224,6 +258,15 @@ export interface SearchFilters {
   offer_type: string | null;
   commercial_use: boolean | null;
   status: string | null;
+  /**
+   * Evidence currency — a filter dimension SEPARATE from `zero_cost_class`.
+   * The class classifies the offer's terms; this filters on the state of the
+   * evidence behind it. `null` means "any", which is the default: an offer whose
+   * evidence has expired is returned LABELLED rather than hidden, because a
+   * wrongly-omitted free offer is its own defect and an omission is invisible in
+   * a way a label is not.
+   */
+  evidence_current: boolean | null;
 }
 
 export interface SearchResponse {
@@ -250,6 +293,7 @@ export interface SearchQuery {
   offer_type?: string | null;
   commercial_use?: boolean | null;
   status?: string | null;
+  evidence_current?: boolean | null;
   page?: number;
 }
 
@@ -331,6 +375,7 @@ export interface CompareOffer {
   freshness: number | null;
   evidence_count: number;
   advanced: ConfidenceAdvanced;
+  evidence_currency: EvidenceCurrency;
 }
 
 export interface CompareResponse {
@@ -675,6 +720,9 @@ export function fetchSearch(
     params.set("commercial_use", String(query.commercial_use));
   }
   add("status", query.status);
+  if (query.evidence_current === true || query.evidence_current === false) {
+    params.set("evidence_current", String(query.evidence_current));
+  }
   if (query.page && query.page > 1) params.set("page", String(query.page));
 
   const suffix = params.toString();

@@ -1,5 +1,6 @@
 import type { SearchResponse, SearchResultItem } from "../api";
 import { confidenceMeaning, humanizeToken } from "./format";
+import { EvidenceCurrencyNote } from "./EvidenceCurrencyNote";
 import { Z0Badge } from "./Z0Badge";
 
 /**
@@ -102,7 +103,7 @@ function ResultRow({
       <div className="result__main">
         <div className="result__head">
           <span className="result__service">{result.service_name}</span>
-          <Z0Badge zeroCostClass={result.zero_cost_class} />
+          <Z0Badge zeroCostClass={result.zero_cost_class} currency={result.evidence_currency} />
         </div>
         <p className="result__meta">
           <span className="result__provider">{result.provider_name}</span>
@@ -114,6 +115,7 @@ function ResultRow({
         <p className="result__confidence muted">
           {confidenceMeaning(result.confidence_label).label} confidence
         </p>
+        <EvidenceCurrencyNote currency={result.evidence_currency} compact />
       </div>
       <label className="result__compare" htmlFor={checkboxId}>
         <input

@@ -1,5 +1,6 @@
 import type { OfferDetail, OfferEvidenceResponse, OfferHistoryResponse } from "../api";
 import { formatDate, formatSignal, formatTriState, humanizeToken, z0Meaning } from "./format";
+import { EvidenceCurrencyNote } from "./EvidenceCurrencyNote";
 import { Z0Badge } from "./Z0Badge";
 import { ConfidenceLabel } from "./ConfidenceLabel";
 import { QuotaTable } from "./QuotaTable";
@@ -38,9 +39,15 @@ export function OfferCard({ bundle }: { bundle: OfferBundle }) {
         <h3 id={headingId}>
           {detail.service_name} — {humanizeToken(detail.offer_type)}
         </h3>
-        <Z0Badge zeroCostClass={detail.zero_cost_class} />
+        <Z0Badge zeroCostClass={detail.zero_cost_class} currency={detail.evidence_currency} />
       </div>
-      <p className="offer__z0desc">{meaning.description}</p>
+      {/* The class description is a present-tense promise ("Usage stays at $0
+          with no billing risk."). It may only be shown while the evidence behind
+          it is still current; otherwise the note below carries the truth. */}
+      {detail.evidence_currency?.current !== false ? (
+        <p className="offer__z0desc">{meaning.description}</p>
+      ) : null}
+      <EvidenceCurrencyNote currency={detail.evidence_currency} />
 
       <section className="offer__section" aria-label="Why this rating">
         <h4>Why this rating</h4>

@@ -22,6 +22,48 @@ from datetime import datetime
 from pydantic import BaseModel
 
 
+class EvidenceCurrencyOut(BaseModel):
+    """Whether the official evidence behind a claim is still inside its window.
+
+    Recomputed on every read against the request's clock and never stored
+    (decision Q11). It exists because every other confidence-shaped field on
+    these models is **frozen at publish time** and cannot know that the evidence
+    underneath it later expired -- which is how a five-year-expired claim came to
+    report a freshness of ``1.0``.
+
+    Three fields, not one flag, because there are two distinct ways a claim can
+    fail to be current and collapsing them is how a gap hides:
+
+    * ``current=True``                   -- checked, and inside its window.
+    * ``stale=True``  (``checked=True``) -- we looked, and it has expired.
+    * ``checked=False``                  -- we could not look at all. **This must
+      never read as fresh.** There is no fetch time to compare against, so no
+      statement about currency is available.
+
+    ``freshness`` is ``None`` -- never ``0.0`` -- when ``checked`` is false. The
+    distinction survives all the way to the rendered page: the web formatter
+    shows ``null`` as "Unknown" but ``0`` as "0%", and a "0%" where there is no
+    measurement would reproduce the original defect one layer up.
+    """
+
+    #: The single predicate a client should gate a *free* claim on.
+    current: bool = False
+    #: Was a currency check possible at all (did a fetch time exist)?
+    checked: bool = False
+    #: True only when we checked AND the evidence is past its window.
+    stale: bool = False
+    #: Read-time freshness in [0, 1]; ``None`` when no check was possible.
+    freshness: float | None = None
+    #: Age of the oldest backing evidence, in days.
+    age_days: float | None = None
+    #: The refresh window that age was compared against, in days.
+    window_days: float | None = None
+    #: When the oldest backing evidence was fetched.
+    oldest_fetched_at: datetime | None = None
+    #: One-line plain-language explanation; ``None`` when current.
+    reason: str | None = None
+
+
 class CategoryRef(BaseModel):
     """A minimal reference to a category."""
 
@@ -40,6 +82,10 @@ class ProviderSummary(BaseModel):
     freshness: float | None = None
     service_count: int = 0
     published_offer_count: int = 0
+    #: The provider's LEAST current published claim. A provider is only as
+    #: current as its stalest support, so this is a rollup and not an average:
+    #: averaging would let one fresh offer mask an expired one.
+    evidence_currency: EvidenceCurrencyOut = EvidenceCurrencyOut()
 
 
 class ProviderDetail(ProviderSummary):
@@ -83,6 +129,10 @@ class OfferVersionOut(BaseModel):
     reasons: list[str] = []
     content_hash: str
     created_at: datetime | None = None
+    #: Read-time currency of the evidence behind THIS version's claim. A history
+    #: view repeats a class per version, so each row carries its own verdict
+    #: rather than inheriting the current one.
+    evidence_currency: EvidenceCurrencyOut = EvidenceCurrencyOut()
 
 
 class OfferState(BaseModel):
@@ -93,6 +143,7 @@ class OfferState(BaseModel):
     zero_cost_class: str
     confidence_label: str
     status: str
+    evidence_currency: EvidenceCurrencyOut = EvidenceCurrencyOut()
 
 
 class ServiceState(BaseModel):
@@ -132,6 +183,7 @@ class OfferSummary(BaseModel):
     status: str
     confidence_label: str
     current_version_number: int | None = None
+    evidence_currency: EvidenceCurrencyOut = EvidenceCurrencyOut()
 
 
 class OfferDetail(BaseModel):
@@ -162,6 +214,7 @@ class OfferDetail(BaseModel):
     completeness: float | None = None
     freshness: float | None = None
     advanced: ConfidenceAdvanced
+    evidence_currency: EvidenceCurrencyOut = EvidenceCurrencyOut()
 
 
 class SourceOut(BaseModel):
@@ -209,6 +262,7 @@ class OfferEvidenceResponse(BaseModel):
     offer_version_id: int | None = None
     confidence_label: str
     advanced: ConfidenceAdvanced
+    evidence_currency: EvidenceCurrencyOut = EvidenceCurrencyOut()
     evidence: list[EvidenceOut] = []
 
 
@@ -261,6 +315,7 @@ class SearchResultItem(BaseModel):
     status: str
     confidence_label: str
     current_version_number: int | None = None
+    evidence_currency: EvidenceCurrencyOut = EvidenceCurrencyOut()
 
 
 class SearchFilters(BaseModel):
@@ -273,6 +328,13 @@ class SearchFilters(BaseModel):
     offer_type: str | None = None
     commercial_use: bool | None = None
     status: str | None = None
+    #: Evidence currency, a filter dimension DISTINCT from ``zero_cost_class``.
+    #: The class is a classification of the offer's terms; currency is a property
+    #: of the evidence behind it. Conflating them is what made a "show me free
+    #: things" filter imply a freshness it never checked. ``None`` means "any",
+    #: and is the default: an expired claim is returned LABELLED, not hidden,
+    #: because a wrongly-omitted free offer is its own defect.
+    evidence_current: bool | None = None
 
 
 class SearchResponse(BaseModel):
@@ -404,6 +466,7 @@ class CompareOffer(BaseModel):
     freshness: float | None = None
     evidence_count: int = 0
     advanced: ConfidenceAdvanced
+    evidence_currency: EvidenceCurrencyOut = EvidenceCurrencyOut()
 
 
 class CompareResponse(BaseModel):

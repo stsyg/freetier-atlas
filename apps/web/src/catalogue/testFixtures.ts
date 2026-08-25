@@ -3,6 +3,7 @@ import type {
   CompareOffer,
   CompareResponse,
   CategoryStatesResponse,
+  EvidenceCurrency,
   OfferDetail,
   OfferEvidenceResponse,
   OfferHistoryResponse,
@@ -20,6 +21,51 @@ import type {
  * assert the UI reports "Unknown" honestly instead of fabricating values.
  */
 
+/**
+ * Evidence currency in its three distinct states.
+ *
+ * They are separate fixtures rather than one flag because the UI must treat
+ * them differently: `STALE` means we looked and it expired, `UNCHECKED` means we
+ * could not look at all. Both undermine a free claim, but only the first is
+ * "stale" — reporting an unchecked claim as expired would be its own guess, and
+ * `freshness` must be `null` rather than `0` so the page shows "Unknown" instead
+ * of a fabricated "0%".
+ */
+export const CURRENT_EVIDENCE: EvidenceCurrency = {
+  current: true,
+  checked: true,
+  stale: false,
+  freshness: 0.9,
+  age_days: 0.7,
+  window_days: 7,
+  oldest_fetched_at: "2026-02-01T00:00:00Z",
+  reason: null,
+};
+
+export const STALE_EVIDENCE: EvidenceCurrency = {
+  current: false,
+  checked: true,
+  stale: true,
+  freshness: 0.0,
+  age_days: 1824,
+  window_days: 7,
+  oldest_fetched_at: "2021-02-01T00:00:00Z",
+  reason:
+    "The official evidence backing this claim was last fetched 1824 days ago, past its 7 days refresh window, so it is no longer known to be current.",
+};
+
+export const UNCHECKED_EVIDENCE: EvidenceCurrency = {
+  current: false,
+  checked: false,
+  stale: false,
+  freshness: null,
+  age_days: null,
+  window_days: null,
+  oldest_fetched_at: null,
+  reason:
+    "No official evidence with a checkable fetch time backs this claim, so whether it is still current cannot be established.",
+};
+
 export const provider: ProviderDetail = {
   slug: "cloudflare",
   name: "Cloudflare",
@@ -30,6 +76,7 @@ export const provider: ProviderDetail = {
   service_count: 2,
   published_offer_count: 2,
   official_domains: ["cloudflare.com", "developers.cloudflare.com"],
+  evidence_currency: CURRENT_EVIDENCE,
 };
 
 export const categoryStates: CategoryStatesResponse = {
@@ -51,6 +98,7 @@ export const categoryStates: CategoryStatesResponse = {
               zero_cost_class: "Z0_TRUE_FREE",
               confidence_label: "high",
               status: "published",
+              evidence_currency: CURRENT_EVIDENCE,
             },
           ],
         },
@@ -71,6 +119,7 @@ export const categoryStates: CategoryStatesResponse = {
               zero_cost_class: "UNKNOWN",
               confidence_label: "unknown",
               status: "published",
+              evidence_currency: UNCHECKED_EVIDENCE,
             },
           ],
         },
@@ -90,6 +139,7 @@ export const offerSummaries: OfferSummary[] = [
     status: "published",
     confidence_label: "high",
     current_version_number: 1,
+    evidence_currency: CURRENT_EVIDENCE,
   },
   {
     offer_id: 2,
@@ -101,6 +151,7 @@ export const offerSummaries: OfferSummary[] = [
     status: "published",
     confidence_label: "unknown",
     current_version_number: null,
+    evidence_currency: UNCHECKED_EVIDENCE,
   },
 ];
 
@@ -130,6 +181,7 @@ export const offerDetail1: OfferDetail = {
     reasons: ["No credit card is required to start."],
     content_hash: "sha256:workers-v1",
     created_at: "2024-06-01T00:00:00Z",
+    evidence_currency: CURRENT_EVIDENCE,
   },
   reasons: [
     "No credit card is required to start.",
@@ -156,6 +208,7 @@ export const offerDetail1: OfferDetail = {
     score: 0.91,
     signals: { evidence_freshness: 0.9, source_trust: 1.0 },
   },
+  evidence_currency: CURRENT_EVIDENCE,
 };
 
 export const offerDetail2: OfferDetail = {
@@ -184,6 +237,7 @@ export const offerDetail2: OfferDetail = {
   completeness: null,
   freshness: null,
   advanced: { score: null, signals: null },
+  evidence_currency: UNCHECKED_EVIDENCE,
 };
 
 export const offerEvidence1: OfferEvidenceResponse = {
@@ -220,6 +274,7 @@ export const offerEvidence1: OfferEvidenceResponse = {
       },
     },
   ],
+  evidence_currency: CURRENT_EVIDENCE,
 };
 
 export const offerEvidence2: OfferEvidenceResponse = {
@@ -228,6 +283,7 @@ export const offerEvidence2: OfferEvidenceResponse = {
   confidence_label: "unknown",
   advanced: { score: null, signals: null },
   evidence: [],
+  evidence_currency: UNCHECKED_EVIDENCE,
 };
 
 export const offerHistory1: OfferHistoryResponse = {
@@ -241,6 +297,7 @@ export const offerHistory1: OfferHistoryResponse = {
       reasons: ["No credit card is required to start."],
       content_hash: "sha256:workers-v1",
       created_at: "2024-06-01T00:00:00Z",
+      evidence_currency: CURRENT_EVIDENCE,
     },
   ],
   change_events: [
@@ -281,6 +338,7 @@ export const providerList: ProviderSummary[] = [
     freshness: 0.8,
     service_count: 2,
     published_offer_count: 2,
+    evidence_currency: CURRENT_EVIDENCE,
   },
   {
     slug: "northwind-cloud",
@@ -291,6 +349,7 @@ export const providerList: ProviderSummary[] = [
     freshness: 0.6,
     service_count: 1,
     published_offer_count: 1,
+    evidence_currency: CURRENT_EVIDENCE,
   },
   {
     slug: "acme-serverless",
@@ -301,6 +360,7 @@ export const providerList: ProviderSummary[] = [
     freshness: 0.4,
     service_count: 2,
     published_offer_count: 2,
+    evidence_currency: CURRENT_EVIDENCE,
   },
 ];
 
@@ -318,6 +378,7 @@ export const searchIndex: SearchResultItem[] = [
     status: "active",
     confidence_label: "high",
     current_version_number: 1,
+    evidence_currency: CURRENT_EVIDENCE,
   },
   {
     offer_id: 2,
@@ -331,6 +392,7 @@ export const searchIndex: SearchResultItem[] = [
     status: "active",
     confidence_label: "unknown",
     current_version_number: null,
+    evidence_currency: UNCHECKED_EVIDENCE,
   },
   {
     offer_id: 3,
@@ -344,6 +406,7 @@ export const searchIndex: SearchResultItem[] = [
     status: "active",
     confidence_label: "medium",
     current_version_number: 2,
+    evidence_currency: CURRENT_EVIDENCE,
   },
   {
     offer_id: 4,
@@ -357,6 +420,7 @@ export const searchIndex: SearchResultItem[] = [
     status: "active",
     confidence_label: "high",
     current_version_number: 1,
+    evidence_currency: CURRENT_EVIDENCE,
   },
   {
     offer_id: 5,
@@ -370,6 +434,7 @@ export const searchIndex: SearchResultItem[] = [
     status: "deprecated",
     confidence_label: "low",
     current_version_number: 3,
+    evidence_currency: CURRENT_EVIDENCE,
   },
 ];
 
@@ -596,6 +661,7 @@ export const compareOffers: Record<number, CompareOffer> = {
     freshness: 0.9,
     evidence_count: 3,
     advanced: { score: 0.91, signals: { source_trust: 1.0 } },
+    evidence_currency: CURRENT_EVIDENCE,
   },
   3: {
     offer_id: 3,
@@ -636,6 +702,7 @@ export const compareOffers: Record<number, CompareOffer> = {
     freshness: 0.55,
     evidence_count: 1,
     advanced: { score: 0.62, signals: null },
+    evidence_currency: CURRENT_EVIDENCE,
   },
   4: {
     offer_id: 4,
@@ -659,6 +726,7 @@ export const compareOffers: Record<number, CompareOffer> = {
     freshness: 0.75,
     evidence_count: 2,
     advanced: { score: 0.83, signals: null },
+    evidence_currency: CURRENT_EVIDENCE,
   },
 };
 
@@ -715,6 +783,7 @@ function buildSearchResponse(url: URL): SearchResponse {
       offer_type: offerType,
       commercial_use: commercialUse,
       status: status,
+      evidence_current: null,
     },
     page,
     page_size: SEARCH_PAGE_SIZE,
