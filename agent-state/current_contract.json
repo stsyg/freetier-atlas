@@ -1,59 +1,88 @@
 {
   "feature_id": "F001",
-  "slice": "ci-disclosure-guard-not-masked",
-  "title": "The URL host allowlist must still run when the secret scan has just failed",
-  "branch": "stsyg-ci-allowlist-on-scan-failure",
-  "base_commit": "f033017d9a76db53491cb35c2ad15512fd7e6a20",
+  "slice": "ci-masking-edges-python-node",
+  "title": "Unmask the spurious step-to-step masking edges in the `python` and `node` CI jobs, and re-measure the stale DATABASE_URL-gated test count",
+  "branch": "stsyg-ci-masking-edges-python-node",
+  "base_commit": "3bdec4a5b71acf4bc29dbac54ffe4075efc00375",
   "started_at": "2026-08-25",
-  "objective": "In .github/workflows/ci.yml the `Secret scan` job runs `Validate secrets baseline`, then `Scan tracked files against baseline`, then `URL host allowlist`. The last step carries no `if:`, so its condition defaults to `success()` and GitHub SKIPS it whenever an earlier step in the job failed. MEASURED: `skipped` observed in three separate control runs during PR #81. The disclosure guard that keeps an internal package-feed hostname out of a PUBLIC repository therefore stops running at exactly the moment another guard has just fired - when the tree is known to be in an unexpected state and scrutiny should be highest. One finding hides the rest. This contradicts the rule the repository states in its own `dependencies` job comments and already follows in the `web` job added by PR #75.",
-  "materiality": "[M]",
-  "autonomy_level": "A1",
+  "objective": "In .github/workflows/ci.yml no step in the `python` or `node` job carries an `if:`, so GitHub's default `success()` makes a failing step SKIP every later step in the job, and a skipped step produces no evidence. A one-character formatting nit therefore silences the entire test suite in a job named 'Python lint, format, tests', and a Prettier difference silences every ESLint finding in `node`. Unmask the edges that are spurious while KEEPING the ones that are genuine install dependencies. Separately, a comment in the same file states a measured test count as present-tense fact with no date or command; re-measure it and restate it so it cannot silently rot.",
+  "materiality": "CI gate correctness and a security-relevant disclosure route. `tests/unit/test_url_allowlist.py` asserts over the committed tree that every URL host is allowlisted, and it runs in the `python` job's `Pytest` step, so it is the SECOND CI route to the rule that keeps an internal hostname out of this public repository. Before this change a Ruff nit switched that route off.",
+  "autonomy_level": "builder; draft PR only",
   "required_evaluation_level": 2,
-  "evaluation_level_rationale": "Level 2 is mandatory: this is a behaviour change to a security boundary (the guard enforcing that no internal hostname reaches a public repository), and it changes when a gate executes. A control that cannot be SHOWN to fail proves nothing, so every claim here is demonstrated at STEP level on real CI runs with the prediction recorded before the run, not inferred from the YAML.",
-  "measured_premise": [
-    "scripts/check_urls.py is stdlib-only: it imports argparse, pathlib, re, subprocess, sys, shells out to `git ls-files -z`, and reads scripts/url-allowlist.txt plus the checkout. It has NO dependency on detect-secrets or on .secrets.baseline, so no state exists in which running it after those steps failed yields noise rather than a finding.",
-    "MEASURED on the clean tree at f033017: `python scripts/check_urls.py` reports 1260 URL(s), 57 distinct host(s), exit 0. That count is the impossible-value floor for this instrument - this repository can never legitimately contain zero URLs, so a near-zero reading means the enumeration broke, not that the tree is clean.",
-    "`.invalid` is ALREADY on the allowlist as a suffix rule (RFC 2606 reserved namespace), so `example.invalid` PASSES. The negative-control host for demonstration 3 must therefore be something else; a single-label token that is on neither the exact list nor any suffix rule is used instead, and it discloses nothing because it is not a hostname anyone owns.",
-    "detect-secrets 1.5.0 Base64HighEntropyString flags above a Shannon entropy of 4.5 over the base64 charset. The planted control string measures 5.0952 by that same formula, computed locally before any CI run was spent. The probe was validated with a negative control (a repeated-character string measuring 0.0000) so an all-TRIPS result is distinguishable from a broken instrument."
-  ],
-  "decision_always_vs_not_cancelled": "`!cancelled()`, not `always()`. They differ on exactly one input - a CANCELLED run - and this workflow sets `concurrency: cancel-in-progress: true` keyed on `ci-${{ github.ref }}`, so that input occurs routinely: any second push to a branch cancels the run in flight. Under `always()` the step would execute inside that dying run, spending a runner on a result nobody will read and writing a step conclusion into a CANCELLED run, where a green step reads as 'the guard ran and passed' to anyone who does not also read the run conclusion. `cancelled` is not `failure`, and misreading one for the other has already bitten this project. `!cancelled()` retains the only behaviour this change needs - run after a FAILED step - and is the spelling the `web` and `dependencies` jobs already use, so the file gains no second idiom for the same intent.",
+  "evaluation_level_rationale": "Touches a security boundary's CI enforcement route and changes when build-gating checks execute. Level 2 is mandatory for security boundaries under docs/AGENT_HARNESS.md.",
+  "measured_premise": {
+    "derivation_method": "Parsed .github/workflows/ci.yml and SIMULATED each step's effective `if:` against the outcomes of the steps before it. A masking edge is an ordered pair (A,B) in one job where B is `skipped` in a run in which A fails but would have run otherwise. Counted over steps carrying a `run:` key.",
+    "total_masking_edges": 22,
+    "real_kept": 15,
+    "spurious_removed": 7,
+    "real_breakdown": "14 dependencies on an install step, plus `Validate secrets baseline` -> `Scan tracked files against baseline` in `secrets`, which is real for the reason documented on that step.",
+    "spurious_breakdown": "python: Ruff lint -> {Ruff format check, Apply database migrations, Pytest}; Ruff format check -> {Apply database migrations, Pytest}; Apply database migrations -> Pytest. node: Prettier check -> ESLint.",
+    "disagreement_with_brief_stated_prominently": "The task brief said 17 edges / 11 real / 6 spurious. MY MEASUREMENT: 22 / 15 / 7. The 17 is the SAME measurement restricted to edges whose MASKED step carries no explicit `if:`, which excludes the five deliberate install gates in `web`; that sub-population was reproduced exactly (17) as a cross-check. The 6-versus-7 difference is a genuine CLASSIFICATION difference, not a counting one: the brief left `Apply database migrations` -> `Pytest` undecided and asked for it to be settled on evidence, and the evidence settles it SPURIOUS.",
+    "instrument_negative_controls": "The edge parser was proven capable of returning a different answer: stripping all `if:` raised the count 22->49; setting `!cancelled()` everywhere drove it to 0; unmasking one known edge dropped it by exactly 1; an unsupported condition RAISES rather than being silently counted as no-edge."
+  },
+  "decision_migrations_to_pytest": {
+    "verdict": "SPURIOUS - unmasked",
+    "evidence": "Every integration module owns a module-scoped `engine` fixture that calls `command.upgrade(config, 'head')` ITSELF. MEASURED 2026-08-25 against a reachable but EMPTY postgres:16-alpine with `alembic upgrade head` never run beforehand: `python -m pytest -q` reported 2859 passed, 3 skipped, exit 0. Pytest builds the schema it needs and does not consume the CI step's output.",
+    "corroboration": "With DATABASE_URL pointed at an UNREACHABLE port, `python -m pytest -q` reported 2602 passed, 3 skipped, 257 errors, exit 1 - so when the database is broken the suite still returns roughly 2600 independent verdicts rather than noise. That is the test that separates a real edge from a spurious one, and this edge passes it.",
+    "contrast_kept_real": "An install edge fails that test (pytest with no packages reports import errors only), and so does `Validate secrets baseline` -> `Scan`, which is documented on the step."
+  },
+  "decision_always_vs_not_cancelled": "`!cancelled()`, matching `web`, `dependencies` and `secrets`. They differ on exactly one input, a CANCELLED run, and this workflow sets `cancel-in-progress: true` on `ci-${{ github.ref }}`, so cancellation is routine. `always()` would write a green step into a dying run, which reads as 'the gate ran and passed'. NOT MEASURED: a cancelled run was not observed, so this rests on documented Actions semantics and in-repo precedent, not on measurement.",
   "in_scope": [
-    ".github/workflows/ci.yml: add `if: ${{ !cancelled() }}` to the `URL host allowlist` step of the `secrets` job, with a comment recording the measurement, the reason the condition is sound for THIS step, and the always()/!cancelled() choice.",
-    ".github/workflows/ci.yml: a comment on `Scan tracked files against baseline` recording why it is deliberately NOT given the same treatment (checked, not assumed).",
-    "agent-state/current_contract.json and agent-state/progress.md."
+    ".github/workflows/ci.yml - add `id:` to the two install steps and `if: ${{ !cancelled() && steps.<install>.outcome == 'success' }}` to the four steps carrying a spurious incoming edge",
+    ".github/workflows/ci.yml - re-measure and restate the stale '162 tests' comment",
+    "agent-state/current_contract.json",
+    "agent-state/progress.md (append-only)"
   ],
   "out_of_scope_zero_diff": [
-    "agent-state/feature_list.json - untouchable. F008 stays passes:false and no ledger flag is flipped.",
-    "tests/support/source_scan.py and tests/unit/test_secrets_baseline.py - the strict secrets route guard. If they go red, that is REPORTED, never repaired.",
-    "The `Scan tracked files against baseline` step's dependency on `Validate secrets baseline`. It is a REAL dependency (see findings) and changing it is outside the contract.",
-    "The `python` and `node` jobs' own masking edges. They are reported as findings; changing them is a separate slice.",
-    "Any npm command. `npm install` / `npm audit fix` rewrite lockfile `resolved` URLs to an internal package-feed host on this machine; committing one would leak internal infrastructure into a public repository.",
-    "The step ORDER in the secrets job. Unchanged - see findings."
+    "agent-state/feature_list.json - MUST stay byte-identical to main",
+    "apps/api/app/read_api/* and apps/web/* - a parallel slice is in flight on stsyg-slice2-catalogue-currency",
+    "package-lock.json and apps/web/package-lock.json - `npm install`/`i`/`update`/`audit fix` are forbidden; only `npm ci` was used",
+    "Any application code. Step order, step names, `run:` bodies, `uses:` and `with:` are unchanged.",
+    "The 15 real masking edges, which are deliberately preserved"
   ],
   "acceptance_criteria": [
-    "AC1 BEFORE, reproduced not cited: on main's ci.yml with the secret scan step failing, the `URL host allowlist` step conclusion is `skipped`.",
-    "AC2 AFTER: with the secret scan failing IDENTICALLY, the `URL host allowlist` step RUNS, and its own conclusion is reported.",
-    "AC3 AFTER: the `URL host allowlist` step can still go RED on its own merits - a URL on a non-allowlisted host makes it fail while the secret scan is green.",
-    "AC4 AFTER: a clean tree still passes - both steps `success` and the job `success`.",
-    "AC5 AFTER: the JOB still FAILS when the secret scan fails. `!cancelled()` must not turn a red job green; verified at JOB conclusion, not step conclusion.",
-    "AC6: the protected files are byte-identical to CURRENT main, proved by blob hash comparison rather than by `git diff --numstat`, which lies on this repository.",
-    "AC7: agent-state/progress.md is append-only, proved by RAW BYTE PREFIX against main's CURRENT byte count, with a negative control (one flipped byte must yield False)."
+    "The 7 spurious edges are removed and the 15 real ones remain, asserted by PARSING both files and diffing the step-condition maps rather than by reading the diff",
+    "Only the `if` and `id` keys differ anywhere in the file",
+    "For each unmasked edge: BEFORE the later step is `skipped` on the earlier step's failure; AFTER it RUNS",
+    "AFTER, an unmasked step can still FAIL on its own merits",
+    "AFTER, the JOB is still RED - unmasking must not turn a failing run green",
+    "AFTER, a clean tree is fully green",
+    "Every prediction recorded BEFORE the run that tests it",
+    "Both lockfiles remain entirely on registry.npmjs.org"
   ],
   "verification_commands": [
+    "python -m ruff check .",
+    "python -m ruff format --check .",
     "python scripts/check_urls.py",
-    "python -m pytest tests/unit/test_secrets_baseline.py tests/unit/test_url_allowlist.py tests/test_repo_baseline.py -q",
-    "ruff check . && ruff format --check .",
-    "gh run view <id> --json jobs -> read STEP conclusions by name, and the JOB conclusion separately",
-    "gh pr checks -> assert check-runs >= 5 and that jobs ran BY NAME (absence of red is not evidence of green)"
+    "python -m pytest tests/test_repo_baseline.py tests/unit/test_secrets_baseline.py tests/unit/test_url_allowlist.py -q",
+    "python -m pytest -q  (with and without DATABASE_URL)",
+    "npm ci && npm run format:check && npm run lint",
+    "session-scratch: edges.py / edges_controls.py / measure.py / scope.py"
   ],
   "negative_and_regression_tests": [
-    "Demonstration 3 is the negative control on the guard itself: a guard that cannot be made to fail proves nothing.",
-    "The entropy probe carries its own negative control so an all-TRIPS reading cannot come from a broken instrument.",
-    "The append-only proof carries a flipped-byte negative control.",
-    "`gh --json ... --jq` can return a STRING ARRAY where .Length is a LINE COUNT and .Contains() is array membership; every such read is joined into one string first and carries a marker that MUST be absent, so an all-False result is distinguishable from a broken read."
+    "Edge parser: 5 controls, each of which must come out DIFFERENTLY from the baseline",
+    "Scope assertion: before-vs-itself must report zero differences; the declared spurious list must be a subset of the BEFORE edge set",
+    "Measurement: an UNREACHABLE database must produce a LOUD non-zero exit, not a silent skip",
+    "Lockfile host assertion proven to fire on a planted off-registry host",
+    "progress.md append-only proven by raw byte-prefix comparison plus a flipped-byte negative control"
   ],
-  "data_security_privacy_portability_z0": "No data, schema, migration or Z0 implication. Security: strictly increases the number of runs in which the disclosure guard executes; it removes no gate and weakens no check. Portability: none - a workflow condition. No secret, registry URL or internal hostname appears in any changed file, commit message, PR body or scratch artefact.",
-  "scratch_artefacts": "Control branches and throwaway PRs are required to observe CI at step level, as PRs #75 and #81 also did. They are listed by name in the PR body for closing and are never merged.",
-  "boundary": "Draft PR only. Do not merge. Do not modify agent-state/feature_list.json. F008 stays passes:false.",
-  "status": "in-progress"
+  "data_security_privacy_portability_z0": "No schema, data, provider, Z0 or portability change. Security-POSITIVE: makes the `python` job's URL-allowlist route unmaskable by a lint or formatting nit. No security check is weakened, suppressed or relaxed; no `continue-on-error` is introduced, so no failing gate is converted to a pass.",
+  "demonstrations_observed": {
+    "method": "Three genuine BEFORE/AFTER pairs. Control files byte-identical across arms by `git hash-object`; BEFORE ci.yml == main's blob 124ced29, AFTER == slice blob aff7df68. All 14 byte-identity assertions passed. Every prediction written to PREDICTIONS.md BEFORE any branch was pushed.",
+    "pair_A_lint_control": "#89 BEFORE: Ruff lint failure -> Ruff format check / Apply database migrations / Pytest ALL skipped; Prettier check failure -> ESLint skipped. #90 AFTER, same bytes: Ruff lint failure -> format RAN success, migrations RAN success, Pytest RAN success; Prettier failure -> ESLint RAN failure. Both JOBS failure on both arms.",
+    "pair_B_format_control": "#91 BEFORE: Ruff lint success, Ruff format check failure -> migrations skipped, Pytest skipped. #92 AFTER: format failure -> migrations RAN success, Pytest RAN success reporting 2859 passed, 3 skipped. JOB failure. THE CENTRAL RESULT: job RED from a quote-style nit while the entire suite ran and passed.",
+    "pair_C_migration_control": "#93 BEFORE: migrations failure -> Pytest skipped. #94 AFTER: migrations failure -> Pytest RAN failure, reporting 2602 passed, 3 skipped, 257 errors - matching the local measurement exactly. JOB failure.",
+    "clean_tree": "#88: all five jobs success; Pytest 2859 passed, 3 skipped.",
+    "job_still_red": "Verified at JOB conclusion on all six control runs. Unmasking turned no red job green. `continue-on-error` remains absent.",
+    "can_still_fail_on_own_merits": "ESLint failure in #90; Pytest failure in #94.",
+    "instrument_controls": "All five expected job names asserted present in every one of the seven reads; a deliberately bogus step name returned <step-not-found> every time; mergeable state read before interpreting any conclusion (all MERGEABLE)."
+  },
+  "not_verified_stated_prominently": [
+    "No CANCELLED run was observed, so `!cancelled()` versus `always()` is NOT measured - it rests on documented Actions semantics and on the three jobs in this file that already use it.",
+    "Only `pull_request` events were observed; `workflow_dispatch` and `push`-to-main were not tested.",
+    "The 'no database' arm of the 258 figure is a LOCAL measurement only, because CI always sets DATABASE_URL. Only the 'with database' arm (2859 passed / 3 skipped) was reproduced in CI, twice."
+  ],
+  "scratch_artefacts": "PRs #89 #90 #91 #92 #93 #94 and branches scratch/ci-masking-pair{a,b,c}-{before,after}. None merged; all to be closed and deleted.",
+  "boundary": "DRAFT PR only. Do not merge. Do not mark any feature passing. feature_list.json untouched.",
+  "status": "implementation and all seven demonstrations complete; every prediction held; Level-2 evaluator disposition pending"
 }
