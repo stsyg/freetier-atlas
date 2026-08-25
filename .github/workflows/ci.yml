@@ -19,11 +19,32 @@ jobs:
     name: Python lint, format, tests
     runs-on: ubuntu-latest
     # This job previously ran `pytest` with no database at all. Every
-    # integration test is guarded by `skipif(not DATABASE_URL)`, so the whole
-    # ingest, reconcile, read-API and provider layer -- 162 tests -- silently
-    # skipped and the job still reported success. A green tick that certifies
-    # nothing is worse than a red one, because it is trusted. The service
-    # container below is what makes the tick mean something.
+    # integration test is guarded by `skipif(not DATABASE_URL)`, so the ENTIRE
+    # ingest, reconcile, read-API and provider layer silently skipped and the
+    # job still reported success. A green tick that certifies nothing is worse
+    # than a red one, because it is trusted. The service container below is
+    # what makes the tick mean something.
+    #
+    # The SIZE of that layer is a MEASUREMENT, and it is written here as one.
+    # The previous revision of this comment read "-- 162 tests --" with no date
+    # and no command: a figure that was true when written, drifted as the suite
+    # grew, and kept reading as present tense the whole time. That is this
+    # job's own defect one level up -- a statement trusted because nothing
+    # marked it stale -- so the number is now stated as a dated reading of a
+    # named command rather than as a fact about the repository.
+    #
+    # MEASURED 2026-08-25 against postgres:16-alpine, `python -m pytest -q`,
+    # taking the count as the DIFFERENCE in `skipped` between the two runs:
+    #   without DATABASE_URL : 2601 passed, 261 skipped
+    #   with    DATABASE_URL : 2859 passed,   3 skipped
+    # so 258 tests were gated on the database that day, not 162.
+    #
+    # Do not hand-edit that number. Either re-run both commands and restate the
+    # date, or drop the figure entirely and keep the INVARIANT, which is the
+    # part that cannot rot and is the part that actually justifies this service
+    # container: EVERY integration test in the suite is gated on DATABASE_URL,
+    # so with no database the silently-skipped layer is ALL of them, whatever
+    # the count happens to be this month.
     services:
       postgres:
         # Matches docker-compose.yml's postgres service exactly, so CI exercises
@@ -57,19 +78,128 @@ jobs:
         with:
           python-version: "3.13"
       - name: Install Python runtime and dev dependencies
+        id: python_install
         # Install the project (runtime dependencies) plus the dev extras and the
         # editable app package so the test suite can import the application.
+        #
+        # `id:` exists so the steps below can name THIS step as their one
+        # precondition instead of inheriting the default `success()`, which
+        # depends on every step before them. Same construction as `web_install`
+        # in the `web` job, which is where this idiom already lives.
         run: python -m pip install --disable-pip-version-check -e ".[dev]"
+      # DELIBERATELY UNCONDITIONED, and checked rather than assumed. This is the
+      # first step after the install, so it has no spurious incoming edge to
+      # remove: the only thing that can silence it is the install failing, and
+      # that dependency is REAL. Adding the condition the next step carries
+      # would be a NO-OP here -- if the install fails or is skipped its outcome
+      # is not 'success' either way -- and a clause that cannot change an
+      # outcome is dead logic inside a gate. Left off on purpose; please do not
+      # "tidy" it in for symmetry with the step below.
       - name: Ruff lint
         run: ruff check .
+      # CONDITIONED, and this is the change. With no `if:` the default is
+      # `success()`, which is true only when NO earlier step in the job failed.
+      # So a failing `Ruff lint` SKIPPED this step, `Apply database migrations`
+      # and `Pytest` -- and a skipped step produces no evidence at all. A
+      # one-character formatting nit therefore hid the entire test suite, in a
+      # job named "Python lint, format, tests" that had by then tested NOTHING.
+      # Worse, the red run is the one nobody re-reads: after the nit is fixed
+      # the next run is green and reads as "tests passed", when the run that
+      # actually carried the defect never reached them.
+      #
+      # DERIVED, not inherited, by parsing this workflow and simulating each
+      # step's `if:` against the outcomes before it (2026-08-25). Under the
+      # model "A masks B when B is skipped in a run where A fails but would
+      # have run otherwise", counting steps that carry a `run:` key, this file
+      # had 22 masking edges: 15 REAL and 7 spurious.
+      #
+      # The 15 real ones are kept. Fourteen are dependencies on an install step
+      # -- a step cannot lint with no linter installed -- and the fifteenth is
+      # `Validate secrets baseline` -> `Scan tracked files against baseline` in
+      # the `secrets` job, which is real for a different reason documented on
+      # the step itself.
+      #
+      # The 7 spurious ones are removed: five here (`Ruff lint` silencing the
+      # three steps below it, `Ruff format check` silencing the two below it),
+      # one in `node`, and `Apply database migrations` -> `Pytest`, which is
+      # the one that needed measuring rather than reasoning about and is
+      # written up on the `Pytest` step below.
+      #
+      # A count of 17 is the SAME measurement restricted to edges whose MASKED
+      # step carries no explicit `if:`. That sub-population excludes the five
+      # deliberate install gates in `web`, which are edges too, merely correct
+      # ones. Both figures are right about different questions; 22 is stated
+      # here because the property that matters -- a failing step leaving a
+      # later step with no evidence -- holds in `web` exactly as it does here.
+      #
+      # Spurious because these two commands share no state: `ruff check` and
+      # `ruff format --check` each read the working tree and nothing else.
+      # Neither produces input for the other, so running the second after the
+      # first has failed yields a genuine independent finding, never noise.
+      #
+      # Load-bearing beyond tidiness: `tests/unit/test_url_allowlist.py` runs in
+      # the `Pytest` step below and asserts that every URL host in the committed
+      # tree is allowlisted -- the SECOND CI route to the disclosure rule that
+      # keeps an internal hostname out of this public repository, the first
+      # being the `secrets` job. VERIFIED by reading the test, not assumed: see
+      # `test_every_host_in_the_committed_tree_is_allowlisted`. Before this
+      # change a formatting nit switched that whole second route off.
+      #
+      # `!cancelled()` rather than `always()`, matching `web`, `dependencies`
+      # and `secrets`. They differ on exactly one input -- a CANCELLED run --
+      # and this workflow sets `cancel-in-progress: true` on `ci-${{ github.ref
+      # }}`, so any second push to a branch produces that input routinely.
+      # `always()` would run these steps inside a dying run and write a green
+      # step into a CANCELLED one, which reads as "the gate ran and passed" to
+      # anyone not also reading the run conclusion, and `cancelled` is not
+      # `failure`. NOT MEASURED, stated plainly: a cancelled run was not
+      # observed while making this change, so this rests on documented Actions
+      # semantics and on the three jobs here that already spell it this way.
+      #
+      # It does not turn a red job green: a failed step fails the job whatever
+      # later steps are conditioned on. Only `continue-on-error` would mask
+      # that, and it is deliberately absent from this file.
       - name: Ruff format check
+        if: ${{ !cancelled() && steps.python_install.outcome == 'success' }}
         run: ruff format --check .
       # A named step of its own, not folded into the pytest command: when the
       # schema is the thing that broke, the job's step list says so directly
       # instead of reporting a wall of failing tests.
       - name: Apply database migrations
+        if: ${{ !cancelled() && steps.python_install.outcome == 'success' }}
         run: alembic upgrade head
+      # CONDITIONED ON THE INSTALL ONLY, and NOT on the migration step above.
+      # That was the one judgement call here, so it is recorded rather than
+      # left for the next person to re-litigate or to "fix".
+      #
+      # The intuition is that tests need the schema, which would make
+      # `Apply database migrations` -> `Pytest` a REAL dependency. MEASURED
+      # 2026-08-25, and it is not: every integration module owns a
+      # module-scoped `engine` fixture that calls `command.upgrade(config,
+      # "head")` ITSELF before yielding. Pointed at a reachable but EMPTY
+      # postgres:16-alpine with `alembic upgrade head` never run beforehand,
+      # `python -m pytest -q` reported 2859 passed, 3 skipped, exit 0. Pytest
+      # builds the schema it needs; it does not consume this step's output.
+      #
+      # The test that separates a REAL edge from a spurious one, applied
+      # consistently across this file, is whether the later step can still
+      # produce information that is NOT a restatement of the earlier failure.
+      # An install edge fails it: `pytest` with no packages reports import
+      # errors and nothing else. `Validate secrets baseline` -> `Scan` in the
+      # `secrets` job fails it too, and is documented there for that reason.
+      # This edge PASSES it: roughly 2600 tests in this suite need no database
+      # at all -- including the URL-allowlist route named above -- and they
+      # report their own verdict whatever the schema did. Keeping the edge
+      # would trade that verdict for nothing, since the named step above
+      # already attributes the cause.
+      #
+      # The cost is honest and accepted: on a run whose migration is broken,
+      # the database-backed tests will fail too, in volume, as a consequence
+      # of the failure named one step above. The step list, not the wall of
+      # errors, is where a reader learns the cause -- which is exactly why that
+      # step is named separately.
       - name: Pytest
+        if: ${{ !cancelled() && steps.python_install.outcome == 'success' }}
         run: pytest -q
 
   node:
@@ -96,10 +226,29 @@ jobs:
         with:
           node-version: "20"
       - name: Install Node dev tools
+        id: node_install
+        # `id:` so `ESLint` below can name this step as its precondition rather
+        # than inheriting `success()`. Same construction as `web_install`.
         run: npm ci
+      # Unconditioned for the same reason `Ruff lint` is: first step after the
+      # install, no spurious incoming edge, so a condition here would be a
+      # no-op.
       - name: Prettier check
         run: npm run format:check
+      # The sixth and last spurious masking edge in this file. With no `if:`,
+      # `Prettier check` failing SKIPPED this step entirely, so a formatting
+      # difference hid every lint finding in the same job -- one finding hiding
+      # the rest, which is the rule `web` and `dependencies` already state in
+      # their own comments.
+      #
+      # Spurious on the same test used in the `python` job: `npm run
+      # format:check` and `npm run lint` both read the tree and neither
+      # consumes the other's output, so this step still returns an independent
+      # finding after Prettier has failed. The install edge above it is REAL
+      # and is kept: with no node_modules this reports a missing binary, which
+      # is noise dressed as a finding.
       - name: ESLint
+        if: ${{ !cancelled() && steps.node_install.outcome == 'success' }}
         run: npm run lint
 
   web:
