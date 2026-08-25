@@ -76,7 +76,7 @@ class _SpySession:
 
 @pytest.fixture
 def client(monkeypatch):
-    monkeypatch.setattr("app.adviser.router.gather_candidates", lambda _session: _pool())
+    monkeypatch.setattr("app.adviser.router.gather_candidates", lambda _session, **_kw: _pool())
     monkeypatch.setattr("app.adviser.router.get_limits", lambda: DEFAULT_LIMITS)
     monkeypatch.setattr("app.adviser.router.get_registry", lambda: ())
     monkeypatch.setattr("app.adviser.router.get_abuse_store", lambda: InMemoryAbuseStore())
@@ -202,7 +202,7 @@ def test_assisted_llm_path_writes_nothing_to_the_session(monkeypatch) -> None:
     fake = RegisteredProvider(
         "ollama", ProviderTier.LOCAL, FakeInterpreter(candidate=_VALID_CANDIDATE), False
     )
-    monkeypatch.setattr("app.adviser.router.gather_candidates", lambda _s: _pool())
+    monkeypatch.setattr("app.adviser.router.gather_candidates", lambda _s, **_kw: _pool())
     monkeypatch.setattr("app.adviser.router.get_limits", lambda: _AI_LIMITS)
     monkeypatch.setattr("app.adviser.router.get_registry", lambda: (fake,))
     monkeypatch.setattr("app.adviser.router.get_abuse_store", lambda: InMemoryAbuseStore())

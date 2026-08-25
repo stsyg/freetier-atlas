@@ -189,6 +189,34 @@ _KEYWORD_ASSIGN = re.compile(
 )
 
 
+def validate_evidence_currency(result: RecommendationResult) -> None:
+    """Reject a bundle whose $0 claim rests on evidence that is not current.
+
+    The last gate on the only artefact that **leaves the system**. An exported
+    bundle is committed into someone else's repository and outlives the evidence
+    behind it, so no guard of ours can ever reach it again; a stale
+    ``Z0_TRUE_FREE`` written into a ``MANIFEST.json`` is permanent.
+
+    This deliberately duplicates the selection-layer gate in
+    :func:`app.adviser.select.build_pool`. That is not redundancy: the export is
+    the highest-consequence path, so it must fail closed even if the pool gate
+    regressed, was bypassed by a caller constructing a
+    :class:`~app.adviser.recommend.RecommendationResult` directly, or was fed a
+    pool built without a clock. Both shapes of non-currency are rejected --
+    expired evidence *and* evidence that could not be checked at all.
+    """
+
+    for component in result.components:
+        currency = component.candidate.evidence_currency
+        if currency.current:
+            continue
+        detail = currency.reason() or "Its evidence currency could not be established."
+        raise ExportValidationError(
+            f"component '{component.candidate.service_name}' "
+            f"({component.candidate.provider_name}) cannot be exported: {detail}"
+        )
+
+
 def is_placeholder(value: str) -> bool:
     """True when ``value`` is an obvious non-secret placeholder."""
 
@@ -509,8 +537,14 @@ def build_export(result: RecommendationResult) -> ExportResponse:
 
     Never writes a file and never touches the database: the bundle exists only in
     the returned :class:`ExportResponse`. Raises :class:`ExportValidationError`
-    if any generated file fails a fail-closed check.
+    if any generated file fails a fail-closed check, or if any recommended
+    component rests on evidence that is not current
+    (:func:`validate_evidence_currency`).
     """
+
+    # Currency first: refuse to generate anything at all for a claim whose
+    # support has expired, rather than generating and then filtering.
+    validate_evidence_currency(result)
 
     content_files: list[tuple[str, str]] = [
         ("docker-compose.yml", _compose_document(result)),
@@ -595,6 +629,7 @@ __all__: Iterable[str] = (
     "validate_path",
     "validate_compose",
     "validate_bundle",
+    "validate_evidence_currency",
     "enforce_size",
     "build_export",
 )

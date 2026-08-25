@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import os
 from collections.abc import Iterator
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -34,11 +35,14 @@ from app.config.models import ProviderConfig
 from app.ingest.runner import build_fixture_fetcher, run_provider_scans
 from app.models.domain import (
     Category,
+    Evidence,
     Offer,
     OfferVersion,
     Provider,
     Quota,
     Service,
+    Snapshot,
+    Source,
 )
 from sqlalchemy import create_engine, select, text, update
 from sqlalchemy.engine import Engine
@@ -178,6 +182,42 @@ def _seed(session: Session) -> None:
                 reset_period="month",
                 behaviour="hard",
                 exhaustion_behaviour=exhaustion,
+            )
+        )
+        session.flush()
+        # A published offer has cleared the publication gate, and that gate makes
+        # `evidence_backed` and `fresh` HARD conditions -- so a fixture that
+        # models a published offer must carry official evidence with a fetch
+        # time, or it models a state the gate cannot produce. Measured: every
+        # real Z0 published offer has exactly this shape.
+        source = Source(
+            provider_id=provider.id,
+            slug=f"{slug}-src",
+            adapter_type="html",
+            trust_level="official",
+            official=True,
+            endpoint=f"https://example.invalid/{slug}",
+            schedule="weekly",
+        )
+        session.add(source)
+        session.flush()
+        snapshot = Snapshot(
+            source_id=source.id,
+            content_location=f"memory://{slug}",
+            mime_type="text/html",
+            content_hash=f"snap-{slug}",
+            fetched_at=datetime.now(UTC),
+        )
+        session.add(snapshot)
+        session.flush()
+        session.add(
+            Evidence(
+                source_id=source.id,
+                offer_version_id=version.id,
+                snapshot_id=snapshot.id,
+                official=True,
+                url=f"https://example.invalid/{slug}",
+                content_hash=f"ev-{slug}",
             )
         )
         session.flush()
