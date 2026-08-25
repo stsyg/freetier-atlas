@@ -108,8 +108,6 @@ class JsonOfferAdapter(SourceAdapter):
         for required in _REQUIRED_OFFER_FIELDS:
             if not candidate.facts.get(required):
                 problems.append(f"Missing required field '{required}'.")
-        if not candidate.evidence:
-            problems.append("Candidate has no evidence location.")
         return problems
 
     def evidence(self, candidate: CandidateFacts) -> Sequence[EvidenceLocation]:
