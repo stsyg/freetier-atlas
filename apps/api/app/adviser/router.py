@@ -119,7 +119,7 @@ def recommend_architecture(
     """
 
     _enforce_rate_limit(http_request, request, SCOPE_DETERMINISTIC)
-    pool = gather_candidates(session)
+    pool = gather_candidates(session, now=_now())
     result = recommend(request, pool)
     return build_response(result)
 
@@ -205,7 +205,7 @@ def recommend_assisted(
 
     recommendation: RecommendationResponse | None = None
     if outcome.interpretation is not None:
-        pool = gather_candidates(session)
+        pool = gather_candidates(session, now=_now())
         result = recommend(outcome.interpretation, pool)
         recommendation = build_response(result)
         notice = (
@@ -289,7 +289,7 @@ def export_deployment(
     """
 
     _enforce_rate_limit(http_request, request, SCOPE_DETERMINISTIC)
-    pool = gather_candidates(session)
+    pool = gather_candidates(session, now=_now())
     result = recommend(request, pool)
     try:
         return build_export(result)

@@ -65,7 +65,7 @@ def _pool():
 
 @pytest.fixture
 def client(monkeypatch):
-    monkeypatch.setattr("app.adviser.router.gather_candidates", lambda _session: _pool())
+    monkeypatch.setattr("app.adviser.router.gather_candidates", lambda _session, **_kw: _pool())
     store = InMemoryAbuseStore()
     monkeypatch.setattr("app.adviser.router.get_abuse_store", lambda: store)
     app.dependency_overrides[get_session] = lambda: None

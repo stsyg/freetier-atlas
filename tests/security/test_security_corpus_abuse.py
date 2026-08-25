@@ -112,7 +112,7 @@ def test_deterministic_overage_returns_not_allowed_with_retry_after() -> None:
 def test_recommend_endpoint_emits_429_and_retry_after_header(monkeypatch) -> None:
     store = InMemoryAbuseStore()
     zero = DEFAULT_LIMITS.model_copy(update={"deterministic_requests_per_ip_per_day": 0})
-    monkeypatch.setattr("app.adviser.router.gather_candidates", lambda _s: _pool())
+    monkeypatch.setattr("app.adviser.router.gather_candidates", lambda _s, **_kw: _pool())
     monkeypatch.setattr("app.adviser.router.get_limits", lambda: zero)
     monkeypatch.setattr("app.adviser.router.get_registry", lambda: ())
     monkeypatch.setattr("app.adviser.router.get_abuse_store", lambda: store)
@@ -183,7 +183,7 @@ def test_kill_switch_forces_deterministic_in_service_layer() -> None:
 
 
 def _assisted_client(monkeypatch, store, registry):
-    monkeypatch.setattr("app.adviser.router.gather_candidates", lambda _s: _pool())
+    monkeypatch.setattr("app.adviser.router.gather_candidates", lambda _s, **_kw: _pool())
     monkeypatch.setattr("app.adviser.router.get_limits", lambda: _AI_LIMITS)
     monkeypatch.setattr("app.adviser.router.get_registry", lambda: registry)
     monkeypatch.setattr("app.adviser.router.get_abuse_store", lambda: store)

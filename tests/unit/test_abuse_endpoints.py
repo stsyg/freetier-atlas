@@ -52,7 +52,7 @@ def _det_body(name: str) -> dict:
 
 
 def _make_client(monkeypatch, *, limits, registry, store):
-    monkeypatch.setattr("app.adviser.router.gather_candidates", lambda _s: _pool())
+    monkeypatch.setattr("app.adviser.router.gather_candidates", lambda _s, **_kw: _pool())
     monkeypatch.setattr("app.adviser.router.get_limits", lambda: limits)
     monkeypatch.setattr("app.adviser.router.get_registry", lambda: registry)
     monkeypatch.setattr("app.adviser.router.get_abuse_store", lambda: store)

@@ -15,6 +15,7 @@ so the Z0-safety cross-check is exercised exactly as in production.
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from typing import Any
 
@@ -28,6 +29,16 @@ from app.models.domain import (
     RegionAvailability,
     Service,
 )
+from app.read_api.currency import (
+    ANCHOR_OFFER_VERSION,
+    UNCHECKED,
+    EvidenceCurrency,
+    assess_currency,
+)
+
+#: Refresh window a synthetic source is assumed to declare when a case does not
+#: say. Matches ``app.ingest.reconcile.DEFAULT_STALENESS_WINDOW``.
+DEFAULT_SYNTHETIC_SCHEDULE = "weekly"
 
 
 def _decimal(value: Any) -> Decimal | None:
@@ -70,13 +81,38 @@ class _Catalogue:
         offers: list[Offer],
         category_slugs: dict[int, str],
         region_index: dict[tuple[int | None, int | None], list[object]],
+        currency_index: dict[tuple[str, int], EvidenceCurrency] | None = None,
     ) -> None:
         self.offers = offers
         self.category_slugs = category_slugs
         self.region_index = region_index
+        self.currency_index = currency_index or {}
 
     def pool(self) -> CandidatePool:
-        return build_pool(self.offers, self.category_slugs, self.region_index)
+        return build_pool(self.offers, self.category_slugs, self.region_index, self.currency_index)
+
+
+def _version_currency(version_data: Mapping[str, Any], now: datetime) -> EvidenceCurrency:
+    """The evidence-currency verdict a synthetic published version stands on.
+
+    A synthetic *published* version models an offer that cleared the real
+    publication gate, and that gate makes ``evidence_backed`` and ``fresh`` hard
+    conditions -- so the fixture default is evidence fetched **just now**. This
+    assumption is stated here, in the fixture, rather than defaulted inside
+    :func:`app.adviser.select.build_pool`, which stays fail-closed: a production
+    caller that supplies no index gets ``UNCHECKED``, never "current".
+
+    A case opts into expired evidence with ``evidence_age_days`` (and optionally
+    ``evidence_schedule``), so staleness is exercised through the same code path
+    production uses instead of a special-cased test double.
+    """
+
+    age_days = version_data.get("evidence_age_days", 0)
+    schedule = version_data.get("evidence_schedule", DEFAULT_SYNTHETIC_SCHEDULE)
+    if age_days is None:
+        # Explicitly "no checkable fetch time" -- the declaration-only shape.
+        return UNCHECKED
+    return assess_currency(now - timedelta(days=float(age_days)), now, schedule)
 
 
 def build_catalogue(data: Mapping[str, Any]) -> _Catalogue:
@@ -85,9 +121,11 @@ def build_catalogue(data: Mapping[str, Any]) -> _Catalogue:
     offers: list[Offer] = []
     category_slugs: dict[int, str] = {}
     region_index: dict[tuple[int | None, int | None], list[object]] = {}
+    currency_index: dict[tuple[str, int], EvidenceCurrency] = {}
     slug_to_category_id: dict[str, int] = {}
     next_category_id = 1
     evidence_counter = 1
+    now = datetime.now(UTC)
 
     for provider_data in data.get("providers", []):
         provider = Provider(
@@ -155,6 +193,9 @@ def build_catalogue(data: Mapping[str, Any]) -> _Catalogue:
                     evidence_counter += 1
                 version.evidence = evidence_rows
                 offer.versions = [version]
+                currency_index[(ANCHOR_OFFER_VERSION, version.id)] = _version_currency(
+                    version_data, now
+                )
 
                 for region_data in offer_data.get("regions", []):
                     row = RegionAvailability(
@@ -168,7 +209,7 @@ def build_catalogue(data: Mapping[str, Any]) -> _Catalogue:
 
                 offers.append(offer)
 
-    return _Catalogue(offers, category_slugs, region_index)
+    return _Catalogue(offers, category_slugs, region_index, currency_index)
 
 
 def build_pool_from(data: Mapping[str, Any]) -> CandidatePool:

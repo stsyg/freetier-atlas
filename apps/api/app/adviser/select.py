@@ -18,15 +18,32 @@ published-only:
 
 The result partitions agreeing offers into: ``z0`` (the only offers that may
 enter a guaranteed-$0 architecture), ``z3`` (self-hostable building blocks held
-for the self-hosting fallback), and ``not_free`` (Z1/Z2, surfaced only in the
-separate "not $0" section). UNKNOWN and contradictory offers are excluded
-entirely.
+for the self-hosting fallback), ``not_free`` (Z1/Z2, surfaced only in the
+separate "not $0" section), and ``stale`` (offers that classify Z0 but whose
+official evidence is no longer known to be current). UNKNOWN and contradictory
+offers are excluded entirely.
+
+Evidence currency is a separate axis from classification
+--------------------------------------------------------
+The classify cross-check above compares **two classifications** of the same
+persisted facts. Both sides read the same frozen ``material_facts``, so they
+agree perfectly on evidence that expired years ago -- a contradiction is never
+raised, and the cross-check must not be mistaken for a currency guard. Whether
+the evidence still *supports* the classification is an orthogonal question,
+answered by :mod:`app.read_api.currency` against a caller-supplied ``now``.
+
+A Z0 offer whose evidence is not current is routed to the ``stale`` partition
+rather than to ``excluded``, so the reason survives into the recommendation and
+the adviser can say *why* a requirement could not be met on a $0 guarantee. It is
+deliberately not dropped: suppressing a free offer outright is its own defect,
+and the offer still surfaces as the closest candidate with a stated reason.
 """
 
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
@@ -46,7 +63,15 @@ from app.models.domain import (
     Service,
 )
 from app.read_api.confidence import confidence_label
-from app.read_api.queries import is_published, latest_version
+from app.read_api.currency import (
+    ANCHOR_OFFER_VERSION,
+    UNCHECKED,
+    EvidenceCurrency,
+    confidence_label_for,
+    currency_for,
+    is_publishable_free_claim,
+)
+from app.read_api.queries import fetch_evidence_currency, is_published, latest_version
 
 from .portability import PortabilityAssessment, assess_portability
 
@@ -85,6 +110,17 @@ class OfferCandidate:
     personal_use_allowed: bool | None
     requires_card: bool | None
     has_paid_dependencies: bool | None
+    #: Whether the official evidence behind this offer is still inside its
+    #: refresh window. Defaults to ``UNCHECKED`` so a caller that has not been
+    #: threaded a clock fails closed ("cannot assert currency") rather than
+    #: re-acquiring the old always-current behaviour.
+    evidence_currency: EvidenceCurrency = UNCHECKED
+
+    @property
+    def evidence_is_current(self) -> bool:
+        """May a free claim resting on this offer still be repeated?"""
+
+        return is_publishable_free_claim(self.evidence_currency)
 
     def sort_key(self) -> tuple:
         """A deterministic tie-break key (provider slug, then offer id)."""
@@ -100,6 +136,10 @@ class CandidatePool:
     z3: tuple[OfferCandidate, ...]
     not_free: tuple[OfferCandidate, ...]
     excluded: tuple[OfferCandidate, ...] = field(default_factory=tuple)
+    #: Offers that classify Z0_TRUE_FREE but whose evidence is not current. Held
+    #: separately from ``excluded`` so the recommendation can explain the refusal
+    #: instead of the offer silently vanishing.
+    stale: tuple[OfferCandidate, ...] = field(default_factory=tuple)
 
 
 _CONFIDENCE_RANK: Mapping[str, int] = {"high": 0, "medium": 1, "low": 2, "unknown": 3}
@@ -194,6 +234,7 @@ def build_candidate(
     offer: Offer,
     category_slugs: Mapping[int, str],
     region_index: Mapping[tuple[int | None, int | None], list[object]],
+    currency_index: Mapping[tuple[str, int], EvidenceCurrency] | None = None,
 ) -> OfferCandidate | None:
     """Build an :class:`OfferCandidate` for one published offer, or ``None``.
 
@@ -202,6 +243,10 @@ def build_candidate(
     here: ``engine_class`` is the engine's verdict, ``persisted_class`` the
     stored one, and ``zero_cost_class`` is the agreed value when they match (or
     ``UNKNOWN`` sentinel handling is left to :func:`gather_candidates`).
+
+    ``currency_index`` supplies the evidence-currency verdict. Omitting it does
+    **not** mean "current": the candidate resolves to ``UNCHECKED`` and is
+    therefore not eligible for a $0 guarantee.
     """
 
     service = offer.service
@@ -217,6 +262,12 @@ def build_candidate(
         category_slugs.get(service.category_id) if service.category_id is not None else None
     )
 
+    currency = currency_for(
+        ANCHOR_OFFER_VERSION,
+        version.id if version is not None else None,
+        currency_index,
+    )
+
     return OfferCandidate(
         offer_id=offer.id,
         provider_slug=service.provider.slug,
@@ -229,7 +280,10 @@ def build_candidate(
         engine_class=engine_class,
         version_id=version.id if version is not None else 0,
         version_number=version.version_number if version is not None else 0,
-        confidence_label=_confidence_for(version),
+        # A confidence score is frozen at publish time and cannot know its
+        # evidence later expired, so the label is capped by what the evidence
+        # still supports.
+        confidence_label=confidence_label_for(_confidence_for(version), currency),
         reasons=tuple(result.reasons),
         blocking_conditions=tuple(result.blocking_conditions),
         quotas=tuple(version.quotas) if version is not None else (),
@@ -240,6 +294,7 @@ def build_candidate(
         personal_use_allowed=offer.personal_use_allowed,
         requires_card=offer.requires_card,
         has_paid_dependencies=offer.has_paid_dependencies,
+        evidence_currency=currency,
     )
 
 
@@ -247,26 +302,35 @@ def build_pool(
     offers: Sequence[Offer],
     category_slugs: Mapping[int, str],
     region_index: Mapping[tuple[int | None, int | None], list[object]],
+    currency_index: Mapping[tuple[str, int], EvidenceCurrency] | None = None,
 ) -> CandidatePool:
     """Partition published ``offers`` into a :class:`CandidatePool` (pure).
 
-    The single source of Z0-truth is the classify engine cross-checked against
-    the persisted class. Offers whose engine verdict and persisted class disagree
-    (or classify as UNKNOWN) are excluded and never recommended. Only published
-    offers (:func:`app.read_api.queries.is_published`) are considered, so this can
-    be called directly with in-memory offers (e.g. the deterministic corpus)
-    without a database session.
+    Two independent gates decide whether an offer may enter ``z0``:
+
+    1. **Classification agreement.** The classify engine's verdict is compared to
+       the persisted class; a disagreement is a contradiction and the offer is
+       excluded (fail closed).
+    2. **Evidence currency.** A Z0 verdict both sides agree on still only earns a
+       $0 guarantee while its official evidence is inside its refresh window.
+       Gate 1 cannot substitute for gate 2 -- both sides read the same frozen
+       facts, so they agree perfectly on evidence that expired years ago.
+
+    Only published offers (:func:`app.read_api.queries.is_published`) are
+    considered, so this can be called directly with in-memory offers (e.g. the
+    deterministic corpus) without a database session.
     """
 
     z0: list[OfferCandidate] = []
     z3: list[OfferCandidate] = []
     not_free: list[OfferCandidate] = []
     excluded: list[OfferCandidate] = []
+    stale: list[OfferCandidate] = []
 
     for offer in offers:
         if not is_published(offer):
             continue
-        candidate = build_candidate(offer, category_slugs, region_index)
+        candidate = build_candidate(offer, category_slugs, region_index, currency_index)
         if candidate is None:
             continue
         if candidate.engine_class != candidate.persisted_class:
@@ -274,7 +338,12 @@ def build_pool(
             continue
         agreed = candidate.engine_class
         if agreed == Z0_TRUE_FREE:
-            z0.append(candidate)
+            # Gate 2. A free claim whose support has expired (or was never
+            # checkable) cannot back a guaranteed-$0 architecture.
+            if candidate.evidence_is_current:
+                z0.append(candidate)
+            else:
+                stale.append(candidate)
         elif agreed == Z3_SELF_HOSTED_BUILDING_BLOCK:
             z3.append(candidate)
         elif agreed in (Z1_BILLING_EXPOSURE, Z2_TEMPORARY_OR_CONDITIONAL):
@@ -288,21 +357,30 @@ def build_pool(
         z3=tuple(sorted(z3, key=key)),
         not_free=tuple(sorted(not_free, key=key)),
         excluded=tuple(sorted(excluded, key=key)),
+        stale=tuple(sorted(stale, key=key)),
     )
 
 
-def gather_candidates(session: Session) -> CandidatePool:
+def gather_candidates(session: Session, *, now: datetime | None = None) -> CandidatePool:
     """Read the published catalogue and partition it by agreed zero-cost class.
 
     Thin DB wrapper around :func:`build_pool`: reads the published offer graph
-    (never ``candidate`` / ``discovery_candidate``) plus the category-slug and
-    region-availability indexes, then delegates the pure partition.
+    (never ``candidate`` / ``discovery_candidate``) plus the category-slug,
+    region-availability and evidence-currency indexes, then delegates the pure
+    partition.
+
+    ``now`` is the currency clock. It is a parameter rather than an internal
+    ``datetime.now()`` so a test can place the catalogue at any instant without
+    touching a stored timestamp, and so the adviser's clock is the same one its
+    HTTP handler already uses.
     """
 
+    moment = now or datetime.now(UTC)
     offers = _published_offers(session)
     category_slugs = _category_slugs(session, offers)
     region_index = _region_index(session)
-    return build_pool(offers, category_slugs, region_index)
+    currency_index = fetch_evidence_currency(session, now=moment)
+    return build_pool(offers, category_slugs, region_index, currency_index)
 
 
 __all__: Sequence[str] = (

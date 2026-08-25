@@ -60,7 +60,7 @@ def _pool():
 @pytest.fixture
 def client(monkeypatch):
     # No DB: stub the session dependency and the catalogue read with a synthetic pool.
-    monkeypatch.setattr("app.adviser.router.gather_candidates", lambda _session: _pool())
+    monkeypatch.setattr("app.adviser.router.gather_candidates", lambda _session, **_kw: _pool())
     # Abuse enforcement needs a store; inject a single in-memory instance so
     # per-IP counters accumulate across requests within a test (no database).
     store = InMemoryAbuseStore()

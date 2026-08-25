@@ -35,6 +35,13 @@ from app.models.domain import (
     Source,
 )
 
+from .currency import (
+    ANCHOR_OFFER_VERSION,
+    EvidenceCurrency,
+    assess_currency,
+    worst,
+)
+
 
 def latest_version(offer: Offer) -> OfferVersion | None:
     """Return an offer's current (highest ``version_number``) version, if any."""
@@ -263,6 +270,47 @@ def fetch_conflicted_services(session: Session) -> frozenset[tuple[str, str]]:
     )
 
 
+def fetch_evidence_currency(
+    session: Session, *, now: datetime
+) -> dict[tuple[str, int], EvidenceCurrency]:
+    """Currency of the evidence behind every published offer version.
+
+    Keyed by ``(anchor_kind, anchor_id)`` -- today only
+    :data:`~app.read_api.currency.ANCHOR_OFFER_VERSION`. The declaration anchor
+    is deliberately absent rather than faked: a declaration backed only by an
+    ``evidence_url`` has no snapshot and therefore no fetch time, so it resolves
+    to :data:`~app.read_api.currency.UNCHECKED` through
+    :func:`~app.read_api.currency.currency_for` instead of silently reading as
+    current.
+
+    A version resting on several sources takes its *least* current verdict
+    (:func:`~app.read_api.currency.worst`): a claim is only as current as its
+    stalest support.
+    """
+
+    stmt = (
+        select(
+            Evidence.offer_version_id,
+            Snapshot.fetched_at,
+            Source.schedule,
+        )
+        .join(Snapshot, Snapshot.id == Evidence.snapshot_id)
+        .join(Source, Source.id == Evidence.source_id)
+        .where(Evidence.offer_version_id.is_not(None))
+    )
+    per_version: dict[int, list[EvidenceCurrency]] = {}
+    for offer_version_id, fetched_at, schedule in session.execute(stmt).all():
+        if offer_version_id is None:
+            continue
+        per_version.setdefault(int(offer_version_id), []).append(
+            assess_currency(fetched_at, now, schedule)
+        )
+    return {
+        (ANCHOR_OFFER_VERSION, version_id): worst(verdicts)
+        for version_id, verdicts in per_version.items()
+    }
+
+
 def fetch_stale_offer_version_ids(session: Session, *, now: datetime) -> frozenset[int]:
     """Published offer versions whose backing evidence is past its refresh window.
 
@@ -270,26 +318,21 @@ def fetch_stale_offer_version_ids(session: Session, *, now: datetime) -> frozens
     older than the schedule window of the source it came from. Overstating
     staleness only ever makes the catalogue admit uncertainty, which is the
     direction the product errs in.
+
+    Now a thin projection of :func:`fetch_evidence_currency` so the coverage
+    derivation and the offer/adviser surfaces cannot drift apart on what "stale"
+    means. The signature and semantics are unchanged: evidence with no
+    ``fetched_at`` is still not stale (it is *unchecked*, which this particular
+    caller does not distinguish), and the F008 ``/catalogue/categories`` path
+    behaves exactly as before.
     """
 
-    # Imported lazily: ``app.ingest`` imports ``app.config.models``, which imports
-    # ``app.read_api.taxonomy``, so an import-time dependency here would close a
-    # cycle. ``assess_staleness`` is a pure function with no I/O.
-    from app.ingest.reconcile import assess_staleness
-
-    stmt = (
-        select(Evidence.offer_version_id, Snapshot.fetched_at, Source.schedule)
-        .join(Snapshot, Snapshot.id == Evidence.snapshot_id)
-        .join(Source, Source.id == Evidence.source_id)
-        .where(Evidence.offer_version_id.is_not(None))
+    index = fetch_evidence_currency(session, now=now)
+    return frozenset(
+        anchor_id
+        for (anchor_kind, anchor_id), verdict in index.items()
+        if anchor_kind == ANCHOR_OFFER_VERSION and verdict.stale
     )
-    stale: set[int] = set()
-    for offer_version_id, fetched_at, schedule in session.execute(stmt).all():
-        if offer_version_id is None or fetched_at is None:
-            continue
-        if assess_staleness(fetched_at, now, schedule).stale:
-            stale.add(offer_version_id)
-    return frozenset(stale)
 
 
 def coverage_signal_context(
@@ -324,5 +367,6 @@ __all__: Sequence[str] = (
     "coverage_signal_context",
     "fetch_coverage_declarations",
     "fetch_conflicted_services",
+    "fetch_evidence_currency",
     "fetch_stale_offer_version_ids",
 )

@@ -394,7 +394,7 @@ def test_export_endpoint_maps_validation_error_to_422(monkeypatch: pytest.Monkey
     from app.db import get_session
 
     monkeypatch.setattr(router, "_enforce_rate_limit", lambda *a, **k: None)
-    monkeypatch.setattr(router, "gather_candidates", lambda session: ())
+    monkeypatch.setattr(router, "gather_candidates", lambda session, **_kw: ())
     monkeypatch.setattr(router, "recommend", lambda request, pool: object())
 
     def _boom(result):

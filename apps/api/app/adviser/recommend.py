@@ -31,6 +31,8 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 from decimal import Decimal
 
+from app.classify.engine import Z0_TRUE_FREE
+
 from .quota_math import DemandFit, OfferFit, evaluate_offer, reduced_demand_amount
 from .schema import FIXED_PRIORITIES, Constraints, RecommendationRequest, Requirement
 from .select import CandidatePool, OfferCandidate, confidence_rank
@@ -325,9 +327,30 @@ def _blocking_reason(
     eligible_count: int,
     rejected: Sequence[tuple[OfferCandidate, str]],
     closest: tuple[OfferCandidate, OfferFit] | None,
+    stale: Sequence[OfferCandidate] = (),
 ) -> tuple[str, OfferCandidate | None, tuple[DemandFit, ...]]:
-    """Explain why the requirement has no fitting Z0 offer."""
+    """Explain why the requirement has no fitting Z0 offer.
 
+    ``stale`` carries offers that classify Z0 but whose official evidence is no
+    longer known to be current. They are reported *before* the generic
+    "nothing declares this category" message, because the honest explanation is
+    that a free offer exists and its support expired -- not that none was found.
+    The offer itself is returned as the closest candidate so the user still sees
+    it; the refusal is to *guarantee* $0 on it, not to hide it.
+    """
+
+    if eligible_count == 0 and stale:
+        candidate = sorted(stale, key=OfferCandidate.sort_key)[0]
+        detail = candidate.evidence_currency.reason() or (
+            "Its official evidence is no longer known to be current."
+        )
+        return (
+            f"'{candidate.service_name}' ({candidate.provider_name}) classifies as "
+            f"{Z0_TRUE_FREE} but cannot back a guaranteed-$0 architecture: {detail} "
+            "Re-verify it against the provider's official pricing page before relying on it.",
+            candidate,
+            (),
+        )
     if eligible_count == 0:
         if rejected:
             reasons = "; ".join(sorted({reason for _, reason in rejected}))
@@ -412,7 +435,11 @@ def recommend(request: RecommendationRequest, pool: CandidatePool) -> Recommenda
         non_fitting = [(c, f) for c, f in evaluated if not f.fits]
         closest = _closest(non_fitting)
         reason, closest_candidate, blocking_fits = _blocking_reason(
-            requirement, len(eligible), rejected, closest
+            requirement,
+            len(eligible),
+            rejected,
+            closest,
+            [c for c in pool.stale if c.category_slug == requirement.category],
         )
 
         reductions: tuple[ReductionStep, ...] = ()

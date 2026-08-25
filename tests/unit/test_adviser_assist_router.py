@@ -42,7 +42,7 @@ _CANDIDATE = {
 
 @pytest.fixture
 def client(monkeypatch):
-    monkeypatch.setattr("app.adviser.router.gather_candidates", lambda _session: _pool())
+    monkeypatch.setattr("app.adviser.router.gather_candidates", lambda _session, **_kw: _pool())
     monkeypatch.setattr("app.adviser.router.get_limits", lambda: DEFAULT_LIMITS)
     monkeypatch.setattr("app.adviser.router.get_registry", lambda: ())
     store = InMemoryAbuseStore()
@@ -136,7 +136,7 @@ def test_enabled_fake_provider_surfaces_llm_used(monkeypatch) -> None:
     fake = RegisteredProvider(
         "ollama", ProviderTier.LOCAL, FakeInterpreter(candidate=_CANDIDATE), False
     )
-    monkeypatch.setattr("app.adviser.router.gather_candidates", lambda _s: _pool())
+    monkeypatch.setattr("app.adviser.router.gather_candidates", lambda _s, **_kw: _pool())
     monkeypatch.setattr("app.adviser.router.get_limits", lambda: _AI_LIMITS)
     monkeypatch.setattr("app.adviser.router.get_registry", lambda: (fake,))
     monkeypatch.setattr("app.adviser.router.get_abuse_store", lambda: InMemoryAbuseStore())
@@ -161,7 +161,7 @@ def test_consent_gated_external_used_with_consent(monkeypatch) -> None:
     fake = RegisteredProvider(
         "gemini", ProviderTier.FREE_HOSTED, FakeInterpreter(candidate=_CANDIDATE), True
     )
-    monkeypatch.setattr("app.adviser.router.gather_candidates", lambda _s: _pool())
+    monkeypatch.setattr("app.adviser.router.gather_candidates", lambda _s, **_kw: _pool())
     monkeypatch.setattr("app.adviser.router.get_limits", lambda: _AI_LIMITS)
     monkeypatch.setattr("app.adviser.router.get_registry", lambda: (fake,))
     monkeypatch.setattr("app.adviser.router.get_abuse_store", lambda: InMemoryAbuseStore())
