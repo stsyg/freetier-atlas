@@ -1,0 +1,20 @@
+CI CONTROL ARTEFACT - DELETE WITH THE BRANCH.
+
+This file exists to make the `URL host allowlist` step fail on its own merits,
+proving the disclosure guard can still go red after being given an `if:`
+condition. A control that cannot be shown to fail proves nothing. It is
+committed only to a scratch branch that is never merged.
+
+The host below is a single-label token that appears on neither the exact list
+nor any suffix rule in scripts/url-allowlist.txt. The obvious placeholders do
+NOT work here, which was checked rather than assumed: `.invalid`, `.example`,
+`.test` and `.localhost` are ALREADY allowlisted as RFC 2606 / RFC 6761
+reserved namespaces, so a host under any of them PASSES the guard. This token
+is registered to nobody, resolves nowhere, and discloses nothing.
+
+This file deliberately contains NO high-entropy string, so both `Secret scan`
+steps stay green and this run isolates the allowlist step's own verdict.
+
+CONTROL-MARKER-URLFAIL-BRANCH
+
+https://ci-control-host-not-allowlisted/probe
