@@ -450,3 +450,107 @@ def test_vercel_fixture_retains_the_complete_real_target_matrix() -> None:
         "vCPU Allocation Rate",
     ):
         assert html.count(f"<td>{row_label}</td>") == 1
+
+
+# ---------------------------------------------------------------------------
+# Degenerate but ORDINARY markup.
+#
+# Measured on this tree (2026-08-25) by two independent line tracers over the
+# whole suite, with a live PostgreSQL and without one: neither of the two paths
+# below had ever been executed. Both are reached by markup a real pricing page
+# emits without anything unusual happening -- a blank spacer row between
+# sections, and a colspan a CMS wrote as a percentage.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("spacer", "shape"),
+    [
+        (("", "", ""), "full-width blank row"),
+        (("", ""), "narrow blank row"),
+        (("",), "single empty cell"),
+        (("   ", "\t", ""), "whitespace-only cells"),
+    ],
+)
+def test_a_blank_spacer_row_is_ignored_not_treated_as_a_metric(
+    spacer: tuple[str, ...], shape: str
+) -> None:
+    """A blank row between sections must be skipped, not rejected or extracted.
+
+    The skip deliberately precedes the row-width check, which is why a spacer
+    NARROWER than the header must also be ignored rather than raising
+    ``irregular_row_width``.
+    """
+
+    rows = (
+        ("CPU", "First 5 hours/month", "$1/hour"),
+        spacer,
+        ("Memory", "Up to 420 GB-hours/month", "$2/GB-hour"),
+        ("Creations", "5,000/month", "$3/1M"),
+    )
+    _, _, candidates = _extract(_html(_table(rows=rows)), _profile())
+
+    assert len(candidates) == 1
+    candidate = candidates[0]
+    assert candidate.verification_state == "candidate", (
+        f"a {shape} was not skipped: {candidate.facts!r}"
+    )
+
+    # POSITIVE CONTROL: the identical table WITHOUT the spacer produces exactly
+    # the same facts, so the spacer changed nothing at all rather than merely
+    # failing to crash.
+    _, _, baseline = _extract(
+        _html(_table(rows=tuple(row for row in rows if row is not spacer))), _profile()
+    )
+    assert candidate.facts == baseline[0].facts
+    assert candidate.facts == {
+        "cpu": "First 5 hours/month",
+        "memory": "Up to 420 GB-hours/month",
+        "creations": "5,000/month",
+    }
+    # And the blank row never became a metric of its own.
+    assert "" not in candidate.facts
+    assert all(key.strip() for key in candidate.facts)
+
+
+@pytest.mark.parametrize("bad_span", ["100%", "auto", "", "two", "1.5", "1,2", " "])
+def test_a_non_numeric_colspan_fails_closed_rather_than_being_guessed(bad_span: str) -> None:
+    """A colspan that is not an integer yields span 0, so the table is refused.
+
+    Span 0 is deliberately not 1: guessing 1 would silently realign the row and
+    publish cells against the wrong headers. Refusing the table is the
+    fail-closed outcome, and it is what "unknown is better than guessed" means
+    for structure as well as for values.
+    """
+
+    header_markup = f'<th colspan="{bad_span}">Metric</th><th>Hobby</th><th>Pro</th>'
+    _, _, candidates = _extract(_html(_table(header_markup=header_markup)), _profile())
+    _assert_rejected(candidates, "table_not_found")
+    assert "invalid rowspan/colspan" in candidates[0].facts["detail"]
+
+    # POSITIVE CONTROL: the identical table with the attribute removed extracts
+    # normally, so the rejection is caused by the colspan and nothing else.
+    _, _, ok = _extract(_html(_table()), _profile())
+    assert ok[0].verification_state == "candidate"
+    assert ok[0].facts["cpu"] == "First 5 hours/month"
+
+
+def test_span_parsing_is_one_when_absent_the_integer_when_valid_and_zero_otherwise() -> None:
+    """The three arms of the span rule, asserted directly.
+
+    Paired so the zero arm cannot pass vacuously: an implementation returning 0
+    for everything would break the first two arms, and one returning 1 for
+    everything would break the third.
+    """
+
+    from app.ingest.adapters.html import _DocumentCollector
+
+    span = _DocumentCollector._span
+    assert span({}, "colspan") == 1
+    assert span({"colspan": None}, "colspan") == 1
+    assert span({"colspan": "2"}, "colspan") == 2
+    assert span({"colspan": " 3 "}, "colspan") == 3
+    for guessable in ("100%", "auto", "", "two", "1.5"):
+        assert span({"colspan": guessable}, "colspan") == 0, guessable
+    for non_positive in ("0", "-1"):
+        assert span({"colspan": non_positive}, "colspan") == 0, non_positive
