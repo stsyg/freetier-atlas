@@ -3925,3 +3925,49 @@ Both numbers are surfaced: `free_offer_count` keeps its exact meaning and value,
 - **Count reconciliation, stated precisely.** The *absolute* final number (2953) is corroborated by two independent environments. The **+12 delta is a local-to-local comparison** (my baseline 2941 on the same tree, same command); I did **not** run CI against `main` itself, so the delta is not independently corroborated — only the endpoint is.
 - The PR is **MERGEABLE** (not conflicting), which is why CI was dispatched at all. An absent run reads exactly like a green one, so this was verified explicitly rather than assumed.
 - **"NOT VERIFIED" items 2-7 stand unchanged.** In particular item 2 (the uncategorised rollup does not occur on the real fixture corpus, so that arm was exercised only against constructed data) and item 5 (the endpoint now builds the currency index twice per request; my contract predicted "zero additional queries" and that prediction is unverified and probably wrong) are unaffected by CI passing, and are the most useful things for a reviewer to push on.
+
+### 2026-08-26 second addendum — L2 disposition on PR #99 (FAILED, narrowly) and the fixes
+
+The independent Level-2 evaluator FAILED the PR on two blocking findings and confirmed one non-blocking prediction miss. The design and both crux findings held under independent attack; what was short was one guard and two tests.
+
+**F1 (blocking) — `describeFreeCount` was unguarded for an absent count.** The api and web images are built and deployed SEPARATELY (docker-compose.yml), and `getJson` ends in `as T` with no runtime normaliser, so a required TypeScript field constrains what we COMPILE against and never what an older server SENDS. Measured: a base-vintage api serves **10** cell fields, head serves **12**. Rendered through the head bundle in real Chromium, that produced the visible body text **"Cloudflare: 1 published (1 truly free, undefined still evidenced)"**, and the same string in the badge tooltip, at 1400px and 390px.
+
+It failed VISIBLY, never open — so this is **not** a product-rule violation, and it is not reported as one. It was blocking because this repo **already ships** `it("withholds the promise when the currency block is ABSENT (L2 blocker)")` for the sibling field on the SAME payload citing the SAME skew route. Guarding one field and not its neighbour is the two-gates-disagreeing shape that failed PR #95. Its three neighbours in `format.ts` — `formatDays`, `orUnknown`, `formatTriState` — all handle `null|undefined` explicitly; `describeFreeCount` was the only formatter in that file without the guard. It now matches them, and reuses the shipped "not checked" wording from `currencyMeaning` rather than inventing a second phrase.
+
+**F2 (blocking) — the two-clock gap.** `coverage_signal_context(..., now: datetime | None = None)` fell back to `now or datetime.now(UTC)` while `currency_context(..., now: datetime)` has always REQUIRED it. Dropping `now=now` in the router therefore produced **two clocks in one payload with the full suite still green**. `test_one_clock_serves_the_whole_category_matrix_response` could not see it, because `_now()` is still called exactly once. Fixed at the source: `now` is now REQUIRED. An optional clock that silently invents `now()` is the same fail-open shape this feature exists to remove — and a function that manufactures its own "now" can never fail closed, because it cannot tell it was never given one.
+
+- **ZERO production changes.** Both production callers already passed a clock (`reconcile_coverage.py:81`, `router.py:340`), confirmed by enumerating every call site.
+- **Four test call sites updated**: `test_ingest_config_sync.py:537`, `test_read_api_search.py:296, 339, 399`. A fifth (`test_coverage_review_queue.py:230`) already passed one. Every call site in the repository now passes a clock; verified by grep for a call without `now=`.
+
+**F3 (non-blocking) — my prediction was wrong, as I flagged it might be.** `/categories` costs 2 `fetch_evidence_currency` calls / 10 SQL against `/providers`' 1 / 6. I priced it as "probably zero additional queries, I will measure rather than assert"; it landed on the wrong side. No action taken, per the disposition.
+
+### Verification of the fixes
+
+| Check | Result |
+|---|---|
+| Python suite | **2953 passed**, 3 skipped, exit 0 — unchanged, correctly: F2 added no tests and F1's are vitest-side |
+| Web | **136 -> 141 passed** (+5); tsc 0; eslint 0; prettier clean |
+| **Mutations** | **10 / 10** — M9 (absent-count guard) and M10 (`now=now` dropped) added; M8 no-op control still GREEN; all restored byte-exact |
+| **M10 contrast** | BEFORE (`6ae3350`): mutation -> `1 passed`, rc=0. AFTER: rc=1, `TypeError: coverage_signal_context() missing 1 required keyword-only argument: 'now'` |
+| **Browser (head SPA -> BASE-vintage api)** | **18 / 18** at 1400px and 390px: no "undefined"/"NaN" in body text or any tooltip; rollup reads "2 truly free, evidence not checked" beside the shipped "Evidence: Not checked" note, so the two gates now AGREE |
+| **Instrument floor** | the UNGUARDED bundle (a `git archive HEAD` extract) DID render "undefined" in body and tooltip at 2/2 widths, so the clean result above is meaningful |
+
+### A new error, caught by a control
+
+**M9 SURVIVED on the first pass, and it was my instrument, not the product.** `vitest -t` is a REGEX; the test name contains `(L2 blocker)`, so the unescaped pattern matched nothing and vitest exited **0 with 34 tests skipped**. My harness read that as a green baseline and scored the mutation SURVIVED. **This is the vitest equivalent of pytest exit 5 — a green run that tested nothing** — and my harness guarded the pytest form but not the vitest form.
+
+Two corrections: escape regex metacharacters (NOT `re.escape` — Python 3.13 escapes spaces as `\ `, which JavaScript's `RegExp` does not treat the same way, which produced a SECOND zero-match run), and **require the baseline to have actually EXECUTED at least one test rather than merely exiting 0**. With both, M9 kills its named test and the matrix is 10/10.
+
+That is the second time this session the instrument was the problem rather than the product. Both times it was caught only because a control was in place, which is the argument for the controls.
+
+### Honesty on one word in the disposition
+
+It asked to show that dropping `now=now` "fails to compile or type-check". Python has no compile step and **this repository ships no type checker** — `requirements-dev.txt` carries ruff, pytest, detect-secrets, pip-audit, httpx and cryptography, and no mypy or pyright. The available hard failure is a **TypeError at call time**, caught by a named test. No static gate is claimed that does not exist.
+
+### Contamination guard (the evaluator's own lesson, applied)
+
+The evaluator contaminated its browser run by serving from the worktree its mutation harness was mutating, producing a FALSE permit-arm failure. All browser evidence here was collected **before any mutation ran**, from trees nothing was mutating: the base-vintage api is a `git archive 5d0f46f` extract and the unguarded bundle a `git archive HEAD` extract, both without git metadata; all five servers were stopped before the matrix started.
+
+### Still NOT VERIFIED
+
+Items 2-7 of the previous entry stand unchanged. In particular the uncategorised rollup still does not occur on the real fixture corpus (every rollup observation, including all of today's browser evidence, uses a constructed row), and F3's query cost is now measured but deliberately not optimised.

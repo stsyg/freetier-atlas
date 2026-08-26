@@ -293,7 +293,7 @@ def test_category_matrix_is_14_and_multi_provider(session: Session) -> None:
 
     providers = queries.fetch_providers(session)
     cat_map = queries.category_map_for_providers(session, providers)
-    context = queries.coverage_signal_context(session, providers)
+    context = queries.coverage_signal_context(session, providers, now=datetime.now(UTC))
     matrix = service.serialize_category_matrix(providers, cat_map, context)
 
     assert len(matrix.categories) == 14
@@ -336,7 +336,7 @@ def test_category_matrix_never_guesses_not_offered_from_zero_published(
 
     providers = queries.fetch_providers(session)
     cat_map = queries.category_map_for_providers(session, providers)
-    context = queries.coverage_signal_context(session, providers)
+    context = queries.coverage_signal_context(session, providers, now=datetime.now(UTC))
     matrix = service.serialize_category_matrix(providers, cat_map, context)
 
     empty_pairs = [
@@ -396,7 +396,7 @@ def test_declared_coverage_is_served_and_a_contradiction_is_flagged(
     session.flush()
 
     cat_map = queries.category_map_for_providers(session, providers)
-    context = queries.coverage_signal_context(session, providers)
+    context = queries.coverage_signal_context(session, providers, now=datetime.now(UTC))
     matrix = service.serialize_category_matrix(providers, cat_map, context)
 
     compute = next(

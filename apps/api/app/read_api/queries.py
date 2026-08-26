@@ -16,7 +16,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import datetime
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
@@ -389,16 +389,31 @@ def fetch_stale_offer_version_ids(session: Session, *, now: datetime) -> frozens
 
 
 def coverage_signal_context(
-    session: Session, providers: Sequence[Provider], *, now: datetime | None = None
+    session: Session, providers: Sequence[Provider], *, now: datetime
 ) -> CoverageSignalContext:
-    """Gather the declarations and derivation signals for ``providers``."""
+    """Gather the declarations and derivation signals for ``providers``.
+
+    ``now`` is REQUIRED, and deliberately so. It was previously optional and fell
+    back to ``datetime.now(UTC)``, which meant a caller could build this context
+    and a :class:`CurrencyContext` -- whose ``now`` has always been required --
+    and end up with **two different clocks inside one response**, with the whole
+    suite still green. A handler that dropped ``now=now`` here would silently
+    assess the coverage states at one moment and the evidence currency at
+    another; the two would disagree only for requests that straddle a boundary,
+    which is rare, real, and invisible in production.
+
+    An optional clock that quietly invents ``now()`` is the same fail-open shape
+    this feature exists to remove everywhere else: ``NO_CURRENCY`` fails closed
+    rather than reading as fresh, and ``UNCHECKED`` is not ``current``. A
+    function that manufactures its own "now" cannot fail closed, because it can
+    never tell that it was never given one. Both production callers already pass
+    a clock, so requiring it costs nothing and removes the capability.
+    """
 
     return CoverageSignalContext(
         declarations=fetch_coverage_declarations(session, [p.id for p in providers]),
         conflicted_services=fetch_conflicted_services(session),
-        stale_offer_version_ids=fetch_stale_offer_version_ids(
-            session, now=now or datetime.now(UTC)
-        ),
+        stale_offer_version_ids=fetch_stale_offer_version_ids(session, now=now),
     )
 
 

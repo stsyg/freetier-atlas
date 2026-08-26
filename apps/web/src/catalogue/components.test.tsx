@@ -8,7 +8,7 @@ import { OfferCard } from "./OfferCard";
 import { QuotaTable } from "./QuotaTable";
 import { EvidenceList } from "./EvidenceList";
 import { CategoryMatrix } from "./CategoryMatrix";
-import { describeFreeCount, formatSignal } from "./format";
+import { describeFreeCount, formatDays, formatSignal } from "./format";
 import {
   allCoverageStatesMatrix,
   CURRENT_EVIDENCE,
@@ -358,5 +358,114 @@ describe("CategoryMatrix — the uncategorised rollup carries its own currency",
       "data-currency-state",
       "unchecked",
     );
+  });
+});
+
+describe("describeFreeCount — an ABSENT count is not a number (L2 blocker)", () => {
+  // Reachability, so this is not mistaken for defensive decoration: the api and
+  // web images are built and deployed SEPARATELY (docker-compose.yml). An api
+  // image predating this slice serves a coverage cell carrying
+  // `free_offer_count` and NOT `current_free_offer_count`, while a newer web
+  // bundle renders it. `getJson` ends in `as T` with no runtime normaliser, so a
+  // required TypeScript field constrains what we COMPILE against and never what
+  // an older server actually SENDS.
+  //
+  // This is the SAME payload and the SAME skew route the shipped sibling test
+  // "withholds the promise when the currency block is ABSENT (L2 blocker)"
+  // already guards for `evidence_currency`. Guarding one field on a payload and
+  // not its neighbour is the two-gates-disagreeing shape that failed PR #95.
+
+  it("withholds the evidenced count when the field is ABSENT (L2 blocker)", () => {
+    const legacy = { free_offer_count: 1 } as {
+      free_offer_count: number;
+      current_free_offer_count: number;
+    };
+
+    const text = describeFreeCount(legacy);
+
+    // The defect: "1 truly free, undefined still evidenced" reached visible body
+    // text and the badge tooltip in real Chromium at 1400px and 390px.
+    expect(text).not.toContain("undefined");
+    expect(text).not.toContain("NaN");
+    // "We could not look" is not permission, so it must not read as an
+    // unqualified free claim either.
+    expect(text).not.toBe("1 truly free");
+    // ...and it reuses the SHIPPED "not checked" wording rather than a new one.
+    expect(text).toBe("1 truly free, evidence not checked");
+  });
+
+  it("withholds it for null, and for a missing total, and for NaN", () => {
+    expect(describeFreeCount({ free_offer_count: 3, current_free_offer_count: null })).toBe(
+      "3 truly free, evidence not checked",
+    );
+    expect(describeFreeCount({ free_offer_count: 3, current_free_offer_count: NaN })).toBe(
+      "3 truly free, evidence not checked",
+    );
+    expect(describeFreeCount({ current_free_offer_count: 2 })).toBe("truly free count unknown");
+    expect(describeFreeCount({})).toBe("truly free count unknown");
+  });
+
+  it("matches its neighbours in format.ts, which all guard null and undefined", () => {
+    // formatDays, orUnknown and formatTriState each handle null|undefined
+    // explicitly. describeFreeCount was the only formatter in the file without
+    // the guard; that asymmetry is the finding.
+    expect(formatDays(null)).toBe("Unknown");
+    expect(formatDays(undefined)).toBe("Unknown");
+    expect(describeFreeCount({ free_offer_count: 1, current_free_offer_count: undefined })).toBe(
+      "1 truly free, evidence not checked",
+    );
+  });
+
+  it("PAIRED CONTROL: a complete payload is still asserted in full", () => {
+    // A guard that cannot be shown to PERMIT is indistinguishable from one that
+    // broke the product.
+    expect(describeFreeCount({ free_offer_count: 2, current_free_offer_count: 2 })).toBe(
+      "2 truly free",
+    );
+    expect(describeFreeCount({ free_offer_count: 2, current_free_offer_count: 1 })).toBe(
+      "2 truly free, 1 still evidenced",
+    );
+    expect(describeFreeCount({ free_offer_count: 0, current_free_offer_count: 0 })).toBe(
+      "0 truly free",
+    );
+  });
+
+  it("renders no 'undefined' anywhere on a base-vintage matrix payload", () => {
+    // End to end through the real component, not just the formatter: strip the
+    // two head-only fields from every cell and rollup, exactly as an older api
+    // image would serve them, then assert on the rendered DOM.
+    const legacy = JSON.parse(JSON.stringify(allCoverageStatesMatrix));
+    for (const row of legacy.categories) {
+      for (const cell of row.providers) {
+        delete cell.current_free_offer_count;
+        delete cell.evidence_currency;
+      }
+    }
+    legacy.uncategorized = [
+      {
+        provider_slug: "legacy-co",
+        provider_name: "Legacy Co",
+        published_offer_count: 4,
+        free_offer_count: 2,
+      },
+    ];
+
+    render(<CategoryMatrix data={legacy} />);
+
+    const rendered = document.body.textContent ?? "";
+    expect(rendered).not.toContain("undefined");
+    expect(rendered).not.toContain("NaN");
+
+    const row = screen.getByTestId("uncategorized-row");
+    expect(row).toHaveTextContent("2 truly free, evidence not checked");
+    // The rollup's sibling gate agrees: an absent currency block is "not checked".
+    expect(within(row).getByTestId("evidence-currency-note")).toHaveAttribute(
+      "data-currency-state",
+      "unchecked",
+    );
+
+    for (const badge of screen.getAllByTestId("coverage-badge")) {
+      expect(badge.getAttribute("title") ?? "").not.toContain("undefined");
+    }
   });
 });
