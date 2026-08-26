@@ -3708,3 +3708,95 @@ Relatedly, run `32783112497` was reported to me as a Python test failure. Read a
 - **All six checks PASS on the draft PR** at commit `1c338d0`: `Python lint, format, tests`, `Node format and lint`, `Web type-check, tests, and build`, `Dependency audit`, `Secret scan`, `GitGuardian Security Checks`.
 - **CI's own Pytest step reports `2910 passed, 3 skipped, 1 warning`** — byte-for-byte the same counts as my local `DATABASE_URL`-set arm (2910 / 3). The +51 new tests execute in CI, and the DB-gated arm reproduces independently of my machine.
 - This retires item **5** of "NOT VERIFIED" above ("no CI run has executed these tests yet"). Items **1–4** stand unchanged: coverage is LINE granularity not branch; the trace covers only the seven contract files and makes no claim about the rest of the tree; the database was started empty; and the mutation controls ran against the sweep file only.
+
+## 2026-08-25 — F008 slice `guard-scope-and-z0-offer-type` (builder, draft PR)
+
+**Objective [M]:** close two instances of ONE defect class — *an assertion whose NAME or apparent scope covers more than its REACH*. On this product that is how an unsupported free claim gets through while looking guarded.
+
+### Re-derived census, and the scope of every count
+
+- **Population, DISCOVERED not assumed [M]:** `config/examples/providers/*.yaml` → **7 files** (aws, azure, cloudflare, gcp, github, oracle, vercel). I rated "the glob bounds the population" LOW confidence in writing beforehand, because `tests/fixtures/ingest/` contains an `example/` provider tree with html/rss/mcp/structured subdirectories and there is no `example.example.yaml`. **Measured: the glob does bound it** — the `example/` tree is synthetic fixture data with no provider YAML behind it.
+- **Census [M]: 36 declared sources — 34 `html`, 1 `rss`, 1 `mcp`.** By provider: aws 6, azure 7, cloudflare 5, gcp 4, github 5, oracle 6, vercel 3.
+- **Three sources have no committed capture, and the count STILL HOLDS [M]:** `cloudflare/cloudflare-pages-pricing` (html), `cloudflare/cloudflare-changelog` (rss), `cloudflare/cloudflare-docs-mcp` (mcp). All three Cloudflare, all three pre-dating this slice. The brief's provisional figures were **independently reproduced**, not adopted.
+- **Reach of the guard before this slice [M]: 1 of 3.** The walk began `if source.get("type") != "html": continue`, so it inspected 34 of 36 sources and was structurally blind to the rss and mcp gaps, which were guarded by *nothing*.
+- **How the instrument avoided re-typing the brief:** the capture-path convention was **derived by inverting the repository's own** `_ADAPTER_SOURCE_TYPE` / `_ADAPTER_EXTENSION` maps in `tests/support/fixtures.py`, and the three pinned keys were pasted from my own census output, not from the brief. The widened test asserts a **relation** (`len(DECLARED_SOURCES) > len(HTML_SOURCES)`), never the literals 36/34, so adding a provider does not teach anyone to edit a number.
+- **SCOPE OF EVERY FIGURE ABOVE:** `DATABASE_URL` was **NOT SET** for every run in this slice. All results are `tests/unit` + `tests/security` + `tests/test_repo_baseline.py`; `tests/integration/**` **never executed**.
+
+### What the brief did not have
+
+- **Item 1 — the test it names does not exist.** The brief calls it `test_no_capture_directory_is_silently_unbound`; on main it is `test_no_html_source_is_silently_unbound`, and its docstring **already** stated the narrow scope and **already** listed all three unbound sources. The rename-to-be-honest fix the brief forbids had already been applied in an earlier slice; the widening had not. The gap was documented, accurate and stationary — precisely the state in which a reader stops noticing it. **Fixed by widening, per the brief: no test was renamed to narrow its promise.**
+- **Item 2 — the requested fix already shipped.** `tests/unit/test_adapter_azure.py::test_offer_type_other_is_not_a_safety_mechanism` exists (recorded at line 3064 of this file). I found it by grepping `TEMPORARY_CONDITIONAL_OFFER_TYPES` **before writing a line of test code**; without that step I would have shipped a duplicate. **The engine claim itself was independently re-verified and HOLDS:** `offer_type` is consulted in `classify()` at exactly three places — vocabulary membership (L155), `SELF_HOSTED_OFFER_TYPES` (L167), `TEMPORARY_CONDITIONAL_OFFER_TYPES` (L222) — and `other` is in neither gating set.
+- **So Item 2 was redirected to the same defect class in that guard.** Its name asserts a whole-engine property ("is not a safety mechanism") while its reach is two named frozensets, one hard-coded offer type and one adapter's test module. Separately, `test_z0_classifier.py` **hand-wrote** the Z0-capable list `["always_free","recurring_quota","personal_use_free","other"]` — a snapshot that would leave a twelfth offer type classified by no test at all.
+
+### Changes
+
+- `tests/unit/test_assertion_capture_grounding.py` — walk widened to **every source type (36/36)**. Two named populations replace a buried filter: `DECLARED_SOURCES` (all types, for the unbound guard, which needs no parser) and `HTML_SOURCES` (34, for the grounding comparison, which genuinely needs the HTML collector). All three gaps pinned under **set equality**. New: `test_the_unbound_guard_refuses_and_permits` (two-sided, incl. a stuck-`True` control) and `test_every_declared_source_type_has_a_known_capture_convention` (an unmappable type FAILS rather than being silently skipped).
+- `tests/unit/test_z0_classifier.py` — Z0 reachability is now **measured, not asserted**: every offer type swept across the engine's whole material input space (**1 782 fact combinations per type × 11 types**), and the measured reachable set compared **as a set** against what the engine's declared gates imply. Refuse arm, permit arm, non-vacuity control, and a reconciliation of both hand-written parametrize lists against the measurement.
+- `apps/api/app/ingest/adapters/profiles/azure.py` — **docstring only**, no behaviour: states the SCOPE of the existing Azure-scoped pin and points at the engine-wide guard.
+- **`apps/api/app/classify/engine.py` has ZERO diff.** The engine is measured, never modified. No classification behaviour changes; no offer becomes newly publishable.
+
+### Mutation results — verified by mutating the SUBJECT, not by coverage
+
+Every mutation edits the repository/engine and requires a **named** test to go red. Predictions were written down **before** running, including the arms expected to *pass*. **10/10 mutations killed, 0 survived, both no-op controls green, post-restore run clean.**
+
+| # | Mutation (subject edited) | Named test(s) that failed |
+|---|---|---|
+| M1 | new unbound **html** source in cloudflare config | `test_no_declared_source_of_any_type_is_silently_unbound`, `test_the_unbound_guard_refuses_and_permits`, `test_every_pinned_block_occurs_exactly_once_in_its_committed_capture` |
+| M2 | new unbound **rss** source — *the exact case main could not see* | `test_no_declared_source_of_any_type_is_silently_unbound`, `test_the_unbound_guard_refuses_and_permits` |
+| M3 | re-narrow the walk to html-only | `test_no_declared_source_of_any_type_is_silently_unbound`, `test_the_grounding_walk_is_not_vacuous`, `test_every_unbound_source_pins_nothing` |
+| M4 | `has_capture` stuck `True` | `test_no_declared_source_of_any_type_is_silently_unbound`, `test_the_unbound_guard_refuses_and_permits` |
+| M5 | delete a committed capture (`vercel-hobby-plan/source.html`) | `test_no_declared_source_of_any_type_is_silently_unbound`, `test_the_unbound_guard_refuses_and_permits`, `test_every_pinned_block_occurs_exactly_once_in_its_committed_capture` |
+| M6 | declare `type: graphql` (unknown convention) | `test_every_declared_source_type_has_a_known_capture_convention` |
+| M7 | add `"other"` to `TEMPORARY_CONDITIONAL_OFFER_TYPES` | `test_offer_type_other_is_z0_reachable_and_that_is_recorded_here`, `test_the_declared_offer_type_lists_match_the_measured_partition`, `test_z0_for_cleared_gates_and_safe_exhaustion`, `test_valid_offer_type_branch_controls` |
+| M8 | remove `"trial"` from `TEMPORARY_CONDITIONAL_OFFER_TYPES` | `test_the_declared_offer_type_lists_match_the_measured_partition`, `test_z2_for_temporary_conditional_offer_types`, `test_valid_offer_type_branch_controls` |
+| M9 | a **third** gate on `offer_type`, outside both frozensets | `test_z0_reachability_matches_the_engine_s_declared_gates`, `test_offer_type_other_is_z0_reachable_and_that_is_recorded_here`, `test_the_declared_offer_type_lists_match_the_measured_partition`, `test_offer_type_other_is_not_a_safety_mechanism` (pre-existing), `test_exactly_one_of_nine_combinations_would_reach_z0`, +2 |
+| M10 | engine can never emit Z0 (permit-arm control) | `test_a_legitimately_free_offer_type_is_still_permitted`, `test_the_reachability_sweep_is_not_vacuous`, +9 |
+| N1 | **no-op** comment in `engine.py` | *none — exit 0* |
+| N2 | **no-op** comment in cloudflare config | *none — exit 0* |
+
+### Errors I made, and how each was caught
+
+- **E1 — I was about to widen `_declared_html_sources()` in place.** Recorded as prediction P6 beforehand that this would `KeyError` three sibling tests, because `rss`/`mcp` sources carry no `extraction_profile` key at all. **Caught by the written prediction, before editing.** Resolved by adding a second named population rather than mutating the parser-bound one.
+- **E2 — I assumed Item 2 needed building.** Caught by grepping the constant *before* writing test code, which surfaced the already-shipped Azure test and this file's line 3064. Cost of the miss would have been a duplicate guard.
+- **E3 — my M8 prediction was recorded as UNCERTAIN, and the uncertainty was warranted.** Removing `"trial"` from the frozenset did **not** fail the refuse-arm test, because that test iterates the very frozenset it checks — both sides move together. Had I not run the mutation I would have described that test as stronger than it is. It was caught instead by the reconciliation test. The uncertain prediction was recorded in advance specifically so this could not be retrofitted into a success.
+- **E4 — the `create` tool wrote CRLF into `agent-state/current_contract.json` (102 CR bytes).** Caught by a raw byte scan of every changed file, run because a previous slice logged exactly this failure at finding E3. `ruff` could not have caught it (JSON). Normalised to LF; `HEAD`'s copy has 0 CR bytes, so the file now matches repository convention. **The three `.py` files were clean (0 CR bytes).**
+- **P1 was rated LOW confidence and turned out right anyway** — I still measured it rather than reasoning from the fixture tree.
+
+### Protected state
+
+- `agent-state/feature_list.json` **UNTOUCHED** — `git hash-object` = `154de1fef2ba20f587c9ec2d1302ebe2bfb5bfa1`, byte-identical to `HEAD`. No feature flag flipped, no feature marked passing.
+- `agent-state/progress.md` **append-only**, proven by raw byte-prefix comparison against the pre-append bytes **plus a flipped-byte negative control that had to come out the other way**.
+- `.github/workflows/ci.yml`, `scripts/check_urls.py`, `tests/unit/test_url_allowlist.py`, `.secrets.baseline` and both lockfiles **untouched**.
+- **`apps/api/app/read_api/**` and `apps/web/**` — ZERO DIFF**, verified by `git diff --name-only`. PR #95 is under independent evaluation on those paths.
+- **No `npm install` / `npm i` / `npm update` / `npm audit fix` was run; no node command was run at all.**
+
+### Gates
+
+- `python -m pytest tests/unit tests/security tests/test_repo_baseline.py -q` → **2655 passed, 1 skipped** (baseline before my changes on the same tree: **2647 passed, 1 skipped**). The **+8** is exactly the 8 tests added (2 grounding + 6 classifier) — the delta is accounted for, not merely green.
+- `python -m ruff check .` → exit 0. `python -m ruff format --check .` → **236 files already formatted**.
+- The one skip is the pre-existing `cloudflare-pages-pricing` capture gap, unchanged by this slice.
+
+### NOT VERIFIED — stated as prominently as the verdict
+
+1. **No CI run has executed any of this.** Every figure above is local.
+2. **`DATABASE_URL` was unset for every run.** `tests/integration/**` **never executed** in this slice. Any claim here is scoped to unit + security + repo-baseline, with no database.
+3. **`test_z0_reachability_matches_the_engine_s_declared_gates` does NOT detect a change to the two frozensets themselves** — M7 and M8 confirmed both sides move together and it stays green. It detects a gate on `offer_type` appearing *outside* them, which is its stated job. The frozenset changes are caught by *other* named tests. Do not read it as a general Z0 safety net.
+4. **The reachability sweep covers `classify()` only.** `publish/publisher.py` also reads `offer_type` (schema-completeness check at L192) and `read_api/search.py` filters on it; **neither was swept**, and `read_api` was out of bounds this slice. A gate living there would not be seen.
+5. **The unbound guard checks the capture DOCUMENT (`source.<ext>`), not `expected.json` or `capture.json`.** A source with bytes but no sidecar would still be reported "bound" here. `test_capture_sidecar.py` covers sidecars from the other direction; **I did not verify the two walks compose to full coverage.**
+6. **Mutation controls ran against 3 test modules, not the whole suite.** I have not measured whether these mutations also break unrelated tests — M10 shows they can.
+7. **I did not investigate whether the two Cloudflare non-html sources *should* have captures.** Fetching live evidence was explicitly out of scope; the gaps are disclosed and pinned, not resolved.
+
+### Boundary
+
+- **Scratch artefacts to close: NONE.** No scratch branches and no scratch PRs were created. Both measurement instruments (`census_instrument.py`, `mutation_harness.py`) were kept **outside the repository** in the session artifacts directory and were never committed; `git status` was verified clean of them.
+- **Commit/PR:** branch `stsyg-guard-scope-and-z0-offer-type`, **DRAFT PR, base `main` at `f3fafe0`. Not merged.**
+- **Evaluator disposition:** pending — builder self-review only. Required level **2** (provider adapters and evidence extraction; Z0 classification).
+- **Recommended next action:** independent Level-2 review. Then, as a **separate** slice, obtain captures for `cloudflare-changelog` and `cloudflare-docs-mcp` and delete their entries from `KNOWN_UNBOUND_SOURCES` — the set-equality guard will confirm the moment each gap actually closes. Item 4 of "NOT VERIFIED" (the publication path's own `offer_type` read) is the next-most-likely home for the same defect class.
+
+### 2026-08-25 addendum — CI has now run (retires "NOT VERIFIED" items 1 and 2)
+
+- **All six checks PASS on draft PR #98** at commit `54934b5`: `Python lint, format, tests`, `Node format and lint`, `Web type-check, tests, and build`, `Dependency audit`, `Secret scan`, `GitGuardian Security Checks`.
+- **CI's Pytest step reports `2918 passed, 3 skipped, 1 warning`.** The previous slice's addendum recorded main's CI arm at **2910 passed, 3 skipped**; **2918 − 2910 = +8**, exactly the eight tests this slice adds (2 grounding + 6 classifier). The delta reproduces independently of my machine.
+- **CI runs WITH `DATABASE_URL` set**, so `tests/integration/**` executed there. That covers the arm I explicitly could not run locally and **retires item 2** of "NOT VERIFIED" as well as item 1. No integration test regressed.
+- CI's skip list is `test_stack_health.py` ×2 (`ATLAS_STACK_BASE_URL` not set — pre-existing) plus the one pre-existing `cloudflare-pages-pricing` capture gap. **The widened guard added no new skips**, which was the risk worth checking: pinning two more sources under set equality could have quietly converted them into skips, and it did not.
+- **Items 3–7 of "NOT VERIFIED" stand unchanged.** In particular item 3 (the declared-gates test does not detect a change to the two frozensets themselves) and item 4 (the sweep covers `classify()` only — the publication path's own `offer_type` read at `publish/publisher.py:192` was never swept) are unaffected by CI passing, and remain the most likely homes for the next instance of this defect class.

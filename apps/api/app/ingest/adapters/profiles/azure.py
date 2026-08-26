@@ -172,6 +172,19 @@ instruction to the *author*, not a behaviour of the classifier. That is pinned b
 ``test_offer_type_other_is_not_a_safety_mechanism`` so the assumption is a tested
 property rather than something a reader has to take on trust.
 
+Note the SCOPE of that particular pin: it is Azure-scoped and ``other``-scoped,
+and it establishes "gated nowhere" by naming two frozensets. The engine-wide
+version of the same claim -- every offer type in the closed vocabulary swept
+across the whole material input space, with measured Z0 reachability compared as
+a set against what the engine's declared gates imply -- lives in
+``tests/unit/test_z0_classifier.py``
+(``test_z0_reachability_matches_the_engine_s_declared_gates`` and
+``test_offer_type_other_is_z0_reachable_and_that_is_recorded_here``). That is
+what catches a gate on ``offer_type`` appearing somewhere other than those two
+frozensets, which the narrower pin cannot see. The list of Z0-capable types
+above is therefore a statement of fact re-derived by measurement, not a
+remembered one.
+
 **Why DevOps is ``recurring_quota``.** Both legs of rule 2 are quoted from the
 same document: the service is not itself zero-priced ("First 5 users free, then
 $6 per user per month") and the free allowance replenishes on a schedule ("The
