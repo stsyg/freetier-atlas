@@ -602,3 +602,325 @@ def test_every_catalogue_serializer_fails_closed_without_a_clock() -> None:
 
     history = service.serialize_offer_history(100, [graph["version"]], [graph["change_event"]])
     assert history.versions and all(v.evidence_currency.current is False for v in history.versions)
+
+
+# --------------------------------------------------------------------------- #
+# F008 S7 -- the free-offer COUNT is a claim, and needs the same clock         #
+# --------------------------------------------------------------------------- #
+#
+# A count asserts something in the present tense. "12 truly free" says as much
+# about 12 offers as a badge says about one, so /catalogue/categories cannot go
+# on publishing it without reference to whether the evidence underneath still
+# supports it. Measured on this surface before the fix: across a one-second
+# staleness boundary `state` and `derived_state` moved and `free_offer_count`
+# did not, so a cell could read "stale" and "1 truly free" simultaneously.
+#
+# Every test below is PAIRED. A guard that cannot be shown to PERMIT is
+# indistinguishable from one that broke the product, and a wrongly-WITHHELD free
+# offer is a defect of exactly the same severity as a wrongly-asserted one.
+
+
+def _matrix_cell(matrix, category_slug: str, provider_slug: str):
+    """The one coverage cell for a (category, provider) pair."""
+
+    for row in matrix.categories:
+        if row.slug != category_slug:
+            continue
+        for cell in row.providers:
+            if cell.provider_slug == provider_slug:
+                return cell
+    raise AssertionError(f"no cell for {category_slug}/{provider_slug}")
+
+
+def _canonical_graph(**kwargs) -> dict:
+    """``_build_graph`` with its category moved onto a CANONICAL slug.
+
+    The default fixture uses "serverless", which is not one of the fourteen
+    canonical slugs and therefore lands in the uncategorized rollup. Both
+    placements are wanted here, so each test says which one it means instead of
+    depending on that detail silently.
+    """
+
+    graph = _build_graph(**kwargs)
+    graph["category"].slug = "serverless-functions"
+    return graph
+
+
+def test_a_current_free_offer_is_counted_as_still_evidenced() -> None:
+    """PERMIT ARM. Current evidence -> the evidenced count equals the total."""
+
+    graph = _canonical_graph()
+    matrix = service.serialize_category_matrix(
+        [graph["provider"]], {1: graph["category"]}, None, _graph_currency(graph)
+    )
+    cell = _matrix_cell(matrix, "serverless-functions", "cloudflare")
+
+    assert cell.free_offer_count == 1
+    assert cell.current_free_offer_count == 1
+    assert cell.evidence_currency.current is True
+    assert cell.evidence_currency.stale is False
+
+
+def test_an_expired_free_offer_stops_being_counted_as_still_evidenced() -> None:
+    """WITHHOLD ARM. Same rows, later clock -> the evidenced count drops to 0."""
+
+    graph = _canonical_graph()
+    fetched = graph["evidence"].snapshot.fetched_at
+    expired = service.serialize_category_matrix(
+        [graph["provider"]],
+        {1: graph["category"]},
+        None,
+        _graph_currency(graph, fetched + timedelta(days=365 * 5)),
+    )
+    cell = _matrix_cell(expired, "serverless-functions", "cloudflare")
+
+    assert cell.current_free_offer_count == 0
+    assert cell.evidence_currency.stale is True
+    assert cell.evidence_currency.current is False
+    assert cell.evidence_currency.reason is not None
+
+
+def test_the_free_offer_total_is_never_reduced_when_the_evidence_expires() -> None:
+    """The total must NOT shrink. Hiding a free offer is its own defect.
+
+    Silently reducing "12 truly free" to "9 truly free" conceals three offers
+    that really are free, and an omission is invisible to a reader in a way a
+    label is not. Both shipped precedents (PR #79, PR #83) display rather than
+    omit. So the total is pinned identical across the boundary and only the
+    *additional* number moves.
+    """
+
+    graph = _canonical_graph()
+    fetched = graph["evidence"].snapshot.fetched_at
+    args = ([graph["provider"]], {1: graph["category"]}, None)
+
+    current = _matrix_cell(
+        service.serialize_category_matrix(*args, _graph_currency(graph, fetched)),
+        "serverless-functions",
+        "cloudflare",
+    )
+    expired = _matrix_cell(
+        service.serialize_category_matrix(
+            *args, _graph_currency(graph, fetched + timedelta(days=365 * 5))
+        ),
+        "serverless-functions",
+        "cloudflare",
+    )
+
+    assert current.free_offer_count == expired.free_offer_count == 1
+    assert current.published_offer_count == expired.published_offer_count == 1
+    # ...and the qualification is what moved instead.
+    assert current.current_free_offer_count == 1
+    assert expired.current_free_offer_count == 0
+
+
+def test_an_unchecked_free_offer_is_not_counted_as_still_evidenced() -> None:
+    """ "We could not look" must never read as "still free".
+
+    This is the arm that decides which instrument the surface uses. The
+    ``stale_offer_version_ids`` set already threaded into this endpoint CANNOT
+    represent this case -- its own docstring says evidence with no ``fetched_at``
+    "is still not stale" -- so a count built from that projection would report
+    this offer as supported. Built from ``is_publishable_free_claim`` it does not.
+    """
+
+    graph = _canonical_graph(fetched_at=None)
+    matrix = service.serialize_category_matrix(
+        [graph["provider"]], {1: graph["category"]}, None, _graph_currency(graph)
+    )
+    cell = _matrix_cell(matrix, "serverless-functions", "cloudflare")
+
+    assert cell.free_offer_count == 1
+    assert cell.current_free_offer_count == 0
+    assert cell.evidence_currency.checked is False
+    # Absence of evidence is not evidence of expiry.
+    assert cell.evidence_currency.stale is False
+    assert cell.evidence_currency.current is False
+
+
+def test_a_category_matrix_with_no_clock_counts_no_free_offer_as_current() -> None:
+    """FAIL-CLOSED. Forgetting to thread the clock withholds, never asserts.
+
+    Paired with the permit arm on the same genuinely-fresh graph, so this cannot
+    pass merely because the fixture is stale.
+    """
+
+    graph = _canonical_graph()
+
+    with_clock = _matrix_cell(
+        service.serialize_category_matrix(
+            [graph["provider"]], {1: graph["category"]}, None, _graph_currency(graph)
+        ),
+        "serverless-functions",
+        "cloudflare",
+    )
+    no_clock = _matrix_cell(
+        service.serialize_category_matrix([graph["provider"]], {1: graph["category"]}),
+        "serverless-functions",
+        "cloudflare",
+    )
+
+    assert with_clock.current_free_offer_count == 1
+    assert no_clock.current_free_offer_count == 0
+    assert no_clock.evidence_currency.checked is False
+    assert no_clock.evidence_currency.current is False
+    # The facts themselves are untouched -- currency is withheld, not data.
+    assert no_clock.free_offer_count == with_clock.free_offer_count
+    assert no_clock.published_offer_count == with_clock.published_offer_count
+    assert no_clock.state == with_clock.state
+
+
+def test_the_uncategorized_rollup_reports_its_own_evidence_currency() -> None:
+    """The rollup had NOWHERE to hang a currency signal; now it has one.
+
+    ``_build_graph``'s category slug is non-canonical, so this offer lands in the
+    uncategorized rollup -- the surface that carried a completely unqualified
+    "N truly free" with no state field of any kind.
+    """
+
+    graph = _build_graph()  # NON-canonical slug on purpose
+    fetched = graph["evidence"].snapshot.fetched_at
+    args = ([graph["provider"]], {1: graph["category"]}, None)
+
+    current = service.serialize_category_matrix(
+        *args, _graph_currency(graph, fetched)
+    ).uncategorized
+    expired = service.serialize_category_matrix(
+        *args, _graph_currency(graph, fetched + timedelta(days=365 * 5))
+    ).uncategorized
+
+    assert len(current) == len(expired) == 1
+    # PERMIT arm.
+    assert current[0].free_offer_count == 1
+    assert current[0].current_free_offer_count == 1
+    assert current[0].evidence_currency.current is True
+    # WITHHOLD arm -- and the total still does not shrink.
+    assert expired[0].free_offer_count == 1
+    assert expired[0].current_free_offer_count == 0
+    assert expired[0].evidence_currency.stale is True
+
+
+def test_the_uncategorized_rollup_has_no_coverage_state_field() -> None:
+    """A design decision, pinned so it cannot drift back.
+
+    "Uncategorised" is not one of the fourteen canonical categories. Giving this
+    rollup a COVERAGE_STATES value would assert a coverage claim about a bucket
+    the taxonomy cannot name -- the same guess F008 S2 removed when it deleted
+    ``published == 0 -> not_offered``. What it needed was an EVIDENCE signal, and
+    that is what it got.
+    """
+
+    graph = _build_graph()
+    rollup = service.serialize_category_matrix(
+        [graph["provider"]], {1: graph["category"]}, None, _graph_currency(graph)
+    ).uncategorized[0]
+
+    fields = set(rollup.model_dump())
+    assert "state" not in fields
+    assert "derived_state" not in fields
+    assert "declared_state" not in fields
+    assert "evidence_currency" in fields
+    assert "current_free_offer_count" in fields
+
+
+def test_a_cell_is_only_as_current_as_its_least_current_claim() -> None:
+    """The rollup is `worst()`, not an average: one fresh offer must not mask one stale.
+
+    Two published free offers in the same cell, one current and one long expired.
+    An averaging (or first-wins) rollup would report the cell as current.
+    """
+
+    graph = _canonical_graph()
+    fetched = graph["evidence"].snapshot.fetched_at
+    service_obj = graph["service"]
+
+    second = Offer(
+        service_id=10,
+        offer_type="always_free",
+        zero_cost_class="Z0_TRUE_FREE",
+        status="active",
+        requires_card=False,
+        has_paid_dependencies=False,
+    )
+    second.id = 101
+    second_version = OfferVersion(
+        offer_id=101,
+        version_number=1,
+        content_hash="hash-v1-b",
+        offer_type="always_free",
+        zero_cost_class="Z0_TRUE_FREE",
+        material_facts=_material_facts(),
+    )
+    second_version.id = 1001
+    second.versions.append(second_version)
+    service_obj.offers.append(second)
+
+    fresh = assess_currency(fetched, fetched, "daily")
+    stale = assess_currency(fetched, fetched + timedelta(days=365 * 5), "daily")
+    ctx = CurrencyContext(
+        index={
+            (ANCHOR_OFFER_VERSION, 1000): fresh,
+            (ANCHOR_OFFER_VERSION, 1001): stale,
+        },
+        now=fetched,
+    )
+
+    cell = _matrix_cell(
+        service.serialize_category_matrix([graph["provider"]], {1: graph["category"]}, None, ctx),
+        "serverless-functions",
+        "cloudflare",
+    )
+
+    assert cell.free_offer_count == 2
+    # Exactly one of the two is still evidenced -- not zero, not both.
+    assert cell.current_free_offer_count == 1
+    # The CELL verdict takes the worse of the two.
+    assert cell.evidence_currency.stale is True
+    assert cell.evidence_currency.current is False
+
+
+def test_an_offers_currency_is_read_from_its_latest_version() -> None:
+    """Superseded versions must not decide a current claim.
+
+    An offer's claim rests on its LATEST version, matching every other catalogue
+    surface. Keying on an older version instead would let a superseded snapshot
+    withhold a genuinely current free offer -- the wrongly-withheld direction.
+    """
+
+    graph = _canonical_graph()
+    fetched = graph["evidence"].snapshot.fetched_at
+    offer = graph["offer"]
+
+    older = OfferVersion(
+        offer_id=100,
+        version_number=0,
+        content_hash="hash-v0",
+        offer_type="always_free",
+        zero_cost_class="Z0_TRUE_FREE",
+        material_facts=_material_facts(),
+    )
+    older.id = 999
+    offer.versions.insert(0, older)
+
+    assert queries.latest_version(offer).id == 1000, "fixture precondition"
+
+    ctx = CurrencyContext(
+        index={
+            # The superseded version is long expired...
+            (ANCHOR_OFFER_VERSION, 999): assess_currency(
+                fetched, fetched + timedelta(days=365 * 5), "daily"
+            ),
+            # ...while the latest one is current.
+            (ANCHOR_OFFER_VERSION, 1000): assess_currency(fetched, fetched, "daily"),
+        },
+        now=fetched,
+    )
+
+    cell = _matrix_cell(
+        service.serialize_category_matrix([graph["provider"]], {1: graph["category"]}, None, ctx),
+        "serverless-functions",
+        "cloudflare",
+    )
+
+    assert cell.current_free_offer_count == 1
+    assert cell.evidence_currency.current is True

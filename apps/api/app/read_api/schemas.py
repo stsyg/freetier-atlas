@@ -378,6 +378,24 @@ class ProviderCoverage(BaseModel):
 
     A zero published-offer count therefore never produces ``not_offered``;
     ``not_offered`` only ever arrives as an explicit, reasoned declaration.
+
+    The counts carry their own currency (F008 S7)
+    ---------------------------------------------
+    ``free_offer_count`` is a *claim*. "12 truly free" asserts something about 12
+    offers in the present tense, exactly as a badge does, so it needs the same
+    clock every other repeated free claim got in S6. Measured on this surface
+    before the change: ``state`` and ``derived_state`` moved across a one-second
+    staleness boundary while ``free_offer_count`` did not, so a cell could read
+    ``state="stale"`` and "1 truly free" *simultaneously*.
+
+    ``free_offer_count`` deliberately keeps its exact previous meaning and value.
+    It is **not** reduced to the still-evidenced subset: silently shrinking "12
+    truly free" to "9 truly free" hides three genuinely free offers, and a
+    wrongly-withheld free offer is a defect of equal severity to a wrongly
+    asserted one -- with the aggravation that an omission is invisible to a
+    reader in a way a label is not. Both shipped precedents display rather than
+    omit. ``current_free_offer_count`` is therefore an *additional* number, so
+    neither direction of error can occur.
     """
 
     provider_slug: str
@@ -390,6 +408,14 @@ class ProviderCoverage(BaseModel):
     evidence_url: str | None = None
     published_offer_count: int = 0
     free_offer_count: int = 0
+    #: How many of ``free_offer_count`` rest on evidence that is still current.
+    #: Always ``<= free_offer_count``; equal to it when every backing snapshot is
+    #: inside its refresh window. Fails closed to ``0`` when no clock reached this
+    #: call site, because "we could not check" must never render as "still free".
+    current_free_offer_count: int = 0
+    #: The LEAST current verdict across this cell's published claims. A rollup,
+    #: not an average: averaging would let one fresh offer mask an expired one.
+    evidence_currency: EvidenceCurrencyOut = EvidenceCurrencyOut()
 
 
 class CategoryMatrixRow(BaseModel):
@@ -406,12 +432,37 @@ class UncategorizedCoverage(BaseModel):
 
     Surfaced honestly rather than being forced into a category (the ingest
     pipeline does not yet assign categories to every service).
+
+    Why this gains an EVIDENCE field and not a coverage STATE (F008 S7)
+    ------------------------------------------------------------------
+    This rollup renders "N published (M truly free)" and, unlike
+    :class:`ProviderCoverage`, had **no state field of any kind** -- so there was
+    nowhere for a currency signal to hang, and the free count was completely
+    unqualified.
+
+    The fix is deliberately *not* to give it a ``state``. "Uncategorised" is not
+    one of the fourteen canonical categories, so deriving a ``COVERAGE_STATES``
+    value for it would mint a coverage claim about a bucket we cannot even name --
+    the same class of guess F008 slice S2 removed when it deleted
+    ``published == 0 -> not_offered``. What this rollup lacks is not a coverage
+    state but an **evidence** signal, and evidence currency is a property of
+    evidence, not of a taxonomy cell.
+
+    So it gets the identical treatment ``ProviderCoverage`` gets -- the same two
+    fields, with the same meanings -- and no new vocabulary is invented on either
+    side.
     """
 
     provider_slug: str
     provider_name: str
     published_offer_count: int = 0
     free_offer_count: int = 0
+    #: How many of ``free_offer_count`` rest on evidence that is still current.
+    #: See :class:`ProviderCoverage`; the total is never reduced.
+    current_free_offer_count: int = 0
+    #: The LEAST current verdict across this provider's uncategorised published
+    #: claims.
+    evidence_currency: EvidenceCurrencyOut = EvidenceCurrencyOut()
 
 
 class CategoryMatrixResponse(BaseModel):

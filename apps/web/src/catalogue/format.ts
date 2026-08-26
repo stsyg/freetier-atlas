@@ -172,6 +172,55 @@ export function currencyMeaning(
   };
 }
 
+/**
+ * Describe a free-offer count without ever asserting more than the evidence supports.
+ *
+ * A count is a claim: "12 truly free" says something about 12 offers in the
+ * present tense, exactly as a badge does. Before F008 slice S7 the category
+ * matrix rendered the raw total unconditionally — measured across a one-second
+ * staleness boundary, the coverage `state` moved and the count did not, so a
+ * cell could read "Stale" and "1 truly free" at the same moment.
+ *
+ * The total is never reduced to the still-evidenced subset. Silently shrinking
+ * "12 truly free" to "9 truly free" hides three genuinely free offers, and a
+ * wrongly-withheld free offer is a defect of equal severity to a wrongly
+ * asserted one — worse in one respect, because an omission is invisible to a
+ * reader in a way a label is not. Both numbers are shown instead, so neither
+ * direction of error can occur.
+ *
+ * Why the arguments are optional when `ProviderCoverage` declares them required
+ * ---------------------------------------------------------------------------
+ * A required TypeScript field constrains what we COMPILE against, never what an
+ * older server actually SENDS. The api and web images are built and deployed
+ * separately (docker-compose.yml), so an api image predating this slice serves
+ * a cell with `free_offer_count` and WITHOUT `current_free_offer_count` while a
+ * newer web bundle renders it. Unguarded, that produced the visible text
+ * "1 truly free, undefined still evidenced".
+ *
+ * An absent count is "we could not look", which must never read as "still
+ * free" — the same rule `is_publishable_free_claim` applies on the API side,
+ * and the same rule the sibling `evidence_currency` guard already enforces on
+ * this very payload. It reuses the shipped "not checked" wording from
+ * `currencyMeaning` rather than inventing a second phrase for it.
+ */
+export function describeFreeCount(coverage: {
+  free_offer_count?: number | null;
+  current_free_offer_count?: number | null;
+}): string {
+  const total = coverage?.free_offer_count;
+  const current = coverage?.current_free_offer_count;
+
+  if (typeof total !== "number" || Number.isNaN(total)) return "truly free count unknown";
+  if (total === 0) return "0 truly free";
+  // "We could not look" is not permission, and must not be rendered as a number.
+  if (typeof current !== "number" || Number.isNaN(current)) {
+    return `${total} truly free, evidence not checked`;
+  }
+  if (current >= total) return `${total} truly free`;
+  if (current === 0) return `${total} truly free, none still evidenced`;
+  return `${total} truly free, ${current} still evidenced`;
+}
+
 /** Format a whole number of days, or "Unknown" when absent. */
 export function formatDays(value: number | null | undefined): string {
   if (value === null || value === undefined || Number.isNaN(value)) return "Unknown";

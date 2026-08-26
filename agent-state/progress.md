@@ -3849,3 +3849,125 @@ Eight, listed in full in `current_contract.json` `errors_made`. The two worth re
 
 - **Evaluator disposition:** pending — builder self-review only.
 - **Boundary:** Draft PR only. Do not merge, do not flip any ledger flag.
+
+---
+
+## 2026-08-26 — F008 slice S7: the TENTH surface — the free-offer COUNT on `/catalogue/categories` (builder)
+
+**Base:** `5d0f46ff0c7965734b784347f209b06928571eae` (re-derived with `git ls-remote`; equal to the SHA the brief stated, and `main` had not moved at push time).
+**Branch:** `stsyg-tenth-surface-free-offer-count` — draft PR only, no merge, `feature_list.json` untouched, F008 stays `passes:false`.
+
+### The directed probe, reported first: `coverage.py:192` is a DECISION — but an ALREADY-FENCED one
+
+`if signals.free_offer_count > 0: return "verified_free"` sets `derived_state`, which reaches `ProviderCoverage.derived_state`, `is_material_mismatch()` → `mismatch`, and `effective_state()` → `state`, the public coverage badge. So a count does drive a classification.
+
+**But line 190 tests staleness two lines earlier** (`published_offer_count > 0 and has_stale_evidence → "stale"`), so line 192 is **unreachable for any bucket carrying stale evidence**. PR #79 already fenced the decision path. The defect was confined to the **reported count**. `coverage.py` therefore has a **zero-line diff**, asserted as `test_...` outcomes and by `git diff --stat`. **This is less severe than the brief scoped it, and that is stated rather than an inherited alarm being repeated.**
+
+### Measured, not assumed
+
+- **Both error directions already lived in one row.** `service.py:660` sets the bucket stale flag with `any(...)` over the whole bucket, while the tally counts every published offer regardless of currency. A bucket of 12 free offers with 1 stale was simultaneously **over-withholding** (all 12 lose the badge) and **under-qualifying** (still reports 12). Five real cells were observed reporting `state=stale` and `free_offer_count=1` at the same moment.
+- **`/catalogue/categories` was the ONLY catalogue route with no `CurrencyContext`** (the other six build one). It had `stale_offer_version_ids`, a **lossy projection** whose own docstring says evidence with no `fetched_at` "is still not stale". Building the new count from it would have counted an *unverifiable* claim as supported — the same defect one layer up. This is why the fix is a schema change, not a UI string edit.
+- **Every provisional line number in the brief was EXACT** on `5d0f46f` (`coverage.py` 160/192/227/277, `service.py` 671/690/709, `router.py` 314, `CategoryMatrix.tsx` 100/148, `api.ts` 323/337). Re-derived from tool output, not retyped.
+
+### The design decision
+
+Both numbers are surfaced: `free_offer_count` keeps its exact meaning and value, and `current_free_offer_count` is reported beside it, with `evidence_currency` (the `EvidenceCurrencyOut` shipped by S6) on **both** `ProviderCoverage` and `UncategorizedCoverage`.
+
+**The rollup deliberately did NOT get a coverage `state`.** "Uncategorised" is not one of the fourteen canonical categories, so giving it a `COVERAGE_STATES` value would mint a coverage claim about a bucket the taxonomy cannot name — the same class of guess F008 S2 removed when it deleted `published == 0 → not_offered`. What it lacked was an **evidence** signal, not a coverage state.
+
+**Rejected: reducing `free_offer_count` to the still-evidenced subset.** It makes 9-of-12 indistinguishable from 9-of-9, so a wrongly-withheld free offer becomes invisible; it contradicts both shipped precedents (#79, #83 display rather than omit); and the same field would mean different things either side of expiry, so a consumer storing it would silently disagree with itself. Also rejected: dropping the count; a `state` on the rollup; a UI-only fix (the evaluator's finding was on the API bytes); and computing currency from `stale_offer_version_ids`.
+
+### Verification
+
+| Check | Result |
+|---|---|
+| Baseline (own DB :55437 `atlas_suite`, `pytest -q`, no explicit paths) | 2941 passed, 3 skipped, exit 0 |
+| Final, same command | **2953 passed**, 3 skipped, exit 0 — **+12 = 9 unit + 3 integration**, none lost |
+| Web (`vitest`) | **136 passed** (from 127) — **+9**; `tsc -b` 0; eslint 0 (0 warnings); prettier clean |
+| Lint | `ruff check` 0; `ruff format --check` clean |
+| Guard mutations | **8 of 8** — M1–M7 each killed a NAMED test; **M8 no-op control stayed GREEN**; all restored byte-exact by RAW BYTE comparison |
+| Live browser (Edge → live SPA :5199 → live API :8123 → own DB `atlas_probe`) | **14 of 14** assertions, at 1400px and 390px |
+| Lockfiles | `apps/web` `98f786c2bb0d…`, root `737f99159e58…` — byte-identical to base after `npm ci`; `npm install` never run in the repo |
+
+**Instrument note worth carrying forward.** The obvious instrument here — a whole-response byte differential — is the WRONG one and I used it first. The body already differed before this slice, because `state` and `derived_state` move; that reads as "currency-aware" while the count underneath is frozen. Only a **field-level** differential answers the question. `test_the_category_matrix_response_is_not_frozen_against_the_clock` asserts the field, not the payload, and records why.
+
+### Errors made
+
+1. **I built the wrong instrument first** and predicted the whole response would be byte-identical. It was not. My prediction was wrong and the correction is recorded in the frozen predictions file rather than quietly fixed. The count *was* frozen; the payload was not.
+2. **I called an unstable observation a control.** I described one cell staying `verified_free` at both clocks as "a free permit-arm control in the same corpus". On re-run the same cell flipped — it was an ingest-timing artefact. A control that changes between runs is not a control; the permit arm is now asserted only where currency is constructed deterministically.
+3. **An edit swallowed the next declaration** in `api.ts` (`export interface CategoryMatrixRow`), caught immediately by `tsc -b`.
+4. **I wrote `current_contract.json` with CRLF**, caught by git's normalisation warning and corrected to LF.
+5. **eslint was right and I was wrong about placement**: exporting `describeFreeCount` from a component file broke `react-refresh/only-export-components`. It belonged in `format.ts` with the other formatters, which is where it now lives.
+
+### NOT VERIFIED — stated as prominently as the verdict
+
+1. **No CI run has executed any of this.** Every figure above is local.
+2. **The uncategorised rollup does not occur at all on the real 7-provider fixture corpus** — it was `[]` at both clocks. For the live check I constructed it by clearing a service's `category_id`. It reaches the rollup through the same production rule the matrix already uses, but it is **constructed data, not observed data**. The rollup half of this slice has never been exercised against a naturally-occurring row.
+3. **The pre-existing all-versions vs latest-version inconsistency at `service.py:660` is untouched.** The bucket stale flag scans ALL versions while the new count (and every other catalogue surface) uses `latest_version`. A superseded snapshot can therefore still mark a whole cell stale. Measured, attributed, deliberately not fixed — it feeds a classification and needs its own evidence.
+4. **I did not measure whether any `/openapi.json` consumer outside this repository depends on the current field set** of these two models. The change is additive, but that is an argument, not a measurement.
+5. **The marginal query cost was reasoned, not measured.** `fetch_evidence_currency` was measured in S6 to be one query, and `fetch_stale_offer_version_ids` already builds the same index — so `/categories` now builds that index twice per request. I did not profile it, and did not deduplicate it.
+6. **Mutation controls ran against targeted test nodes, not the whole suite.** I have not measured whether these mutations also break unrelated tests.
+7. **`evidence_currency` on a cell with no published offers is `UNCHECKED`**, which is correct but untested against a real empty-category row on a live corpus.
+
+### Boundary
+
+- **Scratch artefacts to close: NONE.** Every instrument (`probe_boundary.py`, `probe_fields.py`, `mutation_harness.py`, `seed_live.py`, `live_check.js`, the session-scoped Playwright install) was kept **outside the repository** in the session artifacts directory and never committed. No scratch branches and no scratch PRs were created.
+- **Databases:** own PostgreSQL container `s7-postgres` on **:55437**, with the suite DB (`atlas_suite`) and the seeded evidence corpus (`atlas_probe`) **separate**. The previous slice's `slice2-postgres` on :55434 was found still running and deliberately not reused. The shared stack on :5432 was never touched.
+- **Schema/generated shapes:** no migration (nothing is stored — decision Q11), but the response schema and therefore `/openapi.json` and `apps/web/src/api.ts` change. **Generated shapes are a mandatory Level-2 category.**
+- **Evaluator disposition:** pending — builder self-review only. Required level **2**.
+- **Recommended next action:** independent Level-2 review. Then, as separate slices: (a) reconcile the `service.py:660` all-versions flag with the latest-version rule the rest of the catalogue uses, and (b) obtain or construct a naturally-occurring uncategorised row so item 2 above can be retired.
+
+### 2026-08-26 addendum — CI has now run (retires "NOT VERIFIED" item 1)
+
+- **All six checks PASS on draft PR #99** at commit `269d537` (run `33005758045`): `Python lint, format, tests`, `Node format and lint`, `Web type-check, tests, and build`, `Dependency audit`, `Secret scan`, `GitGuardian Security Checks`.
+- **CI's Pytest step reports `2953 passed, 3 skipped`** — an **exact match** with my local final figure. CI runs **with `DATABASE_URL` set**, so `tests/integration/**` (including the three arms added here) executed there as well as locally.
+- **CI's skip list is identical to base**: `test_stack_health.py` x2 (`ATLAS_STACK_BASE_URL` unset) plus the pre-existing `cloudflare-pages-pricing` capture gap. **The new tests added no new skips** — worth checking, because adding required schema fields to shared fixtures could quietly have converted a test into a skip, and it did not.
+- **Count reconciliation, stated precisely.** The *absolute* final number (2953) is corroborated by two independent environments. The **+12 delta is a local-to-local comparison** (my baseline 2941 on the same tree, same command); I did **not** run CI against `main` itself, so the delta is not independently corroborated — only the endpoint is.
+- The PR is **MERGEABLE** (not conflicting), which is why CI was dispatched at all. An absent run reads exactly like a green one, so this was verified explicitly rather than assumed.
+- **"NOT VERIFIED" items 2-7 stand unchanged.** In particular item 2 (the uncategorised rollup does not occur on the real fixture corpus, so that arm was exercised only against constructed data) and item 5 (the endpoint now builds the currency index twice per request; my contract predicted "zero additional queries" and that prediction is unverified and probably wrong) are unaffected by CI passing, and are the most useful things for a reviewer to push on.
+
+### 2026-08-26 second addendum — L2 disposition on PR #99 (FAILED, narrowly) and the fixes
+
+The independent Level-2 evaluator FAILED the PR on two blocking findings and confirmed one non-blocking prediction miss. The design and both crux findings held under independent attack; what was short was one guard and two tests.
+
+**F1 (blocking) — `describeFreeCount` was unguarded for an absent count.** The api and web images are built and deployed SEPARATELY (docker-compose.yml), and `getJson` ends in `as T` with no runtime normaliser, so a required TypeScript field constrains what we COMPILE against and never what an older server SENDS. Measured: a base-vintage api serves **10** cell fields, head serves **12**. Rendered through the head bundle in real Chromium, that produced the visible body text **"Cloudflare: 1 published (1 truly free, undefined still evidenced)"**, and the same string in the badge tooltip, at 1400px and 390px.
+
+It failed VISIBLY, never open — so this is **not** a product-rule violation, and it is not reported as one. It was blocking because this repo **already ships** `it("withholds the promise when the currency block is ABSENT (L2 blocker)")` for the sibling field on the SAME payload citing the SAME skew route. Guarding one field and not its neighbour is the two-gates-disagreeing shape that failed PR #95. Its three neighbours in `format.ts` — `formatDays`, `orUnknown`, `formatTriState` — all handle `null|undefined` explicitly; `describeFreeCount` was the only formatter in that file without the guard. It now matches them, and reuses the shipped "not checked" wording from `currencyMeaning` rather than inventing a second phrase.
+
+**F2 (blocking) — the two-clock gap.** `coverage_signal_context(..., now: datetime | None = None)` fell back to `now or datetime.now(UTC)` while `currency_context(..., now: datetime)` has always REQUIRED it. Dropping `now=now` in the router therefore produced **two clocks in one payload with the full suite still green**. `test_one_clock_serves_the_whole_category_matrix_response` could not see it, because `_now()` is still called exactly once. Fixed at the source: `now` is now REQUIRED. An optional clock that silently invents `now()` is the same fail-open shape this feature exists to remove — and a function that manufactures its own "now" can never fail closed, because it cannot tell it was never given one.
+
+- **ZERO production changes.** Both production callers already passed a clock (`reconcile_coverage.py:81`, `router.py:340`), confirmed by enumerating every call site.
+- **Four test call sites updated**: `test_ingest_config_sync.py:537`, `test_read_api_search.py:296, 339, 399`. A fifth (`test_coverage_review_queue.py:230`) already passed one. Every call site in the repository now passes a clock; verified by grep for a call without `now=`.
+
+**F3 (non-blocking) — my prediction was wrong, as I flagged it might be.** `/categories` costs 2 `fetch_evidence_currency` calls / 10 SQL against `/providers`' 1 / 6. I priced it as "probably zero additional queries, I will measure rather than assert"; it landed on the wrong side. No action taken, per the disposition.
+
+### Verification of the fixes
+
+| Check | Result |
+|---|---|
+| Python suite | **2953 passed**, 3 skipped, exit 0 — unchanged, correctly: F2 added no tests and F1's are vitest-side |
+| Web | **136 -> 141 passed** (+5); tsc 0; eslint 0; prettier clean |
+| **Mutations** | **10 / 10** — M9 (absent-count guard) and M10 (`now=now` dropped) added; M8 no-op control still GREEN; all restored byte-exact |
+| **M10 contrast** | BEFORE (`6ae3350`): mutation -> `1 passed`, rc=0. AFTER: rc=1, `TypeError: coverage_signal_context() missing 1 required keyword-only argument: 'now'` |
+| **Browser (head SPA -> BASE-vintage api)** | **18 / 18** at 1400px and 390px: no "undefined"/"NaN" in body text or any tooltip; rollup reads "2 truly free, evidence not checked" beside the shipped "Evidence: Not checked" note, so the two gates now AGREE |
+| **Instrument floor** | the UNGUARDED bundle (a `git archive HEAD` extract) DID render "undefined" in body and tooltip at 2/2 widths, so the clean result above is meaningful |
+
+### A new error, caught by a control
+
+**M9 SURVIVED on the first pass, and it was my instrument, not the product.** `vitest -t` is a REGEX; the test name contains `(L2 blocker)`, so the unescaped pattern matched nothing and vitest exited **0 with 34 tests skipped**. My harness read that as a green baseline and scored the mutation SURVIVED. **This is the vitest equivalent of pytest exit 5 — a green run that tested nothing** — and my harness guarded the pytest form but not the vitest form.
+
+Two corrections: escape regex metacharacters (NOT `re.escape` — Python 3.13 escapes spaces as `\ `, which JavaScript's `RegExp` does not treat the same way, which produced a SECOND zero-match run), and **require the baseline to have actually EXECUTED at least one test rather than merely exiting 0**. With both, M9 kills its named test and the matrix is 10/10.
+
+That is the second time this session the instrument was the problem rather than the product. Both times it was caught only because a control was in place, which is the argument for the controls.
+
+### Honesty on one word in the disposition
+
+It asked to show that dropping `now=now` "fails to compile or type-check". Python has no compile step and **this repository ships no type checker** — `requirements-dev.txt` carries ruff, pytest, detect-secrets, pip-audit, httpx and cryptography, and no mypy or pyright. The available hard failure is a **TypeError at call time**, caught by a named test. No static gate is claimed that does not exist.
+
+### Contamination guard (the evaluator's own lesson, applied)
+
+The evaluator contaminated its browser run by serving from the worktree its mutation harness was mutating, producing a FALSE permit-arm failure. All browser evidence here was collected **before any mutation ran**, from trees nothing was mutating: the base-vintage api is a `git archive 5d0f46f` extract and the unguarded bundle a `git archive HEAD` extract, both without git metadata; all five servers were stopped before the matrix started.
+
+### Still NOT VERIFIED
+
+Items 2-7 of the previous entry stand unchanged. In particular the uncategorised rollup still does not occur on the real fixture corpus (every rollup observation, including all of today's browser evidence, uses a constructed row), and F3's query cost is now measured but deliberately not optimised.

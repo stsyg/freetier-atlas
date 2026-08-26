@@ -779,3 +779,118 @@ def test_fetch_stale_offer_version_ids_semantics_unchanged(
 
     assert transcribed, "the corpus must contain expired evidence for this to mean anything"
     assert shipped == frozenset(transcribed)
+
+
+# --------------------------------------------------------------------------- #
+# The TENTH surface (F008 S7): the free-offer COUNT on /catalogue/categories   #
+# --------------------------------------------------------------------------- #
+#
+# S6 enumerated the catalogue surfaces from /openapi.json by resolving the 200
+# schemas for four fields -- class, confidence, freshness, signals -- and found
+# NINE. `free_offer_count` is a COUNT, not one of those four, so that instrument
+# could not see it. A wider question ("what renders a free CLAIM in any form")
+# finds TEN. Both counts are right; they answer different questions.
+#
+# Measured on this endpoint BEFORE the fix, through the same mechanism G clocks
+# used throughout this module: `state`, `derived_state` and `mismatch` moved
+# across the boundary and `free_offer_count` did NOT, so a cell could serve
+# `state="stale"` and "1 truly free" in the same response.
+
+
+def _cells(payload: dict) -> dict[tuple[str, str], dict]:
+    return {
+        (row["slug"], cell["provider_slug"]): cell
+        for row in payload["categories"]
+        for cell in row["providers"]
+    }
+
+
+@skip_without_db
+def test_the_free_offer_count_is_qualified_once_its_evidence_expires(
+    client: TestClient, boundary: dict, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Both arms, on the live endpoint, over the SAME unmodified rows.
+
+    Nothing in the database moves between the two reads -- only the clock, by one
+    second, across the strict ``age > window`` inequality. A count served without
+    reference to a clock cannot respond to that.
+    """
+
+    _at(monkeypatch, boundary["current_at"])
+    current = _cells(client.get("/catalogue/categories").json())
+
+    _at(monkeypatch, boundary["stale_at"])
+    expired = _cells(client.get("/catalogue/categories").json())
+
+    free_cells = [key for key, cell in current.items() if cell["free_offer_count"] > 0]
+    assert free_cells, "the corpus must publish at least one free offer to measure anything"
+
+    for key in free_cells:
+        before, after = current[key], expired[key]
+        # PERMIT ARM: inside the window the count is asserted in full.
+        assert before["current_free_offer_count"] == before["free_offer_count"]
+        assert before["evidence_currency"]["current"] is True
+        # WITHHOLD ARM: one second later it no longer is.
+        assert after["current_free_offer_count"] == 0
+        assert after["evidence_currency"]["stale"] is True
+        assert after["evidence_currency"]["reason"]
+        # AND THE TOTAL DID NOT SHRINK. A withheld free offer is its own defect.
+        assert after["free_offer_count"] == before["free_offer_count"]
+        assert after["published_offer_count"] == before["published_offer_count"]
+
+
+@skip_without_db
+def test_the_category_matrix_response_is_not_frozen_against_the_clock(
+    client: TestClient, boundary: dict, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The count field specifically must move, not merely the response as a whole.
+
+    Recorded because the OBVIOUS instrument here is a whole-body byte
+    differential, and it is the wrong one: the body already differed before this
+    slice, because `state` and `derived_state` move. A body-level check therefore
+    reads "currency-aware" while the count underneath is untouched. This asserts
+    the field, not the payload.
+    """
+
+    _at(monkeypatch, boundary["current_at"])
+    current = _cells(client.get("/catalogue/categories").json())
+    _at(monkeypatch, boundary["stale_at"])
+    expired = _cells(client.get("/catalogue/categories").json())
+
+    moved = {
+        field
+        for key in current
+        for field in current[key]
+        if current[key][field] != expired[key][field]
+    }
+    assert "current_free_offer_count" in moved, "the qualification must follow the clock"
+    assert "evidence_currency" in moved
+    # ...and the facts beneath it must not.
+    assert "free_offer_count" not in moved
+    assert "published_offer_count" not in moved
+
+
+@skip_without_db
+def test_one_clock_serves_the_whole_category_matrix_response(
+    client: TestClient, boundary: dict, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Coverage signals and currency verdicts must agree about "now".
+
+    The handler calls ``_now()`` ONCE and hands the same moment to both
+    ``coverage_signal_context`` and ``currency_context``. Two calls would let the
+    derived state and the evidenced count straddle a boundary that fell between
+    them -- a race that is rare, real, and invisible in production.
+    """
+
+    moments: list[datetime] = []
+    real_now = boundary["stale_at"]
+
+    def _recording_now() -> datetime:
+        moments.append(real_now + timedelta(seconds=len(moments)))
+        return moments[-1]
+
+    monkeypatch.setattr(read_router, "_now", _recording_now)
+    response = client.get("/catalogue/categories")
+
+    assert response.status_code == 200
+    assert len(moments) == 1, f"the handler read the clock {len(moments)} times, not once"

@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import os
 from collections.abc import Iterator
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -534,7 +535,7 @@ def test_an_unresolvable_source_reference_does_not_withdraw_the_declaration(
     matrix = read_service.serialize_category_matrix(
         listed,
         queries.category_map_for_providers(session, listed),
-        queries.coverage_signal_context(session, listed),
+        queries.coverage_signal_context(session, listed, now=datetime.now(UTC)),
     )
     cells = {
         (row.slug, cell.provider_slug): cell for row in matrix.categories for cell in row.providers
