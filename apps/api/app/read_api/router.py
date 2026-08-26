@@ -322,12 +322,24 @@ def get_category_matrix(session: SessionDep) -> CategoryMatrixResponse:
     reported as ``not_offered``, which can only ever be declared with a stated
     rationale. Published offers with no canonical category are surfaced honestly
     in a per-provider uncategorized rollup.
+
+    Both the per-category cells and the uncategorized rollup also report
+    ``current_free_offer_count`` and ``evidence_currency`` (F008 slice S7): a
+    free-offer *count* is a present-tense claim just as a badge is, so it is
+    assessed against the same read-time clock rather than being asserted
+    unconditionally. The total is never reduced -- a withheld free offer is a
+    defect too -- so both numbers are reported side by side.
     """
 
     providers = queries.fetch_providers(session)
     cat_map = queries.category_map_for_providers(session, providers)
-    context = queries.coverage_signal_context(session, providers, now=_now())
-    return service.serialize_category_matrix(providers, cat_map, context)
+    # ONE clock for the whole response: the coverage signals and the currency
+    # verdicts must be assessed at the same moment, or two fields of the same
+    # payload could disagree about what "now" is.
+    now = _now()
+    context = queries.coverage_signal_context(session, providers, now=now)
+    currency = queries.currency_context(session, now=now)
+    return service.serialize_category_matrix(providers, cat_map, context, currency)
 
 
 @router.get("/compare", response_model=CompareResponse)

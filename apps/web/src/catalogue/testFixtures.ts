@@ -460,6 +460,17 @@ const CANONICAL_CATEGORIES: { slug: string; name: string }[] = [
 ];
 
 /**
+ * The least-current verdict across several fixture claims, mirroring the API's
+ * `currency.worst()`: any stale wins, then any unchecked, else current. An empty
+ * set is UNCHECKED — absence of claims is not evidence of freshness.
+ */
+function worstFixtureCurrency(all: EvidenceCurrency[]): EvidenceCurrency {
+  if (all.some((c) => c.stale)) return STALE_EVIDENCE;
+  if (all.length === 0 || all.some((c) => !c.checked)) return UNCHECKED_EVIDENCE;
+  return CURRENT_EVIDENCE;
+}
+
+/**
  * Build the coverage matrix from the synthetic search index so the matrix,
  * search, and compare fixtures stay internally consistent.
  *
@@ -495,6 +506,10 @@ export const categoryMatrix: CategoryMatrixResponse = {
         evidence_url: null,
         published_offer_count: offers.length,
         free_offer_count: free.length,
+        // Derived from the same synthetic offers, so the count and the currency
+        // signal beside it can never disagree in the fixture.
+        current_free_offer_count: free.filter((o) => o.evidence_currency.current).length,
+        evidence_currency: worstFixtureCurrency(offers.map((o) => o.evidence_currency)),
       };
     }),
   })),
@@ -504,6 +519,8 @@ export const categoryMatrix: CategoryMatrixResponse = {
       provider_name: "Northwind Cloud",
       published_offer_count: 1,
       free_offer_count: 0,
+      current_free_offer_count: 0,
+      evidence_currency: CURRENT_EVIDENCE,
     },
   ],
 };
@@ -541,6 +558,8 @@ export const allCoverageStatesMatrix: CategoryMatrixResponse = {
           evidence_url: "https://example.invalid/free",
           published_offer_count: 2,
           free_offer_count: 1,
+          current_free_offer_count: 1,
+          evidence_currency: CURRENT_EVIDENCE,
         },
         {
           provider_slug: "p-offered-no-z0",
@@ -553,6 +572,8 @@ export const allCoverageStatesMatrix: CategoryMatrixResponse = {
           evidence_url: "https://example.invalid/pricing",
           published_offer_count: 3,
           free_offer_count: 0,
+          current_free_offer_count: 0,
+          evidence_currency: CURRENT_EVIDENCE,
         },
         {
           provider_slug: "p-incomplete",
@@ -565,6 +586,8 @@ export const allCoverageStatesMatrix: CategoryMatrixResponse = {
           evidence_url: null,
           published_offer_count: 1,
           free_offer_count: 0,
+          current_free_offer_count: 0,
+          evidence_currency: CURRENT_EVIDENCE,
         },
         {
           provider_slug: "p-stale",
@@ -577,6 +600,11 @@ export const allCoverageStatesMatrix: CategoryMatrixResponse = {
           evidence_url: null,
           published_offer_count: 1,
           free_offer_count: 1,
+          // THE defect case, pinned: the cell says "stale" and still counts one
+          // free offer. Before F008 S7 those two facts could be rendered side by
+          // side with the count reading as an unqualified present-tense claim.
+          current_free_offer_count: 0,
+          evidence_currency: STALE_EVIDENCE,
         },
         {
           provider_slug: "p-conflicting",
@@ -589,6 +617,8 @@ export const allCoverageStatesMatrix: CategoryMatrixResponse = {
           evidence_url: null,
           published_offer_count: 1,
           free_offer_count: 1,
+          current_free_offer_count: 1,
+          evidence_currency: CURRENT_EVIDENCE,
         },
         {
           provider_slug: "p-not-offered",
@@ -601,6 +631,8 @@ export const allCoverageStatesMatrix: CategoryMatrixResponse = {
           evidence_url: null,
           published_offer_count: 0,
           free_offer_count: 0,
+          current_free_offer_count: 0,
+          evidence_currency: UNCHECKED_EVIDENCE,
         },
         {
           provider_slug: "p-unknown",
@@ -613,6 +645,8 @@ export const allCoverageStatesMatrix: CategoryMatrixResponse = {
           evidence_url: null,
           published_offer_count: 0,
           free_offer_count: 0,
+          current_free_offer_count: 0,
+          evidence_currency: UNCHECKED_EVIDENCE,
         },
       ],
     },

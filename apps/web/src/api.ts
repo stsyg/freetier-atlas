@@ -321,6 +321,15 @@ export interface ProviderCoverage {
   evidence_url?: string | null;
   published_offer_count: number;
   free_offer_count: number;
+  /**
+   * How many of `free_offer_count` still rest on evidence inside its refresh
+   * window. Always `<= free_offer_count`. The total is deliberately NOT reduced
+   * to this number: hiding a genuinely free offer is a defect of the same
+   * severity as asserting an unsupported one, so both are shown.
+   */
+  current_free_offer_count: number;
+  /** The least current verdict across this cell's published claims. */
+  evidence_currency: EvidenceCurrency;
 }
 
 export interface CategoryMatrixRow {
@@ -335,6 +344,16 @@ export interface UncategorizedCoverage {
   provider_name: string;
   published_offer_count: number;
   free_offer_count: number;
+  /** See `ProviderCoverage.current_free_offer_count`. The total is never reduced. */
+  current_free_offer_count: number;
+  /**
+   * The least current verdict across this provider's uncategorised published
+   * claims. This rollup carries an EVIDENCE signal rather than a coverage
+   * `state`, because "uncategorised" is not one of the canonical categories and
+   * deriving a coverage state for it would assert a claim about a bucket we
+   * cannot name.
+   */
+  evidence_currency: EvidenceCurrency;
 }
 
 export interface CategoryMatrixResponse {

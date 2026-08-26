@@ -7,8 +7,10 @@ import { EvidenceCurrencyNote } from "./EvidenceCurrencyNote";
 import { OfferCard } from "./OfferCard";
 import { QuotaTable } from "./QuotaTable";
 import { EvidenceList } from "./EvidenceList";
-import { formatSignal } from "./format";
+import { CategoryMatrix } from "./CategoryMatrix";
+import { describeFreeCount, formatSignal } from "./format";
 import {
+  allCoverageStatesMatrix,
   CURRENT_EVIDENCE,
   offerDetail1,
   offerEvidence1,
@@ -246,5 +248,115 @@ describe("OfferCard — the $0 promise is gated by ONE shared rule", () => {
       const promiseShown = (card.textContent ?? "").includes(PROMISE);
       expect(promiseShown).toBe(!badgeSaysUnverified);
     }
+  });
+});
+
+describe("CategoryMatrix — a free-offer COUNT is a claim (F008 S7)", () => {
+  // "12 truly free" asserts something about 12 offers in the present tense,
+  // exactly as a badge does. These pin BOTH directions: the count must stop
+  // asserting more than the evidence supports, AND it must not silently shrink,
+  // because a wrongly-withheld free offer is a defect of equal severity and an
+  // omission is invisible to a reader in a way a label is not.
+
+  it("says how many are still evidenced when some are not", () => {
+    expect(describeFreeCount({ free_offer_count: 12, current_free_offer_count: 9 })).toBe(
+      "12 truly free, 9 still evidenced",
+    );
+  });
+
+  it("does not qualify a count whose evidence is entirely current", () => {
+    // No note on a healthy row: noise is how people learn to ignore the warning
+    // that matters.
+    expect(describeFreeCount({ free_offer_count: 12, current_free_offer_count: 12 })).toBe(
+      "12 truly free",
+    );
+  });
+
+  it("says plainly when NONE of the counted offers are still evidenced", () => {
+    expect(describeFreeCount({ free_offer_count: 3, current_free_offer_count: 0 })).toBe(
+      "3 truly free, none still evidenced",
+    );
+  });
+
+  it("never reduces the total to the still-evidenced subset", () => {
+    // The regression this whole slice exists to avoid re-introducing: the "12"
+    // must survive, or three genuinely free offers vanish from the page.
+    const text = describeFreeCount({ free_offer_count: 12, current_free_offer_count: 9 });
+    expect(text).toContain("12");
+    expect(text).not.toBe("9 truly free");
+  });
+
+  it("qualifies the count in a stale cell's tooltip rather than asserting it", () => {
+    render(<CategoryMatrix data={allCoverageStatesMatrix} />);
+    const badges = screen.getAllByTestId("coverage-badge");
+    const stale = badges.find((b) => b.getAttribute("data-state") === "stale");
+    expect(stale).toBeDefined();
+    // The fixture cell counts one free offer whose evidence has expired.
+    expect(stale).toHaveAttribute("data-free-count", "1");
+    expect(stale).toHaveAttribute("data-current-free-count", "0");
+    expect(stale?.getAttribute("title")).toContain("none still evidenced");
+  });
+
+  it("PAIRED CONTROL: a current cell's tooltip still asserts its free count", () => {
+    render(<CategoryMatrix data={allCoverageStatesMatrix} />);
+    const badges = screen.getAllByTestId("coverage-badge");
+    const free = badges.find((b) => b.getAttribute("data-state") === "verified_free");
+    expect(free).toBeDefined();
+    expect(free).toHaveAttribute("data-free-count", "1");
+    expect(free).toHaveAttribute("data-current-free-count", "1");
+    expect(free?.getAttribute("title")).toContain("1 truly free");
+    expect(free?.getAttribute("title")).not.toContain("still evidenced");
+  });
+});
+
+describe("CategoryMatrix — the uncategorised rollup carries its own currency", () => {
+  const rollupMatrix = (
+    current_free_offer_count: number,
+    evidence_currency: typeof CURRENT_EVIDENCE,
+  ) => ({
+    provider_slugs: ["northwind-cloud"],
+    categories: [],
+    uncategorized: [
+      {
+        provider_slug: "northwind-cloud",
+        provider_name: "Northwind Cloud",
+        published_offer_count: 4,
+        free_offer_count: 2,
+        current_free_offer_count,
+        evidence_currency,
+      },
+    ],
+  });
+
+  it("qualifies the rollup count and shows the shipped currency note when stale", () => {
+    render(<CategoryMatrix data={rollupMatrix(0, STALE_EVIDENCE)} />);
+    const row = screen.getByTestId("uncategorized-row");
+    expect(row).toHaveTextContent("4 published");
+    expect(row).toHaveTextContent("2 truly free, none still evidenced");
+    // The SAME note every other repeated free claim uses — not a second visual
+    // language invented for this surface.
+    expect(within(row).getByTestId("evidence-currency-note")).toHaveAttribute(
+      "data-currency-state",
+      "stale",
+    );
+  });
+
+  it("PAIRED CONTROL: a current rollup asserts its count with no note at all", () => {
+    render(<CategoryMatrix data={rollupMatrix(2, CURRENT_EVIDENCE)} />);
+    const row = screen.getByTestId("uncategorized-row");
+    expect(row).toHaveTextContent("2 truly free");
+    expect(row).not.toHaveTextContent("still evidenced");
+    expect(within(row).queryByTestId("evidence-currency-note")).toBeNull();
+  });
+
+  it("treats an UNCHECKED rollup as unsupported, not as fresh", () => {
+    // "We could not look" is not permission. It must not read as current.
+    render(<CategoryMatrix data={rollupMatrix(0, UNCHECKED_EVIDENCE)} />);
+    const row = screen.getByTestId("uncategorized-row");
+    expect(row).toHaveTextContent("none still evidenced");
+    expect(within(row).getByTestId("evidence-currency-note")).toHaveAttribute(
+      "data-currency-state",
+      "unchecked",
+    );
   });
 });

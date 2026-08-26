@@ -38,6 +38,7 @@ from .currency import (
     EvidenceCurrency,
     confidence_label_for,
     freshness_or_none,
+    is_publishable_free_claim,
 )
 from .normalize import normalize_amount
 from .schemas import (
@@ -614,6 +615,7 @@ def serialize_category_matrix(
     providers: Sequence[Provider],
     cat_map: Mapping[int, Category],
     context: queries.CoverageSignalContext | None = None,
+    currency: CurrencyContext = NO_CURRENCY,
 ) -> CategoryMatrixResponse:
     """Cross the canonical 14-category taxonomy with each provider's coverage.
 
@@ -630,6 +632,26 @@ def serialize_category_matrix(
     why. A published service whose category is absent or non-canonical is still
     not guessed into a category -- it is rolled up honestly into a per-provider
     ``uncategorized`` tally.
+
+    The counts get a clock too (F008 slice S7)
+    ------------------------------------------
+    A count is a claim. Before this slice the offer *counts* on this surface were
+    frozen against the calendar while the *states* beside them were not:
+    measured across a one-second staleness boundary, ``state`` and
+    ``derived_state`` moved and ``free_offer_count`` did not, so a cell could
+    report ``state="stale"`` and "1 truly free" at the same moment.
+
+    ``free_offer_count`` keeps its exact meaning and value, and
+    ``current_free_offer_count`` is reported *beside* it, because both directions
+    of error matter: overstating a free count asserts something unsupported, and
+    silently shrinking it hides offers that really are free. An offer's claim is
+    assessed on its **latest** version, matching every other catalogue surface
+    (:func:`serialize_provider_summary`, :func:`serialize_category_states`).
+
+    Note this is intentionally finer-grained than ``has_stale_evidence``, which
+    is a *bucket-wide* flag driving ``derived_state`` -- one stale version there
+    marks the whole cell. That coarser rule is unchanged by this slice; its
+    behaviour is deliberately not touched, because it feeds a classification.
     """
 
     ordered_providers = sorted(providers, key=lambda p: p.slug)
@@ -640,6 +662,9 @@ def serialize_category_matrix(
     # (provider_slug, canonical_slug|None) -> tallies + derivation flags
     tally: dict[tuple[str, str | None], list[int]] = {}
     flags: dict[tuple[str, str | None], list[bool]] = {}
+    # (provider_slug, canonical_slug|None) -> the latest-version id of every
+    # published offer in the bucket, for the least-current rollup.
+    bucket_versions: dict[tuple[str, str | None], list[int | None]] = {}
     for provider in ordered_providers:
         for service in provider.services:
             category = cat_map.get(service.category_id) if service.category_id else None
@@ -649,10 +674,18 @@ def serialize_category_matrix(
                 if not queries.is_published(offer):
                     continue
                 key = (provider.slug, slug)
-                bucket = tally.setdefault(key, [0, 0, 0])
+                latest = queries.latest_version(offer)
+                latest_id = latest.id if latest is not None else None
+                bucket_versions.setdefault(key, []).append(latest_id)
+                bucket = tally.setdefault(key, [0, 0, 0, 0])
                 bucket[0] += 1
                 if offer.zero_cost_class == _FREE_CLASS:
                     bucket[1] += 1
+                    # Fails closed on BOTH shapes of non-currency: expired, and
+                    # "we could not look at all". A missing clock therefore
+                    # yields 0, never the whole tally.
+                    if is_publishable_free_claim(currency.for_version(latest_id)):
+                        bucket[3] += 1
                 elif offer.zero_cost_class in (None, coverage.UNCLASSIFIED_ZERO_COST_CLASS):
                     bucket[2] += 1
                 flag = flags.setdefault(key, [False, False])
@@ -664,7 +697,7 @@ def serialize_category_matrix(
         coverages: list[ProviderCoverage] = []
         for provider in ordered_providers:
             key = (provider.slug, taxon.slug)
-            published, free, unclassified = tally.get(key, [0, 0, 0])
+            published, free, unclassified, current_free = tally.get(key, [0, 0, 0, 0])
             conflict_flag, stale_flag = flags.get(key, [False, False])
             signals = coverage.CoverageSignals(
                 published_offer_count=published,
@@ -688,6 +721,10 @@ def serialize_category_matrix(
                     evidence_url=declaration.evidence_url if declaration is not None else None,
                     published_offer_count=published,
                     free_offer_count=free,
+                    current_free_offer_count=current_free,
+                    evidence_currency=_currency_out(
+                        currency.for_versions(bucket_versions.get(key, []))
+                    ),
                 )
             )
         rows.append(
@@ -698,7 +735,8 @@ def serialize_category_matrix(
 
     uncategorized: list[UncategorizedCoverage] = []
     for provider in ordered_providers:
-        published, free, _unclassified = tally.get((provider.slug, None), [0, 0, 0])
+        key = (provider.slug, None)
+        published, free, _unclassified, current_free = tally.get(key, [0, 0, 0, 0])
         if published == 0:
             continue
         uncategorized.append(
@@ -707,6 +745,10 @@ def serialize_category_matrix(
                 provider_name=provider.name,
                 published_offer_count=published,
                 free_offer_count=free,
+                current_free_offer_count=current_free,
+                evidence_currency=_currency_out(
+                    currency.for_versions(bucket_versions.get(key, []))
+                ),
             )
         )
 

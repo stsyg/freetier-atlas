@@ -1,4 +1,6 @@
-import type { CategoryMatrixResponse, ProviderCoverage } from "../api";
+import type { CategoryMatrixResponse, ProviderCoverage, UncategorizedCoverage } from "../api";
+import { EvidenceCurrencyNote } from "./EvidenceCurrencyNote";
+import { describeFreeCount } from "./format";
 import { COVERAGE_STATE_ORDER, coverageMeaning } from "./vocab";
 
 /**
@@ -95,15 +97,32 @@ export function CategoryMatrix({ data }: { data: CategoryMatrixResponse }) {
           </p>
           <ul className="uncategorized-list">
             {data.uncategorized.map((u) => (
-              <li key={u.provider_slug}>
-                <span className="uncategorized__provider">{u.provider_name}</span>:{" "}
-                {u.published_offer_count} published ({u.free_offer_count} truly free)
-              </li>
+              <UncategorizedRow key={u.provider_slug} rollup={u} />
             ))}
           </ul>
         </div>
       ) : null}
     </section>
+  );
+}
+
+/**
+ * One provider's uncategorised rollup.
+ *
+ * This rollup deliberately carries an EVIDENCE signal and not a coverage
+ * `state`. "Uncategorised" is not one of the fourteen canonical categories, so
+ * giving it a coverage state would assert a claim about a bucket we cannot name
+ * — the same guess F008 removed when it stopped inferring `not_offered`. The
+ * note below is the one that already ships for every other repeated free claim;
+ * no second visual language for staleness is introduced here.
+ */
+function UncategorizedRow({ rollup }: { rollup: UncategorizedCoverage }) {
+  return (
+    <li data-testid="uncategorized-row" data-provider={rollup.provider_slug}>
+      <span className="uncategorized__provider">{rollup.provider_name}</span>:{" "}
+      {rollup.published_offer_count} published ({describeFreeCount(rollup)})
+      <EvidenceCurrencyNote currency={rollup.evidence_currency} compact />
+    </li>
   );
 }
 
@@ -144,9 +163,7 @@ function CoverageBadge({ coverage }: { coverage: ProviderCoverage | undefined })
   const details: string[] = [meaning.description];
   if (coverage) {
     if (coverage.published_offer_count > 0) {
-      details.push(
-        `${coverage.published_offer_count} published, ${coverage.free_offer_count} truly free`,
-      );
+      details.push(`${coverage.published_offer_count} published, ${describeFreeCount(coverage)}`);
     }
     if (coverage.rationale) {
       details.push(coverage.rationale);
@@ -167,6 +184,8 @@ function CoverageBadge({ coverage }: { coverage: ProviderCoverage | undefined })
       data-declared-state={coverage?.declared_state ?? ""}
       data-derived-state={coverage?.derived_state ?? ""}
       data-mismatch={coverage?.mismatch ? "true" : "false"}
+      data-free-count={coverage?.free_offer_count ?? ""}
+      data-current-free-count={coverage?.current_free_offer_count ?? ""}
     >
       <span className="badge__icon" aria-hidden="true">
         {meaning.icon}

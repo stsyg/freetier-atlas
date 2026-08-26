@@ -172,6 +172,33 @@ export function currencyMeaning(
   };
 }
 
+/**
+ * Describe a free-offer count without ever asserting more than the evidence supports.
+ *
+ * A count is a claim: "12 truly free" says something about 12 offers in the
+ * present tense, exactly as a badge does. Before F008 slice S7 the category
+ * matrix rendered the raw total unconditionally — measured across a one-second
+ * staleness boundary, the coverage `state` moved and the count did not, so a
+ * cell could read "Stale" and "1 truly free" at the same moment.
+ *
+ * The total is never reduced to the still-evidenced subset. Silently shrinking
+ * "12 truly free" to "9 truly free" hides three genuinely free offers, and a
+ * wrongly-withheld free offer is a defect of equal severity to a wrongly
+ * asserted one — worse in one respect, because an omission is invisible to a
+ * reader in a way a label is not. Both numbers are shown instead, so neither
+ * direction of error can occur.
+ */
+export function describeFreeCount(coverage: {
+  free_offer_count: number;
+  current_free_offer_count: number;
+}): string {
+  const { free_offer_count: total, current_free_offer_count: current } = coverage;
+  if (total === 0) return "0 truly free";
+  if (current >= total) return `${total} truly free`;
+  if (current === 0) return `${total} truly free, none still evidenced`;
+  return `${total} truly free, ${current} still evidenced`;
+}
+
 /** Format a whole number of days, or "Unknown" when absent. */
 export function formatDays(value: number | null | undefined): string {
   if (value === null || value === undefined || Number.isNaN(value)) return "Unknown";

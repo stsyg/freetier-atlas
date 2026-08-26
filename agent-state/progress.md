@@ -3849,3 +3849,70 @@ Eight, listed in full in `current_contract.json` `errors_made`. The two worth re
 
 - **Evaluator disposition:** pending — builder self-review only.
 - **Boundary:** Draft PR only. Do not merge, do not flip any ledger flag.
+
+---
+
+## 2026-08-26 — F008 slice S7: the TENTH surface — the free-offer COUNT on `/catalogue/categories` (builder)
+
+**Base:** `5d0f46ff0c7965734b784347f209b06928571eae` (re-derived with `git ls-remote`; equal to the SHA the brief stated, and `main` had not moved at push time).
+**Branch:** `stsyg-tenth-surface-free-offer-count` — draft PR only, no merge, `feature_list.json` untouched, F008 stays `passes:false`.
+
+### The directed probe, reported first: `coverage.py:192` is a DECISION — but an ALREADY-FENCED one
+
+`if signals.free_offer_count > 0: return "verified_free"` sets `derived_state`, which reaches `ProviderCoverage.derived_state`, `is_material_mismatch()` → `mismatch`, and `effective_state()` → `state`, the public coverage badge. So a count does drive a classification.
+
+**But line 190 tests staleness two lines earlier** (`published_offer_count > 0 and has_stale_evidence → "stale"`), so line 192 is **unreachable for any bucket carrying stale evidence**. PR #79 already fenced the decision path. The defect was confined to the **reported count**. `coverage.py` therefore has a **zero-line diff**, asserted as `test_...` outcomes and by `git diff --stat`. **This is less severe than the brief scoped it, and that is stated rather than an inherited alarm being repeated.**
+
+### Measured, not assumed
+
+- **Both error directions already lived in one row.** `service.py:660` sets the bucket stale flag with `any(...)` over the whole bucket, while the tally counts every published offer regardless of currency. A bucket of 12 free offers with 1 stale was simultaneously **over-withholding** (all 12 lose the badge) and **under-qualifying** (still reports 12). Five real cells were observed reporting `state=stale` and `free_offer_count=1` at the same moment.
+- **`/catalogue/categories` was the ONLY catalogue route with no `CurrencyContext`** (the other six build one). It had `stale_offer_version_ids`, a **lossy projection** whose own docstring says evidence with no `fetched_at` "is still not stale". Building the new count from it would have counted an *unverifiable* claim as supported — the same defect one layer up. This is why the fix is a schema change, not a UI string edit.
+- **Every provisional line number in the brief was EXACT** on `5d0f46f` (`coverage.py` 160/192/227/277, `service.py` 671/690/709, `router.py` 314, `CategoryMatrix.tsx` 100/148, `api.ts` 323/337). Re-derived from tool output, not retyped.
+
+### The design decision
+
+Both numbers are surfaced: `free_offer_count` keeps its exact meaning and value, and `current_free_offer_count` is reported beside it, with `evidence_currency` (the `EvidenceCurrencyOut` shipped by S6) on **both** `ProviderCoverage` and `UncategorizedCoverage`.
+
+**The rollup deliberately did NOT get a coverage `state`.** "Uncategorised" is not one of the fourteen canonical categories, so giving it a `COVERAGE_STATES` value would mint a coverage claim about a bucket the taxonomy cannot name — the same class of guess F008 S2 removed when it deleted `published == 0 → not_offered`. What it lacked was an **evidence** signal, not a coverage state.
+
+**Rejected: reducing `free_offer_count` to the still-evidenced subset.** It makes 9-of-12 indistinguishable from 9-of-9, so a wrongly-withheld free offer becomes invisible; it contradicts both shipped precedents (#79, #83 display rather than omit); and the same field would mean different things either side of expiry, so a consumer storing it would silently disagree with itself. Also rejected: dropping the count; a `state` on the rollup; a UI-only fix (the evaluator's finding was on the API bytes); and computing currency from `stale_offer_version_ids`.
+
+### Verification
+
+| Check | Result |
+|---|---|
+| Baseline (own DB :55437 `atlas_suite`, `pytest -q`, no explicit paths) | 2941 passed, 3 skipped, exit 0 |
+| Final, same command | **2953 passed**, 3 skipped, exit 0 — **+12 = 9 unit + 3 integration**, none lost |
+| Web (`vitest`) | **136 passed** (from 127) — **+9**; `tsc -b` 0; eslint 0 (0 warnings); prettier clean |
+| Lint | `ruff check` 0; `ruff format --check` clean |
+| Guard mutations | **8 of 8** — M1–M7 each killed a NAMED test; **M8 no-op control stayed GREEN**; all restored byte-exact by RAW BYTE comparison |
+| Live browser (Edge → live SPA :5199 → live API :8123 → own DB `atlas_probe`) | **14 of 14** assertions, at 1400px and 390px |
+| Lockfiles | `apps/web` `98f786c2bb0d…`, root `737f99159e58…` — byte-identical to base after `npm ci`; `npm install` never run in the repo |
+
+**Instrument note worth carrying forward.** The obvious instrument here — a whole-response byte differential — is the WRONG one and I used it first. The body already differed before this slice, because `state` and `derived_state` move; that reads as "currency-aware" while the count underneath is frozen. Only a **field-level** differential answers the question. `test_the_category_matrix_response_is_not_frozen_against_the_clock` asserts the field, not the payload, and records why.
+
+### Errors made
+
+1. **I built the wrong instrument first** and predicted the whole response would be byte-identical. It was not. My prediction was wrong and the correction is recorded in the frozen predictions file rather than quietly fixed. The count *was* frozen; the payload was not.
+2. **I called an unstable observation a control.** I described one cell staying `verified_free` at both clocks as "a free permit-arm control in the same corpus". On re-run the same cell flipped — it was an ingest-timing artefact. A control that changes between runs is not a control; the permit arm is now asserted only where currency is constructed deterministically.
+3. **An edit swallowed the next declaration** in `api.ts` (`export interface CategoryMatrixRow`), caught immediately by `tsc -b`.
+4. **I wrote `current_contract.json` with CRLF**, caught by git's normalisation warning and corrected to LF.
+5. **eslint was right and I was wrong about placement**: exporting `describeFreeCount` from a component file broke `react-refresh/only-export-components`. It belonged in `format.ts` with the other formatters, which is where it now lives.
+
+### NOT VERIFIED — stated as prominently as the verdict
+
+1. **No CI run has executed any of this.** Every figure above is local.
+2. **The uncategorised rollup does not occur at all on the real 7-provider fixture corpus** — it was `[]` at both clocks. For the live check I constructed it by clearing a service's `category_id`. It reaches the rollup through the same production rule the matrix already uses, but it is **constructed data, not observed data**. The rollup half of this slice has never been exercised against a naturally-occurring row.
+3. **The pre-existing all-versions vs latest-version inconsistency at `service.py:660` is untouched.** The bucket stale flag scans ALL versions while the new count (and every other catalogue surface) uses `latest_version`. A superseded snapshot can therefore still mark a whole cell stale. Measured, attributed, deliberately not fixed — it feeds a classification and needs its own evidence.
+4. **I did not measure whether any `/openapi.json` consumer outside this repository depends on the current field set** of these two models. The change is additive, but that is an argument, not a measurement.
+5. **The marginal query cost was reasoned, not measured.** `fetch_evidence_currency` was measured in S6 to be one query, and `fetch_stale_offer_version_ids` already builds the same index — so `/categories` now builds that index twice per request. I did not profile it, and did not deduplicate it.
+6. **Mutation controls ran against targeted test nodes, not the whole suite.** I have not measured whether these mutations also break unrelated tests.
+7. **`evidence_currency` on a cell with no published offers is `UNCHECKED`**, which is correct but untested against a real empty-category row on a live corpus.
+
+### Boundary
+
+- **Scratch artefacts to close: NONE.** Every instrument (`probe_boundary.py`, `probe_fields.py`, `mutation_harness.py`, `seed_live.py`, `live_check.js`, the session-scoped Playwright install) was kept **outside the repository** in the session artifacts directory and never committed. No scratch branches and no scratch PRs were created.
+- **Databases:** own PostgreSQL container `s7-postgres` on **:55437**, with the suite DB (`atlas_suite`) and the seeded evidence corpus (`atlas_probe`) **separate**. The previous slice's `slice2-postgres` on :55434 was found still running and deliberately not reused. The shared stack on :5432 was never touched.
+- **Schema/generated shapes:** no migration (nothing is stored — decision Q11), but the response schema and therefore `/openapi.json` and `apps/web/src/api.ts` change. **Generated shapes are a mandatory Level-2 category.**
+- **Evaluator disposition:** pending — builder self-review only. Required level **2**.
+- **Recommended next action:** independent Level-2 review. Then, as separate slices: (a) reconcile the `service.py:660` all-versions flag with the latest-version rule the rest of the catalogue uses, and (b) obtain or construct a naturally-occurring uncategorised row so item 2 above can be retired.
