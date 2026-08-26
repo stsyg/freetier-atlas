@@ -167,6 +167,46 @@
   color: #cbd5e1;
 }
 
+/*
+ * Evidence-currency note.
+ *
+ * Shown only when a repeated claim is no longer supported by current evidence,
+ * so it must read as a qualifier on the claim above it rather than as decoration.
+ * It reuses the existing badge tones (warn / unknown) so staleness looks the
+ * same everywhere in the product, including the category matrix that shipped
+ * first. Fluid by construction: it wraps rather than forcing horizontal scroll
+ * at narrow widths.
+ */
+.currency-note {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.4rem;
+  margin: 0.4rem 0 0;
+  padding: 0.45rem 0.6rem;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  font-size: 0.85rem;
+  line-height: 1.45;
+}
+
+.currency-note--warn {
+  background: rgba(251, 191, 36, 0.08);
+  border-color: rgba(251, 191, 36, 0.35);
+}
+
+.currency-note--unknown {
+  background: rgba(148, 163, 184, 0.1);
+  border-color: rgba(148, 163, 184, 0.35);
+}
+
+.currency-note__text {
+  flex: 1 1 16rem;
+  min-width: 0;
+  color: #cbd5e1;
+  overflow-wrap: anywhere;
+}
+
 /* --- Category / service states --------------------------------------------- */
 
 .category-group {

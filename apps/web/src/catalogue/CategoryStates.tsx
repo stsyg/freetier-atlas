@@ -1,4 +1,5 @@
 import type { CategoryStatesResponse } from "../api";
+import { EvidenceCurrencyNote } from "./EvidenceCurrencyNote";
 import { humanizeToken } from "./format";
 import { Z0Badge } from "./Z0Badge";
 import { confidenceMeaning } from "./format";
@@ -49,10 +50,14 @@ export function CategoryStates({ data }: { data: CategoryStatesResponse }) {
                         <a className="offer-state__link" href={`#offer-${offer.offer_id}`}>
                           {humanizeToken(offer.offer_type)}
                         </a>
-                        <Z0Badge zeroCostClass={offer.zero_cost_class} />
+                        <Z0Badge
+                          zeroCostClass={offer.zero_cost_class}
+                          currency={offer.evidence_currency}
+                        />
                         <span className="offer-state__confidence">
                           {confidenceMeaning(offer.confidence_label).label} confidence
                         </span>
+                        <EvidenceCurrencyNote currency={offer.evidence_currency} compact />
                       </li>
                     ))}
                   </ul>

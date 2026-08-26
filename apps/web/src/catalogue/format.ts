@@ -115,6 +115,71 @@ export function formatSignal(value: number | null | undefined): string {
   return `${Math.round(value * 100)}%`;
 }
 
+export interface CurrencyMeaning {
+  /** Short label shown in the badge. */
+  label: string;
+  /** One-line explanation of what it means for the claim above it. */
+  description: string;
+  tone: Tone;
+  icon: string;
+  /** Whether this state undermines a "free" claim rendered alongside it. */
+  underminesClaim: boolean;
+}
+
+/**
+ * Map an API `evidence_currency` block onto plain language.
+ *
+ * Reuses the vocabulary the category matrix already ships for the same concept
+ * (`COVERAGE_MEANINGS.stale`: "Stale", ⏳, "past its refresh window and needs
+ * re-checking") rather than inventing a second visual language for staleness.
+ *
+ * The three states are kept distinct on purpose:
+ *
+ * - **current** — checked, and inside its window.
+ * - **stale** — we looked, and it expired.
+ * - **unchecked** — we could not look at all. Deliberately NOT reported as
+ *   stale: absence of evidence is not evidence of expiry. It still undermines a
+ *   free claim, because "we cannot check" is not permission.
+ */
+export function currencyMeaning(
+  currency: { current: boolean; checked: boolean; stale: boolean } | null | undefined,
+): CurrencyMeaning {
+  if (!currency || (!currency.checked && !currency.stale)) {
+    return {
+      label: "Not checked",
+      description:
+        "No official evidence with a checkable fetch time backs this, so whether it is still current cannot be established.",
+      tone: "unknown",
+      icon: "?",
+      underminesClaim: true,
+    };
+  }
+  if (currency.stale) {
+    return {
+      label: "Stale",
+      description: "The supporting evidence is past its refresh window and needs re-checking.",
+      tone: "warn",
+      icon: "⏳",
+      underminesClaim: true,
+    };
+  }
+  return {
+    label: "Current",
+    description: "The supporting official evidence is still inside its refresh window.",
+    tone: "free",
+    icon: "✓",
+    underminesClaim: false,
+  };
+}
+
+/** Format a whole number of days, or "Unknown" when absent. */
+export function formatDays(value: number | null | undefined): string {
+  if (value === null || value === undefined || Number.isNaN(value)) return "Unknown";
+  const days = Math.floor(value);
+  if (days < 1) return "less than a day";
+  return `${days} day${days === 1 ? "" : "s"}`;
+}
+
 /** Format an arbitrary value as text, or "Unknown" when absent. */
 export function orUnknown(value: string | number | null | undefined): string {
   if (value === null || value === undefined || value === "") return "Unknown";

@@ -5,6 +5,7 @@ import {
   COMMERCIAL_USE_OPTIONS,
   OFFER_TYPE_OPTIONS,
   STATUS_OPTIONS,
+  EVIDENCE_CURRENCY_OPTIONS,
   ZERO_COST_CLASS_OPTIONS,
   type Option,
 } from "./vocab";
@@ -47,6 +48,9 @@ export function SearchControls({
     value.commercial_use === true ? "true" : value.commercial_use === false ? "false" : "",
   );
   const [status, setStatus] = useState(value.status ?? "");
+  const [evidenceCurrent, setEvidenceCurrent] = useState(
+    value.evidence_current === true ? "true" : value.evidence_current === false ? "false" : "",
+  );
 
   const providerOptions: Option[] = providers.map((p) => ({ value: p.slug, label: p.name }));
   const categoryOptions: Option[] = categories.map((c) => ({ value: c.slug, label: c.name }));
@@ -61,6 +65,7 @@ export function SearchControls({
       offer_type: toNull(offerType),
       commercial_use: commercialUse === "" ? null : commercialUse === "true",
       status: toNull(status),
+      evidence_current: evidenceCurrent === "" ? null : evidenceCurrent === "true",
       page: 1,
     });
   };
@@ -73,6 +78,7 @@ export function SearchControls({
     setOfferType("");
     setCommercialUse("");
     setStatus("");
+    setEvidenceCurrent("");
     onReset();
   };
 
@@ -116,6 +122,19 @@ export function SearchControls({
           onChange={setZeroCostClass}
           options={ZERO_COST_CLASS_OPTIONS}
           anyLabel="Any class"
+        />
+        {/* A SEPARATE axis from the class above. The class describes the offer's
+            terms; this describes the state of the evidence behind them. They are
+            deliberately not merged: a "show me free things" filter that silently
+            dropped offers with expired evidence would hide real free offers, and
+            an omission is invisible to the reader in a way a label is not. */}
+        <Select
+          id="filter-evidence-current"
+          label="Evidence"
+          value={evidenceCurrent}
+          onChange={setEvidenceCurrent}
+          options={EVIDENCE_CURRENCY_OPTIONS}
+          anyLabel="Any evidence state"
         />
         <Select
           id="filter-offer-type"

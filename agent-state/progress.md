@@ -3800,3 +3800,52 @@ Every mutation edits the repository/engine and requires a **named** test to go r
 - **CI runs WITH `DATABASE_URL` set**, so `tests/integration/**` executed there. That covers the arm I explicitly could not run locally and **retires item 2** of "NOT VERIFIED" as well as item 1. No integration test regressed.
 - CI's skip list is `test_stack_health.py` ×2 (`ATLAS_STACK_BASE_URL` not set — pre-existing) plus the one pre-existing `cloudflare-pages-pricing` capture gap. **The widened guard added no new skips**, which was the risk worth checking: pinning two more sources under set equality could have quietly converted them into skips, and it did not.
 - **Items 3–7 of "NOT VERIFIED" stand unchanged.** In particular item 3 (the declared-gates test does not detect a change to the two frozensets themselves) and item 4 (the sweep covers `classify()` only — the publication path's own `offer_type` read at `publish/publisher.py:192` was never swept) are unaffected by CI passing, and remain the most likely homes for the next instance of this defect class.
+
+---
+
+## 2026-08-25 — F008 slice S6: evidence currency on the catalogue read surfaces (builder)
+
+**Base:** `f033017d9a76db53491cb35c2ad15512fd7e6a20` (re-derived with `git ls-remote`, equal to the SHA the brief stated).
+**Branch:** `stsyg-slice2-catalogue-currency` — draft PR only, no merge, `feature_list.json` untouched, F008 stays `passes:false`.
+
+### What was wrong
+
+PR #79 closed staleness on `/catalogue/categories`; PR #83 (S5) closed it on the three adviser endpoints. The catalogue read surfaces were untouched and served **frozen values** — `offer.zero_cost_class` (a stored column), `confidence_label` from `material_facts.confidence` (frozen at publish), and `freshness` from `material_facts.confidence_signals` or a provider column (also frozen). No clock reached any of them. They did not omit a currency signal; they **affirmatively asserted maximum freshness** on evidence that had decayed.
+
+### Measured, not assumed
+
+- **Nine catalogue surfaces, not five.** Enumerated at RUNTIME from `/openapi.json` by resolving every 200-response schema through `$ref`. Eleven routes carry a class / confidence / freshness figure: two adviser (already closed) and nine catalogue. The brief named five; `/compare`, `/offers/{id}/evidence`, `/offers/{id}/history` and `/providers` were found only this way. Instrument floor: an impossible sentinel scored 0 hits and 16 routes matched nothing.
+- **Two agreeing sources were both wrong** about the router's size (brief: "11 endpoints", `router.py` docstring: "Seven"). Runtime: ten.
+- **`zero_cost_class` has no index** (CHECK constraint only) and **`fetch_evidence_currency` is exactly one query, not N+1** — both costs the brief priced into the filter decision are refuted.
+- **`provider.freshness_score` is dead code** — declared, read, never written, 0 occurrences in tests, and NULL for all 7 providers on a real corpus. This refuted my own proposal to split the provider surfaces into a separate slice.
+- **Every real source declares `schedule='official_pages'`**, which is in neither parser vocabulary, so the whole real catalogue falls back to the 7-day default window.
+- **`snapshot.fetched_at` is NOT NULL** (ORM, `information_schema`, and a constraint violation with a passing negative control all agree), so `assess_currency`'s `fetched_at is None` branch is **test-covered but not real-input-reachable** via the snapshot path.
+
+### The search-filter decision
+
+`zero_cost_class` keeps its SQL filter and its exact meaning; evidence currency becomes a **separate opt-in `evidence_current` dimension**, implemented id-first in two phases so `total_results` is counted AFTER filtering. Post-filtering the page was disqualified by arithmetic (the count is taken pre-filter, so a page can render zero rows while claiming N). Filtering the class silently was rejected because **both shipped precedents display rather than omit**, and a wrongly-omitted free offer is a defect of equal severity — an omission is invisible to the reader in a way a label is not.
+
+### Verification
+
+| Check | Result |
+|---|---|
+| Baseline (own DB on :55434, incl. `tests/security`) | 2839 passed, 3 skipped, exit 0 |
+| Final full suite | **2862 passed**, 3 skipped, exit 0 (+23, none lost) |
+| Web | vitest 123 passed (from 110); `tsc -b` 0; eslint 0; prettier clean |
+| Lint | `ruff check` 0; `ruff format --check` clean |
+| Guard mutation controls | **7 of 7** killed a NAMED test and restored byte-exactly (hash AND raw bytes) |
+| Real browser (Edge → live SPA → live API → own DB) | **16 of 16** assertions passed |
+
+**Expiry mechanism G (new): the one-second boundary differential.** `stale = age > window` is a strict inequality, so the same unmodified rows are read at two clocks one second apart. Nothing in the data moves. A surface serving a frozen value *cannot* flip on a one-second change — that is the instrument's impossible-value floor. Planned mechanism H (`fetched_at = NULL` with the evidence row present) was **refuted by the schema** and is recorded as such.
+
+### Errors made
+
+Eight, listed in full in `current_contract.json` `errors_made`. The two worth repeating here: I diagnosed a hung probe as "CPU-bound on ingest" from two consistent symptoms and asserted it twice, when the real cause was an infinite loop in my own path-discovery code; and I committed the browser-evidence corpus (including a snapshot backdated 1824 days) into the same database the suite uses, producing 48 failures that were pure contamination. "Use your own database" was not sufficient — the seed needed its own too.
+
+### Left for the next builder
+
+- **Slice 3:** the declaration-source gap — 2 of 7 `verified_free` declarations carry `evidence_url` only, so they have no source, no schedule, no snapshot and no fetch time. That needs a signal to *exist*, not a clock to be threaded.
+- **Pre-existing, attributed, not fixed:** `.quota-table` overflows a 390px viewport (page `scrollWidth` 544); the new currency note itself does not. `.modal__warning` trips the design hook's `side-tab` rule. Neither is this slice's.
+
+- **Evaluator disposition:** pending — builder self-review only.
+- **Boundary:** Draft PR only. Do not merge, do not flip any ledger flag.

@@ -6,6 +6,7 @@ import {
   humanizeToken,
   orUnknown,
 } from "./format";
+import { EvidenceCurrencyNote } from "./EvidenceCurrencyNote";
 import { Z0Badge } from "./Z0Badge";
 
 /**
@@ -61,7 +62,11 @@ export function CompareView({ data }: { data: CompareResponse }) {
               <th scope="row">Zero-cost class</th>
               {offers.map((offer) => (
                 <td key={offer.offer_id}>
-                  <Z0Badge zeroCostClass={offer.zero_cost_class} />
+                  <Z0Badge
+                    zeroCostClass={offer.zero_cost_class}
+                    currency={offer.evidence_currency}
+                  />
+                  <EvidenceCurrencyNote currency={offer.evidence_currency} compact />
                 </td>
               ))}
             </tr>

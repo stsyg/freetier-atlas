@@ -211,6 +211,23 @@ def is_publishable_free_claim(currency: EvidenceCurrency) -> bool:
     return currency.current
 
 
+def freshness_or_none(currency: EvidenceCurrency) -> float | None:
+    """The read-time freshness figure a surface may publish, or ``None``.
+
+    A thin, deliberately-named wrapper over :meth:`EvidenceCurrency.freshness`.
+    It exists so that the rule the catalogue must never break -- *an unchecked
+    claim reports no number at all, not a bad one* -- is a named thing a reviewer
+    can grep for, rather than an easily-lost ``| None`` on a call site.
+
+    The distinction is load-bearing all the way to the rendered page: the web
+    formatter turns ``None`` into ``"Unknown"`` but turns ``0.0`` into ``"0%"``,
+    so returning zero here would reproduce the original defect one layer up --
+    a number where there is no measurement.
+    """
+
+    return currency.freshness()
+
+
 def confidence_label_for(label: str, currency: EvidenceCurrency) -> str:
     """Cap a persisted confidence label by what the evidence still supports.
 
@@ -244,15 +261,63 @@ def currency_for(
     return index.get((anchor_kind, anchor_id), UNCHECKED)
 
 
+@dataclass(frozen=True, slots=True)
+class CurrencyContext:
+    """The clock a read surface was given, plus the verdicts it resolved.
+
+    Threading two loose values (``now`` and an index mapping) through a dozen
+    serializers is how one of them quietly keeps the old always-fresh behaviour.
+    Bundling them means a serializer either has the context or does not, and the
+    "does not" case is :data:`NO_CURRENCY` -- which resolves every anchor to
+    :data:`UNCHECKED` rather than to "current".
+
+    Consistent with the adviser's ``build_candidate`` (F008 S5): supplying no
+    index does **not** mean current. It means we cannot assert currency, which
+    for a free claim is refused just as firmly as expiry.
+    """
+
+    #: ``(anchor_kind, anchor_id) -> verdict``. ``None`` means no clock reached
+    #: this call site, which fails closed rather than reading as fresh.
+    index: Mapping[tuple[str, int], EvidenceCurrency] | None = None
+    #: The moment the verdicts were computed against. Carried for explanation
+    #: and for tests that need to state the clock they read at; never used to
+    #: recompute, so it cannot drift from ``index``.
+    now: datetime | None = None
+
+    def for_version(self, version_id: int | None) -> EvidenceCurrency:
+        """The verdict for one offer version, failing closed when absent."""
+
+        return currency_for(ANCHOR_OFFER_VERSION, version_id, self.index)
+
+    def for_versions(self, version_ids: Sequence[int | None]) -> EvidenceCurrency:
+        """The *least* current verdict across several versions.
+
+        Used for provider-level rollups: a provider is only as current as its
+        stalest published claim. An empty set is :data:`UNCHECKED`, not current --
+        absence of claims is not evidence of freshness.
+        """
+
+        return worst([self.for_version(vid) for vid in version_ids])
+
+
+#: The context a caller that has not been threaded a clock gets. Every anchor
+#: resolves to :data:`UNCHECKED`, so an un-updated call site degrades to "cannot
+#: assert currency" instead of silently re-acquiring the always-fresh behaviour.
+NO_CURRENCY = CurrencyContext()
+
+
 __all__: Sequence[str] = (
     "ANCHOR_COVERAGE_DECLARATION",
     "ANCHOR_OFFER_VERSION",
+    "NO_CURRENCY",
     "UNCHECKED",
     "UNSUPPORTED_CONFIDENCE_LABEL",
+    "CurrencyContext",
     "EvidenceCurrency",
     "assess_currency",
     "confidence_label_for",
     "currency_for",
+    "freshness_or_none",
     "is_publishable_free_claim",
     "worst",
 )

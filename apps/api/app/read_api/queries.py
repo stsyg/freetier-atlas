@@ -14,7 +14,7 @@ when it is linked to a published ``offer_version``.
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
@@ -37,6 +37,7 @@ from app.models.domain import (
 
 from .currency import (
     ANCHOR_OFFER_VERSION,
+    CurrencyContext,
     EvidenceCurrency,
     assess_currency,
     worst,
@@ -271,9 +272,12 @@ def fetch_conflicted_services(session: Session) -> frozenset[tuple[str, str]]:
 
 
 def fetch_evidence_currency(
-    session: Session, *, now: datetime
+    session: Session,
+    *,
+    now: datetime,
+    offer_version_ids: Sequence[int] | None = None,
 ) -> dict[tuple[str, int], EvidenceCurrency]:
-    """Currency of the evidence behind every published offer version.
+    """Currency of the evidence behind published offer versions.
 
     Keyed by ``(anchor_kind, anchor_id)`` -- today only
     :data:`~app.read_api.currency.ANCHOR_OFFER_VERSION`. The declaration anchor
@@ -286,7 +290,22 @@ def fetch_evidence_currency(
     A version resting on several sources takes its *least* current verdict
     (:func:`~app.read_api.currency.worst`): a claim is only as current as its
     stalest support.
+
+    ``offer_version_ids`` narrows the scan to the anchors a request actually
+    needs. It is an optimisation ONLY: omitting it scans every linked evidence
+    row, which is the original behaviour and what the coverage matrix wants
+    (it needs the whole catalogue). It never changes a verdict -- a version's
+    currency depends on its own evidence alone -- so a narrowed call and a full
+    call agree on every key they share. An empty sequence means "no anchors
+    needed" and short-circuits to ``{}``; ``None`` means "no restriction".
     """
+
+    if offer_version_ids is not None:
+        wanted = {int(vid) for vid in offer_version_ids if vid is not None}
+        if not wanted:
+            return {}
+    else:
+        wanted = None
 
     stmt = (
         select(
@@ -298,6 +317,8 @@ def fetch_evidence_currency(
         .join(Source, Source.id == Evidence.source_id)
         .where(Evidence.offer_version_id.is_not(None))
     )
+    if wanted is not None:
+        stmt = stmt.where(Evidence.offer_version_id.in_(sorted(wanted)))
     per_version: dict[int, list[EvidenceCurrency]] = {}
     for offer_version_id, fetched_at, schedule in session.execute(stmt).all():
         if offer_version_id is None:
@@ -309,6 +330,38 @@ def fetch_evidence_currency(
         (ANCHOR_OFFER_VERSION, version_id): worst(verdicts)
         for version_id, verdicts in per_version.items()
     }
+
+
+def currency_context(
+    session: Session,
+    *,
+    now: datetime,
+    offer_version_ids: Sequence[int] | None = None,
+) -> CurrencyContext:
+    """Build the read-time :class:`CurrencyContext` for one request.
+
+    The single place a catalogue read surface acquires a clock. Handlers call
+    this once and hand the result to the serializers, so there is exactly one
+    ``now`` per response and two fields of the same payload can never be
+    assessed against different moments.
+    """
+
+    return CurrencyContext(
+        index=fetch_evidence_currency(session, now=now, offer_version_ids=offer_version_ids),
+        now=now,
+    )
+
+
+def version_ids_for_offers(offers: Iterable[Offer]) -> list[int]:
+    """Every offer-version id reachable from ``offers`` (for scoping a context).
+
+    Deliberately ALL versions rather than only the latest: ``/offers/{id}/history``
+    renders every version, and a scope that covered only the current one would
+    silently hand the history rows :data:`UNCHECKED`. Over-scoping costs a few
+    ids; under-scoping costs a wrong answer that looks deliberate.
+    """
+
+    return sorted({v.id for offer in offers for v in offer.versions if v.id is not None})
 
 
 def fetch_stale_offer_version_ids(session: Session, *, now: datetime) -> frozenset[int]:
@@ -365,8 +418,10 @@ __all__: Sequence[str] = (
     "get_source",
     "CoverageSignalContext",
     "coverage_signal_context",
+    "currency_context",
     "fetch_coverage_declarations",
     "fetch_conflicted_services",
     "fetch_evidence_currency",
     "fetch_stale_offer_version_ids",
+    "version_ids_for_offers",
 )

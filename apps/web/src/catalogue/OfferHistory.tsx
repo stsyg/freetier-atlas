@@ -24,7 +24,10 @@ export function OfferHistory({ data }: { data: OfferHistoryResponse }) {
             {versions.map((version) => (
               <li className="version" key={version.id}>
                 <span className="version__num">v{version.version_number}</span>
-                <Z0Badge zeroCostClass={version.zero_cost_class} />
+                <Z0Badge
+                  zeroCostClass={version.zero_cost_class}
+                  currency={version.evidence_currency}
+                />
                 <span className="version__date">{formatDate(version.created_at)}</span>
                 <span className="version__hash mono">{version.content_hash}</span>
               </li>

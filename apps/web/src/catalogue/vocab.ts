@@ -22,6 +22,19 @@ export const ZERO_COST_CLASS_OPTIONS: Option[] = [
   { value: "UNKNOWN", label: "Unknown" },
 ];
 
+/**
+ * Evidence-currency filter values.
+ *
+ * A dimension SEPARATE from the zero-cost class: the class classifies the
+ * offer's terms, this filters on whether the official evidence behind them is
+ * still inside its refresh window. The blank option ("any") is the default, so
+ * an offer with expired evidence is shown and labelled rather than hidden.
+ */
+export const EVIDENCE_CURRENCY_OPTIONS: Option[] = [
+  { value: "true", label: "Current evidence only" },
+  { value: "false", label: "Expired or unverifiable" },
+];
+
 /** Offer types (docs/DATA_MODEL.md → Offer types). */
 export const OFFER_TYPE_OPTIONS: Option[] = [
   { value: "always_free", label: "Always free" },

@@ -8,11 +8,14 @@ import {
   allCoverageStatesMatrix,
   categoryMatrix,
   compareOffers,
+  CURRENT_EVIDENCE,
   providerList,
   searchIndex,
+  STALE_EVIDENCE,
+  UNCHECKED_EVIDENCE,
 } from "./testFixtures";
 import { COVERAGE_MEANINGS, COVERAGE_STATE_ORDER } from "./vocab";
-import type { CompareResponse, SearchResponse } from "../api";
+import type { CompareResponse, EvidenceCurrency, SearchResponse, SearchResultItem } from "../api";
 
 afterEach(() => {
   cleanup();
@@ -29,6 +32,7 @@ function searchResponse(overrides: Partial<SearchResponse> = {}): SearchResponse
       offer_type: null,
       commercial_use: null,
       status: null,
+      evidence_current: null,
     },
     page: 1,
     page_size: 3,
@@ -356,5 +360,105 @@ describe("CompareView", () => {
     const table = screen.getByTestId("compare-table");
     // Northwind's commercial_use is null and freshness present; paid-deps null.
     expect(within(table).getAllByText("Unknown").length).toBeGreaterThan(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// What a user ACTUALLY SEES for a stale / unverifiable / fresh free claim.
+//
+// This is the rendered page, not the API contract. The three arms are asserted
+// against the real components, because the product rule -- no unsupported claim
+// that a service is free may ever ship -- is a statement about what reaches the
+// reader, and a correct API rendered by a component that ignores the new field
+// would still ship the claim.
+// ---------------------------------------------------------------------------
+
+describe("Rendered page — an expired free claim", () => {
+  function renderResults(currency: EvidenceCurrency) {
+    const result: SearchResultItem = {
+      ...searchIndex[0],
+      zero_cost_class: "Z0_TRUE_FREE",
+      evidence_currency: currency,
+    };
+    render(
+      <ResultsList
+        data={searchResponse({ results: [result], total_results: 1, total_pages: 1 })}
+        selectedIds={[]}
+        canSelectMore
+        onToggleCompare={() => {}}
+        onPageChange={() => {}}
+      />,
+    );
+    return screen.getByTestId("result-row");
+  }
+
+  it("shows a FRESH free offer as truly free, with no warning at all", () => {
+    const row = renderResults(CURRENT_EVIDENCE);
+    const badge = within(row).getByTestId("z0-badge");
+    expect(badge).toHaveTextContent(/truly free/i);
+    expect(badge).not.toHaveTextContent(/not verified/i);
+    expect(within(row).queryByTestId("evidence-currency-note")).toBeNull();
+  });
+
+  it("shows an EXPIRED free offer still listed, but visibly not verified", () => {
+    const row = renderResults(STALE_EVIDENCE);
+    // Still present: withdrawing a genuinely free offer is its own defect.
+    const badge = within(row).getByTestId("z0-badge");
+    expect(badge).toHaveTextContent(/truly free/i);
+    // And visibly qualified, in TEXT rather than colour.
+    expect(badge).toHaveTextContent(/not verified/i);
+    const note = within(row).getByTestId("evidence-currency-note");
+    expect(note).toHaveAttribute("data-currency-state", "stale");
+    expect(note).toHaveTextContent(/no longer known to be current/i);
+  });
+
+  it("shows an UNVERIFIABLE free offer differently from an expired one", () => {
+    const row = renderResults(UNCHECKED_EVIDENCE);
+    expect(within(row).getByTestId("z0-badge")).toHaveTextContent(/not verified/i);
+    const note = within(row).getByTestId("evidence-currency-note");
+    expect(note).toHaveAttribute("data-currency-state", "unchecked");
+    expect(note).toHaveTextContent(/cannot be established/i);
+    // Absence of evidence is not evidence of expiry.
+    expect(note).not.toHaveTextContent(/past its/i);
+  });
+});
+
+describe("Rendered page — the currency filter is its own control", () => {
+  it("submits evidence_current separately from zero_cost_class", () => {
+    const onSubmit = vi.fn();
+    render(
+      <SearchControls
+        value={{}}
+        providers={providerList}
+        categories={categoryMatrix.categories}
+        onSubmit={onSubmit}
+        onReset={() => {}}
+      />,
+    );
+    fireEvent.change(screen.getByLabelText("Zero-cost class"), {
+      target: { value: "Z0_TRUE_FREE" },
+    });
+    fireEvent.change(screen.getByLabelText("Evidence"), { target: { value: "true" } });
+    fireEvent.submit(screen.getByLabelText("Search and filter offers"));
+
+    expect(onSubmit).toHaveBeenCalledTimes(1);
+    const submitted = onSubmit.mock.calls[0][0];
+    expect(submitted.zero_cost_class).toBe("Z0_TRUE_FREE");
+    expect(submitted.evidence_current).toBe(true);
+  });
+
+  it("defaults to ANY evidence state, so nothing is hidden unless asked", () => {
+    const onSubmit = vi.fn();
+    render(
+      <SearchControls
+        value={{}}
+        providers={providerList}
+        categories={[]}
+        onSubmit={onSubmit}
+        onReset={() => {}}
+      />,
+    );
+    fireEvent.submit(screen.getByLabelText("Search and filter offers"));
+    expect(onSubmit.mock.calls[0][0].evidence_current).toBeNull();
   });
 });

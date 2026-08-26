@@ -23,12 +23,15 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass
+from datetime import UTC, datetime
 
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
-from app.models.domain import Category, Offer, Provider, Service
+from app.models.domain import Category, Offer, OfferVersion, Provider, Service
 from app.models.vocab import OFFER_STATUSES, OFFER_TYPES, ZERO_COST_CLASSES
+
+from .currency import ANCHOR_OFFER_VERSION, currency_for
 
 #: Provider/category slugs are internal identifiers only (lowercase alphanumerics
 #: + hyphens). The pattern cannot express a scheme/host/path, so a slug can never
@@ -65,6 +68,12 @@ class SearchParams:
     offer_type: str | None = None
     commercial_use: bool | None = None
     status: str | None = None
+    #: Evidence currency, an axis DISTINCT from ``zero_cost_class``. ``None``
+    #: (the default) means "any", so an offer whose evidence has expired is
+    #: still RETURNED -- labelled by its own currency verdict -- rather than
+    #: silently omitted. A wrongly-omitted free offer is its own defect, and
+    #: omission is invisible to the user in a way that a label is not.
+    evidence_current: bool | None = None
     page: int = 1
 
 
@@ -101,6 +110,7 @@ def build_params(
     offer_type: str | None = None,
     commercial_use: bool | None = None,
     status: str | None = None,
+    evidence_current: bool | None = None,
     page: int = 1,
 ) -> SearchParams:
     """Validate + normalize raw query inputs into :class:`SearchParams`.
@@ -128,6 +138,7 @@ def build_params(
         offer_type=_validate_enum(offer_type, _OFFER_TYPES, "offer_type"),
         commercial_use=commercial_use,
         status=_validate_enum(status, _OFFER_STATUSES, "status"),
+        evidence_current=evidence_current,
         page=page,
     )
 
@@ -168,10 +179,120 @@ def _conditions(params: SearchParams) -> list:
     return conditions
 
 
-def search_published_offers(session: Session, params: SearchParams) -> SearchPage:
-    """Execute a deterministic, paged, published-only catalogue search."""
+def _ordering() -> tuple:
+    """The deterministic result order, named once so every phase shares it."""
+
+    return (Provider.slug, Service.canonical_name, Offer.id)
+
+
+def _latest_version_ids(session: Session, offer_ids: Sequence[int]) -> dict[int, int]:
+    """``{offer_id: latest offer_version id}`` for the given offers.
+
+    "Latest" is the highest ``version_number``, matching
+    :func:`app.read_api.queries.latest_version` exactly. One query regardless of
+    how many offers are involved.
+    """
+
+    if not offer_ids:
+        return {}
+    stmt = select(OfferVersion.offer_id, OfferVersion.id, OfferVersion.version_number).where(
+        OfferVersion.offer_id.in_(list(offer_ids))
+    )
+    best: dict[int, tuple[int, int]] = {}
+    for offer_id, version_id, number in session.execute(stmt).all():
+        current = best.get(int(offer_id))
+        if current is None or int(number) > current[1]:
+            best[int(offer_id)] = (int(version_id), int(number))
+    return {offer_id: version_id for offer_id, (version_id, _) in best.items()}
+
+
+def _currency_filtered_ids(
+    session: Session,
+    conditions: Sequence,
+    *,
+    want_current: bool,
+    now: datetime,
+) -> list[int]:
+    """Offer ids matching ``conditions`` AND the requested currency, in order.
+
+    Deliberately id-first. Filtering on a value that only exists after a
+    read-time computation cannot be pushed into the ``WHERE`` clause, so the
+    naive fixes are either to hydrate every match as an ORM graph (expensive) or
+    to filter the already-paged rows (which makes ``total_results`` a lie: the
+    count is computed before the filter, so a page can render fewer rows than it
+    claims -- or none at all while later pages still have results).
+
+    This does neither. It pulls the matching ids *only*, resolves currency for
+    them in one query, filters, and lets the caller slice the page from the
+    surviving ids. The cost is N integers rather than N object graphs, and the
+    count is taken AFTER the filter, so pagination stays honest.
+    """
+
+    id_stmt = (
+        select(Offer.id)
+        .join(Service, Offer.service_id == Service.id)
+        .join(Provider, Service.provider_id == Provider.id)
+        .where(*conditions)
+        .order_by(*_ordering())
+    )
+    ordered_ids = [int(row) for row in session.execute(id_stmt).scalars().all()]
+    latest = _latest_version_ids(session, ordered_ids)
+
+    # Imported lazily: queries imports search-free modules, but keeping the
+    # dependency one-directional here avoids an import cycle at module load.
+    from .queries import fetch_evidence_currency
+
+    index = fetch_evidence_currency(session, now=now, offer_version_ids=list(latest.values()))
+    kept: list[int] = []
+    for offer_id in ordered_ids:
+        version_id = latest.get(offer_id)
+        verdict = currency_for(ANCHOR_OFFER_VERSION, version_id, index)
+        # `current` is the single predicate: an unchecked claim is NOT current,
+        # so `evidence_current=false` correctly includes "we could not check"
+        # alongside "expired" -- both are ways of not being current.
+        if verdict.current is want_current:
+            kept.append(offer_id)
+    return kept
+
+
+def search_published_offers(
+    session: Session, params: SearchParams, *, now: datetime | None = None
+) -> SearchPage:
+    """Execute a deterministic, paged, published-only catalogue search.
+
+    When ``params.evidence_current`` is ``None`` (the default) this is exactly
+    the original two-statement query: a count and a page, both in SQL. The
+    currency machinery below is only paid for when a caller explicitly asks to
+    filter on it.
+    """
 
     conditions = _conditions(params)
+
+    if params.evidence_current is not None:
+        kept = _currency_filtered_ids(
+            session,
+            conditions,
+            want_current=params.evidence_current,
+            now=now or datetime.now(UTC),
+        )
+        total = len(kept)
+        offset = (params.page - 1) * PAGE_SIZE
+        page_ids = kept[offset : offset + PAGE_SIZE]
+        if not page_ids:
+            return SearchPage(offers=[], total=total, page=params.page, page_size=PAGE_SIZE)
+        hydrate = (
+            select(Offer)
+            .where(Offer.id.in_(page_ids))
+            .options(
+                selectinload(Offer.service).selectinload(Service.provider),
+                selectinload(Offer.versions),
+            )
+        )
+        by_id = {o.id: o for o in session.execute(hydrate).scalars().unique()}
+        # Re-apply the id order rather than trusting the IN clause, which has no
+        # defined ordering.
+        offers = [by_id[oid] for oid in page_ids if oid in by_id]
+        return SearchPage(offers=offers, total=total, page=params.page, page_size=PAGE_SIZE)
 
     count_stmt = (
         select(func.count(func.distinct(Offer.id)))
@@ -188,7 +309,7 @@ def search_published_offers(session: Session, params: SearchParams) -> SearchPag
         .join(Service, Offer.service_id == Service.id)
         .join(Provider, Service.provider_id == Provider.id)
         .where(*conditions)
-        .order_by(Provider.slug, Service.canonical_name, Offer.id)
+        .order_by(*_ordering())
         .offset(offset)
         .limit(PAGE_SIZE)
         .options(

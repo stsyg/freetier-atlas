@@ -1,4 +1,5 @@
 import type { ProviderDetail } from "../api";
+import { EvidenceCurrencyNote } from "./EvidenceCurrencyNote";
 import { formatSignal, humanizeToken } from "./format";
 
 /**
@@ -7,6 +8,12 @@ import { formatSignal, humanizeToken } from "./format";
  * Completeness and freshness are surfaced here (scope item 6) so the reader can
  * judge how complete and fresh the underlying data is. Absent values render as
  * an honest "Unknown".
+ *
+ * `freshness` is recomputed by the API from evidence currency at read time. It
+ * used to be the mean of a publish-time signal, which is why this header could
+ * report full freshness for a provider whose evidence had long since expired.
+ * The note below states it in words when the provider's stalest published claim
+ * is no longer current.
  */
 export function ProviderHeader({ provider }: { provider: ProviderDetail }) {
   return (
@@ -44,6 +51,8 @@ export function ProviderHeader({ provider }: { provider: ProviderDetail }) {
           <dd>{humanizeToken(provider.source_health)}</dd>
         </div>
       </dl>
+
+      <EvidenceCurrencyNote currency={provider.evidence_currency} />
 
       {provider.official_domains.length > 0 ? (
         <p className="domains">
