@@ -8,6 +8,7 @@ material condition may ever yield Z0.
 
 from __future__ import annotations
 
+import itertools
 from dataclasses import FrozenInstanceError
 from datetime import date, timedelta
 
@@ -29,14 +30,39 @@ from app.classify.engine import (
     BILLING_EXHAUSTION,
     CONDITIONAL_EXHAUSTION,
     SAFE_EXHAUSTION,
+    SELF_HOSTED_OFFER_TYPES,
+    TEMPORARY_CONDITIONAL_OFFER_TYPES,
     UNKNOWN_EXHAUSTION,
     _offer_types_recognised,
     _partition_covers_vocabulary,
 )
 from app.models.domain import Offer, OfferVersion, Quota
-from app.models.vocab import EXHAUSTION_BEHAVIOURS, ZERO_COST_CLASSES
+from app.models.vocab import EXHAUSTION_BEHAVIOURS, OFFER_TYPES, ZERO_COST_CLASSES
 
 _TODAY = date(2026, 1, 15)
+
+#: The offer types this module DECLARES to be Z0-capable, written by hand as a
+#: statement of intent. Reconciled against a measured sweep of the engine by
+#: :func:`test_the_declared_offer_type_lists_match_the_measured_partition` -- a
+#: typed list is a snapshot of the day it was typed and cannot notice drift on
+#: its own.
+DECLARED_Z0_CAPABLE: tuple[str, ...] = (
+    "always_free",
+    "recurring_quota",
+    "personal_use_free",
+    "other",
+)
+
+#: The offer types this module DECLARES to be inherently temporary/conditional.
+#: Reconciled the same way.
+DECLARED_TEMPORARY_CONDITIONAL: tuple[str, ...] = (
+    "trial",
+    "new_customer_credit",
+    "startup_program",
+    "student_program",
+    "open_source_program",
+    "hackathon_promotion",
+)
 
 
 class _CanonicalEqualityImpostor:
@@ -99,13 +125,236 @@ def test_referenced_offer_types_are_in_the_vocabulary() -> None:
 
 
 # --------------------------------------------------------------------------- #
+# Offer-type Z0 REACHABILITY -- measured across the whole input space
+# --------------------------------------------------------------------------- #
+#
+# WHY THIS EXISTS. An Azure Level-2 evaluation recorded that ``offer_type=other``
+# is Z0-CAPABLE in this engine -- absent from TEMPORARY_CONDITIONAL_OFFER_TYPES
+# and gated nowhere else -- so ``docs/DATA_MODEL.md`` rule 3 ("route for review
+# until the structure is evidenced") is an instruction to the AUTHOR and not a
+# behaviour of the classifier. What withholds Z0 from the two rule-3 Azure
+# offers is their unknown billing facts, never their offer type.
+#
+# That property was pinned for ``other`` alone, in the Azure adapter's test
+# module, by naming two frozensets. Its NAME claimed "is not a safety
+# mechanism" -- a statement about the whole engine -- while its REACH was two
+# named constants in one module and one hard-coded offer type. A third gate on
+# ``offer_type`` appearing anywhere would leave it green.
+#
+# So reachability is MEASURED here instead of asserted: every offer type in the
+# closed vocabulary is classified against the engine's entire material input
+# space, and the resulting Z0-reachable set is compared -- as a set -- against
+# the set the engine's own declared gates imply. Behaviour disagreeing with the
+# declared gates in EITHER direction is a failure, which is what makes "gated
+# nowhere else" an executable claim rather than a remembered one.
+
+
+def _z0_reachable(offer_type: str) -> bool:
+    """True if ANY material-fact combination lets ``offer_type`` reach Z0.
+
+    Exhaustive over every input the engine actually reads, rather than a single
+    hand-picked "best case" probe: a probe proves one route is closed, a sweep
+    proves every route is. ``eligibility`` and ``available_from`` are varied too
+    even though the engine reads neither today -- if a future gate starts
+    consulting them, this sweep already covers it.
+    """
+
+    tristate = (None, True, False)
+    behaviours: tuple[tuple[str, ...], ...] = ((),) + tuple(
+        (b,) for b in sorted(EXHAUSTION_BEHAVIOURS)
+    )
+    untils = (None, _TODAY - timedelta(days=1), _TODAY + timedelta(days=365))
+    froms = (None, _TODAY - timedelta(days=1), _TODAY + timedelta(days=365))
+    eligibilities = (None, "students")
+
+    for card, deps, behaviour, until, since, eligible in itertools.product(
+        tristate, tristate, behaviours, untils, froms, eligibilities
+    ):
+        result = classify(
+            OfferFacts(
+                offer_type=offer_type,
+                requires_card=card,
+                has_paid_dependencies=deps,
+                exhaustion_behaviours=behaviour,
+                eligibility=eligible,
+                available_from=since,
+                available_until=until,
+            ),
+            as_of=_TODAY,
+        )
+        if result.zero_cost_class == Z0_TRUE_FREE:
+            return True
+    return False
+
+
+#: MEASURED at collection time from the engine itself, never typed out.
+Z0_REACHABLE: frozenset[str] = frozenset(t for t in OFFER_TYPES if _z0_reachable(t))
+
+#: What the engine's own declared gates imply the answer should be.
+UNGATED_BY_DECLARATION: frozenset[str] = (
+    frozenset(OFFER_TYPES) - SELF_HOSTED_OFFER_TYPES - TEMPORARY_CONDITIONAL_OFFER_TYPES
+)
+
+
+def test_the_reachability_sweep_is_not_vacuous() -> None:
+    """A sweep that classified nothing would report every type unreachable.
+
+    Two-sided by construction: the measured set must be neither empty nor the
+    whole vocabulary, or the instrument is stuck rather than measuring.
+    """
+
+    assert len(OFFER_TYPES) >= 10, f"the offer-type vocabulary collapsed to {len(OFFER_TYPES)}"
+    assert Z0_REACHABLE, "no offer type reached Z0 at all; the sweep is not classifying"
+    assert Z0_REACHABLE != frozenset(OFFER_TYPES), (
+        "EVERY offer type reached Z0, including self-hosted and trial types. "
+        "The sweep is not discriminating -- it would pass no matter what the engine did."
+    )
+
+
+def test_z0_reachability_matches_the_engine_s_declared_gates() -> None:
+    """Measured reachability == what SELF_HOSTED + TEMPORARY_CONDITIONAL imply.
+
+    This is the "gated nowhere else" claim, executed. Set equality fails in both
+    directions and names the offending type either way:
+
+    * a type reachable but NOT ungated by declaration => a declared gate stopped
+      working, and something the product means to withhold can now be published
+      as free. This is the unsupported-free-claim direction and the reason the
+      test exists.
+    * a type ungated by declaration but NOT reachable => a gate on ``offer_type``
+      exists somewhere OTHER than the two declared frozensets. That may well be
+      an improvement, but it means the engine's documented model of itself is
+      wrong, and every docstring asserting "gated nowhere else" is now false.
+
+    ``unknown is better than guessed`` cuts both ways: a wrongly-WITHHELD free
+    offer is also a defect, so this is not a one-directional safety assertion.
+    """
+
+    assert Z0_REACHABLE == UNGATED_BY_DECLARATION, (
+        "Z0 reachability no longer matches the engine's declared offer-type gates.\n"
+        f"  measured reachable:      {sorted(Z0_REACHABLE)}\n"
+        f"  ungated by declaration:  {sorted(UNGATED_BY_DECLARATION)}\n"
+        f"  reachable but gated:     {sorted(Z0_REACHABLE - UNGATED_BY_DECLARATION)}\n"
+        f"  gated but unreachable:   {sorted(UNGATED_BY_DECLARATION - Z0_REACHABLE)}\n"
+        "Either a declared gate stopped working (a withheld offer can now be published "
+        "free), or offer_type is now gated somewhere outside SELF_HOSTED_OFFER_TYPES and "
+        "TEMPORARY_CONDITIONAL_OFFER_TYPES. Find which before changing this test."
+    )
+
+
+def test_offer_type_other_is_z0_reachable_and_that_is_recorded_here() -> None:
+    """DRIFT DETECTOR for ``other``. Read the message before "fixing" this.
+
+    ``other`` is the vocabulary's escape hatch and ``docs/DATA_MODEL.md`` rule 3
+    tells authors to reach for it when a structure is not yet evidenced. It
+    carries NO safety weight: it reaches Z0 exactly as readily as
+    ``always_free``. Nothing in the codebase said so until the Azure slice, and
+    what did say so covered one value in one adapter's tests.
+
+    If a later slice gates ``other``, this test goes RED **because the engine
+    became SAFER**. That is not a regression. Update it deliberately, together
+    with the docstrings in ``apps/api/app/ingest/adapters/profiles/azure.py``,
+    ``docs/PROVIDER_ADAPTERS.md`` and ``docs/DATA_MODEL.md`` that state the
+    opposite. Do not delete it and do not weaken it to green.
+    """
+
+    assert "other" in OFFER_TYPES, "the vocabulary no longer contains 'other'"
+    assert "other" in Z0_REACHABLE, (
+        "'other' can no longer reach Z0. The engine has become SAFER than when this "
+        "test was written -- an IMPROVEMENT, not a regression. Record the new behaviour "
+        "deliberately here and update the docs that claim rule-3 offers are withheld "
+        "only by their unknown facts. Do not delete this test."
+    )
+    assert "other" not in TEMPORARY_CONDITIONAL_OFFER_TYPES
+    assert "other" not in SELF_HOSTED_OFFER_TYPES
+
+
+def test_every_temporary_conditional_type_is_refused_z0_on_every_route() -> None:
+    """REFUSE arm, exhaustively: no input at all lets these reach Z0."""
+
+    assert TEMPORARY_CONDITIONAL_OFFER_TYPES, "the temporary/conditional partition is empty"
+    reachable = sorted(t for t in TEMPORARY_CONDITIONAL_OFFER_TYPES if t in Z0_REACHABLE)
+    assert not reachable, (
+        f"temporary/conditional offer types reached Z0: {reachable}. A trial or "
+        "credit-backed offer can now be published as true $0."
+    )
+    assert SELF_HOSTED_OFFER_TYPES.isdisjoint(Z0_REACHABLE), (
+        f"a self-hosted offer type reached Z0: {sorted(SELF_HOSTED_OFFER_TYPES & Z0_REACHABLE)}"
+    )
+
+
+def test_a_legitimately_free_offer_type_is_still_permitted() -> None:
+    """PERMIT arm. A guard that cannot be shown to permit may have broken the product.
+
+    ``always_free`` with every material condition explicitly clear is the
+    canonical true-$0 offer. If the refusal assertions above ever pass because
+    the engine stopped emitting Z0 at all, this fails and says so.
+    """
+
+    assert "always_free" in Z0_REACHABLE, "the canonical free offer type cannot reach Z0"
+    result = classify(
+        OfferFacts(
+            offer_type="always_free",
+            requires_card=False,
+            has_paid_dependencies=False,
+            exhaustion_behaviours=("hard_stop",),
+        ),
+        as_of=_TODAY,
+    )
+    assert result.zero_cost_class == Z0_TRUE_FREE
+    assert result.blocking_conditions == ()
+
+
+def test_the_declared_offer_type_lists_match_the_measured_partition() -> None:
+    """The hand-written parametrize lists, reconciled against measurement.
+
+    ``DECLARED_Z0_CAPABLE`` and ``DECLARED_TEMPORARY_CONDITIONAL`` drive the
+    truth-table tests below. Both were typed by hand, and a typed list is a
+    snapshot of the day it was written: adding a twelfth offer type to the
+    vocabulary would leave it classified by NO test in this module while every
+    existing test stayed green.
+
+    Reconciling them here closes that. The lists remain as an explicit statement
+    of intent; disagreement with the engine is the failure.
+    """
+
+    assert frozenset(DECLARED_Z0_CAPABLE) == Z0_REACHABLE, (
+        "the hand-written Z0-capable list has drifted from measured reachability.\n"
+        f"  declared: {sorted(DECLARED_Z0_CAPABLE)}\n"
+        f"  measured: {sorted(Z0_REACHABLE)}"
+    )
+    assert frozenset(DECLARED_TEMPORARY_CONDITIONAL) == TEMPORARY_CONDITIONAL_OFFER_TYPES, (
+        "the hand-written temporary/conditional list has drifted from the engine.\n"
+        f"  declared: {sorted(DECLARED_TEMPORARY_CONDITIONAL)}\n"
+        f"  engine:   {sorted(TEMPORARY_CONDITIONAL_OFFER_TYPES)}"
+    )
+    assert len(DECLARED_Z0_CAPABLE) == len(set(DECLARED_Z0_CAPABLE))
+    assert len(DECLARED_TEMPORARY_CONDITIONAL) == len(set(DECLARED_TEMPORARY_CONDITIONAL))
+
+    # Every offer type in the vocabulary lands in exactly one partition, so a
+    # NEW one cannot be added without a test in this module classifying it.
+    partitions = [
+        frozenset(DECLARED_Z0_CAPABLE),
+        frozenset(DECLARED_TEMPORARY_CONDITIONAL),
+        SELF_HOSTED_OFFER_TYPES,
+    ]
+    union: set[str] = set()
+    for part in partitions:
+        assert union.isdisjoint(part), f"offer-type partitions overlap on {sorted(union & part)}"
+        union |= part
+    assert union == set(OFFER_TYPES), (
+        "the offer-type partitions do not tile the vocabulary.\n"
+        f"  unclassified by any partition: {sorted(set(OFFER_TYPES) - union)}\n"
+        f"  in a partition but not in the vocabulary: {sorted(union - set(OFFER_TYPES))}"
+    )
+
+
+# --------------------------------------------------------------------------- #
 # Z0 -- true $0
 # --------------------------------------------------------------------------- #
 
 
-@pytest.mark.parametrize(
-    "offer_type", ["always_free", "recurring_quota", "personal_use_free", "other"]
-)
+@pytest.mark.parametrize("offer_type", DECLARED_Z0_CAPABLE)
 @pytest.mark.parametrize("safe_behaviour", sorted(SAFE_EXHAUSTION))
 def test_z0_for_cleared_gates_and_safe_exhaustion(offer_type: str, safe_behaviour: str) -> None:
     result = classify(
@@ -216,17 +465,7 @@ def test_z1_even_when_other_conditions_unknown() -> None:
 # --------------------------------------------------------------------------- #
 
 
-@pytest.mark.parametrize(
-    "offer_type",
-    [
-        "trial",
-        "new_customer_credit",
-        "startup_program",
-        "student_program",
-        "open_source_program",
-        "hackathon_promotion",
-    ],
-)
+@pytest.mark.parametrize("offer_type", DECLARED_TEMPORARY_CONDITIONAL)
 def test_z2_for_temporary_conditional_offer_types(offer_type: str) -> None:
     result = classify(
         OfferFacts(

@@ -1,91 +1,102 @@
 {
-  "feature_id": "F003",
-  "slice": "evidence-floor-and-z0-gate-coverage",
-  "title": "Execute the never-executed safety guards: the evidence floor in every adapter, the ambiguous-cell path onto the material Z0 gate, and the None/blank fact skips on the publication path",
-  "branch": "stsyg-evidence-floor-z0-gate-coverage",
-  "base_commit": "ba598a984da9f0afebcc3daa6722195586e7eb4d",
-  "started_at": "2026-08-25",
-  "objective": "Nine safety-relevant lines that are reachable on ordinary provider input have never been executed by ANY test, with or without a database. The worst is the EVIDENCE FLOOR -- the guard that refuses a candidate carrying no evidence location -- which exists in FIVE separate implementations. On a product whose first rule is that no unsupported claim that a service is free may ship, the guard enforcing 'there must be evidence' has never been shown to execute. Give every one of these paths a test, with a paired positive control so none can pass vacuously, and make it impossible for a NEW adapter to escape the evidence-floor sweep.",
-  "materiality": "Zero-cost safety and evidence integrity, the two criteria the product's first rule rests on. `requires_card` and `has_paid_dependencies` are the two fields that decide Z0_TRUE_FREE versus Z1_BILLING_EXPOSURE; a provider rewording one table cell reaches the ambiguous-value path. `_coerce` returns None for an empty cell, so the publication path's None/blank skips are ONE BLANK TABLE CELL from live, and the failure mode is a published quota row whose raw text reads 'None'.",
-  "autonomy_level": "builder; draft PR only",
+  "feature_id": "F008",
+  "slice": "guard-scope-and-z0-offer-type",
+  "title": "Widen the unbound-source guard from html-only to every declared source type, and make offer_type Z0-reachability a measured engine-wide property",
+  "branch": "stsyg-guard-scope-and-z0-offer-type",
+  "base_commit": "f3fafe0638d2702cab12330aef8a80b85977fdff",
+  "started_at": "2026-08-25T17:35:34-06:00",
+
+  "objective": "Close two instances of ONE defect class: an assertion whose NAME or apparent scope covers more than its REACH. On this product that is how an unsupported free claim gets through while looking guarded.",
+
+  "materiality": "MATERIAL. Item 1 governs whether a provider may declare an official evidence source it cannot prove; item 2 governs Z0 classification. Both are named Level-2 triggers in docs/AGENT_HARNESS.md (provider adapters and evidence extraction; Z0 classification).",
+
+  "autonomy_level": "builder; draft PR only; does not merge; marks no feature passing",
   "required_evaluation_level": 2,
-  "evaluation_level_rationale": "Touches provider adapters and evidence extraction, Z0 classification, and the automatic publication path. Level 2 is mandatory for all three under docs/AGENT_HARNESS.md.",
+  "evaluation_level_rationale": "Touches evidence-extraction guards and the Z0 classification engine's tests. docs/AGENT_HARNESS.md makes Level 2 mandatory for both.",
+
   "step_zero_remeasurement": {
-    "why": "The finding was traced twice by independent instruments, but BOTH runs had no DATABASE_URL. That is the OFFLINE suite only; the DB-gated layer -- the entire publish pipeline and read API -- was never traced. The accurate claim before this slice was 'never executed by the offline suite', NOT 'never executed by any test'.",
-    "method": "Two instruments sharing no implementation (`sys.settrace` global-call filter; `sys.monitoring` LINE with DISABLE), each run as a SEPARATE pytest process, over the WHOLE suite, against a live throwaway postgres:16-alpine (the image CI uses) on an isolated port. Seven target files traced in full so a floor could be applied.",
-    "instrument_controls": {
-      "floor": "Refuse to report any verdict unless >=200 distinct lines were traced overall AND >=200 in html.py. MEASURED: 1471 total, 676 in html.py. Floor cleared by 7x.",
-      "attachment": "Each report reads the tracer back at session finish (`sys.gettrace() is _global`; `sys.monitoring.get_tool`/`get_events`). Both reported ATTACHED.",
-      "positive_controls": "9 lines known to execute (the first statement of all five `validate()` methods, the to_bool normalisation, the revalidate loop header, the matrix row-loop body, the _span attribute lookup). ALL 9 reported HIT by BOTH instruments.",
-      "negative_control": "A deliberately DETACHED arm (same plugin, tracer never installed) reported 0 hits and attached=False for every target AND every positive control -- establishing what a silently-failed instrument looks like, and that it is distinguishable from the real runs.",
-      "self_test_both_arms": "A planted test calling `to_bool('maybe')` made `_common.py:44` report HIT in both instruments; a sibling test exercising only unambiguous tokens made the SAME line report NOT HIT while lines 37-43 still reported HIT. The instrument can therefore both pass and fail.",
-      "cross_instrument": "The two instruments' hit sets for the DB arm are BYTE-IDENTICAL (1471 lines each, all 10 target verdicts and all 9 control verdicts agreeing)."
-    },
-    "verdict": "THE FINDING STANDS, and is now measured over the population it was previously only assumed to cover.",
-    "measured_population": "2862 collected. With DATABASE_URL set + reachable: 2859 passed, 3 skipped, exit 0. With DATABASE_URL unset: 2601 passed, 261 skipped, exit 0. The DB-gated population is therefore 258 tests, derived two independent ways that agree (2859-2601 = 258; 261-3 = 258).",
-    "what_the_db_layer_actually_added": "Across all seven target files the 258 DB-gated tests add EXACTLY ONE line of coverage -- `apps/api/app/publish/revalidate.py:284` -- and NONE of the ten target paths. The DB-gated layer, including the whole publish pipeline, does not reach a single one of these guards.",
-    "my_predictions_that_lost": [
-      "I predicted the DB-gated population was 257 (carried from the previous slice's contract). MEASURED: 258. The brief's 'roughly 258' was right and I was wrong. The 258 is derived from my own two subtractions, not retyped.",
-      "I predicted `reference.py:112` was NOT HIT. MEASURED: HIT. See finding_the_brief_did_not_have."
-    ]
+    "method": "Re-derived from the repository, not copied from the brief. The instrument discovered the config population by glob, discovered source types from the configs, and DERIVED the capture-path convention by inverting the repository's own _ADAPTER_SOURCE_TYPE / _ADAPTER_EXTENSION maps in tests/support/fixtures.py rather than hand-typing it.",
+    "population_scope": "config/examples/providers/*.yaml -- 7 files (aws, azure, cloudflare, gcp, github, oracle, vercel). No other provider-config location exists in the repository; the tests/fixtures/ingest/example/ tree is synthetic fixture data with no provider YAML.",
+    "declared_sources_total": 36,
+    "by_type": { "html": 34, "mcp": 1, "rss": 1 },
+    "by_provider": { "aws": 6, "azure": 7, "cloudflare": 5, "gcp": 4, "github": 5, "oracle": 6, "vercel": 3 },
+    "unbound_sources_measured": [
+      "cloudflare/cloudflare-changelog (rss)",
+      "cloudflare/cloudflare-docs-mcp (mcp)",
+      "cloudflare/cloudflare-pages-pricing (html)"
+    ],
+    "guard_reach_before": "1 of 3 -- the html-only walk saw 34 of 36 sources and could see only cloudflare-pages-pricing.",
+    "agreement_with_brief": "The brief's provisional figures (36 = 34 html + 1 rss + 1 mcp; three unbound; all Cloudflare) were INDEPENDENTLY REPRODUCED. No figure in the new tests was re-typed from the brief.",
+    "database_scope": "DATABASE_URL was NOT SET for every run in this slice. All results are unit/security-suite results with the integration layer skipped."
   },
+
   "finding_the_brief_did_not_have": {
-    "fifth_implementation": "The brief names FOUR implementations of the evidence floor. There are FIVE: `apps/api/app/ingest/reference.py:112` carries the identical message and `JsonOfferAdapter` there is a real concrete `SourceAdapter` subclass. Discovery over the tree finds exactly 5 concrete adapters.",
-    "and_it_is_worse_not_better": "That fifth line IS executed -- by `tests/unit/test_ingest_contract.py::test_reference_adapter_validate_flags_missing_fields`, which builds a `CandidateFacts` with the default `evidence=()` and calls `validate()`. But that test asserts only the two MISSING-FIELD messages. So the evidence floor there is EXECUTED AND UNASSERTED: a line-coverage tool calls it covered, and deleting the guard would not fail a single test. Four guards are invisible to coverage; the fifth is invisible DESPITE coverage. This is why the fix asserts behaviour, not execution.",
-    "no_drift": "The brief warned every line-number hint had 'PROBABLY DRIFTED'. I re-located all ten independently: ZERO drift. All ten land exactly where hinted (T10 at 476 within the hinted 475-476)."
+    "item_1": "The test the brief names, test_no_capture_directory_is_silently_unbound, does not exist. On main it is test_no_html_source_is_silently_unbound, and its docstring already stated the narrow scope and already recorded all three unbound sources. The rename-to-be-honest fix the brief forbids had ALREADY been applied in a prior slice; the widening had not. The gap was documented and stationary, which is exactly the state in which a reader stops noticing it.",
+    "item_2": "The fix the brief asks for ALREADY EXISTS: tests/unit/test_adapter_azure.py::test_offer_type_other_is_not_a_safety_mechanism, landed with the Azure slice and recorded in agent-state/progress.md line 3064. The underlying engine claim was independently re-verified and HOLDS. Rather than duplicate a shipped test, this slice fixes the SAME reach-vs-name defect in that guard: its name asserts a whole-engine property ('is not a safety mechanism') while its reach is two named frozensets, one hard-coded offer type, and one adapter's test module."
   },
+
   "in_scope": [
-    "tests/unit/test_adapter_evidence_floor.py (NEW) - ONE parameterised test sweeping the evidence floor across EVERY concrete SourceAdapter discovered on disk, plus a discovery floor that fails when a newly added adapter has no entry",
-    "tests/unit/test_z0_gate_ambiguous_cell.py (NEW) - the ambiguous-cell chain: source cell -> to_bool -> None -> OfferFacts -> classify() must NOT be Z0",
-    "tests/unit/test_publish_revalidate.py (EDIT) - the None-fact and blank-fact skips in revalidate_quotas",
-    "tests/unit/test_adapter_html_matrix.py (EDIT) - the spacer/empty matrix row and the non-numeric colspan span-0 path",
-    "agent-state/current_contract.json",
-    "agent-state/progress.md (append-only)"
+    "tests/unit/test_assertion_capture_grounding.py -- widen the declared-source walk from type: html to EVERY source type; derive the capture convention from the repository's own adapter maps; pin all three pre-existing Cloudflare gaps under set equality; add a two-sided refuse/permit control; add a loud failure for a source type with no known capture convention.",
+    "tests/unit/test_z0_classifier.py -- add a measured, exhaustive Z0-reachability sweep over the whole offer-type vocabulary and the engine's whole material input space; compare measured reachability as a SET against what the engine's declared gates imply; add explicit refuse and permit arms; reconcile the module's two hand-written parametrize lists against the measurement.",
+    "apps/api/app/ingest/adapters/profiles/azure.py -- docstring only: state the SCOPE of the existing Azure-scoped pin and point at the engine-wide guard."
   ],
+
   "out_of_scope_zero_diff": [
-    "agent-state/feature_list.json - MUST stay byte-identical to main (blob 154de1fef2ba)",
-    "apps/api/app/read_api/* and apps/web/* - a parallel slice is in flight on stsyg-slice2-catalogue-currency",
-    ".github/workflows/ci.yml, scripts/check_urls.py, tests/unit/test_url_allowlist.py, .secrets.baseline, both lockfiles",
-    "ALL production code. This slice adds tests only; no application behaviour changes, so a test that fails is reporting a real defect rather than a moved goalpost.",
-    "npm install/i/update/audit fix - never run; this slice needs no node work at all"
+    "Obtaining captures for cloudflare-changelog or cloudflare-docs-mcp. Requires fetching live pages; CI performs zero socket operations by design. The gaps are DISCLOSED AND PINNED, exactly as the html one already was.",
+    "Deleting or altering any of the three unbound sources from the Cloudflare provider config.",
+    "apps/api/app/read_api/** and apps/web/** -- PR #95 is under independent evaluation on those paths. ZERO DIFF, verified by git diff --name-only.",
+    "agent-state/feature_list.json (blob verified unchanged: 154de1fef2ba20f587c9ec2d1302ebe2bfb5bfa1), .github/workflows/ci.yml, scripts/check_urls.py, tests/unit/test_url_allowlist.py, .secrets.baseline, both lockfiles.",
+    "Any change to app/classify/engine.py behaviour. The engine is measured, not modified.",
+    "Marking any feature passing, and merging."
   ],
-  "design_decisions": {
-    "one_parameterised_test_not_five": "The defect being repaired IS DRIFT BETWEEN COPIES. Five separate tests would recreate the exact structure that let the property rot unevenly. One test, parameterised over a DISCOVERED adapter list, asserts all five emit the IDENTICAL message -- so a reworded copy fails.",
-    "discovery_not_a_hand_typed_list": "The parameter list is produced by importing every module under `apps/api/app/ingest/**` and collecting concrete `SourceAdapter` subclasses whose `__module__` is that module (so re-exports are not double-counted). The list is never typed out, and never copied from the task brief.",
-    "the_floor_that_makes_escape_impossible": "A separate assertion requires the discovered set to equal the set of adapters this file knows how to build. Adding a sixth adapter therefore FAILS this test until its evidence floor is swept. Plus a vacuity floor (>=5 adapters, >=15 modules walked) so a broken walk cannot pass by finding nothing.",
-    "what_None_must_mean_on_the_Z0_gate": "UNKNOWN, never 'no card required'. AGENTS.md: 'A failed or unknown material Z0 condition prevents Z0 classification.' The engine already honours tri-state None; what was never tested is the BRIDGE -- that an ambiguous source cell actually arrives as None rather than being coerced to False somewhere between the table cell and OfferFacts. The test drives the whole chain and asserts the classification is not Z0.",
-    "positive_controls_everywhere": "A test asserting 'rejected' passes just as well when the code rejects everything. Every check here is paired with an accepting arm: the evidence floor sweep asserts the SAME candidate WITH evidence produces no floor message and that the ONLY difference between the two arms is the floor message; the Z0 chain asserts a clean 'No' cell still classifies Z0_TRUE_FREE and a clean 'Yes' cell classifies Z1; revalidate asserts a normal value still produces its quota row; the matrix tests assert the well-formed table still extracts."
-  },
+
+  "design_decisions": [
+    "WIDEN, never rename-to-narrow. Answering 'does a committed capture exist?' needs no parser, so there was never a technical reason for the html-only scope -- only the accident of which walk the guard was written beside.",
+    "Two named populations instead of a filter inside one loop. DECLARED_SOURCES (all 36) serves the unbound guard; HTML_SOURCES (34) serves the grounding comparison, which genuinely needs the HTML collector. Where a walk must stay narrow, the narrowing is a population a reader can see, not a 'continue' buried in a loop.",
+    "The capture-path convention is DERIVED by inverting tests/support/fixtures.py's own maps. A second hand-written copy would be a snapshot of the day it was typed and would drift silently from the loader it mirrors.",
+    "A source type with no known capture convention FAILS LOUDLY rather than being skipped. An unmappable source would otherwise be neither confirmed bound nor reported unbound -- the exact silent-skip failure this module exists to refuse.",
+    "Set equality is retained and must not be relaxed. Pinning three known gaps is defensible ONLY because any FOURTH fails immediately. No pattern, prefix or wildcard was introduced.",
+    "Item 2 measures reachability EXHAUSTIVELY (3 x 3 x 11 x 3 x 3 x 2 = 1782 fact combinations per offer type, across 11 types) rather than probing one hand-picked best case. A probe proves one route is closed; a sweep proves every route is. eligibility and available_from are varied although the engine reads neither today, so a future gate consulting them is already covered.",
+    "Measured reachability is compared against what SELF_HOSTED_OFFER_TYPES and TEMPORARY_CONDITIONAL_OFFER_TYPES imply. That is the 'gated nowhere else' claim made executable: it fails when a gate on offer_type appears ANYWHERE outside those two frozensets.",
+    "Both hand-written parametrize lists were hoisted to named constants and reconciled against measurement rather than deleted. The typed list stays as a statement of intent; disagreement with the engine is the failure. This also means a twelfth offer type cannot be added without a test in that module classifying it."
+  ],
+
   "acceptance_criteria": [
-    "Every one of the ten target lines is EXECUTED after the change, re-measured by BOTH instruments, with the floor and all positive controls still passing",
-    "The evidence floor is asserted BEHAVIOURALLY for all five adapters by ONE parameterised test whose parameter list is discovered, not typed",
-    "Deleting the evidence-floor guard from any ONE adapter fails that adapter's parameter case and only that one (mutation control)",
-    "Adding a sixth adapter without wiring it into the sweep fails the discovery floor",
-    "Every new test has a paired positive control that must come out the other way",
-    "An ambiguous requires_card / has_paid_dependencies cell can never produce Z0_TRUE_FREE, and a clean 'No' cell still can",
-    "revalidate_quotas emits NO quota row for a None or blank fact, and in particular never a row whose raw text is the string 'None'",
-    "The whole suite stays green with DATABASE_URL set and unset",
-    "The new tests are offline: they pass with DATABASE_URL unset",
-    "agent-state/feature_list.json byte-identical to main; progress.md append-only, proven by raw byte prefix plus a flipped-byte negative control",
-    "Every prediction recorded BEFORE the run that tests it"
+    "The unbound-source walk covers 36 of 36 declared sources, not 34.",
+    "All three pre-existing Cloudflare gaps are pinned under set equality; a FOURTH unbound source of ANY type fails immediately, including a non-html one.",
+    "No guard was weakened, and no pattern/wildcard/subset check was introduced, to make anything pass.",
+    "offer_type=other's Z0 reachability is an executed, measured property whose failure message says the engine became SAFER if it ever changes.",
+    "Every guard is two-sided: shown to REFUSE what it must AND to PERMIT a legitimately-free offer.",
+    "Every mutation of the SUBJECT is killed by a NAMED test, and both no-op negative controls stay green.",
+    "Zero diff on PR #95's paths and on every forbidden path."
   ],
+
   "verification_commands": [
-    "python -m ruff check .",
-    "python -m ruff format --check .",
-    "python scripts/check_urls.py",
-    "python -m pytest -q  (with DATABASE_URL set against postgres:16-alpine, and with it unset)",
-    "python -m pytest tests/unit/test_adapter_evidence_floor.py tests/unit/test_z0_gate_ambiguous_cell.py tests/unit/test_publish_revalidate.py tests/unit/test_adapter_html_matrix.py -q",
-    "session-scratch: fta_trace_settrace.py / fta_trace_monitoring.py / analyze.py (re-run post-fix)"
+    "python -m pytest tests/unit tests/security tests/test_repo_baseline.py -q   # DATABASE_URL unset; integration layer skipped",
+    "python -m ruff check tests/unit/test_assertion_capture_grounding.py tests/unit/test_z0_classifier.py apps/api/app/ingest/adapters/profiles/azure.py",
+    "python -m ruff format --check <same paths>",
+    "git diff --name-only -- agent-state/feature_list.json .github/workflows/ci.yml scripts/check_urls.py tests/unit/test_url_allowlist.py .secrets.baseline apps/web apps/api/app/read_api   # must be empty",
+    "git hash-object agent-state/feature_list.json   # must equal 154de1fef2ba20f587c9ec2d1302ebe2bfb5bfa1"
   ],
-  "negative_and_regression_tests": [
-    "Instrument: detached arm must report 0 for everything; planted-hit and planted-miss arms must disagree on the same line",
-    "Mutation: remove the evidence-floor guard from each adapter in turn -- exactly one parameter case must fail each time",
-    "Mutation: reword one adapter's message -- the shared-message assertion must fail",
-    "Vacuity: pytest exit code 5 (nothing collected) must be treated as failure, not success",
-    "progress.md append-only proven by raw byte-prefix comparison plus a flipped-byte control that must FAIL the same check"
-  ],
-  "data_security_privacy_portability_z0": "No schema, migration, provider, or portability change. No production code changes at all, so no behaviour is altered and no gate is weakened. Z0-POSITIVE: the slice makes the unknown-material-condition rule deterministically enforced end-to-end for the first time, instead of resting on an engine unit test plus an untested bridge.",
-  "boundary": "DRAFT PR only. Do not merge. Do not mark any feature passing. feature_list.json untouched.",
-  "status": "implementation complete; all ten target lines re-measured as EXECUTED by both instruments; mutation controls pass; CI green (2910 passed / 3 skipped, matching the local DB arm exactly); Level-2 evaluator disposition pending",
-  "ci_corroboration": "Draft PR: all six checks pass at commit 1c338d0. CI Pytest step reports 2910 passed, 3 skipped -- identical to the local DATABASE_URL-set arm, so the measurement reproduces off this machine."
+
+  "negative_and_regression_tests": {
+    "method": "Mutation, not coverage. Each mutation edits the SUBJECT (provider config, fixture bytes, or the engine) and requires a NAMED test to go red. Predictions were recorded in writing BEFORE execution, including the arms expected to pass. Originals restored via raw bytes; a post-restore run verifies green.",
+    "mutations_killed": 10,
+    "mutations_survived": 0,
+    "noop_controls_green": 2,
+    "notable": "M8 (removing 'trial' from TEMPORARY_CONDITIONAL_OFFER_TYPES) was predicted UNCERTAIN before running and did NOT fail the refuse-arm test, because that test iterates the same frozenset it checks -- both sides move together. It was caught instead by the reconciliation test and by test_z2_for_temporary_conditional_offer_types. The uncertain prediction was recorded in advance precisely so this could not be retrofitted."
+  },
+
+  "data_security_privacy_portability_z0": {
+    "data": "No provider data, offer, quota or evidence row is added, changed or removed. No capture bytes are added or deleted.",
+    "z0": "No classification behaviour changes. apps/api/app/classify/engine.py has ZERO diff; the engine is measured, never modified. No offer becomes newly publishable.",
+    "security_privacy": "No secrets, no network access, no new dependency. Tests read committed bytes only.",
+    "portability": "No new mandatory service. All new tests are pure and run with no database."
+  },
+
+  "boundary": "PR #95 is under independent evaluation and touches apps/api/app/read_api/** and apps/web/**. This slice has ZERO diff on both.",
+
+  "status": "implemented; draft PR opened; NOT merged; no feature marked passing; awaiting independent Level-2 evaluation",
+
+  "ci_corroboration": "pending -- CI on the draft PR is the independent corroboration of the local runs recorded above."
 }
