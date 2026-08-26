@@ -1,14 +1,18 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { cleanup, render, screen, within } from "@testing-library/react";
+import type { OfferDetail } from "../api";
 import { Z0Badge } from "./Z0Badge";
 import { ConfidenceLabel } from "./ConfidenceLabel";
 import { EvidenceCurrencyNote } from "./EvidenceCurrencyNote";
+import { OfferCard } from "./OfferCard";
 import { QuotaTable } from "./QuotaTable";
 import { EvidenceList } from "./EvidenceList";
 import { formatSignal } from "./format";
 import {
   CURRENT_EVIDENCE,
+  offerDetail1,
   offerEvidence1,
+  offerHistory1,
   STALE_EVIDENCE,
   UNCHECKED_EVIDENCE,
 } from "./testFixtures";
@@ -173,5 +177,74 @@ describe("EvidenceList", () => {
       />,
     );
     expect(screen.getByText(/no official evidence/i)).toBeInTheDocument();
+  });
+});
+
+describe("OfferCard — the $0 promise is gated by ONE shared rule", () => {
+  // The promise text lives in format.ts as the Z0_TRUE_FREE description. It is
+  // an unconditional, present-tense claim, so it is the exact string that must
+  // not appear beside a claim we cannot vouch for.
+  const PROMISE = "Usage stays at $0 with no billing risk.";
+
+  function renderCard(detail: OfferDetail) {
+    render(<OfferCard bundle={{ detail, evidence: offerEvidence1, history: offerHistory1 }} />);
+    return screen.getByTestId("offer-card");
+  }
+
+  // The card renders the head badge PLUS one badge per version row inside
+  // OfferHistory, so a lookup has to say which it means. Index 0 is the head
+  // badge -- the one sitting beside the description gate under test.
+  const headBadge = (card: HTMLElement) => within(card).getAllByTestId("z0-badge")[0];
+
+  it("PAIRED CONTROL: renders the promise when the evidence IS current", () => {
+    // Without this arm, the two assertions below could equally be satisfied by
+    // a gate that suppresses the promise unconditionally -- i.e. by a component
+    // that had simply stopped working.
+    const card = renderCard({ ...offerDetail1, evidence_currency: CURRENT_EVIDENCE });
+    expect(card).toHaveTextContent(PROMISE);
+    expect(headBadge(card)).not.toHaveTextContent(/not verified/i);
+  });
+
+  it("withholds the promise when the evidence has EXPIRED", () => {
+    const card = renderCard({ ...offerDetail1, evidence_currency: STALE_EVIDENCE });
+    expect(card).not.toHaveTextContent(PROMISE);
+    expect(headBadge(card)).toHaveTextContent(/not verified/i);
+  });
+
+  it("withholds the promise when the currency block is ABSENT (L2 blocker)", () => {
+    // Reachability, so this is not mistaken for defensive decoration: the api
+    // and web images are built and deployed SEPARATELY (docker-compose.yml). An
+    // api image predating evidence_currency omits the field from its catalogue
+    // responses entirely, while a newer web bundle still renders this component.
+    // A required TypeScript field constrains what we COMPILE against, never what
+    // an older server actually SENDS -- so the cast below simulates a real
+    // runtime population, not an impossible one.
+    const legacy = { ...offerDetail1 } as Partial<OfferDetail>;
+    delete legacy.evidence_currency;
+
+    const card = renderCard(legacy as OfferDetail);
+
+    expect(card).not.toHaveTextContent(PROMISE);
+    // And the two gates must now AGREE: previously the badge said "not verified"
+    // while the description simultaneously promised $0, in the same card.
+    expect(headBadge(card)).toHaveTextContent(/not verified/i);
+    expect(within(card).getByTestId("evidence-currency-note")).toHaveAttribute(
+      "data-currency-state",
+      "unchecked",
+    );
+  });
+
+  it("the badge gate and the description gate share ONE definition", () => {
+    // The defect was not that a gate was wrong; it was that the rule existed
+    // TWICE, in two forms, and the two forms disagreed on the absent case. Pin
+    // agreement across all three currency states rather than re-asserting the
+    // rule a third time here.
+    for (const currency of [CURRENT_EVIDENCE, STALE_EVIDENCE, UNCHECKED_EVIDENCE]) {
+      cleanup();
+      const card = renderCard({ ...offerDetail1, evidence_currency: currency });
+      const badgeSaysUnverified = /not verified/i.test(headBadge(card).textContent ?? "");
+      const promiseShown = (card.textContent ?? "").includes(PROMISE);
+      expect(promiseShown).toBe(!badgeSaysUnverified);
+    }
   });
 });
