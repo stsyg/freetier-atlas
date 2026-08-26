@@ -3792,3 +3792,11 @@ Every mutation edits the repository/engine and requires a **named** test to go r
 - **Commit/PR:** branch `stsyg-guard-scope-and-z0-offer-type`, **DRAFT PR, base `main` at `f3fafe0`. Not merged.**
 - **Evaluator disposition:** pending — builder self-review only. Required level **2** (provider adapters and evidence extraction; Z0 classification).
 - **Recommended next action:** independent Level-2 review. Then, as a **separate** slice, obtain captures for `cloudflare-changelog` and `cloudflare-docs-mcp` and delete their entries from `KNOWN_UNBOUND_SOURCES` — the set-equality guard will confirm the moment each gap actually closes. Item 4 of "NOT VERIFIED" (the publication path's own `offer_type` read) is the next-most-likely home for the same defect class.
+
+### 2026-08-25 addendum — CI has now run (retires "NOT VERIFIED" items 1 and 2)
+
+- **All six checks PASS on draft PR #98** at commit `54934b5`: `Python lint, format, tests`, `Node format and lint`, `Web type-check, tests, and build`, `Dependency audit`, `Secret scan`, `GitGuardian Security Checks`.
+- **CI's Pytest step reports `2918 passed, 3 skipped, 1 warning`.** The previous slice's addendum recorded main's CI arm at **2910 passed, 3 skipped**; **2918 − 2910 = +8**, exactly the eight tests this slice adds (2 grounding + 6 classifier). The delta reproduces independently of my machine.
+- **CI runs WITH `DATABASE_URL` set**, so `tests/integration/**` executed there. That covers the arm I explicitly could not run locally and **retires item 2** of "NOT VERIFIED" as well as item 1. No integration test regressed.
+- CI's skip list is `test_stack_health.py` ×2 (`ATLAS_STACK_BASE_URL` not set — pre-existing) plus the one pre-existing `cloudflare-pages-pricing` capture gap. **The widened guard added no new skips**, which was the risk worth checking: pinning two more sources under set equality could have quietly converted them into skips, and it did not.
+- **Items 3–7 of "NOT VERIFIED" stand unchanged.** In particular item 3 (the declared-gates test does not detect a change to the two frozensets themselves) and item 4 (the sweep covers `classify()` only — the publication path's own `offer_type` read at `publish/publisher.py:192` was never swept) are unaffected by CI passing, and remain the most likely homes for the next instance of this defect class.
