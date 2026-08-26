@@ -106,7 +106,7 @@
     "eslint was right and my placement was wrong: exporting describeFreeCount from CategoryMatrix.tsx tripped react-refresh/only-export-components. It belonged in format.ts alongside the other formatters, which is where it now lives. I initially treated a warning-with-exit-0 as ignorable.",
     "The first mutation-harness run crashed on Windows because subprocess could not resolve 'npx' without the .cmd suffix, so M7 and M8 did not run in that pass. The file was untouched at that point (the crash happened during the BASELINE step, before any write), verified with git status before re-running."
   ],
-  "evaluator_disposition": "pending - builder self-review only",
+  "evaluator_disposition": "FAILED on PR #99 (narrowly); F1 and F2 fixed and re-verified, F3 acknowledged with no action. Awaiting re-review. Still builder self-review only for the fixes themselves.",
   "verification_results": {
     "invocation": "cd <repo root>; DATABASE_URL=******localhost:55437/atlas_suite; python -m pytest -q  -- NO explicit paths, so pyproject testpaths=['tests'] applies. This is the CI-equivalent command.",
     "baseline": "2941 passed, 3 skipped, exit 0 (collect-only: 2944 = 2941+3, explicitly checked so a pytest exit 5 could not masquerade as green)",
@@ -127,5 +127,38 @@
     "THE MARGINAL QUERY COST WAS REASONED, NOT MEASURED. /categories now builds the evidence-currency index twice per request (once via fetch_stale_offer_version_ids, once via currency_context). I did not profile it and did not deduplicate it. My contract predicted 'zero additional queries'; that prediction is UNVERIFIED and probably wrong -- it is one additional full index build.",
     "Mutation controls ran against targeted test nodes, not the whole suite, so I have not measured whether these mutations also break unrelated tests.",
     "evidence_currency on a cell with NO published offers resolves to UNCHECKED, which is correct by construction but was not asserted against a real empty-category row on a live corpus."
-  ]
+  ],
+  "l2_disposition_and_fixes": {
+    "disposition": "FAILED (narrowly) on PR #99 -- two blocking findings, one non-blocking. Design and both crux findings HELD under independent attack.",
+    "held_under_attack": [
+      "Probe 2 crux: an unanchored version was excluded (1 -> 0) while the total stayed unshrunk, and fetch_stale_offer_version_ids flagged it false with projection size 0 -- so the old projection really would compute 1-0=1 and count an unverifiable claim as supported. Rejected alternative E was correct; the schema change was necessary.",
+      "Probe 3: an omitted arg is equivalent to explicit NO_CURRENCY (free=1, current=0, checked=false). Fail-closed is real.",
+      "Totals byte-unchanged across the boundary; permit arm demonstrated three ways; 60 schemas with exactly 2 changed and required unchanged; 6 of 7 original mutations killed by named tests with the no-op staying green."
+    ],
+    "F1_blocking_fixed": {
+      "finding": "describeFreeCount had no null/undefined guard. Base-vintage api serves 10 cell fields, head 12; getJson ends in `as T` with no runtime normaliser. Real Chromium at 1400px and 390px rendered 'Cloudflare: 1 published (1 truly free, undefined still evidenced)' in visible body text AND in the badge tooltip.",
+      "severity_stated_precisely": "It fails VISIBLY, never OPEN -- an exhaustive 8 absent-ish values x 5 totals = 40 combinations produced ZERO unqualified renders, with a broken control hitting 40/40. It is NOT a product-rule violation and is not reported as one. It is blocking because this repo already ships the same guard for the SIBLING field on the SAME payload citing the SAME skew route, and guarding one field and not its neighbour is the two-gates-disagreeing shape that failed PR #95.",
+      "fix": "describeFreeCount now guards null/undefined/NaN on both counts, matching its three neighbours in format.ts (formatDays, orUnknown, formatTriState), and reuses the SHIPPED 'not checked' wording from currencyMeaning rather than inventing a second phrase.",
+      "evidence": "18/18 browser assertions, head SPA against a genuinely base-vintage api (git archive 5d0f46f), at 1400px and 390px: no 'undefined' or 'NaN' in body text or any tooltip; the rollup reads '2 truly free, evidence not checked' beside the shipped 'Evidence: Not checked' note, so the two gates now AGREE. INSTRUMENT FLOOR: the UNGUARDED bundle (git archive HEAD) DID render the defect at 2/2 widths."
+    },
+    "F2_blocking_fixed": {
+      "finding": "coverage_signal_context(..., now: datetime | None = None) fell back to `now or datetime.now(UTC)` while currency_context(..., now: datetime) has always REQUIRED it. Dropping `now=now` in the router produced TWO CLOCKS IN ONE PAYLOAD with the full suite still green at 2953/exit 0. test_one_clock_serves_the_whole_category_matrix_response could not see it because _now() is still called exactly once.",
+      "remedy_chosen": "Made `now` REQUIRED on coverage_signal_context (the stronger of the two offered remedies). Pinning the test instead would have left the capability to invent a clock in place, and an optional clock that silently defaults to now() is the same fail-open shape this feature exists to fix. A function that manufactures its own 'now' can never fail closed, because it cannot tell it was never given one.",
+      "blast_radius_measured": "ZERO production changes -- both production callers already pass a clock (reconcile_coverage.py:81, router.py:340). FOUR test call sites updated: test_ingest_config_sync.py:537 and test_read_api_search.py:296, 339, 399. A fifth (test_coverage_review_queue.py:230) already passed one. Every call site in the repository now passes a clock, verified by enumerating them and grepping for any call without now=.",
+      "contrast_proven": "BEFORE (commit 6ae3350): dropping `now=now` -> `1 passed`, rc=0 -- the gap, independently reproduced. AFTER: rc=1, TypeError: coverage_signal_context() missing 1 required keyword-only argument: 'now'.",
+      "honesty_on_wording": "The disposition asked to show it 'fails to compile or type-check'. Python has no compile step and this repository ships NO type checker (requirements-dev.txt carries ruff, pytest, detect-secrets, pip-audit, httpx, cryptography -- no mypy or pyright). The available hard failure is a TypeError at call time, caught by a named test. No static gate is claimed that does not exist."
+    },
+    "F3_non_blocking_no_action": "My prediction was wrong AS I DECLARED IT MIGHT BE. /categories costs 2 fetch_evidence_currency calls / 10 SQL against /providers' 1 / 6. I priced it as 'probably zero additional queries, I will measure rather than assert'. No action taken, per the disposition; do not optimise it in this slice.",
+    "new_error_caught_by_a_control": "M9 (the new absent-count guard) SURVIVED on its first run -- and it was MY INSTRUMENT, not the product. vitest -t is a REGEX; the test name contains '(L2 blocker)', so the unescaped pattern matched NOTHING and vitest exited 0 with all 34 tests skipped. That is the vitest equivalent of pytest exit 5, a green run that tested nothing, and my harness guarded the pytest form but not the vitest form. Two corrections: escape regex metacharacters (NOT re.escape -- Python 3.13 escapes spaces as '\\ ', which JavaScript's RegExp does not treat the same way, producing a SECOND zero-match run), and REQUIRE the baseline to have actually EXECUTED at least one test rather than merely exiting 0. Second time this session the instrument was the problem rather than the product; both times a control caught it.",
+    "contamination_guard": "The evaluator contaminated its own browser run by serving from the worktree its mutation harness was mutating, producing a FALSE permit-arm failure. All browser evidence here was collected BEFORE any mutation ran, from trees nothing was mutating: the base-vintage api is a `git archive 5d0f46f` extract and the unguarded bundle a `git archive HEAD` extract, both without git metadata. All five servers were stopped before the matrix started.",
+    "verification_after_fixes": {
+      "python_local": "2953 passed, 3 skipped, exit 0 -- UNCHANGED, correctly: F2 updated four call sites and added no tests, and F1's tests are vitest-side",
+      "python_ci": "2953 passed, 3 skipped -- exact match with local, DATABASE_URL set so integration executed",
+      "web_local": "136 -> 141 passed (+5); tsc 0; eslint 0; prettier clean",
+      "web_ci": "141 passed -- exact match with local",
+      "mutations": "10 of 10 -- M9 (absent-count guard) and M10 (`now=now` dropped) added; M8 no-op control still GREEN; all restored byte-exact; no MUTANT residue in the diff",
+      "browser": "18 of 18 at 1400px and 390px, plus a passing instrument floor",
+      "ci_dispatch": "run 33013999536 on head 4d0150f, PR MERGEABLE (not conflicting) so CI genuinely dispatched; all six checks pass"
+    }
+  }
 }
