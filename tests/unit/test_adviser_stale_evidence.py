@@ -139,6 +139,7 @@ def _pool_for(age_days: float | None, offer_id: int = 1, slug: str = "alphaco"):
         {CATEGORY_ID: CATEGORY_SLUG},
         {},
         {(ANCHOR_OFFER_VERSION, version_id): verdict},
+        as_of=NOW.date(),
     )
 
 

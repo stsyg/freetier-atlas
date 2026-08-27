@@ -30,6 +30,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -45,6 +46,12 @@ from tests.support.fixtures import (
     load_case,
     run_extraction_case,
 )
+
+# One fixed moment for this module's clock-taking calls. The production
+# functions require a clock rather than inventing one, so a test must state
+# the instant it is asserting about.
+_CLOCK = datetime(2026, 1, 15, 12, 0, tzinfo=UTC)
+_CLOCK_DATE = _CLOCK.date()
 
 PROVIDER = "github"
 ADAPTER = "html"
@@ -567,7 +574,7 @@ def _facts_of(case: str) -> OfferFacts:
     ],
 )
 def test_the_perpetual_github_allowances_are_z0_and_explainable(case: str) -> None:
-    result = classify(_facts_of(case))
+    result = classify(_facts_of(case), as_of=_CLOCK_DATE)
     assert result.zero_cost_class == "Z0_TRUE_FREE"
     assert result.blocking_conditions == ()
     assert result.reasons, "a Z0 verdict with no stated reason is not explainable"
@@ -599,7 +606,7 @@ def test_pages_claims_no_billing_fact_it_cannot_source() -> None:
     assert "requires_card" not in asserted
     assert "has_paid_dependencies" not in asserted
 
-    result = classify(_facts_of("github-pages-limits"))
+    result = classify(_facts_of("github-pages-limits"), as_of=_CLOCK_DATE)
     assert result.zero_cost_class == "UNKNOWN", (
         "Pages published a $0 verdict without a source sentence stating it"
     )
@@ -620,7 +627,7 @@ def test_removing_the_unsourced_card_fact_is_what_blocks_pages_from_z0() -> None
 
     sourced = _facts_of("github-pages-limits")
     assert sourced.requires_card is None
-    assert classify(sourced).zero_cost_class == "UNKNOWN"
+    assert classify(sourced, as_of=_CLOCK_DATE).zero_cost_class == "UNKNOWN"
 
     hypothetical = OfferFacts(
         offer_type=sourced.offer_type,
@@ -628,7 +635,7 @@ def test_removing_the_unsourced_card_fact_is_what_blocks_pages_from_z0() -> None
         has_paid_dependencies=False,
         exhaustion_behaviours=sourced.exhaustion_behaviours,
     )
-    assert classify(hypothetical).zero_cost_class == "Z0_TRUE_FREE"
+    assert classify(hypothetical, as_of=_CLOCK_DATE).zero_cost_class == "Z0_TRUE_FREE"
 
 
 def test_the_enterprise_trial_is_not_z0_despite_requiring_no_card() -> None:
@@ -644,7 +651,7 @@ def test_the_enterprise_trial_is_not_z0_despite_requiring_no_card() -> None:
     assert facts.requires_card is False, "the fixture must keep the no-card fact"
     assert facts.has_paid_dependencies is False, "and no paid dependency either"
 
-    result = classify(facts)
+    result = classify(facts, as_of=_CLOCK_DATE)
     assert result.zero_cost_class != "Z0_TRUE_FREE"
     assert result.zero_cost_class == "Z2_TEMPORARY_OR_CONDITIONAL"
     assert any("temporary" in reason for reason in result.blocking_conditions)
@@ -664,7 +671,9 @@ def test_time_limitation_alone_blocks_z0_even_with_a_safe_exhaustion_behaviour()
         has_paid_dependencies=False,
         exhaustion_behaviours=("hard_stop",),
     )
-    assert classify(trial_but_safe).zero_cost_class == "Z2_TEMPORARY_OR_CONDITIONAL"
+    assert (
+        classify(trial_but_safe, as_of=_CLOCK_DATE).zero_cost_class == "Z2_TEMPORARY_OR_CONDITIONAL"
+    )
 
     # The identical facts with a perpetual offer type DO reach Z0, proving the
     # difference is the time limit and nothing else.
@@ -674,7 +683,7 @@ def test_time_limitation_alone_blocks_z0_even_with_a_safe_exhaustion_behaviour()
         has_paid_dependencies=False,
         exhaustion_behaviours=("hard_stop",),
     )
-    assert classify(perpetual).zero_cost_class == "Z0_TRUE_FREE"
+    assert classify(perpetual, as_of=_CLOCK_DATE).zero_cost_class == "Z0_TRUE_FREE"
 
 
 def test_the_contradictory_page_offers_a_row_that_must_never_be_z0() -> None:
@@ -702,7 +711,8 @@ def test_the_contradictory_page_offers_a_row_that_must_never_be_z0() -> None:
                 requires_card=bool(facts["requires_card"]),
                 has_paid_dependencies=bool(facts["has_paid_dependencies"]),
                 exhaustion_behaviours=tuple(str(q) for q in facts["quotas"]),
-            )
+            ),
+            as_of=_CLOCK_DATE,
         ).zero_cost_class
 
     assert verdict(first) == "Z0_TRUE_FREE"

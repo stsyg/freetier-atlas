@@ -65,6 +65,12 @@ from sqlalchemy import create_engine, select
 from sqlalchemy.engine import Connection, Engine
 from sqlalchemy.orm import Session
 
+# One fixed moment for this module's clock-taking calls. The production
+# functions require a clock rather than inventing one, so a test must state
+# the instant it is asserting about.
+_CLOCK = datetime(2026, 1, 15, 12, 0, tzinfo=UTC)
+_CLOCK_DATE = _CLOCK.date()
+
 pytestmark = pytest.mark.integration
 
 DATABASE_URL = os.environ.get("DATABASE_URL")
@@ -328,12 +334,12 @@ def test_reconciliation_does_not_pile_up_duplicates(db) -> None:
     )
     session.flush()
 
-    first = reconcile_coverage(session)
+    first = reconcile_coverage(session, now=_CLOCK)
     session.flush()
     assert first.created == 1
     assert first.existing == 0
 
-    second = reconcile_coverage(session)
+    second = reconcile_coverage(session, now=_CLOCK)
     session.flush()
     assert second.created == 0
     assert second.existing == 1
@@ -352,7 +358,7 @@ def test_the_item_is_dispositionable_through_the_existing_endpoint(db) -> None:
         ProviderCategoryCoverage(provider_id=provider_id, category_id=category_id, state="unknown")
     )
     session.flush()
-    reconcile_coverage(session)
+    reconcile_coverage(session, now=_CLOCK)
     session.flush()
 
     item = _pending(store, DISHONEST_SLUG)[0]
@@ -386,7 +392,7 @@ def test_an_honest_declaration_raises_nothing(db) -> None:
     )
     session.flush()
 
-    result = reconcile_coverage(session)
+    result = reconcile_coverage(session, now=_CLOCK)
     session.flush()
 
     assert [m for m in result.mismatches if m.provider_slug == HONEST_SLUG] == []
@@ -453,8 +459,8 @@ def test_reconciliation_never_rewrites_the_declaration(db) -> None:
     session.flush()
     before = (row.state, row.rationale, row.source_id, row.evidence_url, row.declared_at)
 
-    assert find_coverage_mismatches(session)
-    reconcile_coverage(session)
+    assert find_coverage_mismatches(session, now=_CLOCK)
+    reconcile_coverage(session, now=_CLOCK)
     session.flush()
     session.refresh(row)
 
@@ -691,7 +697,7 @@ def test_the_public_api_refuses_to_serve_an_expired_free_claim(db) -> None:
         )
     )
     session.flush()
-    reconcile_coverage(session)
+    reconcile_coverage(session, now=_CLOCK)
     session.flush()
     assert len(_pending(store, STALE_SLUG)) == 1, "the item must be pending for this to be the test"
 
@@ -727,7 +733,7 @@ def test_the_public_api_still_serves_a_fresh_free_claim(db) -> None:
         )
     )
     session.flush()
-    reconcile_coverage(session)
+    reconcile_coverage(session, now=_CLOCK)
     session.flush()
     assert _pending(store, STALE_SLUG) == []
 
@@ -759,7 +765,7 @@ def test_the_public_api_serves_an_uncorroborated_free_claim_while_it_is_queued(d
         )
     )
     session.flush()
-    reconcile_coverage(session)
+    reconcile_coverage(session, now=_CLOCK)
     session.flush()
     assert len(_pending(store, UNCORROBORATED_SLUG)) == 1
 

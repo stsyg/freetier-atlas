@@ -49,6 +49,12 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import Session
 
+# One fixed moment for this module's clock-taking calls. The production
+# functions require a clock rather than inventing one, so a test must state
+# the instant it is asserting about.
+_CLOCK = datetime(2026, 1, 15, 12, 0, tzinfo=UTC)
+_CLOCK_DATE = _CLOCK.date()
+
 pytestmark = pytest.mark.integration
 
 DATABASE_URL = os.environ.get("DATABASE_URL")
@@ -295,7 +301,7 @@ def _req(category, metric, amount, unit) -> RecommendationRequest:
 @skip_without_db
 def test_satisfiable_recommendation_llm_disabled(session: Session) -> None:
     _seed(session)
-    pool = gather_candidates(session)
+    pool = gather_candidates(session, now=_CLOCK)
     result = recommend(_req("object-file-storage", "storage", 5, "GB"), pool)
     body = build_response(result)
     assert body.fully_zero_cost is True
@@ -313,7 +319,7 @@ def test_satisfiable_recommendation_llm_disabled(session: Session) -> None:
 @skip_without_db
 def test_impossible_reduction_recalc_selfhost_order(session: Session) -> None:
     _seed(session)
-    pool = gather_candidates(session)
+    pool = gather_candidates(session, now=_CLOCK)
     # 50GB exceeds the 10GB Z0 quota -> impossible order.
     result = recommend(_req("object-file-storage", "storage", 50, "GB"), pool)
     body = build_response(result)
@@ -332,7 +338,7 @@ def test_impossible_reduction_recalc_selfhost_order(session: Session) -> None:
 @skip_without_db
 def test_determinism_identical_input_identical_output(session: Session) -> None:
     _seed(session)
-    pool = gather_candidates(session)
+    pool = gather_candidates(session, now=_CLOCK)
     req = _req("object-file-storage", "storage", 5, "GB")
     first = build_response(recommend(req, pool)).model_dump()
     second = build_response(recommend(req, pool)).model_dump()
@@ -344,7 +350,7 @@ def test_candidate_table_never_read(session: Session) -> None:
     # gather_candidates must return only published offers; prove it reads the
     # published graph (build succeeds) without ever touching candidate tables.
     _seed(session)
-    pool = gather_candidates(session)
+    pool = gather_candidates(session, now=_CLOCK)
     assert pool.z0, "published Z0 offers should be found"
     # discovery_candidate / candidate are separate quarantine tables the adviser
     # never queries; their presence must not affect the pool.
@@ -413,7 +419,7 @@ def test_live_zero_cost_recommendation_against_real_catalogue(session: Session) 
     category = config.service_categories["Cloudflare Workers"]
     assert category == "serverless-functions"
 
-    pool = gather_candidates(session)
+    pool = gather_candidates(session, now=_CLOCK)
     assert pool.z0, "the real catalogue must yield published Z0 offers"
 
     request = RecommendationRequest.model_validate(
@@ -461,12 +467,15 @@ def test_uncategorised_real_services_would_block_every_requirement(session: Sess
         }
     )
 
-    assert build_response(recommend(request, gather_candidates(session))).fully_zero_cost is True
+    assert (
+        build_response(recommend(request, gather_candidates(session, now=_CLOCK))).fully_zero_cost
+        is True
+    )
 
     session.execute(update(Service).values(category_id=None))
     session.flush()
     session.expire_all()
 
-    degraded = build_response(recommend(request, gather_candidates(session)))
+    degraded = build_response(recommend(request, gather_candidates(session, now=_CLOCK)))
     assert degraded.fully_zero_cost is False
     assert degraded.impossible, "an uncategorised catalogue must block the requirement"

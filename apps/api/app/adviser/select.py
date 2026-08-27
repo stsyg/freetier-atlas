@@ -43,7 +43,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import date, datetime
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
@@ -235,6 +235,8 @@ def build_candidate(
     category_slugs: Mapping[int, str],
     region_index: Mapping[tuple[int | None, int | None], list[object]],
     currency_index: Mapping[tuple[str, int], EvidenceCurrency] | None = None,
+    *,
+    as_of: date,
 ) -> OfferCandidate | None:
     """Build an :class:`OfferCandidate` for one published offer, or ``None``.
 
@@ -247,6 +249,12 @@ def build_candidate(
     ``currency_index`` supplies the evidence-currency verdict. Omitting it does
     **not** mean "current": the candidate resolves to ``UNCHECKED`` and is
     therefore not eligible for a $0 guarantee.
+
+    ``as_of`` is the classification date and is REQUIRED. It must be derived
+    from the same moment as ``currency_index``: this function decides in one
+    breath whether an offer's evidence is current AND whether its availability
+    window has closed, and those two questions answered at two different moments
+    is precisely the contradiction the pool exists to prevent.
     """
 
     service = offer.service
@@ -254,7 +262,7 @@ def build_candidate(
         return None
 
     version = latest_version(offer)
-    result = classify_offer(offer)
+    result = classify_offer(offer, as_of=as_of)
     engine_class = result.zero_cost_class
     persisted = offer.zero_cost_class
 
@@ -303,6 +311,8 @@ def build_pool(
     category_slugs: Mapping[int, str],
     region_index: Mapping[tuple[int | None, int | None], list[object]],
     currency_index: Mapping[tuple[str, int], EvidenceCurrency] | None = None,
+    *,
+    as_of: date,
 ) -> CandidatePool:
     """Partition published ``offers`` into a :class:`CandidatePool` (pure).
 
@@ -330,7 +340,9 @@ def build_pool(
     for offer in offers:
         if not is_published(offer):
             continue
-        candidate = build_candidate(offer, category_slugs, region_index, currency_index)
+        candidate = build_candidate(
+            offer, category_slugs, region_index, currency_index, as_of=as_of
+        )
         if candidate is None:
             continue
         if candidate.engine_class != candidate.persisted_class:
@@ -361,7 +373,7 @@ def build_pool(
     )
 
 
-def gather_candidates(session: Session, *, now: datetime | None = None) -> CandidatePool:
+def gather_candidates(session: Session, *, now: datetime) -> CandidatePool:
     """Read the published catalogue and partition it by agreed zero-cost class.
 
     Thin DB wrapper around :func:`build_pool`: reads the published offer graph
@@ -369,18 +381,26 @@ def gather_candidates(session: Session, *, now: datetime | None = None) -> Candi
     region-availability and evidence-currency indexes, then delegates the pure
     partition.
 
-    ``now`` is the currency clock. It is a parameter rather than an internal
-    ``datetime.now()`` so a test can place the catalogue at any instant without
-    touching a stored timestamp, and so the adviser's clock is the same one its
-    HTTP handler already uses.
+    ``now`` is the currency clock and is REQUIRED. It is a parameter rather than
+    an internal ``datetime.now()`` so a test can place the catalogue at any
+    instant without touching a stored timestamp, and so the adviser's clock is
+    the same one its HTTP handler already uses. It was previously optional with
+    a ``datetime.now(UTC)`` fallback, which meant a handler that dropped
+    ``now=`` assessed evidence currency at one moment and -- via
+    :func:`build_candidate` -- availability at another. All three production
+    callers in ``adviser/router.py`` already pass a clock, so requiring it costs
+    no production change and removes the capability.
+
+    ``as_of`` for the classification is derived from this same moment rather
+    than sourced separately, so one call cannot answer "is the evidence current"
+    and "has the offer expired" at two different instants.
     """
 
-    moment = now or datetime.now(UTC)
     offers = _published_offers(session)
     category_slugs = _category_slugs(session, offers)
     region_index = _region_index(session)
-    currency_index = fetch_evidence_currency(session, now=moment)
-    return build_pool(offers, category_slugs, region_index, currency_index)
+    currency_index = fetch_evidence_currency(session, now=now)
+    return build_pool(offers, category_slugs, region_index, currency_index, as_of=now.date())
 
 
 __all__: Sequence[str] = (

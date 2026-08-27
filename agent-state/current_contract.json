@@ -1,164 +1,142 @@
 {
   "feature_id": "F008",
-  "slice": "S7-free-offer-count-currency-category-matrix",
-  "title": "Stop /catalogue/categories asserting a free-offer COUNT that no clock reaches",
-  "branch": "stsyg-tenth-surface-free-offer-count",
-  "base_commit": "5d0f46ff0c7965734b784347f209b06928571eae",
-  "objective": "PR #95 (S6) stopped nine catalogue read surfaces repeating a free claim whose evidence had expired. It enumerated those surfaces at runtime from /openapi.json by resolving 200-response schemas for four fields (class / confidence / freshness / signals) and correctly found NINE. free_offer_count is a COUNT, not one of those four, so a correct instrument aimed at the right question could not see it. The independent Level-2 evaluator asked a wider question -- 'what renders a free CLAIM in any form' -- and found a TENTH: GET /catalogue/categories renders free_offer_count as 'N truly free', measured BYTE-IDENTICAL either side of the staleness boundary. Neither count is wrong; they answer different questions. A number is a claim just as much as a badge is: '12 truly free' is an assertion about 12 offers, and if the evidence under some of them expired, the count overstates what the catalogue can support.",
-  "materiality": "[M]",
-  "required_evaluation_level": 2,
-  "required_evaluation_level_reason": "Public catalogue workflow; Z0 classification surface; AND a response-schema change. Schemas and generated shapes are a MANDATORY Level-2 category in docs/AGENT_HARNESS.md. There is no database migration -- both new fields are recomputed per read and never stored (decision Q11) -- but /openapi.json and the generated web types in apps/web/src/api.ts both move, which is the 'generated shapes' trigger.",
-  "directed_probe_result": {
-    "question": "coverage.py:192 reads `if signals.free_offer_count > 0:`. Is that a DISPLAY or a DECISION?",
-    "verdict": "DECISION -- but one that is ALREADY staleness-guarded, so this slice must not touch it.",
-    "evidence": [
-      "coverage.py:192 `if signals.free_offer_count > 0: return \"verified_free\"` sets derived_state.",
-      "derived_state reaches three consumers in service.py:676-691: ProviderCoverage.derived_state (rendered), is_material_mismatch() -> ProviderCoverage.mismatch (rendered + the review-item materiality rule), and effective_state() -> ProviderCoverage.state, which is THE PUBLIC COVERAGE BADGE. So a count does drive a coverage classification.",
-      "HOWEVER coverage.py:190-191 tests staleness FIRST: `if signals.published_offer_count > 0 and signals.has_stale_evidence: return \"stale\"`. Line 192 is therefore UNREACHABLE for any bucket carrying stale evidence. PR #79 already fenced the decision path."
-    ],
-    "consequence_for_scope": "The defect is confined to the REPORTED COUNT, not the derivation. derive_coverage_state stays byte-unchanged and coverage.py has a zero-line diff. This is LESS severe than the brief scoped it, and it is stated prominently rather than inheriting an alarm that could not be reproduced.",
-    "prediction_that_tests_this_claim": "P6 -- derived_state identical for every bucket before and after."
+  "slice": "clock-inheritance-classification-path",
+  "title": "Stop the classification path inventing a second clock in a different timezone",
+  "branch": "stsyg-clock-audit",
+  "base_commit": "9ec45b050c2062e8a282e2199c46b0f0d393e182",
+  "objective": "PR #99 made coverage_signal_context's `now` REQUIRED after a Level-2 found it inventing datetime.now(UTC) while its sibling currency_context required one, letting a router build one response payload from two moments with the suite green. This slice audits the whole defect class, classifies every site as ENTRY POINT or PARTICIPANT, converts the participants on the classification chain, and leaves the genuine boundaries alone with written reasons.",
+  "census_owned_by_this_slice": {
+    "method": "AST, not source pattern. A regex cannot see a signature a formatter split across lines, cannot distinguish a DEFAULT of None from a COMPARISON against None, and only finds spellings already thought of.",
+    "population_defect_census": "170 tracked files under apps/, of which 104 are Python and were parsed; 66 are TypeScript (apps/web) and were NOT searched.",
+    "population_blast_radius": "237 tracked .py repo-wide. Deliberately a different population from the defect census because the test tree is NOT under apps/ (0 of 104 match */tests/* or test_*), and the callers that pay the cost of a required parameter live in tests/.",
+    "brief_said": {
+      "inventing_functions": 8,
+      "optional_clock_params": 10
+    },
+    "this_slice_measured": {
+      "inventing_functions": 9,
+      "optional_clock_params": 11,
+      "clock_invention_call_sites_in_apps": 52
+    },
+    "the_ninth_site": "apps/api/app/classify/engine.py:151 `as_of = as_of or date.today()`. Invisible to a `now or datetime.now(UTC)` search three ways at once: the parameter is `as_of` not `now`, the type is `date` not `datetime`, and the invention is `date.today()` -- which is LOCAL time while every other clock in this repository is UTC.",
+    "floor_not_total": "9 is a FLOOR. It is the count for the nine clock-ish parameter names and seven invention forms actually searched. A tenth in a spelling neither the brief nor this census enumerated remains possible."
   },
-  "measured_premise": [
-    "P-A MEASURED: worktree HEAD == 5d0f46f, the base the brief named. Confirmed, not trusted.",
-    "P-B MEASURED: every PROVISIONAL line number in the brief is EXACT on 5d0f46f -- coverage.py 160/192/227/277, service.py 671/690/709, router.py 314, CategoryMatrix.tsx 100/148, api.ts 323/337, schemas.py ProviderCoverage 383-392 and UncategorizedCoverage 404-414. Re-derived from tool output, not retyped from the brief.",
-    "P-C MEASURED, NEW, NOT IN THE BRIEF: both error directions already live in one row. service.py:660 sets the bucket stale flag as `any(v.id in stale_versions for v in offer.versions)` -- BUCKET-WIDE -- while lines 653-655 tally EVERY published offer regardless of currency. So a bucket of 12 free offers with 1 stale is simultaneously OVER-WITHHOLDING (all 12 lose the verified_free badge because of 1) and UNDER-QUALIFYING (the row still reports 12 and the tooltip still says '12 truly free'). This is the measured argument for surfacing BOTH numbers rather than a preference.",
-    "P-D MEASURED, NEW, NOT IN THE BRIEF: /catalogue/categories is the ONLY catalogue route that never builds a CurrencyContext. The others all do (router.py 141, 157, 210, 227, 245, 308, 356). It receives CoverageSignalContext, whose stale_offer_version_ids is a LOSSY projection -- queries.py:377-380 says so in its own docstring: evidence with no fetched_at 'is still not stale (it is *unchecked*, which this particular caller does not distinguish)'. currency.py doctrine is explicit that checked=False must NEVER read as fresh, and is_publishable_free_claim refuses both shapes. Computing 'still evidenced' from stale_offer_version_ids would therefore reproduce the defect ONE LAYER UP. This is why the fix is a schema change and not a UI string edit.",
-    "P-E MEASURED: the version an offer's claim rests on is settled precedent, not a new choice. PR #95 uses queries.latest_version(offer) (service.py 241, 278, 349) and rolls up with currency.for_versions([...latest ids...]) -> worst() (service.py 306, 326). Reused exactly. Note this DIFFERS from the existing bucket flag at service.py:660, which scans ALL versions -- a pre-existing inconsistency, recorded and attributed, NOT fixed here (it would change derived_state, which the probe puts out of scope).",
-    "P-F MEASURED: an isolated PostgreSQL 16 was started on port 55437 (container s7-postgres) with TWO databases -- atlas_suite for pytest and atlas_probe for the seeded evidence corpus and the live browser check. The previous slice's slice2-postgres on :55434 was found still running and was deliberately NOT reused. The prior builder's 48 self-inflicted failures came from seeding a corpus into the suite's own database; separating the seed is the specific remedy.",
-    "P-G MEASURED: pytest --collect-only -q reports 2944 tests collected, exit 0 (bare call). Explicitly checked because pytest exit 5 means NOTHING COLLECTED -- a green-looking run that tested nothing."
-  ],
-  "design_decision": {
-    "chosen": "Surface BOTH numbers, and give the uncategorised rollup an EVIDENCE field, not a COVERAGE-STATE field. Two additive, read-time, never-stored fields on BOTH models: current_free_offer_count (int) and evidence_currency (the EvidenceCurrencyOut that already ships from PR #95). free_offer_count keeps its exact present meaning and value -- nothing shrinks, nothing disappears.",
-    "why_the_rollup_needs_no_state": "This is the shape question the brief posed. 'Uncategorised' is not one of the fourteen canonical categories, so deriving a COVERAGE_STATES value for it would mint a coverage claim about a thing we cannot name -- the same class of guess F008 S2 removed when it deleted `published == 0 -> not_offered`. What the rollup lacks is not a coverage state but an EVIDENCE signal, and evidence currency is a property of evidence, not of a taxonomy cell. EvidenceCurrencyOut is already the shipped vocabulary for exactly that and carries the plain-language `reason`, so the web reuses EvidenceCurrencyNote.tsx verbatim and no second visual language for staleness is invented.",
-    "rejected_A_silent_shrink": "Reduce free_offer_count to only-current offers. REJECTED on three counts: (i) the reader cannot distinguish 9-of-12 from 9-of-9, so a wrongly-WITHHELD free offer becomes invisible -- the omission defect this product rates equal in severity to a wrongly-asserted one; (ii) it contradicts both shipped precedents (#83 partitions a stale Z0 and still shows it, #79 labels a pair `stale` rather than removing it); (iii) the SAME FIELD would mean different things before and after expiry, so any API consumer that stored the number would silently disagree with itself -- a stored projection going stale, precisely what decision Q11 exists to forbid.",
-    "rejected_B_drop_the_count": "The same omission with extra steps. Ruled out by the same precedent lineage.",
-    "rejected_C_state_on_the_rollup": "Adding a COVERAGE_STATES value to UncategorizedCoverage invents a coverage assertion about a non-category, and extends a closed vocabulary's reach for a display need an evidence field serves.",
-    "rejected_D_ui_only": "The evaluator's finding was measured on the API RESPONSE BYTES. GET /catalogue/categories is itself a public read surface; a UI-only change leaves the API asserting the unqualified count and the byte-identical measurement would still reproduce.",
-    "rejected_E_reuse_stale_ids": "Compute currency from the stale_offer_version_ids already threaded in, avoiding all schema plumbing. REFUTED by P-D: that projection cannot see checked=False and would count an unverifiable claim as supported."
+  "classification": {
+    "ENTRY_POINT_change_nothing": [
+      "adviser/abuse/admin.py::set_kill_switch -- sole caller is the argparse CLI main(); an operator has no moment to pass, and each command is a single self-contained write with no sibling clock-consumer to disagree with. Comment added; behaviour unchanged.",
+      "adviser/abuse/admin.py::reset_breaker -- same boundary, same reasoning.",
+      "ingest/reconcile_coverage.py::assert_no_coverage_contradictions -- a test-assertion boundary invoked directly by a provider slice's own test. Sources the clock on an explicit line rather than through an optional parameter, precisely so it does not re-create the hazard."
+    ],
+    "PARTICIPANT_converted": [
+      "classify/engine.py::classify (as_of required)",
+      "classify/orm.py::classify_offer (as_of required; was a RELOCATOR -- forwarded None to the callee that invented)",
+      "adviser/select.py::build_candidate (as_of required)",
+      "adviser/select.py::build_pool (as_of required)",
+      "adviser/select.py::gather_candidates (now required)",
+      "ingest/reconcile_coverage.py::find_coverage_mismatches (now required)",
+      "ingest/reconcile_coverage.py::reconcile_coverage (now required)"
+    ],
+    "CALL_SITE_defect_fixed": "publish/publisher.py::_do_publish already held a UTC `now` (used at :369, :378, :447) and called classify_offer(offer, version) without it, dropping the classification to local date.today(). Now passes as_of=now.date(). Zero signature change, zero test churn.",
+    "DEFERRED_with_reasons": [
+      "read_api/search.py::search_published_offers -- public read surface, 0 production cost, 5 test call sites. Deferred only to keep this slice one causal chain.",
+      "publish/publisher.py::publish_candidate -- 0 production cost, 14 test call sites; belongs with the scan-run slice.",
+      "ingest/reconcile.py::reconcile_scan and publish/publisher.py::publish_scan -- these invent SEPARATELY inside one run_provider_scans, so a single scan run uses two moments. A real second finding that needs its own evidence, not a tail added to this one. 26 test call sites for reconcile_scan alone."
+    ]
+  },
+  "defect_found_in_the_merged_PR_99_remedy": {
+    "what": "coverage_signal_context's docstring states 'Both production callers already pass a clock, so requiring it costs nothing and removes the capability.' That is true of ARITY and false of NULLABILITY.",
+    "how": "find_coverage_mismatches forwarded `now=None` into it, satisfying 'must be supplied' while supplying None, and reconcile_coverage.py:183 (inside assert_no_coverage_contradictions) called find_coverage_mismatches(session) with no clock at all. There is no static type checker on the Python side of this repository, so `now: datetime` caught nothing.",
+    "measured_behaviour": "It does NOT fail open. assess_staleness(fetched_at, None, schedule) raises TypeError: unsupported operand type(s) for -: 'NoneType' and 'datetime.datetime'. It stayed invisible only because the data reaching that helper never includes a snapshot with a fetched_at. A LATENT CRASH waiting for the first Wave-3 provider slice with real evidence, not a defect the suite had ruled out.",
+    "corroboration": "Independently confirmed by mutation: dropping the clock at reconcile_coverage.py:138 killed 4 named integration tests with that exact TypeError at reconcile.py:271."
+  },
+  "measured_correction_to_this_slices_own_claim": {
+    "claim_as_first_written": "An offer whose available_until fell in the gap was published as free while its own timestamp said the window had closed.",
+    "measurement": "FALSE. A non-null available_until yields Z2_TEMPORARY_OR_CONDITIONAL on BOTH sides of the boundary; as_of never flips the zero-cost class. Verified by executing classify() at as_of=2029-06-01 and as_of=2030-06-01 against identical facts.",
+    "corrected_claim": "as_of changes the published REASON, not the class. The same facts produce either 'Offer availability ended on 2029-12-31.' or 'Offer has a bounded availability window ending 2029-12-31.' The second states that a closed window is still open. A false sentence is a smaller defect than a false class, and still one this product does not ship.",
+    "where_corrected": "The engine.py docstring and the publisher.py comment were rewritten BEFORE commit. A test now asserts the class does NOT move, so if that ever changes, this audit's own conclusion fails loudly rather than silently becoming an understatement."
   },
   "in_scope": [
-    "apps/api/app/read_api/schemas.py - current_free_offer_count + evidence_currency on ProviderCoverage and UncategorizedCoverage",
-    "apps/api/app/read_api/service.py - serialize_category_matrix takes CurrencyContext=NO_CURRENCY; tallies a current-free slot gated on is_publishable_free_claim over latest_version(offer); collects bucket latest-version ids for the worst() rollup",
-    "apps/api/app/read_api/router.py - get_category_matrix builds queries.currency_context with the SAME now it hands to coverage_signal_context, so two fields of one payload cannot be assessed at two moments",
-    "apps/web/src/api.ts - mirror both fields on both interfaces",
-    "apps/web/src/catalogue/CategoryMatrix.tsx - rollup line 100 and badge tooltip line 148 report both numbers; the shipped EvidenceCurrencyNote renders for the rollup when the claim is undermined",
-    "tests/integration/test_catalogue_currency.py and tests/unit/test_read_api.py - named tests, one per mutation in the M1-M8 matrix",
-    "apps/web/src/catalogue/components.test.tsx and testFixtures.ts - web arms",
-    "agent-state/current_contract.json (single-slot, replaced wholesale), agent-state/progress.md (APPEND ONLY)"
+    "Convert the seven participants above to a required clock.",
+    "Fix the _do_publish call site so one publication decision uses one moment.",
+    "Add tests/unit/test_clock_inheritance.py asserting the CAPABILITY (no call site can omit a clock) plus a source-level guard against the fallback shape returning under a different parameter name.",
+    "Comment the genuine entry points so a later sweep of this defect class stops there deliberately rather than by accident."
   ],
   "out_of_scope_zero_diff": [
-    "apps/api/app/read_api/coverage.py - ZERO-LINE DIFF. The probe establishes the decision path is already fenced; touching it would be an unevidenced change to a classification.",
-    "agent-state/feature_list.json - byte-identical to base (blob 154de1fef2ba). F008 stays passes:false.",
-    ".github/workflows/ci.yml, scripts/check_urls.py, tests/unit/test_url_allowlist.py, .secrets.baseline - not touched",
-    "apps/web/package-lock.json and the root package-lock.json - both byte-identical to base. npm ci only; never npm install/i/update/audit fix.",
-    "migrations/** - NO migration. Both fields are recomputed per read and never stored (Q11).",
-    "the all-versions vs latest-version inconsistency at service.py:660 - measured (P-E), attributed, NOT fixed here",
-    "the nine surfaces PR #95 closed - this slice re-measures the tenth only",
-    "merge or promotion of the pull request"
+    "Any change to WHAT is published, as opposed to WHICH MOMENT is used. All 154 failures produced by the signature changes were `TypeError: missing 1 required keyword-only argument` -- arity, never a wrong answer.",
+    "apps/web (TypeScript). Not searched, not claimed clean.",
+    "agent-state/feature_list.json, .github/workflows/ci.yml, scripts/check_urls.py, tests/unit/test_url_allowlist.py, .secrets.baseline, both lockfiles."
   ],
   "acceptance_criteria": [
-    "AC1 WITHHOLD ARM: GET /catalogue/categories stops reporting an unqualified free-offer count once the backing evidence is past its refresh window -- the response is no longer byte-identical across the staleness boundary.",
-    "AC2 PERMIT ARM (paired, mandatory): a bucket whose evidence is current reports current_free_offer_count == free_offer_count and evidence_currency.current == true, and the web renders no currency note for it. A guard that cannot be shown to PERMIT is indistinguishable from one that broke the product.",
-    "AC3 NOTHING IS OMITTED: free_offer_count and published_offer_count are numerically unchanged from base in every arm. A wrongly-withheld free offer is a defect of equal severity to a wrongly-asserted one, and an omission is invisible to a reader in a way a label is not.",
-    "AC4 checked=False NEVER reads as fresh: an offer whose latest version has no checkable fetch time is excluded from current_free_offer_count, even though stale_offer_version_ids would not have flagged it.",
-    "AC5 FAIL-CLOSED: serialize_category_matrix called with the default NO_CURRENCY yields current_free_offer_count == 0 while free_offer_count > 0, and evidence_currency.checked == false. An un-threaded call site must never silently re-acquire always-fresh behaviour.",
-    "AC6 SCOPE PROOF: derive_coverage_state returns an identical value for every (provider, category) bucket before and after, and coverage.py has a zero-line diff.",
-    "AC7 ONE CLOCK PER RESPONSE: the currency context and the coverage-signal context are built from the same `now`, so two fields of one payload can never be assessed at two moments.",
-    "AC8 NO SECOND VISUAL LANGUAGE: the web reuses EvidenceCurrencyNote / format.ts currencyMeaning / COVERAGE_MEANINGS.stale. No new staleness wording is introduced.",
-    "AC9 EVERY new guard is proved able to FAIL by mutation: baseline GREEN, the mutation observed RED with the failing test NAMED, restored and proved byte-exact by RAW BYTE comparison, plus a NO-OP negative control that stays green. Coverage being green while a deleted guard fails no test is the failure mode this criterion excludes.",
-    "AC10 BROWSER evidence: a real browser against the running stack shows what a user actually sees for an expired count and a current one, at ~390px and at desktop width.",
-    "AC11 Full suite green with the collected count strictly increasing and none lost, under the pyproject-default invocation (no explicit paths), with DATABASE_URL set.",
-    "AC12 feature_list.json byte-identical to base; progress.md append-only proved by RAW BYTE PREFIX with a FLIPPED-BYTE NEGATIVE CONTROL that must fail."
+    "Baseline reproduced independently before any change, with proof the run EXECUTED tests rather than exiting 0 on an empty selection.",
+    "For each converted participant: BEFORE-state mutation stays GREEN (the defect is invisible today) and AFTER-state mutation is KILLED by a NAMED test.",
+    "A no-op negative control stays GREEN, proving the instrument can still pass.",
+    "Full suite green at the same or higher executed count than baseline.",
+    "ruff check clean on apps and tests."
   ],
-  "predictions_frozen_before_measurement": "Eight predictions (P1-P8) were written to the session artifacts BEFORE the first executable measurement and are frozen: P1 control (reproduce the byte-identical defect myself rather than inheriting the evaluator's number), P2 INSTRUMENT FLOOR (a known currency-aware surface MUST differ at the same two clocks -- if P1 and P2 both report 'no difference' the instrument is broken, not the product), P3 withhold arm + nothing-else-moved, P4 permit arm, P5 instrument choice (checked=False excluded), P6 scope proof, P7 no-op negative control, P8 fail-closed. Recorded even where confidence was high, because a silent instrument hides exactly in the confident arms.",
-  "expiry_mechanism": {
-    "chosen": "Mechanism G (reused from S6): the one-second boundary differential.",
-    "how": "assess_staleness decides stale = age > window, a STRICT inequality. Every arm reads the SAME UNMODIFIED ROWS at two clocks one second apart across that boundary. No timestamp is backdated between the two reads, no schedule is shrunk, no ingest is re-run -- only the clock advances, by the smallest increment the comparison can resolve.",
-    "why_it_answers_the_self-measurement_objection": "'A measurement of data you just created measures your own process, not the world.' The seed only has to place one boundary somewhere; the CLOCK is the independent variable. Nothing in the data moves between the two reads, so a surface serving a frozen value CANNOT flip -- that is the instrument's impossible-value floor."
-  },
-  "population_statements_owed": "Every count in the final report names its boundary. This project has had five counts that were correct within an unstated boundary and wrong outside it, including the nine-vs-ten that produced this slice. Owed: 'render sites of the literal `truly free`' = grep, case-sensitive, apps/web/src, tracked files, tests INCLUDED, = 12, of which 2 are in scope; 'catalogue routes building a CurrencyContext' = router.py @router.get handlers on 5d0f46f; any test-count delta = the exact pytest selector and whether DATABASE_URL was set.",
-  "security_privacy_portability_z0": {
-    "security_privacy": "No new input, no new endpoint, no auth surface, no secret, no user-controlled URL. Two additive read-only response fields.",
-    "portability": "No new service and no new mandatory dependency. PostgreSQL remains the only mandatory stateful service.",
-    "z0": "Directly serves the product's first rule. The change can only ever make the catalogue admit MORE uncertainty about a free claim, never less: current_free_offer_count <= free_offer_count by construction, and the fail-closed default is 0.",
-    "cost": "$0/month. No new infrastructure. Expected marginal DB cost is zero additional queries: fetch_evidence_currency was measured in S6 to be exactly one query (not N+1), and fetch_stale_offer_version_ids already builds that same full index and discards most of it."
-  },
+  "predictions_frozen_before_measurement": "files/predictions-before-census.md in the session workspace, written before the census ran. P3 (a missed spelling exists) and P6 (non-zero production cost somewhere) were recorded in advance and both proved correct. P4's membership prediction was half right. P7 pre-registered 'all nine converted' as a FAILING outcome, not a thorough one.",
+  "required_evaluation_level": 2,
+  "required_evaluation_level_reason": "Touches Z0 classification and the automatic publication decision path, both Level-2 mandatory in docs/AGENT_HARNESS.md.",
+  "security_privacy_portability_z0": "No new dependency, no schema change, no migration, no new mandatory service. PostgreSQL remains the only mandatory stateful service. No secret in source, log, commit or PR body. No user-controlled URL. No LLM-to-publication path introduced. Z0 classification logic is unchanged in what it decides; only the moment it decides against is now inherited.",
   "hard_rules_acknowledged": [
-    "npm install / i / update / audit fix are NEVER run -- this machine's npm registry is an internal feed and those rewrite resolved URLs to an internal host. npm ci only. Both lockfiles verified byte-identical at the end.",
-    "Any browser tooling is installed SESSION-SCOPED OUTSIDE the repository; installing into apps/web would rewrite package.json and the lockfile.",
-    "Own PostgreSQL on port 55437, seeded corpus in a SEPARATE database (atlas_probe) from the suite's (atlas_suite).",
-    "agent-state/progress.md is APPEND-ONLY, proved by raw byte prefix plus a flipped-byte negative control.",
-    "Exit codes read from BARE calls -- Select-Object -First/-Last corrupts $LASTEXITCODE. gh --json --jq returns a STRING ARRAY, so -join before any string test. pytest exit 5 = NOTHING COLLECTED is treated as a failure.",
-    "REBASE BEFORE PUSHING if main has moved: a conflicting PR is never dispatched to CI, and an absent signal reads exactly like a green one.",
-    "DRAFT PR. Not merged. No feature flag flipped. Scratch branches/PRs cleaned up and LISTED."
+    "npm install/i/update/audit fix NEVER run; this slice touches no JavaScript.",
+    "Own PostgreSQL on port 55432 (suite default is 5432), seeded separately; mutation runs used a SEPARATE database (mutdb) inside a SEPARATE detached worktree, so no evidence was ever read from a tree being mutated.",
+    "agent-state/progress.md append-only, proven by raw byte-prefix comparison plus a flipped-byte negative control.",
+    "Draft PR. Not merged. No feature marked passing."
   ],
-  "expected_not_verifiable": [
-    "Whether the pre-existing all-versions vs latest-version inconsistency at service.py:660 changes any REAL provider's derived_state -- not enough real corpus is seeded to claim that.",
-    "Whether any /openapi.json consumer outside this repository depends on the current field set of these two models.",
-    "Anything about the nine surfaces PR #95 closed; this slice re-measures the tenth only."
-  ],
-  "errors_made": [
-    "I BUILT THE WRONG INSTRUMENT FIRST and recorded a prediction that turned out false. P1 predicted GET /catalogue/categories would be byte-identical across the staleness boundary. It is NOT: the body already differed, because state/derived_state/mismatch move (PR #79's guard working). A whole-body differential therefore SUPPRESSES this finding -- it reads 'currency-aware' while the count underneath is frozen. Only a FIELD-LEVEL differential answers the question, and it confirmed free_offer_count was frozen. This is the nine-vs-ten lesson (two instruments, two questions, both 'correct') committed by me, one day after the brief warned about it. The false prediction is preserved in the frozen file rather than quietly corrected.",
-    "I CALLED AN UNSTABLE OBSERVATION A CONTROL. In run 1 the cell object-file-storage/github stayed verified_free at both clocks and I described it as 'a free permit-arm control inside the same corpus'. On the run-2 re-measurement the same cell flipped to stale -- it was an artefact of where the ingest clock fell relative to the boundary, not a property. A control that changes between runs is not a control. The permit arm is now asserted only where the currency verdict is constructed deterministically.",
-    "An edit to apps/web/src/api.ts swallowed the following declaration (`export interface CategoryMatrixRow`) because the old_str spanned into it. Caught immediately by tsc -b, which is the only reason it was not committed.",
-    "I wrote current_contract.json with CRLF line endings (Python write_text defaults to os.linesep on Windows). Caught by git's normalisation warning and corrected to LF.",
-    "eslint was right and my placement was wrong: exporting describeFreeCount from CategoryMatrix.tsx tripped react-refresh/only-export-components. It belonged in format.ts alongside the other formatters, which is where it now lives. I initially treated a warning-with-exit-0 as ignorable.",
-    "The first mutation-harness run crashed on Windows because subprocess could not resolve 'npx' without the .cmd suffix, so M7 and M8 did not run in that pass. The file was untouched at that point (the crash happened during the BASELINE step, before any write), verified with git status before re-running."
-  ],
-  "evaluator_disposition": "FAILED on PR #99 (narrowly); F1 and F2 fixed and re-verified, F3 acknowledged with no action. Awaiting re-review. Still builder self-review only for the fixes themselves.",
-  "verification_results": {
-    "invocation": "cd <repo root>; DATABASE_URL=******localhost:55437/atlas_suite; python -m pytest -q  -- NO explicit paths, so pyproject testpaths=['tests'] applies. This is the CI-equivalent command.",
-    "baseline": "2941 passed, 3 skipped, exit 0 (collect-only: 2944 = 2941+3, explicitly checked so a pytest exit 5 could not masquerade as green)",
-    "final": "2953 passed, 3 skipped, exit 0 -- +12, exactly the 9 unit + 3 integration tests added, none lost",
-    "web": "vitest 136 passed (baseline 127, +9 = the 9 added); tsc -b exit 0; eslint exit 0 with ZERO warnings; prettier --check clean",
-    "lint": "ruff check exit 0; ruff format --check clean (237 files)",
-    "guards": "8 of 8 mutations behaved as required: M1-M7 each killed a NAMED test, M8 (no-op negative control) stayed GREEN. Every one: anchor matched EXACTLY once, patched line read back FROM DISK, restored and proved byte-exact by RAW BYTE comparison. `git diff | grep MUTANT` shows no residue.",
-    "browser": "14 of 14 live assertions passed -- real Edge -> live SPA (:5199) -> live API (:8123) -> own DB (atlas_probe), at 1400px AND 390px",
-    "live_http": "GET /catalogue/categories on a real uvicorn process: stale cell free=1/current_free=0/state=stale; current cell free=1/current_free=1/state=verified_free; rollup both arms with the plain-language reason",
-    "append_only_proof": "progress.md 844287 -> 853509 bytes, raw byte prefix identical; NEGATIVE CONTROL flipped one byte at index 422144 and the same check correctly reported divergence, so the PASS is meaningful",
-    "protected_files": "feature_list.json blob 154de1fef2ba20f587c9ec2d1302ebe2bfb5bfa1 (byte-identical to base); ci.yml, check_urls.py, test_url_allowlist.py, .secrets.baseline and BOTH lockfiles all report unmodified; zero untracked files in the repo"
-  },
   "not_verified": [
-    "NO CI RUN has executed any of this. Every figure is local.",
-    "THE UNCATEGORISED ROLLUP DOES NOT OCCUR AT ALL on the real 7-provider fixture corpus -- it was [] at both clocks. The live check constructed one by clearing a service's category_id. It reaches the rollup by the same production rule the matrix already uses, but it is CONSTRUCTED data, not OBSERVED data: the rollup half of this slice has never been exercised against a naturally-occurring row.",
-    "The pre-existing all-versions vs latest-version inconsistency at service.py:660 is UNTOUCHED. The bucket stale flag scans ALL versions while the new count (and every other catalogue surface) uses latest_version, so a superseded snapshot can still mark a whole cell stale. Measured, attributed, deliberately not fixed -- it feeds a classification.",
-    "I did not measure whether any /openapi.json consumer outside this repository depends on the current field set of these two models. The change being additive is an argument, not a measurement.",
-    "THE MARGINAL QUERY COST WAS REASONED, NOT MEASURED. /categories now builds the evidence-currency index twice per request (once via fetch_stale_offer_version_ids, once via currency_context). I did not profile it and did not deduplicate it. My contract predicted 'zero additional queries'; that prediction is UNVERIFIED and probably wrong -- it is one additional full index build.",
-    "Mutation controls ran against targeted test nodes, not the whole suite, so I have not measured whether these mutations also break unrelated tests.",
-    "evidence_currency on a cell with NO published offers resolves to UNCHECKED, which is correct by construction but was not asserted against a real empty-category row on a live corpus."
+    "The deferred scan-run finding (reconcile_scan and publish_scan inventing separately inside one run_provider_scans) is REPORTED, not fixed and not proven by mutation. It is now pinned by name in _DEFERRED_INVENTORS so the exception cannot grow silently.",
+    "The TZ divergence still has NOT been measured on this host, and cannot be: Windows CPython ignores TZ. It was measured by executing the classifier at explicit dates instead. The evaluator measured the real TZ behaviour in a Linux container; that evidence is theirs, not mine.",
+    "The clock-invention scalar remains definition-dependent. I report three definitions with the population attached rather than a single number, and the evaluator's 29/35/72 is under a fourth definition I do not hold. No conclusion rests on it.",
+    "apps/web was measured by the evaluator and found CLEAN ON EVIDENCE (57 tracked, 43 TS/JS, one new Date(value) parsing a server-supplied string, no date library). That evidence is the evaluator's, not mine; my census remains Python-only."
   ],
-  "l2_disposition_and_fixes": {
-    "disposition": "FAILED (narrowly) on PR #99 -- two blocking findings, one non-blocking. Design and both crux findings HELD under independent attack.",
-    "held_under_attack": [
-      "Probe 2 crux: an unanchored version was excluded (1 -> 0) while the total stayed unshrunk, and fetch_stale_offer_version_ids flagged it false with projection size 0 -- so the old projection really would compute 1-0=1 and count an unverifiable claim as supported. Rejected alternative E was correct; the schema change was necessary.",
-      "Probe 3: an omitted arg is equivalent to explicit NO_CURRENCY (free=1, current=0, checked=false). Fail-closed is real.",
-      "Totals byte-unchanged across the boundary; permit arm demonstrated three ways; 60 schemas with exactly 2 changed and required unchanged; 6 of 7 original mutations killed by named tests with the no-op staying green."
-    ],
-    "F1_blocking_fixed": {
-      "finding": "describeFreeCount had no null/undefined guard. Base-vintage api serves 10 cell fields, head 12; getJson ends in `as T` with no runtime normaliser. Real Chromium at 1400px and 390px rendered 'Cloudflare: 1 published (1 truly free, undefined still evidenced)' in visible body text AND in the badge tooltip.",
-      "severity_stated_precisely": "It fails VISIBLY, never OPEN -- an exhaustive 8 absent-ish values x 5 totals = 40 combinations produced ZERO unqualified renders, with a broken control hitting 40/40. It is NOT a product-rule violation and is not reported as one. It is blocking because this repo already ships the same guard for the SIBLING field on the SAME payload citing the SAME skew route, and guarding one field and not its neighbour is the two-gates-disagreeing shape that failed PR #95.",
-      "fix": "describeFreeCount now guards null/undefined/NaN on both counts, matching its three neighbours in format.ts (formatDays, orUnknown, formatTriState), and reuses the SHIPPED 'not checked' wording from currencyMeaning rather than inventing a second phrase.",
-      "evidence": "18/18 browser assertions, head SPA against a genuinely base-vintage api (git archive 5d0f46f), at 1400px and 390px: no 'undefined' or 'NaN' in body text or any tooltip; the rollup reads '2 truly free, evidence not checked' beside the shipped 'Evidence: Not checked' note, so the two gates now AGREE. INSTRUMENT FLOOR: the UNGUARDED bundle (git archive HEAD) DID render the defect at 2/2 widths."
-    },
-    "F2_blocking_fixed": {
-      "finding": "coverage_signal_context(..., now: datetime | None = None) fell back to `now or datetime.now(UTC)` while currency_context(..., now: datetime) has always REQUIRED it. Dropping `now=now` in the router produced TWO CLOCKS IN ONE PAYLOAD with the full suite still green at 2953/exit 0. test_one_clock_serves_the_whole_category_matrix_response could not see it because _now() is still called exactly once.",
-      "remedy_chosen": "Made `now` REQUIRED on coverage_signal_context (the stronger of the two offered remedies). Pinning the test instead would have left the capability to invent a clock in place, and an optional clock that silently defaults to now() is the same fail-open shape this feature exists to fix. A function that manufactures its own 'now' can never fail closed, because it cannot tell it was never given one.",
-      "blast_radius_measured": "ZERO production changes -- both production callers already pass a clock (reconcile_coverage.py:81, router.py:340). FOUR test call sites updated: test_ingest_config_sync.py:537 and test_read_api_search.py:296, 339, 399. A fifth (test_coverage_review_queue.py:230) already passed one. Every call site in the repository now passes a clock, verified by enumerating them and grepping for any call without now=.",
-      "contrast_proven": "BEFORE (commit 6ae3350): dropping `now=now` -> `1 passed`, rc=0 -- the gap, independently reproduced. AFTER: rc=1, TypeError: coverage_signal_context() missing 1 required keyword-only argument: 'now'.",
-      "honesty_on_wording": "The disposition asked to show it 'fails to compile or type-check'. Python has no compile step and this repository ships NO type checker (requirements-dev.txt carries ruff, pytest, detect-secrets, pip-audit, httpx, cryptography -- no mypy or pyright). The available hard failure is a TypeError at call time, caught by a named test. No static gate is claimed that does not exist."
-    },
-    "F3_non_blocking_no_action": "My prediction was wrong AS I DECLARED IT MIGHT BE. /categories costs 2 fetch_evidence_currency calls / 10 SQL against /providers' 1 / 6. I priced it as 'probably zero additional queries, I will measure rather than assert'. No action taken, per the disposition; do not optimise it in this slice.",
-    "new_error_caught_by_a_control": "M9 (the new absent-count guard) SURVIVED on its first run -- and it was MY INSTRUMENT, not the product. vitest -t is a REGEX; the test name contains '(L2 blocker)', so the unescaped pattern matched NOTHING and vitest exited 0 with all 34 tests skipped. That is the vitest equivalent of pytest exit 5, a green run that tested nothing, and my harness guarded the pytest form but not the vitest form. Two corrections: escape regex metacharacters (NOT re.escape -- Python 3.13 escapes spaces as '\\ ', which JavaScript's RegExp does not treat the same way, producing a SECOND zero-match run), and REQUIRE the baseline to have actually EXECUTED at least one test rather than merely exiting 0. Second time this session the instrument was the problem rather than the product; both times a control caught it.",
-    "contamination_guard": "The evaluator contaminated its own browser run by serving from the worktree its mutation harness was mutating, producing a FALSE permit-arm failure. All browser evidence here was collected BEFORE any mutation ran, from trees nothing was mutating: the base-vintage api is a `git archive 5d0f46f` extract and the unguarded bundle a `git archive HEAD` extract, both without git metadata. All five servers were stopped before the matrix started.",
-    "verification_after_fixes": {
-      "python_local": "2953 passed, 3 skipped, exit 0 -- UNCHANGED, correctly: F2 updated four call sites and added no tests, and F1's tests are vitest-side",
-      "python_ci": "2953 passed, 3 skipped -- exact match with local, DATABASE_URL set so integration executed",
-      "web_local": "136 -> 141 passed (+5); tsc 0; eslint 0; prettier clean",
-      "web_ci": "141 passed -- exact match with local",
-      "mutations": "10 of 10 -- M9 (absent-count guard) and M10 (`now=now` dropped) added; M8 no-op control still GREEN; all restored byte-exact; no MUTANT residue in the diff",
-      "browser": "18 of 18 at 1400px and 390px, plus a passing instrument floor",
-      "ci_dispatch": "run 33013999536 on head 4d0150f, PR MERGEABLE (not conflicting) so CI genuinely dispatched; all six checks pass"
-    }
+  "evaluator_disposition": "L2 FAILED on evidence and guard, code found correct. Remediation is additive only. Awaiting re-review.",
+  "l2_disposition": {
+    "verdict": "FAILED on evidence and guard; the CODE was found correct under seven falsification experiments.",
+    "everything_below_is_additive": "No code change, no behaviour change. The production diff from the first submission is unchanged."
+  },
+  "l2_finding_1_the_one_that_mattered": {
+    "what_i_proved": "Dropping `as_of=now.date()` at _do_publish is KILLED. That kills on ARITY.",
+    "what_i_failed_to_prove": "That the RIGHT MOMENT is chosen. Those are different properties and the first does not imply the second.",
+    "the_surviving_mutation": "as_of=now.astimezone().date() -- same instant, local calendar date, argument still supplied, no import change. Exactly base behaviour.",
+    "reproduced_independently": "SURVIVED at 2967 passed, exit 0, against a database proven live first. The evaluator was right.",
+    "why_no_behavioural_test_can_close_it": "CI runs python:3.13-slim with tzname ('UTC','UTC'), where now.date() and now.astimezone().date() are equal by construction. A test that cannot fail in the environment that runs it is not a guard.",
+    "fix": "publisher.py added to _AUDITED_MODULES, and a new STRUCTURAL test -- test_a_clock_argument_passes_the_inherited_moment_not_a_re_derived_one -- requires every now=/as_of= argument in an audited module to pass the inherited moment, forbidding astimezone/localtime/today/now/utcnow/fromtimestamp/mktime/gmtime/combine inside it.",
+    "verified": "That named test now FAILS on the exact L2 mutation, reporting `line 416: as_of=now.astimezone().date()  re-derives via ['astimezone']`."
+  },
+  "l2_finding_2_participant_list_drift": {
+    "what": "The contract claimed SEVEN converted participants; the PARTICIPANTS list pinned SIX. reconcile_coverage had no signature test.",
+    "why_it_mattered": "Re-optionalising it WITHOUT an `or` fallback survives green -- the RELOCATOR shape, which forwards None onward instead of inventing locally, and which the fallback-shape guard structurally cannot see. That is the same shape I diagnosed as PR #99's defect.",
+    "fix": "reconcile_coverage added to PARTICIPANTS, and a new test -- test_the_participant_list_matches_the_contract -- reads PARTICIPANT_converted out of this file and fails if the two ever disagree again. A hand-maintained list drifts; this makes the drift fail a test."
+  },
+  "l2_corrected_claims": {
+    "search_published_offers": "WRONG as stated. There is ONE production caller, read_api/router.py:306, and it passes now=now. Correct statement: 1 production caller, 0 production EDITS required. The deferral remains SAFE and the decision stands; only my reason was wrong.",
+    "publish_candidate": "WRONG as stated. ONE production caller, publisher.py:625, which passes now=now. Same correction, same conclusion: deferral safe, reason wrong.",
+    "apps_web_file_count": "WRONG, and wrong in the worst way -- INFERRED BY ARITHMETIC rather than measured. I wrote '66 TypeScript files in apps/web' from 170 minus 104. Measured: apps/ has 170 tracked, 66 of them non-Python, but only 57 tracked files live in apps/web and only 43 are TS/JS. The other 9 non-Python files are elsewhere under apps/. Subtraction is not measurement.",
+    "clock_invention_call_sites": "The bare figure '52' does not survive its own breakdown and should never have been published as a scalar without its definition. Measured now over 238 tracked .py repo-wide, three defensible definitions give three answers: (A) strict wall-clock source = 22 apps / 33 tests / 55 repo; (B) A plus time.time()/time_ns = same; (C) B plus calls to _now-style helpers = 48 apps / 33 tests / 81 repo. My original 52 was definition (C) restricted to apps/ AND polluted with 2 time.monotonic() calls, which are not wall clocks at all and have no frame of reference. The evaluator measures 29/35/72 under a fourth definition I do not hold. The honest resolution is that this number is definition-dependent and was NEVER load-bearing: no conclusion in this slice rested on it. The load-bearing census was the count of INVENTING FUNCTIONS = 9, which the evaluator independently confirmed with 5/5 positive and 4/4 negative controls."
+  },
+  "l2_bidirectionality_recorded": {
+    "what_i_said": "Only the overclaim direction -- an expired window published as still open.",
+    "what_is_true": "The defect is BIDIRECTIONAL, verified by executing the classifier at explicit dates for one instant in three zones.",
+    "east_of_utc": "At UTC+14, instant 2029-12-31T23:00Z has local date 2030-01-01. UTC says the window is OPEN; the local frame emits 'Offer availability ended on 2029-12-31.' That WITHHOLDS a true free claim.",
+    "west_of_utc": "At UTC-7, instant 2030-01-01T03:00Z has local date 2029-12-31. UTC says CLOSED; the local frame emits 'Offer has a bounded availability window ending 2029-12-31.' That ASSERTS an expired claim.",
+    "why_it_matters": "This project weights a wrongly-WITHHELD claim equally with a wrongly-asserted one. Describing only one direction understated the defect.",
+    "two_fields_not_one": "Gate 5 passes the SAME tuple to reasons AND blocking_conditions. Measured: both differ across the boundary and both carry the identical false sentence. It is two published fields, not one."
+  },
+  "l2_calibration_against_the_finding": {
+    "cuts_against": "The shipped container runs UTC (python:3.13-slim, tzname ('UTC','UTC')), so date.today() and now.date() are equal there and the defect CANNOT fire in the deployed service.",
+    "cuts_for": "It CAN fire via the documented host-side CLI, `python -m app.ingest.runner`, which runs in the operator's local zone.",
+    "why_both_halves": "Stating only the second half is advocacy, and stating only the first half would excuse the defect. The honest position is that this is a real defect on a real documented path with a bounded blast radius, not a live production incident."
+  },
+  "l2_durable_lesson_windows_tz": {
+    "finding": "Windows CPython has NO time.tzset() and SILENTLY IGNORES the TZ environment variable. Verified on this host: hasattr(time,'tzset') is False, and after setting TZ=Pacific/Kiritimati, time.tzname is still ('Mountain Standard Time','Mountain Daylight Time').",
+    "consequence": "Any TZ-based measurement of this defect on this host reports NO DIVERGENCE, which reads as the defect being ABSENT. It had to be measured in a Linux container.",
+    "why_this_is_the_important_half": "This is not a Windows trivia note. It is an instrument that fails silently toward the comfortable answer, in the same family as a -k that matches nothing and a mutation that never applies. It is the reason my own not-verified item 2 stayed unverified rather than being quietly resolved the wrong way."
+  },
+  "l2_error_i_made_during_remediation": {
+    "what": "My first re-run of the semantic mutation reported KILLED with 279 errors. That verdict was FABRICATED BY MY OWN ENVIRONMENT.",
+    "cause": "I recreated the Postgres container and ran CREATE DATABASE mutdb 8 seconds later, piped its output to Out-Null, and printed 'mutdb ready' UNCONDITIONALLY without checking the exit code. Postgres was not yet accepting connections. Every integration test then failed with 'FATAL: database mutdb does not exist', and the harness read a non-zero exit as KILLED.",
+    "how_i_caught_it": "The failure pattern was implausible -- 279 errors in test_admin_migration have nothing to do with a timezone change in publisher.py -- and the run took 416s instead of ~110s.",
+    "why_it_was_dangerous": "Had I accepted it, I would have reported to the orchestrator that L2 Finding 1 was wrong. A false KILL is worse than a false SURVIVE because it confirms whatever you were hoping for.",
+    "durable_fix": "mutate.ps1 now proves the database is reachable BEFORE running anything, and ABORTS rather than returning a verdict. Demonstrated: the precondition was shown to fail against the still-absent mutdb before mutdb was created and VERIFIED present in pg_database."
   }
 }
