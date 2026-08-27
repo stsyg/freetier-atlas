@@ -413,7 +413,7 @@ def _do_publish(
     # changes the published REASON -- an expired offer could be written into
     # `material_facts` as "has a bounded availability window ending <date>",
     # which says a closed window is still open. See `classify`'s docstring.
-    classification = classify_offer(offer, version, as_of=now.date())
+    classification = classify_offer(offer, version, as_of=now.astimezone().date())
 
     version.zero_cost_class = classification.zero_cost_class
     offer.zero_cost_class = classification.zero_cost_class
