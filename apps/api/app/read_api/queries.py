@@ -406,8 +406,29 @@ def coverage_signal_context(
     this feature exists to remove everywhere else: ``NO_CURRENCY`` fails closed
     rather than reading as fresh, and ``UNCHECKED`` is not ``current``. A
     function that manufactures its own "now" cannot fail closed, because it can
-    never tell that it was never given one. Both production callers already pass
-    a clock, so requiring it costs nothing and removes the capability.
+    never tell that it was never given one.
+
+    What requiring ``now`` did, stated precisely -- an earlier version of this
+    docstring said "both production callers already pass a clock, so requiring
+    it costs nothing and removes the capability", and that was wrong in a way
+    worth recording. Requiring a keyword-only parameter constrains **arity, not
+    nullability**. It removed the invent-a-moment fallback and forced every call
+    site to NAME a clock; it did not stop a call site naming ``None``.
+
+    One of them did exactly that: ``find_coverage_mismatches`` had an optional
+    ``now`` and forwarded it here unchanged, so it satisfied "must be supplied"
+    while supplying ``None``, and the remedy was defeated by its own caller. The
+    ``None`` did not fail open -- it reached ``assess_staleness`` and raised
+    ``TypeError: unsupported operand type(s) for -: 'NoneType' and
+    'datetime.datetime'`` -- but only once a snapshot with a real ``fetched_at``
+    was in play, so it sat latent behind a green suite. That is why the callers
+    were fixed as well as this signature.
+
+    Enforcement here is a **runtime TypeError**, not a static gate. There is no
+    type checker on the Python side of this repository (``requirements-dev.txt``
+    carries ruff, pytest, detect-secrets, pip-audit, httpx and cryptography), so
+    the ``now: datetime`` annotation above documents the contract but does not
+    police it. A test that pins the signature is what makes the requirement real.
     """
 
     return CoverageSignalContext(
