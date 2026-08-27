@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import ast
 import inspect
+import json
 from datetime import date
 from pathlib import Path
 
@@ -29,12 +30,19 @@ from app.adviser.abuse import admin as abuse_admin
 from app.adviser.select import build_candidate, build_pool, gather_candidates
 from app.classify.engine import OfferFacts, classify
 from app.classify.orm import classify_offer
-from app.ingest.reconcile_coverage import find_coverage_mismatches
+from app.ingest.reconcile_coverage import find_coverage_mismatches, reconcile_coverage
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 #: Every function converted from an invented clock to an inherited one, with the
 #: name of the parameter that must now be supplied.
+#:
+#: This list is checked against the contract by
+#: ``test_every_converted_participant_is_pinned_here``. It previously held six
+#: entries while the contract claimed seven, and the missing one --
+#: ``reconcile_coverage`` -- could be re-optionalised WITHOUT an ``or`` fallback
+#: and survive green: the RELOCATOR shape, which forwards ``None`` onward rather
+#: than inventing locally, and which the source guard below cannot see.
 PARTICIPANTS = [
     pytest.param(classify, "as_of", id="classify"),
     pytest.param(classify_offer, "as_of", id="classify_offer"),
@@ -42,6 +50,7 @@ PARTICIPANTS = [
     pytest.param(build_pool, "as_of", id="build_pool"),
     pytest.param(gather_candidates, "now", id="gather_candidates"),
     pytest.param(find_coverage_mismatches, "now", id="find_coverage_mismatches"),
+    pytest.param(reconcile_coverage, "now", id="reconcile_coverage"),
 ]
 
 #: Genuine boundaries. Someone must source the clock and these are where the
@@ -149,6 +158,10 @@ _AUDITED_MODULES = (
     "apps/api/app/classify/orm.py",
     "apps/api/app/adviser/select.py",
     "apps/api/app/ingest/reconcile_coverage.py",
+    # Added after a Level-2 finding. Its absence was not cosmetic: the headline
+    # fix of this slice lives at `_do_publish`, and with publisher.py outside
+    # this tuple that fix had NO source-level guard at all.
+    "apps/api/app/publish/publisher.py",
 )
 
 _INVENTIONS = {"now", "utcnow", "today"}
@@ -164,6 +177,32 @@ def _invents_a_moment(node: ast.AST) -> bool:
     )
 
 
+#: Functions that are STILL allowed to source their own moment in an audited
+#: module, because this slice deliberately deferred them. Listed by name rather
+#: than exempting the whole module, so the exception is visible and cannot grow
+#: silently: a third one appearing fails the test below.
+#:
+#: `publish_candidate` and `publish_scan` invent SEPARATELY inside one
+#: `run_provider_scans`, so a single scan run uses two moments. That is a real
+#: second finding with its own blast radius (26 test call sites for the paired
+#: `reconcile_scan`), and it gets its own slice and its own evidence rather than
+#: being tacked onto this one.
+_DEFERRED_INVENTORS = {
+    "apps/api/app/publish/publisher.py": {"publish_candidate", "publish_scan"},
+}
+
+
+def _enclosing_function(tree: ast.AST, lineno: int) -> str:
+    best = "<module>"
+    best_line = -1
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            if node.lineno <= lineno <= (node.end_lineno or node.lineno):
+                if node.lineno > best_line:
+                    best, best_line = node.name, node.lineno
+    return best
+
+
 @pytest.mark.parametrize("rel", _AUDITED_MODULES)
 def test_an_audited_module_never_defaults_a_clock_it_was_not_given(rel: str) -> None:
     """No ``x = x or datetime.now(...)`` / ``x if x else date.today()`` remains.
@@ -173,22 +212,152 @@ def test_an_audited_module_never_defaults_a_clock_it_was_not_given(rel: str) -> 
     the FALLBACK shape -- a value that substitutes an invented moment for one the
     caller declined to supply, which is the shape that cannot fail closed because
     it can never tell it was never given one.
+
+    Deferred functions are allowed by NAME via ``_DEFERRED_INVENTORS`` and the
+    allowance is checked in both directions, so neither adding a new inventor nor
+    fixing a deferred one can leave this test quietly stale.
     """
 
     tree = ast.parse((REPO_ROOT / rel).read_text(encoding="utf-8"), filename=rel)
 
+    offenders: list[tuple[str, str]] = []
+    for node in ast.walk(tree):
+        hit = False
+        if isinstance(node, ast.BoolOp) and isinstance(node.op, ast.Or):
+            hit = any(_invents_a_moment(v) for v in node.values)
+        if isinstance(node, ast.IfExp):
+            hit = _invents_a_moment(node.body) or _invents_a_moment(node.orelse)
+        if hit:
+            offenders.append(
+                (_enclosing_function(tree, node.lineno), f"line {node.lineno}: {ast.unparse(node)}")
+            )
+
+    allowed = _DEFERRED_INVENTORS.get(rel, set())
+    unexpected = [text for fn, text in offenders if fn not in allowed]
+    assert not unexpected, f"{rel} has regained an invented-clock fallback:\n  " + "\n  ".join(
+        unexpected
+    )
+
+    # The allowance must not outlive the deferral it documents.
+    still_inventing = {fn for fn, _ in offenders}
+    assert allowed <= still_inventing, (
+        f"{rel}: {sorted(allowed - still_inventing)} no longer invent a moment. "
+        "Remove them from _DEFERRED_INVENTORS so this guard covers them properly."
+    )
+
+
+# --- WHICH clock, not merely THAT a clock -------------------------------------
+# A Level-2 evaluator killed the previous version of this file with one mutation:
+#
+#     as_of=now.date()  ->  as_of=now.astimezone().date()
+#
+# Same instant, local calendar date, argument still supplied, no import change.
+# That is EXACTLY the base behaviour the slice removed, and it SURVIVED at 2968
+# passed, exit 0.
+#
+# The reason is worth stating because it generalises. The arity mutation (drop
+# the argument entirely) is killed by a TypeError, and I had treated that kill as
+# proof the fix was guarded. It is not. It proves only that A CLOCK IS PASSED.
+# The defect was WHICH CLOCK IS USED. Those are different properties and the
+# first does not imply the second.
+#
+# Nor can a behavioural test close it here: CI runs python:3.13-slim with
+# tzname ('UTC','UTC'), where `now.date()` and `now.astimezone().date()` are
+# equal by construction. A test that cannot fail in the environment that runs it
+# is not a guard. So the assertion has to be STRUCTURAL -- read the source and
+# require that the moment handed to a clock parameter is the one the caller was
+# given, not a re-derivation of it.
+
+#: Call expressions that RE-DERIVE a moment rather than passing the inherited
+#: one. Any of these inside a clock argument means the callee is being handed a
+#: different moment from the one its caller is holding.
+_REDERIVING_CALLS = {
+    "astimezone",  # same instant, DIFFERENT calendar frame -- the L2 mutation
+    "localtime",
+    "today",
+    "now",
+    "utcnow",
+    "fromtimestamp",
+    "mktime",
+    "gmtime",
+    "combine",
+}
+
+#: The keyword names that carry a moment in this codebase.
+_CLOCK_KWARGS = {"now", "as_of"}
+
+
+def _rederivations_in(expr: ast.AST) -> list[str]:
+    found = []
+    for node in ast.walk(expr):
+        if not isinstance(node, ast.Call):
+            continue
+        fn = node.func
+        name = fn.attr if isinstance(fn, ast.Attribute) else getattr(fn, "id", None)
+        if name in _REDERIVING_CALLS:
+            found.append(name)
+    return found
+
+
+@pytest.mark.parametrize("rel", _AUDITED_MODULES)
+def test_a_clock_argument_passes_the_inherited_moment_not_a_re_derived_one(rel: str) -> None:
+    """Every ``now=``/``as_of=`` argument must be inherited, not re-derived.
+
+    ``as_of=now.date()`` is inherited: it narrows the caller's own moment.
+    ``as_of=now.astimezone().date()`` is re-derived: it takes the same instant
+    into a different calendar frame, which is the defect wearing the fix's
+    clothes. In UTC CI the two are indistinguishable at runtime, so only the
+    source can tell them apart.
+
+    Sourcing a clock on its own assignment line is still permitted -- that is how
+    a documented boundary like ``assert_no_coverage_contradictions`` works. What
+    is forbidden is re-deriving one *inside the argument being passed down*.
+    """
+
+    source = (REPO_ROOT / rel).read_text(encoding="utf-8")
+    tree = ast.parse(source, filename=rel)
+
     offenders: list[str] = []
     for node in ast.walk(tree):
-        # `a or datetime.now(UTC)`
-        if isinstance(node, ast.BoolOp) and isinstance(node.op, ast.Or):
-            if any(_invents_a_moment(v) for v in node.values):
-                offenders.append(f"line {node.lineno}: {ast.unparse(node)}")
-        # `datetime.now(UTC) if x is None else x`
-        if isinstance(node, ast.IfExp) and (
-            _invents_a_moment(node.body) or _invents_a_moment(node.orelse)
-        ):
-            offenders.append(f"line {node.lineno}: {ast.unparse(node)}")
+        if not isinstance(node, ast.Call):
+            continue
+        for kw in node.keywords:
+            if kw.arg not in _CLOCK_KWARGS:
+                continue
+            bad = _rederivations_in(kw.value)
+            if bad:
+                offenders.append(
+                    f"line {node.lineno}: {kw.arg}={ast.unparse(kw.value)}  "
+                    f"re-derives via {sorted(set(bad))}"
+                )
 
-    assert not offenders, f"{rel} has regained an invented-clock fallback:\n  " + "\n  ".join(
-        offenders
+    assert not offenders, (
+        f"{rel} hands a RE-DERIVED moment to a clock parameter:\n  "
+        + "\n  ".join(offenders)
+        + "\n\nThe callee must receive the moment its caller is holding. Passing "
+        "the same instant in a different frame is the defect this slice removed."
+    )
+
+
+def test_the_participant_list_matches_the_contract() -> None:
+    """The pinned list must not silently drift from what the contract claims.
+
+    A Level-2 evaluator found the contract claiming SEVEN converted participants
+    while this file pinned SIX. The unpinned one, ``reconcile_coverage``, could
+    be re-optionalised without an ``or`` fallback and survive green -- the
+    RELOCATOR shape, which forwards ``None`` onward instead of inventing locally
+    and which the fallback-shape guard above cannot see.
+
+    A list maintained by hand drifts. This makes the drift fail a test instead.
+    """
+
+    contract = json.loads((REPO_ROOT / "agent-state" / "current_contract.json").read_text("utf-8"))
+    claimed = contract["classification"]["PARTICIPANT_converted"]
+    claimed_names = {entry.split("::", 1)[1].split(" ", 1)[0] for entry in claimed}
+    pinned_names = {p.id for p in PARTICIPANTS}
+
+    assert claimed_names == pinned_names, (
+        "current_contract.json and PARTICIPANTS disagree about what was converted.\n"
+        f"  claimed in contract but NOT pinned: {sorted(claimed_names - pinned_names)}\n"
+        f"  pinned but NOT claimed in contract: {sorted(pinned_names - claimed_names)}"
     )

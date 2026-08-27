@@ -4030,3 +4030,64 @@ Instrument proven falsifiable **first**: a zero-match `-k` gave pytest exit **5*
 4. **9 is a floor.** It is the count for the nine parameter names and seven invention forms actually searched.
 
 **Evaluator disposition: PENDING.** Builder does not self-certify. Draft PR; not merged; no feature marked passing. Level 2 required (Z0 classification + automatic publication decisions).
+
+---
+
+## 2026-08-27 (later) — L2 FAILED on PR #100, remediated additively — BUILDER
+
+**Disposition: FAILED on EVIDENCE and GUARD. The code was found CORRECT** under seven falsification experiments. Everything below is additive — no code change, no behaviour change, production diff unchanged.
+
+### Finding 1 — my kill proved the wrong property, and I reproduced that myself
+
+I showed that dropping `as_of=now.date()` at `_do_publish` is KILLED, and treated it as proof the fix was guarded. **It kills on ARITY.** It proves *a clock is passed*; the defect was *which clock is used*. Different properties, and the first does not imply the second.
+
+The evaluator's mutation — `as_of=now.astimezone().date()`, same instant, local calendar date, argument still supplied, no import change — **I reproduced independently: SURVIVED, 2967 passed, exit 0.**
+
+No behavioural test can close this: CI runs `python:3.13-slim` with `tzname ('UTC','UTC')`, where the two expressions are equal by construction. **A test that cannot fail in the environment that runs it is not a guard.** So the new assertion is structural: `publisher.py` added to `_AUDITED_MODULES`, plus `test_a_clock_argument_passes_the_inherited_moment_not_a_re_derived_one`, which forbids `astimezone/localtime/today/now/utcnow/fromtimestamp/mktime/gmtime/combine` inside any `now=`/`as_of=` argument. **Verified it bites:** fails on the exact mutation with `line 416: as_of=now.astimezone().date()  re-derives via ['astimezone']`.
+
+### Finding 2 — the pinned list drifted from the contract
+
+Contract claimed seven participants; the test pinned six. `reconcile_coverage` was unpinned, and re-optionalising it *without* an `or` fallback survives green — the **RELOCATOR** shape, which forwards `None` onward and which the fallback-shape guard structurally cannot see. That is the same shape I diagnosed as PR #99's defect, reappearing in my own guard.
+
+Fixed by adding it, and by `test_the_participant_list_matches_the_contract`, which reads the contract and fails on disagreement. A hand-maintained list drifts; now the drift fails a test.
+
+### An error I made DURING remediation, and why it was the dangerous kind
+
+My first re-run of the semantic mutation reported **KILLED, 279 errors**. That verdict was **fabricated by my own environment.** I recreated the Postgres container and ran `CREATE DATABASE mutdb` eight seconds later, piped the output to `Out-Null`, and printed *"mutdb ready"* **unconditionally without checking the exit code**. Every integration test then failed with `FATAL: database "mutdb" does not exist`, and my harness read the non-zero exit as "the defect is visible".
+
+Caught because the pattern was implausible — 279 errors in `test_admin_migration` have nothing to do with a timezone change in `publisher.py` — and the run took 416s instead of ~110s. **Had I accepted it I would have told the orchestrator the L2 finding was wrong.** A false KILL is worse than a false SURVIVE, because it confirms what you were hoping for.
+
+`mutate.ps1` now proves the database reachable **before** any verdict and ABORTS otherwise; the precondition was demonstrated failing against the still-absent `mutdb` before the database was created and **verified present in `pg_database`** rather than announced.
+
+### Four claims corrected
+
+- **`search_published_offers`**: 1 production caller (`router.py:306`), which passes a clock. Correct statement is *1 caller, 0 edits*. Deferral safe, decision stands, **my reason was wrong**.
+- **`publish_candidate`**: 1 production caller (`publisher.py:625`), passes a clock. Same correction.
+- **`apps/web` file count**: I wrote "66 TypeScript files" — **inferred by subtracting 104 from 170, not measured**. Measured: `apps/web` has **57 tracked, 43 TS/JS**; the 66 is non-Python under all of `apps/`. Subtraction is not measurement.
+- **"52 clock-invention call sites"**: does not survive its own breakdown — 26 were `_now()` *calls to a helper that invents* (double-counting the wrapper body) and 2 were `time.monotonic()`, which is not a wall clock at all. Measured over 238 tracked `.py`: strict = **22 apps / 33 tests / 55 repo**; with helper call sites = 48/33/81. The evaluator measures 29/35/72 under a fourth definition. **The number is definition-dependent and was never load-bearing** — no conclusion rested on it. The load-bearing census was *inventing functions = 9*, independently confirmed.
+
+### Bidirectionality — I described only half the defect
+
+Measured by executing the classifier for one instant in three zones:
+
+- **East (UTC+14)**: instant `2029-12-31T23:00Z`, local date `2030-01-01`. UTC says the window is **OPEN**; the local frame emits *"Offer availability ended on 2029-12-31."* → **a true free claim WRONGLY WITHHELD.**
+- **West (UTC-7)**: instant `2030-01-01T03:00Z`, local date `2029-12-31`. UTC says **CLOSED**; the local frame emits *"has a bounded availability window"* → **an expired claim wrongly asserted.**
+
+This project weights a wrongly-withheld claim equally with a wrongly-asserted one, so describing only the overclaim understated it. Also: Gate 5 passes the **same tuple** to `reasons` *and* `blocking_conditions` — measured, both differ across the boundary. **Two published fields, not one.**
+
+### Calibration, both halves
+
+The shipped container runs UTC, so **the defect cannot fire in the deployed service**. It *can* fire via the documented host-side `python -m app.ingest.runner` CLI, which runs in the operator's local zone. Stating only the second half would be advocacy; stating only the first would excuse it.
+
+### Durable lesson worth more than this slice
+
+**Windows CPython has no `time.tzset()` and silently ignores `TZ`.** Verified here: `hasattr(time,'tzset')` is `False`, and after `TZ=Pacific/Kiritimati` the `tzname` is still Mountain. Any TZ-based measurement of this defect on this host reports **no divergence**, which reads as *the defect is absent*. Same family as a `-k` that matches nothing and a mutation that never applies: **an instrument that fails silently toward the comfortable answer.** It must be measured in a Linux container.
+
+### Still NOT VERIFIED
+
+1. The deferred scan-run finding is reported, not proven — now pinned by name in `_DEFERRED_INVENTORS` so the exception cannot grow silently.
+2. The TZ divergence is still not measured *on this host* and cannot be. The Linux-container evidence is the evaluator's, not mine.
+3. The clock-invention scalar remains definition-dependent; three definitions are recorded with the population attached.
+4. `apps/web` clean-on-evidence is the **evaluator's** measurement, not mine; my census remains Python-only.
+
+The `available_from` finding is deliberately untouched — filed separately by the orchestrator.

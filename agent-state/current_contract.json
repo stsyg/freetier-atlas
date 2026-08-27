@@ -9,7 +9,10 @@
     "method": "AST, not source pattern. A regex cannot see a signature a formatter split across lines, cannot distinguish a DEFAULT of None from a COMPARISON against None, and only finds spellings already thought of.",
     "population_defect_census": "170 tracked files under apps/, of which 104 are Python and were parsed; 66 are TypeScript (apps/web) and were NOT searched.",
     "population_blast_radius": "237 tracked .py repo-wide. Deliberately a different population from the defect census because the test tree is NOT under apps/ (0 of 104 match */tests/* or test_*), and the callers that pay the cost of a required parameter live in tests/.",
-    "brief_said": { "inventing_functions": 8, "optional_clock_params": 10 },
+    "brief_said": {
+      "inventing_functions": 8,
+      "optional_clock_params": 10
+    },
     "this_slice_measured": {
       "inventing_functions": 9,
       "optional_clock_params": 11,
@@ -81,9 +84,59 @@
     "Draft PR. Not merged. No feature marked passing."
   ],
   "not_verified": [
-    "apps/web was not searched for `new Date()`; the census is Python-only and does not claim the TypeScript read surface is clean.",
-    "The timezone divergence was demonstrated by executing classify() at two explicit dates, NOT by running the process under a west-of-UTC TZ and observing date.today() disagree with now.date() on this host. The inference follows from date.today() being local while everything else is UTC, but the host-level divergence itself was not measured.",
-    "The deferred scan-run finding (reconcile_scan and publish_scan inventing separately inside one run_provider_scans) is REPORTED, not fixed and not proven by mutation."
+    "The deferred scan-run finding (reconcile_scan and publish_scan inventing separately inside one run_provider_scans) is REPORTED, not fixed and not proven by mutation. It is now pinned by name in _DEFERRED_INVENTORS so the exception cannot grow silently.",
+    "The TZ divergence still has NOT been measured on this host, and cannot be: Windows CPython ignores TZ. It was measured by executing the classifier at explicit dates instead. The evaluator measured the real TZ behaviour in a Linux container; that evidence is theirs, not mine.",
+    "The clock-invention scalar remains definition-dependent. I report three definitions with the population attached rather than a single number, and the evaluator's 29/35/72 is under a fourth definition I do not hold. No conclusion rests on it.",
+    "apps/web was measured by the evaluator and found CLEAN ON EVIDENCE (57 tracked, 43 TS/JS, one new Date(value) parsing a server-supplied string, no date library). That evidence is the evaluator's, not mine; my census remains Python-only."
   ],
-  "evaluator_disposition": "PENDING - the builder does not self-certify. Draft PR awaits independent Level-2 review."
+  "evaluator_disposition": "L2 FAILED on evidence and guard, code found correct. Remediation is additive only. Awaiting re-review.",
+  "l2_disposition": {
+    "verdict": "FAILED on evidence and guard; the CODE was found correct under seven falsification experiments.",
+    "everything_below_is_additive": "No code change, no behaviour change. The production diff from the first submission is unchanged."
+  },
+  "l2_finding_1_the_one_that_mattered": {
+    "what_i_proved": "Dropping `as_of=now.date()` at _do_publish is KILLED. That kills on ARITY.",
+    "what_i_failed_to_prove": "That the RIGHT MOMENT is chosen. Those are different properties and the first does not imply the second.",
+    "the_surviving_mutation": "as_of=now.astimezone().date() -- same instant, local calendar date, argument still supplied, no import change. Exactly base behaviour.",
+    "reproduced_independently": "SURVIVED at 2967 passed, exit 0, against a database proven live first. The evaluator was right.",
+    "why_no_behavioural_test_can_close_it": "CI runs python:3.13-slim with tzname ('UTC','UTC'), where now.date() and now.astimezone().date() are equal by construction. A test that cannot fail in the environment that runs it is not a guard.",
+    "fix": "publisher.py added to _AUDITED_MODULES, and a new STRUCTURAL test -- test_a_clock_argument_passes_the_inherited_moment_not_a_re_derived_one -- requires every now=/as_of= argument in an audited module to pass the inherited moment, forbidding astimezone/localtime/today/now/utcnow/fromtimestamp/mktime/gmtime/combine inside it.",
+    "verified": "That named test now FAILS on the exact L2 mutation, reporting `line 416: as_of=now.astimezone().date()  re-derives via ['astimezone']`."
+  },
+  "l2_finding_2_participant_list_drift": {
+    "what": "The contract claimed SEVEN converted participants; the PARTICIPANTS list pinned SIX. reconcile_coverage had no signature test.",
+    "why_it_mattered": "Re-optionalising it WITHOUT an `or` fallback survives green -- the RELOCATOR shape, which forwards None onward instead of inventing locally, and which the fallback-shape guard structurally cannot see. That is the same shape I diagnosed as PR #99's defect.",
+    "fix": "reconcile_coverage added to PARTICIPANTS, and a new test -- test_the_participant_list_matches_the_contract -- reads PARTICIPANT_converted out of this file and fails if the two ever disagree again. A hand-maintained list drifts; this makes the drift fail a test."
+  },
+  "l2_corrected_claims": {
+    "search_published_offers": "WRONG as stated. There is ONE production caller, read_api/router.py:306, and it passes now=now. Correct statement: 1 production caller, 0 production EDITS required. The deferral remains SAFE and the decision stands; only my reason was wrong.",
+    "publish_candidate": "WRONG as stated. ONE production caller, publisher.py:625, which passes now=now. Same correction, same conclusion: deferral safe, reason wrong.",
+    "apps_web_file_count": "WRONG, and wrong in the worst way -- INFERRED BY ARITHMETIC rather than measured. I wrote '66 TypeScript files in apps/web' from 170 minus 104. Measured: apps/ has 170 tracked, 66 of them non-Python, but only 57 tracked files live in apps/web and only 43 are TS/JS. The other 9 non-Python files are elsewhere under apps/. Subtraction is not measurement.",
+    "clock_invention_call_sites": "The bare figure '52' does not survive its own breakdown and should never have been published as a scalar without its definition. Measured now over 238 tracked .py repo-wide, three defensible definitions give three answers: (A) strict wall-clock source = 22 apps / 33 tests / 55 repo; (B) A plus time.time()/time_ns = same; (C) B plus calls to _now-style helpers = 48 apps / 33 tests / 81 repo. My original 52 was definition (C) restricted to apps/ AND polluted with 2 time.monotonic() calls, which are not wall clocks at all and have no frame of reference. The evaluator measures 29/35/72 under a fourth definition I do not hold. The honest resolution is that this number is definition-dependent and was NEVER load-bearing: no conclusion in this slice rested on it. The load-bearing census was the count of INVENTING FUNCTIONS = 9, which the evaluator independently confirmed with 5/5 positive and 4/4 negative controls."
+  },
+  "l2_bidirectionality_recorded": {
+    "what_i_said": "Only the overclaim direction -- an expired window published as still open.",
+    "what_is_true": "The defect is BIDIRECTIONAL, verified by executing the classifier at explicit dates for one instant in three zones.",
+    "east_of_utc": "At UTC+14, instant 2029-12-31T23:00Z has local date 2030-01-01. UTC says the window is OPEN; the local frame emits 'Offer availability ended on 2029-12-31.' That WITHHOLDS a true free claim.",
+    "west_of_utc": "At UTC-7, instant 2030-01-01T03:00Z has local date 2029-12-31. UTC says CLOSED; the local frame emits 'Offer has a bounded availability window ending 2029-12-31.' That ASSERTS an expired claim.",
+    "why_it_matters": "This project weights a wrongly-WITHHELD claim equally with a wrongly-asserted one. Describing only one direction understated the defect.",
+    "two_fields_not_one": "Gate 5 passes the SAME tuple to reasons AND blocking_conditions. Measured: both differ across the boundary and both carry the identical false sentence. It is two published fields, not one."
+  },
+  "l2_calibration_against_the_finding": {
+    "cuts_against": "The shipped container runs UTC (python:3.13-slim, tzname ('UTC','UTC')), so date.today() and now.date() are equal there and the defect CANNOT fire in the deployed service.",
+    "cuts_for": "It CAN fire via the documented host-side CLI, `python -m app.ingest.runner`, which runs in the operator's local zone.",
+    "why_both_halves": "Stating only the second half is advocacy, and stating only the first half would excuse the defect. The honest position is that this is a real defect on a real documented path with a bounded blast radius, not a live production incident."
+  },
+  "l2_durable_lesson_windows_tz": {
+    "finding": "Windows CPython has NO time.tzset() and SILENTLY IGNORES the TZ environment variable. Verified on this host: hasattr(time,'tzset') is False, and after setting TZ=Pacific/Kiritimati, time.tzname is still ('Mountain Standard Time','Mountain Daylight Time').",
+    "consequence": "Any TZ-based measurement of this defect on this host reports NO DIVERGENCE, which reads as the defect being ABSENT. It had to be measured in a Linux container.",
+    "why_this_is_the_important_half": "This is not a Windows trivia note. It is an instrument that fails silently toward the comfortable answer, in the same family as a -k that matches nothing and a mutation that never applies. It is the reason my own not-verified item 2 stayed unverified rather than being quietly resolved the wrong way."
+  },
+  "l2_error_i_made_during_remediation": {
+    "what": "My first re-run of the semantic mutation reported KILLED with 279 errors. That verdict was FABRICATED BY MY OWN ENVIRONMENT.",
+    "cause": "I recreated the Postgres container and ran CREATE DATABASE mutdb 8 seconds later, piped its output to Out-Null, and printed 'mutdb ready' UNCONDITIONALLY without checking the exit code. Postgres was not yet accepting connections. Every integration test then failed with 'FATAL: database mutdb does not exist', and the harness read a non-zero exit as KILLED.",
+    "how_i_caught_it": "The failure pattern was implausible -- 279 errors in test_admin_migration have nothing to do with a timezone change in publisher.py -- and the run took 416s instead of ~110s.",
+    "why_it_was_dangerous": "Had I accepted it, I would have reported to the orchestrator that L2 Finding 1 was wrong. A false KILL is worse than a false SURVIVE because it confirms whatever you were hoping for.",
+    "durable_fix": "mutate.ps1 now proves the database is reachable BEFORE running anything, and ABORTS rather than returning a verdict. Demonstrated: the precondition was shown to fail against the still-absent mutdb before mutdb was created and VERIFIED present in pg_database."
+  }
 }
