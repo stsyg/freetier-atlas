@@ -36,6 +36,12 @@ from app.read_api.currency import (
     assess_currency,
 )
 
+# One fixed moment for this module's clock-taking calls. The production
+# functions require a clock rather than inventing one, so a test must state
+# the instant it is asserting about.
+_CLOCK = datetime(2026, 1, 15, 12, 0, tzinfo=UTC)
+_CLOCK_DATE = _CLOCK.date()
+
 #: Refresh window a synthetic source is assumed to declare when a case does not
 #: say. Matches ``app.ingest.reconcile.DEFAULT_STALENESS_WINDOW``.
 DEFAULT_SYNTHETIC_SCHEDULE = "weekly"
@@ -89,7 +95,13 @@ class _Catalogue:
         self.currency_index = currency_index or {}
 
     def pool(self) -> CandidatePool:
-        return build_pool(self.offers, self.category_slugs, self.region_index, self.currency_index)
+        return build_pool(
+            self.offers,
+            self.category_slugs,
+            self.region_index,
+            self.currency_index,
+            as_of=_CLOCK_DATE,
+        )
 
 
 def _version_currency(version_data: Mapping[str, Any], now: datetime) -> EvidenceCurrency:

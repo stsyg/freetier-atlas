@@ -55,9 +55,16 @@ def classify_offer(
     offer: Offer,
     version: OfferVersion | None = None,
     *,
-    as_of: date | None = None,
+    as_of: date,
 ) -> ClassificationResult:
-    """Classify an ORM ``Offer`` (read-only). See :func:`offer_facts_from_orm`."""
+    """Classify an ORM ``Offer`` (read-only). See :func:`offer_facts_from_orm`.
+
+    ``as_of`` is REQUIRED for the reason given on :func:`classify`, and for one
+    more that is specific to this wrapper: it invented nothing itself, it
+    forwarded ``as_of=None`` to a callee that did. Passing ``None`` onward does
+    not remove an invented clock, it RELOCATES it one frame down -- out of sight
+    of anyone reading this function, and into local time.
+    """
 
     return classify(offer_facts_from_orm(offer, version), as_of=as_of)
 

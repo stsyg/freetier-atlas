@@ -23,15 +23,30 @@ from datetime import UTC, datetime
 from .service import AI_KILL_SWITCH_FLAG
 from .store import AbuseStore, BreakerRecord, get_abuse_store
 
+# ENTRY POINT -- the optional `now` below is CORRECT here, and deliberately kept.
+#
+# This module is a CLI. `main()` is the process boundary, and a boundary must
+# source the clock because nobody upstream can: an operator typing
+# `python -m app.adviser.abuse.admin kill-switch on` has no moment to pass. Each
+# command is also a single, self-contained write -- there is no sibling
+# clock-consumer inside the same operation for a second `now` to disagree with,
+# which is the specific harm that makes an invented clock dangerous elsewhere in
+# this codebase (see `classify` and `gather_candidates`, both made required).
+#
+# The parameter exists so a test can pin the moment; the default exists so the
+# CLI works. Please do NOT "tidy" these two into required-clock participants for
+# symmetry with the rest of the audit -- converting a real boundary into a
+# participant breaks the CLI and buys nothing.
+
 
 def set_kill_switch(store: AbuseStore, enabled: bool, now: datetime | None = None) -> None:
-    """Persist the AI kill-switch flag."""
+    """Persist the AI kill-switch flag. Clock optional: see the note above."""
 
     store.set_flag(AI_KILL_SWITCH_FLAG, enabled, now or datetime.now(UTC))
 
 
 def reset_breaker(store: AbuseStore, provider: str, now: datetime | None = None) -> None:
-    """Force a provider's circuit breaker back to the closed state."""
+    """Force a provider's circuit breaker closed. Clock optional: see above."""
 
     store.breaker_store(
         provider,

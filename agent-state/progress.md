@@ -3971,3 +3971,62 @@ The evaluator contaminated its browser run by serving from the worktree its muta
 ### Still NOT VERIFIED
 
 Items 2-7 of the previous entry stand unchanged. In particular the uncategorised rollup still does not occur on the real fixture corpus (every rollup observation, including all of today's browser evidence, uses a constructed row), and F3's query cost is now measured but deliberately not optimised.
+
+---
+
+## 2026-08-27 — F008 clock-inheritance audit (`stsyg-clock-audit`, base `9ec45b05`) — BUILDER, DRAFT PR, NOT MERGED
+
+**Objective.** Audit the defect class PR #99 exposed: a function that takes an OPTIONAL clock and, when not given one, invents `datetime.now(UTC)`. Classify every site as ENTRY POINT or PARTICIPANT, convert the participants, and leave genuine boundaries alone with written reasons.
+
+### The census is mine, and it disagrees with the brief
+
+Built with the **AST**, not a source pattern, because a regex cannot see a signature a formatter split across lines, cannot tell a *default* of `None` from a *comparison* against `None`, and only finds spellings already thought of.
+
+| Measure | Brief | **Measured here** |
+|---|---|---|
+| functions with an optional clock that invent one | 8 | **9** |
+| optional-clock parameters | 10 | **11** |
+
+Population stated beside the count: **170 tracked files under `apps/`, 104 of them Python and parsed; 66 TypeScript and NOT searched.** Blast radius was priced over a *different* population — **237 tracked `.py` repo-wide** — because the test tree is not under `apps/` (0 of 104 match `*/tests/*`), and the callers that pay for a required parameter live in `tests/`.
+
+**The ninth site: `classify/engine.py:151`, `as_of = as_of or date.today()`.** It hides from `now or datetime.now(UTC)` three ways at once — the parameter is `as_of`, the type is `date`, and the invention is `date.today()`, which is **LOCAL time** while every other clock in this repository is UTC. It is the Z0 classification engine. **9 is a FLOOR, not a total.**
+
+### The defect that mattered most: two clocks in one publication decision
+
+`_do_publish` already held a UTC `now` (`:369`, `:378`, `:447`) and called `classify_offer(offer, version)` **without it**, so the availability window was judged against a local date. Fixed by passing `as_of=now.date()` — **zero signature change, zero test churn**.
+
+### A defect in the merged PR #99 remedy itself
+
+`coverage_signal_context`'s docstring says *"Both production callers already pass a clock, so requiring it costs nothing and removes the capability."* True of **arity**, false of **nullability**. `find_coverage_mismatches` forwarded `now=None`, and `reconcile_coverage.py:183` called it with no clock at all. No static type checker exists here, so `now: datetime` caught nothing.
+
+**Measured, not assumed:** it does **not** fail open — it raises `TypeError: unsupported operand type(s) for -: 'NoneType' and 'datetime.datetime'`. It stayed invisible only because the data reaching `assert_no_coverage_contradictions` never includes a snapshot with a `fetched_at`. A **latent crash** awaiting the first Wave-3 provider slice with real evidence. Corroborated independently: dropping the clock at `:138` killed 4 named tests with that exact error at `reconcile.py:271`.
+
+### An overclaim I made and caught before commit
+
+I first wrote that an offer could be "published as free while its own timestamp said the window had closed". **That is false.** A non-null `available_until` yields `Z2_TEMPORARY_OR_CONDITIONAL` on *both* sides of the boundary; `as_of` never flips the class. What it changes is the published **reason**: *"Offer has a bounded availability window ending 2029-12-31"* for a window that has closed. A false sentence, not a false class. The `engine.py` docstring and `publisher.py` comment were corrected before commit, and a test now asserts the class does **not** move so this conclusion cannot silently drift.
+
+### Classification
+
+**ENTRY POINT — behaviour unchanged, reason written into the source:** `set_kill_switch`, `reset_breaker` (sole caller is the argparse CLI `main()`), and `assert_no_coverage_contradictions` (a test-assertion boundary, which now sources its clock on an explicit line rather than through an optional parameter that would re-create the hazard).
+
+**PARTICIPANT — converted to a required clock:** `classify`, `classify_offer`, `build_candidate`, `build_pool`, `gather_candidates`, `find_coverage_mismatches`, `reconcile_coverage`.
+
+**DEFERRED with reasons:** `search_published_offers`, `publish_candidate`, and the scan-run pair `reconcile_scan` + `publish_scan` — which invent **separately inside one `run_provider_scans`**, so a single scan run uses two moments. That is a real second finding and gets its own evidence, not a tail added to this one.
+
+### Verification
+
+Instrument proven falsifiable **first**: a zero-match `-k` gave pytest exit **5**, reported as `INVALID: NOTHING COLLECTED`, never as green. The mutation harness likewise aborts when its search text is absent, because an *unapplied* mutation reads exactly like a *surviving* one — it aborted twice for real (0 hits, then 3 hits) rather than silently mutating nothing.
+
+- **Baseline reproduced independently:** `2953 passed, 3 skipped`, exit 0, DB live on an isolated port.
+- **BEFORE mutations (defect invisible today):** dropping `as_of` at the sole production caller of `classify()` → **SURVIVED, 2953 green**. Dropping `now=` at all three adviser handlers → **SURVIVED, 2953 green**.
+- **After conversion:** 154 failures, **every one** `TypeError: missing 1 required keyword-only argument` — arity, never a wrong answer. That is the evidence this changes which moment is used, not what is published.
+- **Final:** `2967 passed, 3 skipped`, exit 0. `ruff check` clean.
+
+### NOT VERIFIED — stated as prominently as the verdict
+
+1. **`apps/web` was not searched.** The census is Python-only; a `new Date()` in the TypeScript read surface is invisible to it and is **not** claimed clean.
+2. **The timezone divergence was not measured on this host.** It was demonstrated by executing `classify()` at two explicit dates. That `date.today()` and `now.date()` actually disagree here follows from one being local and the other UTC, but "follows from" is not "measured".
+3. **The deferred scan-run finding is reported, not proven** — no mutation was run against it.
+4. **9 is a floor.** It is the count for the nine parameter names and seven invention forms actually searched.
+
+**Evaluator disposition: PENDING.** Builder does not self-certify. Draft PR; not merged; no feature marked passing. Level 2 required (Z0 classification + automatic publication decisions).

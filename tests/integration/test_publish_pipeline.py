@@ -67,6 +67,12 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+# One fixed moment for this module's clock-taking calls. The production
+# functions require a clock rather than inventing one, so a test must state
+# the instant it is asserting about.
+_CLOCK = datetime(2026, 1, 15, 12, 0, tzinfo=UTC)
+_CLOCK_DATE = _CLOCK.date()
+
 pytestmark = pytest.mark.integration
 
 DATABASE_URL = os.environ.get("DATABASE_URL")
@@ -502,7 +508,7 @@ def test_personal_only_offer_round_trips_to_read_api_and_adviser(session: Sessio
             }
         )
 
-    pool = gather_candidates(session)
+    pool = gather_candidates(session, now=_CLOCK)
     selected_candidate = next(candidate for candidate in pool.z0 if candidate.offer_id == offer.id)
     assert selected_candidate.commercial_use_allowed is False
     assert selected_candidate.personal_use_allowed is True

@@ -24,6 +24,7 @@ import dataclasses
 import hashlib
 import json
 import re
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -45,6 +46,12 @@ from tests.support.fixtures import (
     load_case,
     run_extraction_case,
 )
+
+# One fixed moment for this module's clock-taking calls. The production
+# functions require a clock rather than inventing one, so a test must state
+# the instant it is asserting about.
+_CLOCK = datetime(2026, 1, 15, 12, 0, tzinfo=UTC)
+_CLOCK_DATE = _CLOCK.date()
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 CONFIG_PATH = REPO_ROOT / "config" / "examples" / "providers" / "aws.example.yaml"
@@ -286,7 +293,8 @@ def test_a_perpetual_aws_offer_is_still_a_billing_exposure() -> None:
             requires_card=candidate.facts.get("requires_card"),
             has_paid_dependencies=candidate.facts.get("has_paid_dependencies"),
             exhaustion_behaviours=(str(candidate.facts["exhaustion_behaviour"]),),
-        )
+        ),
+        as_of=_CLOCK_DATE,
     )
     assert result.zero_cost_class == "Z1_BILLING_EXPOSURE"
     assert any("automatic billing" in reason for reason in result.blocking_conditions)
@@ -309,7 +317,8 @@ def test_a_payment_method_is_required_and_that_is_published() -> None:
             requires_card=candidate.facts.get("requires_card"),
             has_paid_dependencies=candidate.facts.get("has_paid_dependencies"),
             exhaustion_behaviours=(str(candidate.facts["exhaustion_behaviour"]),),
-        )
+        ),
+        as_of=_CLOCK_DATE,
     )
     assert result.zero_cost_class == "Z1_BILLING_EXPOSURE"
     assert any("payment card is required" in reason for reason in result.blocking_conditions)
@@ -327,7 +336,8 @@ def test_no_aws_offer_can_reach_z0(case: str) -> None:
             requires_card=candidate.facts.get("requires_card"),
             has_paid_dependencies=candidate.facts.get("has_paid_dependencies"),
             exhaustion_behaviours=behaviours,
-        )
+        ),
+        as_of=_CLOCK_DATE,
     )
     assert result.zero_cost_class != "Z0_TRUE_FREE"
     assert result.blocking_conditions
@@ -346,7 +356,8 @@ def test_the_z0_sweep_is_not_vacuous() -> None:
             requires_card=False,
             has_paid_dependencies=False,
             exhaustion_behaviours=("hard_stop",),
-        )
+        ),
+        as_of=_CLOCK_DATE,
     )
     assert control.zero_cost_class == "Z0_TRUE_FREE"
     assert control.is_zero_cost
@@ -377,7 +388,8 @@ def test_time_limited_and_credit_backed_offers_are_unreachable_from_z0(
             requires_card=requires_card,
             has_paid_dependencies=has_paid_dependencies,
             exhaustion_behaviours=("hard_stop",),
-        )
+        ),
+        as_of=_CLOCK_DATE,
     )
     assert result.zero_cost_class == expected
     assert result.zero_cost_class != "Z0_TRUE_FREE"

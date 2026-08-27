@@ -32,6 +32,7 @@ import hashlib
 import itertools
 import json
 import re
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -54,6 +55,12 @@ from tests.support.fixtures import (
     load_case,
     run_extraction_case,
 )
+
+# One fixed moment for this module's clock-taking calls. The production
+# functions require a clock rather than inventing one, so a test must state
+# the instant it is asserting about.
+_CLOCK = datetime(2026, 1, 15, 12, 0, tzinfo=UTC)
+_CLOCK_DATE = _CLOCK.date()
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 CONFIG_PATH = REPO_ROOT / "config" / "examples" / "providers" / "azure.example.yaml"
@@ -130,7 +137,8 @@ def _classify(facts) -> engine.ClassificationResult:
             requires_card=facts.get("requires_card"),
             has_paid_dependencies=facts.get("has_paid_dependencies"),
             exhaustion_behaviours=behaviours,
-        )
+        ),
+        as_of=_CLOCK_DATE,
     )
 
 
@@ -402,7 +410,8 @@ def test_pinning_the_students_card_claim_would_change_no_verdict() -> None:
             requires_card=False,
             has_paid_dependencies=False,
             exhaustion_behaviours=("hard_stop",),
-        )
+        ),
+        as_of=_CLOCK_DATE,
     )
     assert most_generous.zero_cost_class == "Z2_TEMPORARY_OR_CONDITIONAL"
     assert most_generous.zero_cost_class != "Z0_TRUE_FREE"
@@ -558,7 +567,8 @@ def test_exactly_one_of_nine_combinations_would_reach_z0() -> None:
                 requires_card=card,
                 has_paid_dependencies=deps,
                 exhaustion_behaviours=(str(candidate.facts["exhaustion_behaviour"]),),
-            )
+            ),
+            as_of=_CLOCK_DATE,
         )
         if result.zero_cost_class == "Z0_TRUE_FREE":
             reaching.append((card, deps))
@@ -605,7 +615,8 @@ def test_offer_type_other_is_not_a_safety_mechanism() -> None:
             requires_card=False,
             has_paid_dependencies=False,
             exhaustion_behaviours=("site_disabled_until_reset",),
-        )
+        ),
+        as_of=_CLOCK_DATE,
     )
     assert probe.zero_cost_class == "Z0_TRUE_FREE"
     assert not probe.blocking_conditions
@@ -656,7 +667,8 @@ def test_the_z0_sweep_is_not_vacuous() -> None:
             requires_card=False,
             has_paid_dependencies=False,
             exhaustion_behaviours=("hard_stop",),
-        )
+        ),
+        as_of=_CLOCK_DATE,
     )
     assert control.zero_cost_class == "Z0_TRUE_FREE"
     assert control.is_zero_cost
@@ -681,7 +693,8 @@ def test_the_positive_control_is_load_bearing(monkeypatch: pytest.MonkeyPatch) -
             requires_card=False,
             has_paid_dependencies=False,
             exhaustion_behaviours=("hard_stop",),
-        )
+        ),
+        as_of=_CLOCK_DATE,
     )
     assert healthy.zero_cost_class == "Z0_TRUE_FREE"
 
@@ -697,7 +710,8 @@ def test_the_positive_control_is_load_bearing(monkeypatch: pytest.MonkeyPatch) -
             requires_card=False,
             has_paid_dependencies=False,
             exhaustion_behaviours=("hard_stop",),
-        )
+        ),
+        as_of=_CLOCK_DATE,
     )
     # THE CONTROL FAILS. Under the patched engine the assertion made by
     # test_the_z0_sweep_is_not_vacuous no longer holds.
@@ -739,7 +753,8 @@ def test_programme_and_time_limited_offers_are_unreachable_from_z0(
             requires_card=requires_card,
             has_paid_dependencies=has_paid_dependencies,
             exhaustion_behaviours=("hard_stop",),
-        )
+        ),
+        as_of=_CLOCK_DATE,
     )
     assert result.zero_cost_class == expected
     assert result.zero_cost_class != "Z0_TRUE_FREE"

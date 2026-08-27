@@ -69,10 +69,30 @@ class CoverageReconcileResult:
     existing: int = 0
 
 
-def find_coverage_mismatches(
-    session: Session, *, now: datetime | None = None
-) -> list[CoverageMismatch]:
-    """Compute every material declared-vs-derived contradiction. Read-only."""
+def find_coverage_mismatches(session: Session, *, now: datetime) -> list[CoverageMismatch]:
+    """Compute every material declared-vs-derived contradiction. Read-only.
+
+    ``now`` is REQUIRED. It was previously optional and forwarded ``None``
+    straight into :func:`~app.read_api.queries.coverage_signal_context`, whose
+    ``now`` PR #99 had just made required precisely to remove an invented clock.
+
+    That is the subtle part, and it is worth stating plainly: making a
+    keyword-only parameter required constrains **arity, not nullability**. This
+    function satisfied "the argument must be supplied" while supplying ``None``,
+    so the remedy one level down was defeated by its own caller. There is no
+    static type checker on the Python side of this repository (see
+    ``requirements-dev.txt``), so the ``now: datetime`` annotation there caught
+    nothing; the only real enforcement is at runtime.
+
+    Measured, not assumed: ``None`` does not fail open here, it raises
+    ``TypeError: unsupported operand type(s) for -: 'NoneType' and
+    'datetime.datetime'`` from ``reconcile.py`` the moment any evidence row with
+    a real ``fetched_at`` is reached. It stayed invisible only because
+    :func:`assert_no_coverage_contradictions` -- the reusable helper the Wave-3
+    provider slices call from their own tests -- exercises data that never
+    reaches a fetched snapshot. It was a latent crash waiting for the first
+    provider slice with real evidence, not a defect the suite had ruled out.
+    """
 
     providers = queries.fetch_providers(session)
     if not providers:
@@ -125,17 +145,24 @@ def _pending_coverage_item_exists(session: Session, *, identity_key: str) -> boo
 
 
 def reconcile_coverage(
-    session: Session, *, scan_run_id: int | None = None, now: datetime | None = None
+    session: Session, *, scan_run_id: int | None = None, now: datetime
 ) -> CoverageReconcileResult:
     """Raise a pending review item for every material coverage contradiction.
 
     Returns a summary; the caller owns the transaction (this flushes but never
     commits). Nothing is published, changed or auto-corrected -- a contradiction
     is a question for a human, not something to resolve by picking a side.
+
+    ``now`` is REQUIRED for the same reason as on :func:`find_coverage_mismatches`.
+    It previously read ``now or datetime.now(UTC)``, which left this file holding
+    both halves of the defect at once: a callee that demanded a clock and a
+    caller that would manufacture one. Whether a snapshot is stale decides
+    whether a coverage declaration is a contradiction worth a human's attention,
+    so the moment that question is asked at is part of the answer.
     """
 
     result = CoverageReconcileResult()
-    for mismatch in find_coverage_mismatches(session, now=now or datetime.now(UTC)):
+    for mismatch in find_coverage_mismatches(session, now=now):
         result.mismatches.append(mismatch)
         if _pending_coverage_item_exists(session, identity_key=mismatch.identity_key):
             result.existing += 1
@@ -180,7 +207,22 @@ def assert_no_coverage_contradictions(session: Session, *, provider_slug: str) -
     if provider is None:
         raise AssertionError(f"provider {provider_slug!r} is not in the database")
 
-    offending = [m for m in find_coverage_mismatches(session) if m.provider_slug == provider_slug]
+    # BOUNDARY: this helper is invoked directly by a provider slice's own test as
+    # a complete operation -- there is no caller holding a moment for it to
+    # inherit, and no sibling clock-consumer inside the same operation for it to
+    # disagree with. So it legitimately sources the clock, and does so on an
+    # explicit line rather than through an optional parameter that defaults.
+    #
+    # It must NOT gain a `now: datetime | None = None`. That is exactly the shape
+    # being removed: until this change the omitted clock travelled as `None` into
+    # `find_coverage_mismatches` and on into `coverage_signal_context`, whose
+    # `now` is required -- satisfying arity while violating the type, with no
+    # static checker in this repo to notice. It raised nothing only because the
+    # data these tests build never reaches a snapshot with a `fetched_at`.
+    now = datetime.now(UTC)
+    offending = [
+        m for m in find_coverage_mismatches(session, now=now) if m.provider_slug == provider_slug
+    ]
     if offending:
         lines = "\n  ".join(m.describe() for m in offending)
         raise AssertionError(

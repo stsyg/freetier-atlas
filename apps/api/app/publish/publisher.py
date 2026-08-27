@@ -402,7 +402,18 @@ def _do_publish(
         version.quotas.append(_make_quota(revalidated))
     offer.versions.append(version)
 
-    classification = classify_offer(offer, version)
+    # `as_of=now.date()` is load-bearing, not decoration. This function already
+    # holds a UTC `now` and stamps `last_verified_at` with it below; letting the
+    # classification default instead judged the availability window against
+    # `date.today()`, which is LOCAL. One publication decision then used two
+    # clocks in two timezones.
+    #
+    # Measured, not assumed: this does NOT change which class is published (a
+    # bounded `available_until` is Z2 on either side of the boundary). It
+    # changes the published REASON -- an expired offer could be written into
+    # `material_facts` as "has a bounded availability window ending <date>",
+    # which says a closed window is still open. See `classify`'s docstring.
+    classification = classify_offer(offer, version, as_of=now.date())
 
     version.zero_cost_class = classification.zero_cost_class
     offer.zero_cost_class = classification.zero_cost_class

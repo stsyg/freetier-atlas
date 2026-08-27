@@ -141,14 +141,51 @@ def _availability_reasons(facts: OfferFacts, as_of: date) -> list[str]:
     return reasons
 
 
-def classify(facts: OfferFacts, *, as_of: date | None = None) -> ClassificationResult:
+def classify(facts: OfferFacts, *, as_of: date) -> ClassificationResult:
     """Classify ``facts`` into a zero-cost class with an explanation.
 
     Deterministic and side-effect-free: identical inputs always produce an
     identical :class:`ClassificationResult`.
+
+    ``as_of`` is REQUIRED, and deliberately so. It was previously optional and
+    fell back to ``date.today()``, which broke the determinism promised one line
+    above in two distinct ways.
+
+    First, a function whose contract is *identical inputs produce identical
+    output* cannot read an ambient clock; ``classify(facts)`` returned different
+    verdicts on different days from the same frozen facts, and only the
+    availability-window branch revealed it.
+
+    Second, and worse, ``date.today()`` is **local time** while every other clock
+    in this codebase is UTC. So the fallback did not merely invent a moment, it
+    invented one in a different frame of reference. ``_do_publish`` holds a UTC
+    ``now`` and stamps ``last_verified_at`` with it; the classification it ran in
+    the same breath was judged against a local date that, west of UTC, is the
+    previous day. One publication decision, two clocks, two timezones.
+
+    What that actually corrupts -- stated precisely, because the narrow true
+    claim is worth more than a broad one that does not survive checking: it does
+    NOT flip the zero-cost class. A non-null ``available_until`` yields
+    ``Z2_TEMPORARY_OR_CONDITIONAL`` on either side of the boundary, so no offer
+    was ever published ``Z0_TRUE_FREE`` because of this. What it corrupts is the
+    published REASON. Across the boundary the same facts produce either
+
+        "Offer availability ended on 2029-12-31."
+
+    or
+
+        "Offer has a bounded availability window ending 2029-12-31."
+
+    and the second is a statement that a closed window is still open, written
+    into ``material_facts.classification.reasons`` and served from the catalogue.
+    A false sentence about an expired offer is a smaller defect than a false
+    class, and still one this product does not get to ship.
+
+    Requiring ``as_of`` constrains every call site that will ever exist. A test
+    only constrains the one written today: the full suite stayed green with the
+    argument dropped at the sole production caller.
     """
 
-    as_of = as_of or date.today()
     behaviours = facts.exhaustion_behaviours
 
     # Gate 1: the type itself must be recognised before any semantic branch.

@@ -34,6 +34,7 @@ import hashlib
 import html as htmllib
 import json
 import re
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -56,6 +57,12 @@ from tests.support.fixtures import (
     load_case,
     run_extraction_case,
 )
+
+# One fixed moment for this module's clock-taking calls. The production
+# functions require a clock rather than inventing one, so a test must state
+# the instant it is asserting about.
+_CLOCK = datetime(2026, 1, 15, 12, 0, tzinfo=UTC)
+_CLOCK_DATE = _CLOCK.date()
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 CONFIG_PATH = REPO_ROOT / "config" / "examples" / "providers" / "oracle.example.yaml"
@@ -271,7 +278,8 @@ def test_a_perpetual_oracle_offer_is_still_a_billing_exposure() -> None:
             offer_type=str(candidate.facts["offer_type"]),
             requires_card=candidate.facts.get("requires_card"),
             has_paid_dependencies=candidate.facts.get("has_paid_dependencies"),
-        )
+        ),
+        as_of=_CLOCK_DATE,
     )
     assert result.zero_cost_class == "Z1_BILLING_EXPOSURE"
     assert any("payment card is required" in reason for reason in result.blocking_conditions)
@@ -323,7 +331,8 @@ def test_an_absence_based_refusal_is_declared_as_such(case: str) -> None:
             requires_card=None,
             has_paid_dependencies=None,
             exhaustion_behaviours=behaviours,
-        )
+        ),
+        as_of=_CLOCK_DATE,
     )
     assert result.zero_cost_class == "UNKNOWN"
     assert any("payment card is required is unknown" in r for r in result.blocking_conditions)
@@ -402,7 +411,8 @@ def test_no_oracle_offer_can_reach_z0(case: str) -> None:
             requires_card=candidate.facts.get("requires_card"),
             has_paid_dependencies=candidate.facts.get("has_paid_dependencies"),
             exhaustion_behaviours=behaviours,
-        )
+        ),
+        as_of=_CLOCK_DATE,
     )
     assert result.zero_cost_class != "Z0_TRUE_FREE"
     assert result.blocking_conditions
@@ -422,7 +432,8 @@ def test_the_z0_sweep_is_not_vacuous() -> None:
             requires_card=False,
             has_paid_dependencies=False,
             exhaustion_behaviours=("hard_stop",),
-        )
+        ),
+        as_of=_CLOCK_DATE,
     )
     assert control.zero_cost_class == "Z0_TRUE_FREE"
     assert control.is_zero_cost
@@ -445,7 +456,8 @@ def test_the_positive_control_is_load_bearing(monkeypatch: pytest.MonkeyPatch) -
             requires_card=False,
             has_paid_dependencies=False,
             exhaustion_behaviours=("hard_stop",),
-        )
+        ),
+        as_of=_CLOCK_DATE,
     )
     assert baseline.zero_cost_class == "Z0_TRUE_FREE", "baseline must be GREEN before breaking it"
 
@@ -460,7 +472,8 @@ def test_the_positive_control_is_load_bearing(monkeypatch: pytest.MonkeyPatch) -
             requires_card=False,
             has_paid_dependencies=False,
             exhaustion_behaviours=("hard_stop",),
-        )
+        ),
+        as_of=_CLOCK_DATE,
     )
     # The CONTROL fails: Z0 has become unreachable.
     assert crippled.zero_cost_class != "Z0_TRUE_FREE"
@@ -477,7 +490,8 @@ def test_the_positive_control_is_load_bearing(monkeypatch: pytest.MonkeyPatch) -
                 requires_card=candidate.facts.get("requires_card"),
                 has_paid_dependencies=candidate.facts.get("has_paid_dependencies"),
                 exhaustion_behaviours=behaviours,
-            )
+            ),
+            as_of=_CLOCK_DATE,
         )
         assert result.zero_cost_class != "Z0_TRUE_FREE"
 
@@ -493,7 +507,8 @@ def test_the_safe_exhaustion_partition_is_restored_after_the_load_bearing_proof(
             requires_card=False,
             has_paid_dependencies=False,
             exhaustion_behaviours=("hard_stop",),
-        )
+        ),
+        as_of=_CLOCK_DATE,
     )
     assert control.zero_cost_class == "Z0_TRUE_FREE"
 
@@ -526,7 +541,8 @@ def test_each_gate_can_independently_block_a_perpetual_offer(
             requires_card=requires_card,
             has_paid_dependencies=has_paid_dependencies,
             exhaustion_behaviours=(exhaustion,),
-        )
+        ),
+        as_of=_CLOCK_DATE,
     )
     assert result.zero_cost_class == expected
 
@@ -767,7 +783,8 @@ def test_an_unrelated_paragraph_leaves_the_verdict_intact() -> None:
                 requires_card=candidate.facts.get("requires_card"),
                 has_paid_dependencies=candidate.facts.get("has_paid_dependencies"),
                 exhaustion_behaviours=(str(candidate.facts["exhaustion_behaviour"]),),
-            )
+            ),
+            as_of=_CLOCK_DATE,
         ).zero_cost_class
 
     assert verdict(after) == verdict(before) == "UNKNOWN"
@@ -1025,7 +1042,8 @@ def _perpetual_offers_by_class() -> dict[str, list[str]]:
                         requires_card=facts.get("requires_card"),
                         has_paid_dependencies=facts.get("has_paid_dependencies"),
                         exhaustion_behaviours=behaviours,
-                    )
+                    ),
+                    as_of=_CLOCK_DATE,
                 )
                 found.setdefault(result.zero_cost_class, []).append(
                     f"{provider}: {facts.get('service')}"
@@ -1163,7 +1181,8 @@ def test_oracle_is_the_only_provider_withheld_by_a_quoted_card_requirement() -> 
                         requires_card=facts.get("requires_card"),
                         has_paid_dependencies=facts.get("has_paid_dependencies"),
                         exhaustion_behaviours=behaviours,
-                    )
+                    ),
+                    as_of=_CLOCK_DATE,
                 )
                 # EXACT condition strings, never substrings. The engine emits both
                 # "A payment card is required." (gate 3, a definite exposure) and

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -13,6 +14,12 @@ from app.ingest import resolve_profile
 from app.ingest.adapters.html import _DocumentCollector, _header_row
 
 from tests.support.fixtures import available_cases, load_case, run_extraction_case
+
+# One fixed moment for this module's clock-taking calls. The production
+# functions require a clock rather than inventing one, so a test must state
+# the instant it is asserting about.
+_CLOCK = datetime(2026, 1, 15, 12, 0, tzinfo=UTC)
+_CLOCK_DATE = _CLOCK.date()
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 CONFIG_PATH = REPO_ROOT / "config" / "examples" / "providers" / "vercel.example.yaml"
@@ -95,7 +102,8 @@ def test_every_candidate_keeps_both_material_z0_gates_unknown(case: str) -> None
             requires_card=None,
             has_paid_dependencies=None,
             exhaustion_behaviours=(str(candidate.facts["exhaustion_behaviour"]),),
-        )
+        ),
+        as_of=_CLOCK_DATE,
     )
     assert result.zero_cost_class != "Z0_TRUE_FREE"
     assert any("payment card" in reason for reason in result.blocking_conditions)
@@ -114,7 +122,8 @@ def test_pro_trial_is_the_deliberate_evidence_backed_non_z0_control() -> None:
             requires_card=None,
             has_paid_dependencies=None,
             exhaustion_behaviours=("hard_stop",),
-        )
+        ),
+        as_of=_CLOCK_DATE,
     )
     assert verdict.zero_cost_class != "Z0_TRUE_FREE"
 
