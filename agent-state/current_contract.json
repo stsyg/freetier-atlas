@@ -1,26 +1,50 @@
 {
   "feature_id": "F008",
-  "slice": "clock-inheritance-classification-path",
-  "title": "Stop the classification path inventing a second clock in a different timezone",
-  "branch": "stsyg-clock-audit",
-  "base_commit": "9ec45b050c2062e8a282e2199c46b0f0d393e182",
-  "objective": "PR #99 made coverage_signal_context's `now` REQUIRED after a Level-2 found it inventing datetime.now(UTC) while its sibling currency_context required one, letting a router build one response payload from two moments with the suite green. This slice audits the whole defect class, classifies every site as ENTRY POINT or PARTICIPANT, converts the participants on the classification chain, and leaves the genuine boundaries alone with written reasons.",
-  "census_owned_by_this_slice": {
-    "method": "AST, not source pattern. A regex cannot see a signature a formatter split across lines, cannot distinguish a DEFAULT of None from a COMPARISON against None, and only finds spellings already thought of.",
-    "population_defect_census": "170 tracked files under apps/, of which 104 are Python and were parsed; 66 are TypeScript (apps/web) and were NOT searched.",
-    "population_blast_radius": "237 tracked .py repo-wide. Deliberately a different population from the defect census because the test tree is NOT under apps/ (0 of 104 match */tests/* or test_*), and the callers that pay the cost of a required parameter live in tests/.",
-    "brief_said": {
-      "inventing_functions": 8,
-      "optional_clock_params": 10
-    },
-    "this_slice_measured": {
-      "inventing_functions": 9,
-      "optional_clock_params": 11,
-      "clock_invention_call_sites_in_apps": 52
-    },
-    "the_ninth_site": "apps/api/app/classify/engine.py:151 `as_of = as_of or date.today()`. Invisible to a `now or datetime.now(UTC)` search three ways at once: the parameter is `as_of` not `now`, the type is `date` not `datetime`, and the invention is `date.today()` -- which is LOCAL time while every other clock in this repository is UTC.",
-    "floor_not_total": "9 is a FLOOR. It is the count for the nine clock-ish parameter names and seven invention forms actually searched. A tenth in a spelling neither the brief nor this census enumerated remains possible."
+  "slice": "availability-window-opening-gate",
+  "title": "Give the availability window an OPENING gate, not only a closing one",
+  "branch": "stsyg-available-from-opening-gate",
+  "base_commit": "46a2371a4b5557b32a1605b78cd9c3d9c41f7f46",
+  "objective": "OfferFacts.available_from is carried from the column into the engine and then consulted by nothing, so an offer that has not opened yet can reach Z0_TRUE_FREE and publish 'Usage remains $0' about an offer that does not exist yet. Add the missing opening gate, and route an incoherent window to UNKNOWN.",
+  "measured_by_me_not_inherited": {
+    "population_note": "All counts measured on 46a2371a in this worktree; ripgrep default scope (respects .gitignore).",
+    "available_from_in_engine_py": "1 occurrence (line 106), the OfferFacts field declaration. NEVER READ. Population: apps/api/app/classify/engine.py, 340 lines.",
+    "available_until_in_engine_py": "6 occurrences (107, 133, 134, 135, 139, 168). Population: same file.",
+    "writers_or_readers_outside_the_model": "0 in apps/api/app/ingest, apps/api/app/publish, apps/api/app/adviser, apps/api/app/read_api, apps/web. The sole migrations/ hit (0003_domain_model.py:156) is the column DECLARATION, not a writer.",
+    "carry_chain_confirmed": "domain.py:198 (column) -> orm.py:49 (into OfferFacts) -> engine.py:106 (field) -> consulted by nothing."
   },
+  "calibration_stated_as_prominently_as_the_defect": "LATENT, NOT LIVE. Nothing populates offers.available_from today, so no shipped classification is currently wrong because of this. It arms the moment any adapter writes the column. This slice disarms a trap; it does not repair a live fire, and must not be reported as one.",
+  "design_decision": {
+    "chosen": "Z2_TEMPORARY_OR_CONDITIONAL for a not-yet-open offer",
+    "grounds": [
+      "Sibling-field precedent: available_until routes through _availability_reasons into the conditional list at engine.py:263. docs/DATA_MODEL.md gate 4 already reads 'bounded or expired availability windows'; a window bounded BELOW is a bounded window.",
+      "UNKNOWN in this engine is reserved for facts that could not be ESTABLISHED -- all four Gate-4 triggers are absence-of-knowledge. A dated future start is an established, evidenced fact.",
+      "Given identical safety (both are non-Z0), choose the class that EXPLAINS better. Z2 can say 'does not become available until 2030-01-01'. UNKNOWN would say 'cannot determine', which is LESS honest because we can determine it exactly."
+    ],
+    "rejected": "UNKNOWN",
+    "rejection_reasoning": "The argument for it -- a bounded-but-open offer is verifiable NOW, a not-yet-open one is not -- is real, but it is a statement about EVIDENCE QUALITY, not about the material condition. This product already models evidence currency on a separate axis (coverage snapshots, the evidence floor, last_verified_at, the adviser stale-evidence path). Folding 'known but not yet observable' into the class taxonomy would hide an evidence concern from the machinery built to handle it, and overload UNKNOWN with a second meaning. 'Unknown is better than guessed' is a rule against GUESSING; we hold a date.",
+    "second_decision_approved_by_owner": {
+      "case": "incoherent window: available_from > available_until",
+      "chosen": "UNKNOWN",
+      "why": "The engine module docstring and the DATA_MODEL.md safety invariant already promise that an unknown OR CONTRADICTORY material condition yields UNKNOWN. Leaving it would be a knowing gap against documented behaviour and would publish two mutually contradictory sentences about one offer.",
+      "precedence_consequence": "It CANNOT live in _availability_reasons, which feeds the conditional list at Gate 5. UNKNOWN is decided at Gate 4, which PRECEDES Gate 5. It therefore needs a separate helper feeding the Gate-4 unknown list.",
+      "clock_independence": "The helper takes no as_of. A contradiction between two stored dates is a contradiction regardless of the clock, so this adds NO new as_of-dependence and cannot complicate the PR #100 invariant.",
+      "cannot_touch_the_permit_arm": "It fires only when BOTH dates are non-null and inverted, so an offer with available_from alone never reaches it."
+    }
+  },
+  "the_asymmetry_that_must_not_be_tidied_away": "available_until emits a reason on BOTH sides of its boundary. available_from must emit a reason on ONE side only (future). A start date already reached imposes no ongoing bound. If a future refactor 'symmetrises' the two, EVERY offer with a past start date becomes Z2 and the product wrongly WITHHOLDS genuinely free offers at scale -- the failure this project weights equally with wrongly asserting one. Boundary is strictly '>': available_from == as_of means the offer opens today, so it is available and emits no reason.",
+  "pr_100_invariant_handling": {
+    "guard": "tests/unit/test_clock_inheritance.py::test_classify_actually_consumes_as_of_rather_than_merely_accepting_it",
+    "prediction_contradicting_the_brief": "The brief expected this test to break. I predict it PASSES UNCHANGED: its facts come from _facts(), which leaves available_from=None, and the new gate is `is not None`-guarded so it cannot fire. The EXECUTED invariant was always a statement about available_until alone.",
+    "treatment": [
+      "Assertion lines byte-identical -- proven by diff, not asserted.",
+      "Docstring re-scoped to state what it always actually measured.",
+      "Scope pinned executably by passing available_from=None explicitly, so a future change to _facts() defaults cannot drift the test out of the population its claim covers. This is a TIGHTENING edit.",
+      "Mutation M4 proves it still kills its ORIGINAL target after the re-scope. A re-scoped guard that no longer catches its original defect IS a weakened guard.",
+      "The new property is added as a SEPARATE test, never by editing this one."
+    ],
+    "stop_condition": "If treatment items 1-4 cannot all be achieved, STOP AND REPORT rather than ship a blunted guard."
+  },
+  "landmine_found_in_this_state_file": "tests/unit/test_clock_inheritance.py::test_the_participant_list_matches_the_contract READS this file and requires classification.PARTICIPANT_converted to match the pinned PARTICIPANTS list. This file is single-slot, so overwriting it wholesale would fail a PR #100 guard through the STATE FILE rather than through the code. The block below is therefore carried forward VERBATIM. Hazard reported to the orchestrator: a permanent test depending on a single-slot file will eventually be dropped by a future slice.",
   "classification": {
     "ENTRY_POINT_change_nothing": [
       "adviser/abuse/admin.py::set_kill_switch -- sole caller is the argparse CLI main(); an operator has no moment to pass, and each command is a single self-contained write with no sibling clock-consumer to disagree with. Comment added; behaviour unchanged.",
@@ -43,100 +67,74 @@
       "ingest/reconcile.py::reconcile_scan and publish/publisher.py::publish_scan -- these invent SEPARATELY inside one run_provider_scans, so a single scan run uses two moments. A real second finding that needs its own evidence, not a tail added to this one. 26 test call sites for reconcile_scan alone."
     ]
   },
-  "defect_found_in_the_merged_PR_99_remedy": {
-    "what": "coverage_signal_context's docstring states 'Both production callers already pass a clock, so requiring it costs nothing and removes the capability.' That is true of ARITY and false of NULLABILITY.",
-    "how": "find_coverage_mismatches forwarded `now=None` into it, satisfying 'must be supplied' while supplying None, and reconcile_coverage.py:183 (inside assert_no_coverage_contradictions) called find_coverage_mismatches(session) with no clock at all. There is no static type checker on the Python side of this repository, so `now: datetime` caught nothing.",
-    "measured_behaviour": "It does NOT fail open. assess_staleness(fetched_at, None, schedule) raises TypeError: unsupported operand type(s) for -: 'NoneType' and 'datetime.datetime'. It stayed invisible only because the data reaching that helper never includes a snapshot with a fetched_at. A LATENT CRASH waiting for the first Wave-3 provider slice with real evidence, not a defect the suite had ruled out.",
-    "corroboration": "Independently confirmed by mutation: dropping the clock at reconcile_coverage.py:138 killed 4 named integration tests with that exact TypeError at reconcile.py:271."
-  },
-  "measured_correction_to_this_slices_own_claim": {
-    "claim_as_first_written": "An offer whose available_until fell in the gap was published as free while its own timestamp said the window had closed.",
-    "measurement": "FALSE. A non-null available_until yields Z2_TEMPORARY_OR_CONDITIONAL on BOTH sides of the boundary; as_of never flips the zero-cost class. Verified by executing classify() at as_of=2029-06-01 and as_of=2030-06-01 against identical facts.",
-    "corrected_claim": "as_of changes the published REASON, not the class. The same facts produce either 'Offer availability ended on 2029-12-31.' or 'Offer has a bounded availability window ending 2029-12-31.' The second states that a closed window is still open. A false sentence is a smaller defect than a false class, and still one this product does not ship.",
-    "where_corrected": "The engine.py docstring and the publisher.py comment were rewritten BEFORE commit. A test now asserts the class does NOT move, so if that ever changes, this audit's own conclusion fails loudly rather than silently becoming an understatement."
-  },
   "in_scope": [
-    "Convert the seven participants above to a required clock.",
-    "Fix the _do_publish call site so one publication decision uses one moment.",
-    "Add tests/unit/test_clock_inheritance.py asserting the CAPABILITY (no call site can omit a clock) plus a source-level guard against the fallback shape returning under a different parameter name.",
-    "Comment the genuine entry points so a later sweep of this defect class stops there deliberately rather than by accident."
+    "apps/api/app/classify/engine.py -- opening gate in _availability_reasons; new _availability_contradictions feeding Gate 4; asymmetry comment; module docstring gate list; classify docstring invariant paragraph re-scoped.",
+    "tests/unit/test_z0_classifier.py -- deny/permit/boundary/precedence tests, incoherent-window tests, and correction of the stale _z0_reachable docstring.",
+    "tests/unit/test_clock_inheritance.py -- docstring re-scope, executable scope pin, and a NEW companion test. Assertions byte-identical.",
+    "tests/integration/ -- one test proving the DB -> OfferFacts -> class chain for BOTH arms.",
+    "docs/DATA_MODEL.md -- gate 4 wording and the OfferFacts input description.",
+    "apps/api/app/publish/publisher.py -- COMMENT ONLY, no behaviour change.",
+    "agent-state/current_contract.json and agent-state/progress.md (append-only)."
   ],
   "out_of_scope_zero_diff": [
-    "Any change to WHAT is published, as opposed to WHICH MOMENT is used. All 154 failures produced by the signature changes were `TypeError: missing 1 required keyword-only argument` -- arity, never a wrong answer.",
-    "apps/web (TypeScript). Not searched, not claimed clean.",
-    "agent-state/feature_list.json, .github/workflows/ci.yml, scripts/check_urls.py, tests/unit/test_url_allowlist.py, .secrets.baseline, both lockfiles."
+    "agent-state/feature_list.json (blob 154de1fef2ba)",
+    ".github/workflows/ci.yml",
+    "scripts/check_urls.py",
+    "tests/unit/test_url_allowlist.py",
+    ".secrets.baseline",
+    "both lockfiles",
+    "Teaching any adapter to WRITE available_from -- that is what arms the trap and belongs to a provider slice.",
+    "npm install/i/update/audit fix -- internal package feed; npm ci only. This slice should need neither."
   ],
   "acceptance_criteria": [
-    "Baseline reproduced independently before any change, with proof the run EXECUTED tests rather than exiting 0 on an empty selection.",
-    "For each converted participant: BEFORE-state mutation stays GREEN (the defect is invisible today) and AFTER-state mutation is KILLED by a NAMED test.",
-    "A no-op negative control stays GREEN, proving the instrument can still pass.",
-    "Full suite green at the same or higher executed count than baseline.",
-    "ruff check clean on apps and tests."
+    "DENY ARM: an offer with available_from in the future does NOT reach Z0_TRUE_FREE and carries a blocking condition naming the opening date.",
+    "PERMIT ARM: an offer with available_from in the PAST still reaches Z0_TRUE_FREE normally.",
+    "PERMIT ARM: an offer with available_from = None is COMPLETELY unaffected.",
+    "BOUNDARY: available_from == as_of is treated as available (permitted).",
+    "PRECEDENCE: an unknown material condition still dominates the new gate (UNKNOWN, not Z2).",
+    "CONTRADICTION: available_from > available_until yields UNKNOWN and dominates the Z2 availability reasons.",
+    "The PR #100 invariant test still passes AND still fails under mutation M4.",
+    "Z0_REACHABLE measured set is unchanged.",
+    "No existing test has an assertion weakened or deleted."
   ],
-  "predictions_frozen_before_measurement": "files/predictions-before-census.md in the session workspace, written before the census ran. P3 (a missed spelling exists) and P6 (non-zero production cost somewhere) were recorded in advance and both proved correct. P4's membership prediction was half right. P7 pre-registered 'all nine converted' as a FAILING outcome, not a thorough one.",
+  "predictions_frozen_before_measurement": {
+    "P1": "test_classify_actually_consumes_as_of... passes UNCHANGED (available_from is None). CONTRADICTS THE BRIEF'S EXPECTATION. confidence=high",
+    "P2": "Z0_REACHABLE set unchanged; sweep tests pass. confidence=high",
+    "P3": "test_availability_from_only_does_not_force_z2 (past start) passes UNCHANGED. confidence=high",
+    "P4": "Baseline suite without DATABASE_URL: collected > 0, 0 failures. Exit 5 = nothing collected = ABORT. confidence=high",
+    "P5": "Removing the classification block from this contract fails test_the_participant_list_matches_the_contract. confidence=high",
+    "P6": "Publish path persists Z2_TEMPORARY_OR_CONDITIONAL (not Z0) for a future available_from. confidence=medium",
+    "P7": "M1 (delete the new branch -- restores the ORIGINAL defect) -> KILLED. confidence=high",
+    "P8": "M2 ('>' -> '<', inverts both arms) -> KILLED, by BOTH arms independently. confidence=high",
+    "P9": "M3 ('>' -> '>=', boundary only) -> KILLED, but ONLY by the equality test. confidence=medium",
+    "P10": "M4 (ignore as_of in the until-branch) -> PR #100 test still FAILS, proving it is not weakened. confidence=high",
+    "P11": "Incoherent window yields UNKNOWN and dominates the Z2 reasons via Gate 4. confidence=high",
+    "P12": "Z0_REACHABLE unchanged DESPITE the new UNKNOWN branch -- incoherent combos were already non-Z0 (Z2), so Z2->UNKNOWN cannot alter a Z0-reachability set. confidence=high",
+    "P13": "M5 (delete the contradiction branch) -> KILLED by the new contradiction test. confidence=high"
+  },
+  "verification_method": {
+    "baseline_rule": "A baseline must be shown to have EXECUTED at least one test, not merely to have exited 0. Assert collected N > 0; pytest exit 5 means NOTHING COLLECTED.",
+    "mutation_rule": "Every mutation must RESTORE THE ORIGINAL DEFECT while keeping the code valid -- not merely break the call. An arity break kills on TypeError and proves nothing about behaviour. Pre-grep the search text before each run and ABORT if absent: an unapplied mutation reads exactly like a surviving one.",
+    "environment_rule": "Preconditions asserted, not announced. .venv is ABSENT in this worktree (bootstrap incomplete, documented). Global interpreter is Python 3.13.15 with pytest 9.0.3, matching the pyproject pin. For the DB arm, verify the database is present in pg_database and a trivial query succeeds BEFORE any verdict, and compare runtime against baseline -- a large deviation is evidence about the environment, not the code. A false KILL confirms whatever you hoped.",
+    "no_static_type_checker": "requirements-dev carries ruff, pytest, detect-secrets, pip-audit, httpx, cryptography. No mypy, no pyright. Keyword-only requirements are enforced at RUNTIME as TypeError; no static gate will be claimed.",
+    "powershell_trap": "Select-Object -First/-Last corrupts $LASTEXITCODE. Exit codes read from BARE calls only.",
+    "timezone": "No TZ-sensitive probe on this host: Windows CPython has no time.tzset() and silently ignores TZ. The new gate is date-comparison only and needs none.",
+    "database": "Own postgres:16-alpine on unused port 55433 with a named volume, seeded separately from the suite's DB, alembic upgrade head applied. REMOVED at end of session -- container AND volume -- with the exact removal commands and output reported."
+  },
   "required_evaluation_level": 2,
-  "required_evaluation_level_reason": "Touches Z0 classification and the automatic publication decision path, both Level-2 mandatory in docs/AGENT_HARNESS.md.",
-  "security_privacy_portability_z0": "No new dependency, no schema change, no migration, no new mandatory service. PostgreSQL remains the only mandatory stateful service. No secret in source, log, commit or PR body. No user-controlled URL. No LLM-to-publication path introduced. Z0 classification logic is unchanged in what it decides; only the moment it decides against is now inherited.",
+  "required_evaluation_level_reason": "Z0 classification. docs/AGENT_HARNESS.md makes Level 2 mandatory for Z0 classification, quota, or cost calculations.",
+  "security_privacy_portability_z0": {
+    "security_privacy": "No new input surface, no new endpoint, no secret, no user-controlled URL. The engine remains pure and performs no I/O.",
+    "portability": "No new dependency and no new mandatory service. PostgreSQL remains the only mandatory stateful service.",
+    "z0": "Strictly TIGHTENS the Z0 gate: it removes a route by which a not-yet-existing offer could be declared true-free. The permit arms guarantee it does not wrongly withhold a genuinely free offer, which this project weights EQUALLY."
+  },
   "hard_rules_acknowledged": [
-    "npm install/i/update/audit fix NEVER run; this slice touches no JavaScript.",
-    "Own PostgreSQL on port 55432 (suite default is 5432), seeded separately; mutation runs used a SEPARATE database (mutdb) inside a SEPARATE detached worktree, so no evidence was ever read from a tree being mutated.",
-    "agent-state/progress.md append-only, proven by raw byte-prefix comparison plus a flipped-byte negative control.",
-    "Draft PR. Not merged. No feature marked passing."
+    "Draft PR only. Do not merge. Do not mark any feature passing.",
+    "agent-state/feature_list.json untouched.",
+    "agent-state/progress.md append-only, proven by raw byte prefix plus a flipped-byte negative control.",
+    "Rebase before pushing if main moved: a CONFLICTING PR is never dispatched to CI, and an absent signal reads exactly like a green one.",
+    "Own database on an unused port, removed with its volume and reported exactly."
   ],
-  "not_verified": [
-    "The deferred scan-run finding (reconcile_scan and publish_scan inventing separately inside one run_provider_scans) is REPORTED, not fixed and not proven by mutation. It is now pinned by name in _DEFERRED_INVENTORS so the exception cannot grow silently.",
-    "The TZ divergence still has NOT been measured on this host, and cannot be: Windows CPython ignores TZ. It was measured by executing the classifier at explicit dates instead. The evaluator measured the real TZ behaviour in a Linux container; that evidence is theirs, not mine.",
-    "The clock-invention scalar remains definition-dependent. I report three definitions with the population attached rather than a single number, and the evaluator's 29/35/72 is under a fourth definition I do not hold. No conclusion rests on it.",
-    "apps/web was measured by the evaluator and found CLEAN ON EVIDENCE (57 tracked, 43 TS/JS, one new Date(value) parsing a server-supplied string, no date library). That evidence is the evaluator's, not mine; my census remains Python-only."
-  ],
-  "evaluator_disposition": "L2 FAILED on evidence and guard, code found correct. Remediation is additive only. Awaiting re-review.",
-  "l2_disposition": {
-    "verdict": "FAILED on evidence and guard; the CODE was found correct under seven falsification experiments.",
-    "everything_below_is_additive": "No code change, no behaviour change. The production diff from the first submission is unchanged."
-  },
-  "l2_finding_1_the_one_that_mattered": {
-    "what_i_proved": "Dropping `as_of=now.date()` at _do_publish is KILLED. That kills on ARITY.",
-    "what_i_failed_to_prove": "That the RIGHT MOMENT is chosen. Those are different properties and the first does not imply the second.",
-    "the_surviving_mutation": "as_of=now.astimezone().date() -- same instant, local calendar date, argument still supplied, no import change. Exactly base behaviour.",
-    "reproduced_independently": "SURVIVED at 2967 passed, exit 0, against a database proven live first. The evaluator was right.",
-    "why_no_behavioural_test_can_close_it": "CI runs python:3.13-slim with tzname ('UTC','UTC'), where now.date() and now.astimezone().date() are equal by construction. A test that cannot fail in the environment that runs it is not a guard.",
-    "fix": "publisher.py added to _AUDITED_MODULES, and a new STRUCTURAL test -- test_a_clock_argument_passes_the_inherited_moment_not_a_re_derived_one -- requires every now=/as_of= argument in an audited module to pass the inherited moment, forbidding astimezone/localtime/today/now/utcnow/fromtimestamp/mktime/gmtime/combine inside it.",
-    "verified": "That named test now FAILS on the exact L2 mutation, reporting `line 416: as_of=now.astimezone().date()  re-derives via ['astimezone']`."
-  },
-  "l2_finding_2_participant_list_drift": {
-    "what": "The contract claimed SEVEN converted participants; the PARTICIPANTS list pinned SIX. reconcile_coverage had no signature test.",
-    "why_it_mattered": "Re-optionalising it WITHOUT an `or` fallback survives green -- the RELOCATOR shape, which forwards None onward instead of inventing locally, and which the fallback-shape guard structurally cannot see. That is the same shape I diagnosed as PR #99's defect.",
-    "fix": "reconcile_coverage added to PARTICIPANTS, and a new test -- test_the_participant_list_matches_the_contract -- reads PARTICIPANT_converted out of this file and fails if the two ever disagree again. A hand-maintained list drifts; this makes the drift fail a test."
-  },
-  "l2_corrected_claims": {
-    "search_published_offers": "WRONG as stated. There is ONE production caller, read_api/router.py:306, and it passes now=now. Correct statement: 1 production caller, 0 production EDITS required. The deferral remains SAFE and the decision stands; only my reason was wrong.",
-    "publish_candidate": "WRONG as stated. ONE production caller, publisher.py:625, which passes now=now. Same correction, same conclusion: deferral safe, reason wrong.",
-    "apps_web_file_count": "WRONG, and wrong in the worst way -- INFERRED BY ARITHMETIC rather than measured. I wrote '66 TypeScript files in apps/web' from 170 minus 104. Measured: apps/ has 170 tracked, 66 of them non-Python, but only 57 tracked files live in apps/web and only 43 are TS/JS. The other 9 non-Python files are elsewhere under apps/. Subtraction is not measurement.",
-    "clock_invention_call_sites": "The bare figure '52' does not survive its own breakdown and should never have been published as a scalar without its definition. Measured now over 238 tracked .py repo-wide, three defensible definitions give three answers: (A) strict wall-clock source = 22 apps / 33 tests / 55 repo; (B) A plus time.time()/time_ns = same; (C) B plus calls to _now-style helpers = 48 apps / 33 tests / 81 repo. My original 52 was definition (C) restricted to apps/ AND polluted with 2 time.monotonic() calls, which are not wall clocks at all and have no frame of reference. The evaluator measures 29/35/72 under a fourth definition I do not hold. The honest resolution is that this number is definition-dependent and was NEVER load-bearing: no conclusion in this slice rested on it. The load-bearing census was the count of INVENTING FUNCTIONS = 9, which the evaluator independently confirmed with 5/5 positive and 4/4 negative controls."
-  },
-  "l2_bidirectionality_recorded": {
-    "what_i_said": "Only the overclaim direction -- an expired window published as still open.",
-    "what_is_true": "The defect is BIDIRECTIONAL, verified by executing the classifier at explicit dates for one instant in three zones.",
-    "east_of_utc": "At UTC+14, instant 2029-12-31T23:00Z has local date 2030-01-01. UTC says the window is OPEN; the local frame emits 'Offer availability ended on 2029-12-31.' That WITHHOLDS a true free claim.",
-    "west_of_utc": "At UTC-7, instant 2030-01-01T03:00Z has local date 2029-12-31. UTC says CLOSED; the local frame emits 'Offer has a bounded availability window ending 2029-12-31.' That ASSERTS an expired claim.",
-    "why_it_matters": "This project weights a wrongly-WITHHELD claim equally with a wrongly-asserted one. Describing only one direction understated the defect.",
-    "two_fields_not_one": "Gate 5 passes the SAME tuple to reasons AND blocking_conditions. Measured: both differ across the boundary and both carry the identical false sentence. It is two published fields, not one."
-  },
-  "l2_calibration_against_the_finding": {
-    "cuts_against": "The shipped container runs UTC (python:3.13-slim, tzname ('UTC','UTC')), so date.today() and now.date() are equal there and the defect CANNOT fire in the deployed service.",
-    "cuts_for": "It CAN fire via the documented host-side CLI, `python -m app.ingest.runner`, which runs in the operator's local zone.",
-    "why_both_halves": "Stating only the second half is advocacy, and stating only the first half would excuse the defect. The honest position is that this is a real defect on a real documented path with a bounded blast radius, not a live production incident."
-  },
-  "l2_durable_lesson_windows_tz": {
-    "finding": "Windows CPython has NO time.tzset() and SILENTLY IGNORES the TZ environment variable. Verified on this host: hasattr(time,'tzset') is False, and after setting TZ=Pacific/Kiritimati, time.tzname is still ('Mountain Standard Time','Mountain Daylight Time').",
-    "consequence": "Any TZ-based measurement of this defect on this host reports NO DIVERGENCE, which reads as the defect being ABSENT. It had to be measured in a Linux container.",
-    "why_this_is_the_important_half": "This is not a Windows trivia note. It is an instrument that fails silently toward the comfortable answer, in the same family as a -k that matches nothing and a mutation that never applies. It is the reason my own not-verified item 2 stayed unverified rather than being quietly resolved the wrong way."
-  },
-  "l2_error_i_made_during_remediation": {
-    "what": "My first re-run of the semantic mutation reported KILLED with 279 errors. That verdict was FABRICATED BY MY OWN ENVIRONMENT.",
-    "cause": "I recreated the Postgres container and ran CREATE DATABASE mutdb 8 seconds later, piped its output to Out-Null, and printed 'mutdb ready' UNCONDITIONALLY without checking the exit code. Postgres was not yet accepting connections. Every integration test then failed with 'FATAL: database mutdb does not exist', and the harness read a non-zero exit as KILLED.",
-    "how_i_caught_it": "The failure pattern was implausible -- 279 errors in test_admin_migration have nothing to do with a timezone change in publisher.py -- and the run took 416s instead of ~110s.",
-    "why_it_was_dangerous": "Had I accepted it, I would have reported to the orchestrator that L2 Finding 1 was wrong. A false KILL is worse than a false SURVIVE because it confirms whatever you were hoping for.",
-    "durable_fix": "mutate.ps1 now proves the database is reachable BEFORE running anything, and ABORTS rather than returning a verdict. Demonstrated: the precondition was shown to fail against the still-absent mutdb before mutdb was created and VERIFIED present in pg_database."
-  }
+  "evaluator_disposition": "PENDING -- fresh-context Level 2 required.",
+  "not_verified": "To be completed at end of slice, stated as prominently as the verdict."
 }

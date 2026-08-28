@@ -4091,3 +4091,108 @@ The shipped container runs UTC, so **the defect cannot fire in the deployed serv
 4. `apps/web` clean-on-evidence is the **evaluator's** measurement, not mine; my census remains Python-only.
 
 The `available_from` finding is deliberately untouched — filed separately by the orchestrator.
+
+---
+
+## F008 slice — the availability window's missing OPENING gate
+
+- **Feature / objective:** F008. `OfferFacts.available_from` was carried from the column through the ORM adapter into the engine and then **consulted by nothing**, so an offer that had not opened yet could reach `Z0_TRUE_FREE` and publish *"Usage remains $0"* about an offer that does not exist yet. Added the missing opening gate, and routed an incoherent window to `UNKNOWN`.
+
+### Counts I measured myself, with populations
+
+| Measurement | Population | Count |
+| --- | --- | --- |
+| `available_from` in `apps/api/app/classify/engine.py` | that file, 340 lines at 46a2371a | **1** — the `OfferFacts` field declaration, never read |
+| `available_until` in the same file | same | **6** |
+| `available_from` in `ingest` / `publish` / `adviser` / `read_api` / `apps/web` | those five trees | **0** |
+| `available_from` in `migrations/` | that tree | **1** — the column *declaration*, not a writer |
+
+### Calibration, stated as prominently as the defect
+
+**LATENT, NOT LIVE.** Nothing populates `offers.available_from` today, so no shipped classification was wrong because of this. It armed the moment any adapter wrote the column. This slice disarmed a trap; it did not repair a live fire, and must not be read as one.
+
+### The class decision, and the alternative rejected
+
+A not-yet-open offer classifies **`Z2_TEMPORARY_OR_CONDITIONAL`**.
+
+- Sibling-field precedent: `available_until` already routes through `_availability_reasons` into the conditional list, and `docs/DATA_MODEL.md` gate 4 already said "bounded ... availability windows". A window bounded *below* is a bounded window.
+- `UNKNOWN` in this engine means *could not be established* — all four Gate-4 triggers are absence-of-knowledge. A dated future start is an established, evidenced fact.
+- Both candidates are non-Z0, so safety is identical; Z2 explains better. It can say *"does not become available until 2030-01-01"*, where `UNKNOWN` would say *"cannot determine"* — **less** honest, because we can determine it exactly.
+
+**Rejected: `UNKNOWN`.** The argument for it — a bounded-but-open offer is verifiable now, a not-yet-open one is not — is real, but it is a claim about **evidence quality**, not about the material condition. This product already models evidence currency on a separate axis (coverage snapshots, the evidence floor, `last_verified_at`, the adviser's stale-evidence path). Folding "known but not yet observable" into the class taxonomy would hide an evidence concern from the machinery built to handle it. *Unknown is better than guessed* is a rule against **guessing**; we hold a date.
+
+**Second decision (owner-approved):** an incoherent window (`available_from > available_until`) yields `UNKNOWN`. The module docstring and the DATA_MODEL safety invariant already promised that a *contradictory* material condition yields UNKNOWN. It could not live in `_availability_reasons` — that feeds Gate 5, while UNKNOWN is decided at Gate 4, which **precedes** it — so it went into a separate `_availability_contradictions` helper. That helper takes **no `as_of`**: a contradiction between two stored dates holds at every moment, so it adds no time-dependence.
+
+### The asymmetry, which is the most dangerous line in the change
+
+`available_until` emits a reason on **both** sides of its boundary; `available_from` emits one on **only** the future side. A start date already reached imposes no ongoing bound. A future refactor that "symmetrises" the two would send **every** offer with a past start date to Z2 and make the product wrongly **withhold** genuinely free offers at scale — weighted equally here with wrongly asserting one. The boundary is strictly `>`. Documented in source, in `docs/DATA_MODEL.md`, and pinned by a parametrised permit test.
+
+### What I did to the PR #100 invariant test, and why it is NOT weakened
+
+`test_classify_actually_consumes_as_of_rather_than_merely_accepting_it`.
+
+**The brief predicted my change would break it. That prediction was FALSE, and I recorded my contrary prediction before running.** Its facts come from `_facts()`, which leaves `available_from=None`; the new gate is `is not None`-guarded and cannot fire. The *executed* invariant was always a statement about `available_until` alone.
+
+- **Assertion lines are byte-identical.** Proven mechanically by parsing the function's `ast.Assert` nodes at `46a2371a` and at HEAD: 4 asserts each, all identical — re-verified **after** `ruff format` touched the file. The instrument asserts it found >0 asserts at base, so a vacuous comparison aborts.
+- Only the docstring was re-scoped, plus `available_from=None` passed **explicitly** so the population the claim covers is enforced rather than incidental.
+- The new behaviour got its **own** test, never an edit to this one.
+- **Mutation M4 proves it still kills its original target:** making the closing branch ignore `as_of` (PR #100's exact defect, restored) fails **precisely and only** `test_classify_actually_consumes_as_of_rather_than_merely_accepting_it`. A re-scoped guard that no longer catches its original defect would be a weakened one; this one still catches it.
+
+### Mutation results (each restores the ORIGINAL behaviour, none merely breaks the call)
+
+| # | Mutation | Predicted | Result |
+| --- | --- | --- | --- |
+| M1 | Delete the opening-gate branch — exactly the base behaviour | KILLED | **KILLED** (4 failed) |
+| M2 | `>` → `<`, inverting both arms | KILLED | **KILLED** (7 failed, **both arms objected independently**) |
+| M3 | `>` → `>=`, boundary only | KILLED | **KILLED** (4 failed) |
+| M4 | Closing branch ignores `as_of` — PR #100's defect restored | KILLED | **KILLED** (1 failed, the right test) |
+| M5 | Unwire the contradiction gate from Gate 4 | KILLED | **KILLED** (2 failed) |
+
+M2's kill list spans both directions, including the **pre-existing** `test_availability_from_only_does_not_force_z2`: deny-arm tests and permit-arm tests (`[yesterday]`, `[ten-years-ago]`) failed separately. `[absent]` and `[today]` correctly did **not** fail — `None` short-circuits and `today < today` is false.
+
+### Errors I made, and how each was caught
+
+1. **A false FAIL I did not accept.** My first full-suite run with a database reported `1 failed` — `test_catalogue_currency.py::test_providers_list_freshness_follows_the_clock`. I did not attribute it to my change on the grounds that it "looked unrelated". I built a base-commit worktree at `46a2371a` and ran six full suites across pristine and reused databases. **Base pristine: 2975 passed / 0 failed. HEAD pristine: 2994 passed / 0 failed. HEAD on the very database that failed, re-run: 2994 passed / 0 failed.** The same code passed on the same database, so the failure is not deterministic in my change. **I could not reproduce or fully explain it** — see NOT VERIFIED below. It is reported, not dismissed.
+2. **My mutation harness silently stopped applying M1.** After `ruff format` collapsed a multi-line `reasons.append(...)`, M1's exact search text no longer matched. The pre-grep guard **aborted** instead of reporting a verdict. Without it, M1 would have applied nothing and reported **SURVIVED** — a false survive on the single most important mutation, which would have read as my tests failing to catch the defect. Search text corrected; M1 re-run and KILLED. *An unapplied mutation is indistinguishable from a surviving one, and this is the second time this project has paid for that lesson.*
+3. **A landmine in the state file, found before it fired.** `test_the_participant_list_matches_the_contract` **reads `agent-state/current_contract.json`** and requires `classification.PARTICIPANT_converted`. `current_contract.json` is single-slot, so overwriting it wholesale would have failed a PR #100 guard through the **state file**, not the code. I carried the block forward verbatim and proved the coupling by **negative control**: removing it produces `KeyError: 'classification'` at line 355, 1 failed; restoring it returns 22 passed.
+
+### Tests and exact results
+
+- Baseline before any edit, no `DATABASE_URL`: **2695 passed, 283 skipped**, 2978 collected (>0, so the instrument demonstrably executed; pytest exit 5 would have meant nothing collected).
+- Base commit, pristine DB: **2975 passed, 3 skipped, 0 failed**.
+- HEAD, pristine DB: **2994 passed, 3 skipped, 0 failed** — `+19`, exactly the 19 tests added (13 unit gate/contradiction, 1 clock companion, 5 integration). **Zero regressions.**
+- `ruff check .` and `ruff format --check .` — both clean repo-wide, as CI runs them.
+- Integration ran against a dedicated `postgres:16-alpine` on port **55433**, seeded separately from the suite's database. Reachability was **asserted, not announced**: `pg_isready`, then the database confirmed present in `pg_database`, then a trivial query confirmed executing, each with a checked exit code. Runtimes stayed within ~5% of baseline, so no environment deviation masqueraded as a result.
+
+### Files changed
+
+- `apps/api/app/classify/engine.py` — opening gate in `_availability_reasons`; new clock-independent `_availability_contradictions` wired into Gate 4; asymmetry rationale; module gate list; `classify` docstring's invariant paragraph scoped to its measured population.
+- `tests/unit/test_z0_classifier.py` — 13 tests (deny, permit ×4 parametrised, boundary, precedence ×2, both-ends, contradiction ×3, class-moves-at-boundary); corrected the `_z0_reachable` docstring, which claimed the engine read `available_from` nowhere.
+- `tests/unit/test_clock_inheritance.py` — docstring re-scope, explicit population pin, one new companion test. **Assertions byte-identical.**
+- `tests/integration/test_classify_availability_window.py` — new; 5 tests over real persisted rows.
+- `docs/DATA_MODEL.md` — gates 3 and 4, plus a new "availability window has gates at both ends" section with the asymmetry table.
+- `apps/api/app/publish/publisher.py` — **comment only**, no behaviour: its "does NOT change which class is published" note now states the population it was measured over.
+- `agent-state/current_contract.json` — this slice's contract, carrying `classification` forward verbatim.
+
+### NOT VERIFIED — stated as prominently as the verdict
+
+1. **The one-off `test_catalogue_currency` failure is unexplained.** Observed **once in three HEAD full-suite runs**, never in three BASE runs, and it did not reproduce at HEAD against the same database. The assertion sits on an exact-equality boundary (`current_at = oldest + window`), which is a plausible intermittent-flip site, but **I did not prove that** and I am not claiming it is a known flake. What I can state with evidence is narrower: identical code passed on the identical database in a later run, so the failure is not deterministic in this change.
+2. **The full `_do_publish` chain was not separately exercised.** The column → `offer_facts_from_orm` → `OfferFacts` → class chain is proven end to end on real rows via `classify_offer`, which is where the link was broken. The publish step is a thin caller of it and was covered only by the pre-existing suite. I did not build a publish-pipeline test that sets `available_from`, because no adapter writes it and such a fixture would be artificial.
+3. **No timezone behaviour was measured on this host, by design.** Windows CPython has no `time.tzset()` and silently ignores `TZ`, so any TZ probe here reports "no divergence" — an instrument failing toward the comfortable answer. The new gate is a date comparison and needs none.
+4. **The defect remains latent after this fix.** With no writer, no production behaviour changes today.
+5. **No feature was marked passing and `agent-state/feature_list.json` was not touched.** F008 remains `passes: false` pending the fresh-context Level-2 evaluation, which is mandatory here because this is Z0 classification.
+
+### Hazard for the orchestrator (reported, not fixed)
+
+`test_the_participant_list_matches_the_contract` depends on `agent-state/current_contract.json`, which is **single-slot and rewritten by every slice**. A permanent test resting on a per-slice file will eventually be dropped by a future slice, and the failure will look like a code defect. Worth relocating that pinned list to a durable file — a separate slice, not this one.
+
+### Recommended next action
+
+Fresh-context **Level 2** evaluation. The permit arms deserve the same scrutiny as the deny arm: a gate that wrongly withholds a genuinely free offer is weighted equally here with one that wrongly asserts a free one.
+#### Addendum — a fourth error, made after the section above was written
+
+While running the secret-scan gate I invoked `detect-secrets scan --baseline .secrets.baseline <file>`. That subcommand **rewrites the baseline in place**, and it did: `git diff` showed `.secrets.baseline` with 6 insertions and 2162 deletions. `.secrets.baseline` is on this slice's do-not-touch list, so this was a hard-rule violation, not a stylistic slip.
+
+Caught immediately because I diffed the file straight after the command specifically to confirm it was untouched — the check was aimed at exactly this and it fired. Restored with `git checkout -- .secrets.baseline`; the blob now hashes `4529811ac39b471377afdd780e9465357346a168`, identical to `HEAD:.secrets.baseline`, and the working tree contains only the seven intended modifications plus the one new test file.
+
+The generalisable lesson: **a read-only-sounding verb is not a read-only command.** "scan" mutated its own reference file. Any gate run against a protected artefact must either be given a throwaway copy or be diffed immediately afterwards — announcing that a command is read-only is not the same as establishing it, which is the same failure shape as an unapplied mutation and an unchecked `CREATE DATABASE`.

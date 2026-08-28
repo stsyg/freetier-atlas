@@ -506,13 +506,17 @@ result from missing data.
    when another field is unknown.
 3. **UNKNOWN.** Any unknown material condition — `requires_card` or
    `has_paid_dependencies` is `None`, a quota exhaustion behaviour is `unknown`
-   or unrecognised, or there is no quota data at all — blocks Z0. Per the safety
+   or unrecognised, there is no quota data at all, or the availability window is
+   *contradictory* (`available_from` falls after `available_until`) — blocks Z0.
+   Per the safety
    rule an unknown material condition yields `UNKNOWN` rather than being guessed
    into a more specific class, so this gate **precedes** the Z2 gate: a trial (or
    any temporary/conditional signal) whose card or quota data is unknown is
    `UNKNOWN`, not `Z2`.
-4. **Z2 — temporary or conditional.** Trials, new-customer credits, bounded or
-   expired availability windows, eligibility-gated programs (student, startup,
+4. **Z2 — temporary or conditional.** Trials, new-customer credits, availability
+   windows bounded at **either** end — an offer that has not opened yet
+   (`available_from` still in the future) as well as one that is bounded or
+   expired (`available_until`) — eligibility-gated programs (student, startup,
    hackathon, open-source), or a quota that requires a manual paid upgrade to
    continue. Reached only when every material condition is known.
 5. **Z0 — true $0.** Only when every billing gate is explicitly clear *and*
@@ -520,6 +524,28 @@ result from missing data.
    `request_rejected`, `throttled`, `service_sleeps`, `read_only`,
    `deployment_blocked`, `site_disabled_until_reset`, `resource_reclaimed`,
    `data_deleted`).
+
+### The availability window has gates at both ends
+
+`available_until` and `available_from` are **deliberately not symmetric**, and
+tidying that away would be a defect rather than a cleanup:
+
+| | already reached | still in the future |
+| --- | --- | --- |
+| `available_until` | "availability ended on X" → **Z2** | "bounded window ending X" → **Z2** |
+| `available_from` | *no reason — permitted* | "does not become available until X" → **Z2** |
+
+An end date bounds the offer whether or not it has been reached. A **start date
+already reached imposes no ongoing bound at all** and must produce nothing —
+emitting a reason there would send every offer with a start date to Z2 and make
+the product wrongly **withhold** genuinely free offers, a failure this project
+weights equally with wrongly asserting one. The boundary is strictly `>`: an
+offer whose `available_from` is today is open today.
+
+A window whose start falls *after* its end is contradictory rather than merely
+conditional, so it is routed to the `UNKNOWN` gate, which precedes Z2. That
+check consults no clock — a contradiction between two stored dates is a
+contradiction at every moment — so it introduces no time-dependence.
 
 ### Safety invariant
 

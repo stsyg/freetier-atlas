@@ -408,11 +408,17 @@ def _do_publish(
     # `date.today()`, which is LOCAL. One publication decision then used two
     # clocks in two timezones.
     #
-    # Measured, not assumed: this does NOT change which class is published (a
-    # bounded `available_until` is Z2 on either side of the boundary). It
-    # changes the published REASON -- an expired offer could be written into
-    # `material_facts` as "has a bounded availability window ending <date>",
-    # which says a closed window is still open. See `classify`'s docstring.
+    # Measured, not assumed: for an offer bounded only at its CLOSING end this
+    # does NOT change which class is published (a bounded `available_until` is
+    # Z2 on either side of the boundary). It changes the published REASON -- an
+    # expired offer could be written into `material_facts` as "has a bounded
+    # availability window ending <date>", which says a closed window is still
+    # open. See `classify`'s docstring.
+    #
+    # That measurement was taken before the window had an OPENING gate. It now
+    # also decides whether an offer that has not started yet is published as
+    # Z0_TRUE_FREE or held at Z2, so for an offer carrying `available_from` this
+    # clock does move the class.
     classification = classify_offer(offer, version, as_of=now.date())
 
     version.zero_cost_class = classification.zero_cost_class

@@ -154,9 +154,16 @@ def _z0_reachable(offer_type: str) -> bool:
 
     Exhaustive over every input the engine actually reads, rather than a single
     hand-picked "best case" probe: a probe proves one route is closed, a sweep
-    proves every route is. ``eligibility`` and ``available_from`` are varied too
-    even though the engine reads neither today -- if a future gate starts
-    consulting them, this sweep already covers it.
+    proves every route is. ``eligibility`` is varied too even though the engine
+    reads it nowhere today -- if a future gate starts consulting it, this sweep
+    already covers it.
+
+    ``available_from`` WAS in that category and no longer is: the opening gate
+    consults it now. The sweep needed no edit when that gate landed, which is
+    precisely the payoff the note above was written for. Its answers are
+    unaffected because the sweep is EXISTENTIAL -- ``None`` and the past date
+    still reach Z0 for any type that can -- so no type's reachability is decided
+    by the not-yet-open combination alone.
     """
 
     tristate = (None, True, False)
@@ -588,6 +595,260 @@ def test_availability_from_only_does_not_force_z2() -> None:
         as_of=_TODAY,
     )
     assert result.zero_cost_class == Z0_TRUE_FREE
+
+
+# --------------------------------------------------------------------------- #
+# The OPENING gate -- available_from
+# --------------------------------------------------------------------------- #
+#
+# WHY THIS EXISTS. The availability window had a CLOSING gate and no opening
+# one. `available_from` was carried from the column (domain.py) through the ORM
+# adapter (orm.py) into `OfferFacts` and then consulted by NOTHING, so an offer
+# with `available_from = 2030-01-01`, classified today, reached Z0_TRUE_FREE and
+# published the sentence "Usage remains $0" about an offer that does not exist
+# yet. That is the product's first rule in its purest form.
+#
+# CALIBRATION, recorded so this is not read as bigger than it was: the defect
+# was LATENT. Measured at 46a2371a, nothing outside the model wrote the column
+# (0 occurrences across ingest, publish, adviser, read_api and apps/web), so no
+# shipped classification was wrong because of it. It was armed, not firing.
+#
+# BOTH ARMS ARE TESTED BELOW, deliberately and with equal weight. A guard that
+# cannot be shown to PERMIT is indistinguishable from one that broke the
+# product, and here the permit arm protects against wrongly WITHHOLDING a
+# genuinely free offer -- which this project weights equally with wrongly
+# asserting one.
+
+
+def test_z2_for_an_offer_that_is_not_available_yet() -> None:
+    """DENY ARM: a start date in the future withholds Z0."""
+
+    opens = _TODAY + timedelta(days=365)
+    result = classify(
+        OfferFacts(
+            "always_free",
+            requires_card=False,
+            has_paid_dependencies=False,
+            exhaustion_behaviours=("hard_stop",),
+            available_from=opens,
+        ),
+        as_of=_TODAY,
+    )
+    assert result.zero_cost_class == Z2_TEMPORARY_OR_CONDITIONAL
+    assert result.zero_cost_class != Z0_TRUE_FREE
+    # The explanation must name the date, not merely refuse.
+    assert any(opens.isoformat() in c for c in result.blocking_conditions)
+    assert any("does not become available" in c for c in result.blocking_conditions)
+    # And it must not assert the offer is free.
+    assert not any("Usage remains $0" in r for r in result.reasons)
+
+
+def test_z0_still_reached_when_available_from_is_today() -> None:
+    """PERMIT ARM, boundary: an offer that opens today is open today.
+
+    The gate is strictly ``>``. If it were ``>=`` an offer would be withheld on
+    the very day it became available.
+    """
+
+    result = classify(
+        OfferFacts(
+            "always_free",
+            requires_card=False,
+            has_paid_dependencies=False,
+            exhaustion_behaviours=("hard_stop",),
+            available_from=_TODAY,
+        ),
+        as_of=_TODAY,
+    )
+    assert result.zero_cost_class == Z0_TRUE_FREE
+
+
+@pytest.mark.parametrize(
+    "since",
+    [None, _TODAY, _TODAY - timedelta(days=1), _TODAY - timedelta(days=3650)],
+    ids=["absent", "today", "yesterday", "ten-years-ago"],
+)
+def test_the_opening_gate_permits_every_already_open_offer(since: date | None) -> None:
+    """PERMIT ARM: absent or already-reached start dates are untouched.
+
+    Parametrised rather than probed once, because the failure this catches is a
+    'symmetrising' refactor that emits a reason for a past start date the way
+    ``available_until`` does for a past end date. That would send EVERY offer
+    with a start date to Z2 and withhold genuinely free offers at scale.
+    """
+
+    result = classify(
+        OfferFacts(
+            "always_free",
+            requires_card=False,
+            has_paid_dependencies=False,
+            exhaustion_behaviours=("hard_stop",),
+            available_from=since,
+        ),
+        as_of=_TODAY,
+    )
+    assert result.zero_cost_class == Z0_TRUE_FREE
+    assert not result.blocking_conditions
+    # The asymmetry, asserted rather than described: an already-open offer emits
+    # NO availability sentence at all.
+    assert not any("available" in r.lower() for r in result.reasons)
+
+
+def test_the_opening_gate_is_what_moves_the_class_across_its_boundary() -> None:
+    """The NEW property this gate introduces, stated as its own test.
+
+    ``as_of`` does not move the class for an offer bounded only at its closing
+    end -- that is pinned in ``tests/unit/test_clock_inheritance.py`` and is a
+    statement about ``available_until`` alone. For an offer with a start date
+    ``as_of`` DOES move the class, and that is the entire point of the gate.
+    """
+
+    opens = date(2030, 1, 1)
+    facts = OfferFacts(
+        "always_free",
+        requires_card=False,
+        has_paid_dependencies=False,
+        exhaustion_behaviours=("hard_stop",),
+        available_from=opens,
+    )
+
+    before = classify(facts, as_of=opens - timedelta(days=1))
+    on_the_day = classify(facts, as_of=opens)
+    after = classify(facts, as_of=opens + timedelta(days=1))
+
+    assert before.zero_cost_class == Z2_TEMPORARY_OR_CONDITIONAL
+    assert on_the_day.zero_cost_class == Z0_TRUE_FREE
+    assert after.zero_cost_class == Z0_TRUE_FREE
+    assert before.zero_cost_class != on_the_day.zero_cost_class
+
+
+def test_unknown_dominates_an_offer_that_is_not_available_yet() -> None:
+    """PRECEDENCE: an unknown material condition still outranks the new gate.
+
+    Gate 4 precedes Gate 5, so a not-yet-open offer whose card requirement is
+    unknown must be UNKNOWN and not be guessed into Z2.
+    """
+
+    result = classify(
+        OfferFacts(
+            "always_free",
+            requires_card=None,
+            has_paid_dependencies=False,
+            exhaustion_behaviours=("hard_stop",),
+            available_from=_TODAY + timedelta(days=30),
+        ),
+        as_of=_TODAY,
+    )
+    assert result.zero_cost_class == UNKNOWN
+    assert result.zero_cost_class != Z0_TRUE_FREE
+
+
+def test_z1_dominates_an_offer_that_is_not_available_yet() -> None:
+    """PRECEDENCE: a definite billing exposure still outranks the new gate."""
+
+    result = classify(
+        OfferFacts(
+            "always_free",
+            requires_card=True,
+            has_paid_dependencies=False,
+            exhaustion_behaviours=("hard_stop",),
+            available_from=_TODAY + timedelta(days=30),
+        ),
+        as_of=_TODAY,
+    )
+    assert result.zero_cost_class == Z1_BILLING_EXPOSURE
+
+
+def test_both_ends_of_a_future_window_are_reported() -> None:
+    """A coherent window still ahead of us reports opening AND closing."""
+
+    opens = _TODAY + timedelta(days=30)
+    closes = _TODAY + timedelta(days=60)
+    result = classify(
+        OfferFacts(
+            "always_free",
+            requires_card=False,
+            has_paid_dependencies=False,
+            exhaustion_behaviours=("hard_stop",),
+            available_from=opens,
+            available_until=closes,
+        ),
+        as_of=_TODAY,
+    )
+    assert result.zero_cost_class == Z2_TEMPORARY_OR_CONDITIONAL
+    assert any("does not become available" in c for c in result.blocking_conditions)
+    assert any("bounded availability window" in c for c in result.blocking_conditions)
+
+
+# --------------------------------------------------------------------------- #
+# A contradictory window -- available_from after available_until
+# --------------------------------------------------------------------------- #
+#
+# The module contract promises that an unknown OR CONTRADICTORY material
+# condition yields UNKNOWN. A window that opens after it ends is contradictory,
+# and reporting it as merely "temporary or conditional" would publish two
+# mutually contradictory sentences about one offer.
+
+
+def test_a_contradictory_availability_window_is_unknown() -> None:
+    opens = date(2030, 1, 1)
+    closes = date(2025, 6, 1)
+    result = classify(
+        OfferFacts(
+            "always_free",
+            requires_card=False,
+            has_paid_dependencies=False,
+            exhaustion_behaviours=("hard_stop",),
+            available_from=opens,
+            available_until=closes,
+        ),
+        as_of=_TODAY,
+    )
+    assert result.zero_cost_class == UNKNOWN
+    assert result.zero_cost_class != Z2_TEMPORARY_OR_CONDITIONAL
+    assert result.zero_cost_class != Z0_TRUE_FREE
+    assert any("contradictory" in c.lower() for c in result.blocking_conditions)
+    # It must NOT also emit the Z2 availability sentences: Gate 4 returns first.
+    assert not any("does not become available" in c for c in result.blocking_conditions)
+
+
+def test_a_contradictory_window_is_unknown_at_every_moment() -> None:
+    """The contradiction gate takes no clock, so no ``as_of`` can resolve it.
+
+    Asserted rather than assumed, because a contradiction routed through a
+    clock-dependent branch would reintroduce exactly the class-flips-with-time
+    behaviour the rest of this engine is careful about.
+    """
+
+    facts = OfferFacts(
+        "always_free",
+        requires_card=False,
+        has_paid_dependencies=False,
+        exhaustion_behaviours=("hard_stop",),
+        available_from=date(2030, 1, 1),
+        available_until=date(2025, 6, 1),
+    )
+    for moment in (date(2024, 1, 1), date(2026, 1, 15), date(2031, 1, 1)):
+        assert classify(facts, as_of=moment).zero_cost_class == UNKNOWN
+
+
+def test_a_coherent_window_is_not_treated_as_contradictory() -> None:
+    """The contradiction gate must not fire on equal or ordered dates."""
+
+    same_day = date(2030, 1, 1)
+    result = classify(
+        OfferFacts(
+            "always_free",
+            requires_card=False,
+            has_paid_dependencies=False,
+            exhaustion_behaviours=("hard_stop",),
+            available_from=same_day,
+            available_until=same_day,
+        ),
+        as_of=_TODAY,
+    )
+    assert result.zero_cost_class == Z2_TEMPORARY_OR_CONDITIONAL
+    assert not any("contradictory" in c.lower() for c in result.blocking_conditions)
 
 
 # --------------------------------------------------------------------------- #
