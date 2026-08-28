@@ -22,13 +22,18 @@ from __future__ import annotations
 import ast
 import inspect
 import json
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 
 import pytest
 from app.adviser.abuse import admin as abuse_admin
 from app.adviser.select import build_candidate, build_pool, gather_candidates
-from app.classify.engine import OfferFacts, classify
+from app.classify.engine import (
+    Z0_TRUE_FREE,
+    Z2_TEMPORARY_OR_CONDITIONAL,
+    OfferFacts,
+    classify,
+)
 from app.classify.orm import classify_offer
 from app.ingest.reconcile_coverage import find_coverage_mismatches, reconcile_coverage
 
@@ -114,15 +119,36 @@ def test_classify_actually_consumes_as_of_rather_than_merely_accepting_it() -> N
     """A required parameter that is ignored is no better than an invented one.
 
     The observable effect of the clock is the availability reason. Measured, and
-    stated narrowly on purpose: ``as_of`` does NOT change the zero-cost class --
-    a non-null ``available_until`` yields Z2 on either side of the boundary. What
-    it changes is the published sentence, and one of the two sentences says a
+    stated narrowly on purpose: for an offer with NO ``available_from``,
+    ``as_of`` does NOT change the zero-cost class -- a non-null
+    ``available_until`` yields Z2 on either side of the boundary. What it
+    changes is the published sentence, and one of the two sentences says a
     closed window is still open.
+
+    **Why that scope clause is now explicit.** This property was measured over a
+    population in which ``available_from`` was read by NOTHING, so it was always
+    a claim about ``available_until`` alone -- it was merely written as an
+    unqualified one. The availability window has since gained an opening gate,
+    and for an offer that has not opened yet ``as_of`` DOES move the class. That
+    is the gate's purpose, not a regression of the property below.
+
+    So the claim is pinned to its real population: ``available_from=None`` is
+    passed EXPLICITLY rather than left to a default, so a later change to
+    ``_facts`` cannot silently drift this test out of the population its claim
+    covers. The complementary property lives in
+    :func:`test_as_of_does_move_the_class_for_an_offer_that_has_not_opened_yet`.
+
+    **The assertions below are unchanged.** Narrowing a claim to what was
+    actually measured strengthens it. Deleting or loosening it to accommodate a
+    new behaviour would have quietly reopened the defect it was written to
+    close, which is why the new behaviour got its own test instead.
     """
 
     closes = date(2029, 12, 31)
-    still_open = classify(_facts(available_until=closes), as_of=date(2029, 6, 1))
-    expired = classify(_facts(available_until=closes), as_of=date(2030, 6, 1))
+    still_open = classify(
+        _facts(available_from=None, available_until=closes), as_of=date(2029, 6, 1)
+    )
+    expired = classify(_facts(available_from=None, available_until=closes), as_of=date(2030, 6, 1))
 
     assert still_open.zero_cost_class == expired.zero_cost_class, (
         "as_of is not supposed to move the class; if this fails the defect is "
@@ -131,6 +157,36 @@ def test_classify_actually_consumes_as_of_rather_than_merely_accepting_it() -> N
     assert any("bounded availability window" in r for r in still_open.reasons)
     assert any("availability ended" in r for r in expired.reasons)
     assert still_open.reasons != expired.reasons
+
+
+def test_as_of_does_move_the_class_for_an_offer_that_has_not_opened_yet() -> None:
+    """The complementary property the opening gate introduced.
+
+    Deliberately a SEPARATE test rather than an edit to the one above. The two
+    cover disjoint populations -- no ``available_from`` versus a non-null one --
+    and both must hold. Keeping them apart is what lets the older guard go on
+    failing for the case it was written to catch while this one asserts the
+    behaviour that was added afterwards.
+
+    A gate that withholds Z0 from an offer that does not exist yet is only half
+    the requirement; it must also stop withholding once the offer opens. Both
+    directions are asserted here, because a guard that cannot be shown to PERMIT
+    is indistinguishable from one that broke the product.
+    """
+
+    opens = date(2030, 1, 1)
+    facts = _facts(available_from=opens)
+
+    not_yet = classify(facts, as_of=opens - timedelta(days=1))
+    now_open = classify(facts, as_of=opens)
+
+    assert not_yet.zero_cost_class != now_open.zero_cost_class, (
+        "the opening gate is not consulting as_of at all; a not-yet-open offer "
+        "and an open one are being classified identically."
+    )
+    assert not_yet.zero_cost_class == Z2_TEMPORARY_OR_CONDITIONAL
+    assert now_open.zero_cost_class == Z0_TRUE_FREE
+    assert any(opens.isoformat() in r for r in not_yet.reasons)
 
 
 def test_classify_is_deterministic_for_frozen_facts() -> None:

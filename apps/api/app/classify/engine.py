@@ -20,13 +20,15 @@ The decision gates, in precedence order, are:
    quota whose exhaustion triggers ``automatic_billing`` is a definite billing
    exposure and can never be Z0.
 4. **UNKNOWN.** Any unknown material condition (card requirement, paid-dependency
-   status, an ``unknown`` or unrecognised exhaustion behaviour, or the total
-   absence of quota data) blocks Z0. Per the product safety rule an unknown
+   status, an ``unknown`` or unrecognised exhaustion behaviour, the total
+   absence of quota data, or a *contradictory* availability window whose start
+   falls after its end) blocks Z0. Per the product safety rule an unknown
    material condition yields ``UNKNOWN`` rather than being guessed into a more
    specific class, so this gate precedes the Z2 temporary/conditional gate.
-5. **Z2 (temporary or conditional).** Trials, new-customer credits, time-bounded
-   availability windows, eligibility-gated programs, or a quota that requires a
-   manual paid upgrade to continue are temporary/conditional, not true $0.
+5. **Z2 (temporary or conditional).** Trials, new-customer credits, availability
+   windows bounded at either end -- not yet open, or bounded/ended --
+   eligibility-gated programs, or a quota that requires a manual paid upgrade to
+   continue are temporary/conditional, not true $0.
    Reached only when every material condition is known.
 6. **Z0 (true $0).** Only when every billing gate is explicitly clear *and*
    every quota exhaustion behaviour is a safe stop-type.
@@ -126,10 +128,60 @@ class ClassificationResult:
         return self.zero_cost_class == Z0_TRUE_FREE
 
 
+def _availability_contradictions(facts: OfferFacts) -> list[str]:
+    """Return contradictions internal to the availability window itself.
+
+    **Clock-independent by construction:** this takes no ``as_of``. A window
+    whose start falls after its end is incoherent at every moment, so no clock
+    can resolve it. That matters beyond tidiness -- it means this gate adds no
+    ``as_of``-dependence to the engine and cannot complicate the invariant
+    documented on :func:`classify`.
+
+    Routed to the UNKNOWN gate rather than the Z2 gate because the module
+    contract above promises that an unknown *or contradictory* material
+    condition yields ``UNKNOWN``. Calling such an offer merely "temporary or
+    conditional" would publish two mutually contradictory sentences about one
+    offer: that it does not open until X, and that it ended on some Y < X.
+
+    Fires only when BOTH dates are present and inverted, so an offer carrying a
+    start date alone -- the case the opening gate below permits -- never reaches
+    this function.
+    """
+
+    if facts.available_from is None or facts.available_until is None:
+        return []
+    if facts.available_from <= facts.available_until:
+        return []
+    return [
+        "Offer availability window is contradictory: it opens on "
+        f"{facts.available_from.isoformat()}, which is after it ends on "
+        f"{facts.available_until.isoformat()}."
+    ]
+
+
 def _availability_reasons(facts: OfferFacts, as_of: date) -> list[str]:
-    """Return temporary/conditional reasons derived from the availability window."""
+    """Return temporary/conditional reasons derived from the availability window.
+
+    **The two ends of the window are deliberately NOT symmetric, and tidying
+    that away would be a defect rather than a cleanup.**
+
+    ``available_until`` yields a reason on BOTH sides of its boundary: an end
+    date bounds the offer whether or not it has been reached.
+
+    ``available_from`` yields a reason on ONE side only. A start date still in
+    the future withholds the offer, which is exactly the conditional case. A
+    start date already reached imposes no ongoing bound at all and must produce
+    NOTHING. Emitting a reason there would send every offer with a past start
+    date to Z2 and make the product withhold genuinely free offers at scale --
+    a failure this project weights EQUALLY with wrongly asserting a free one.
+
+    The boundary is strictly ``>``: an offer whose ``available_from`` is today
+    is open today.
+    """
 
     reasons: list[str] = []
+    if facts.available_from is not None and facts.available_from > as_of:
+        reasons.append(f"Offer does not become available until {facts.available_from.isoformat()}.")
     if facts.available_until is not None:
         if facts.available_until < as_of:
             reasons.append(f"Offer availability ended on {facts.available_until.isoformat()}.")
@@ -164,11 +216,12 @@ def classify(facts: OfferFacts, *, as_of: date) -> ClassificationResult:
     previous day. One publication decision, two clocks, two timezones.
 
     What that actually corrupts -- stated precisely, because the narrow true
-    claim is worth more than a broad one that does not survive checking: it does
-    NOT flip the zero-cost class. A non-null ``available_until`` yields
-    ``Z2_TEMPORARY_OR_CONDITIONAL`` on either side of the boundary, so no offer
-    was ever published ``Z0_TRUE_FREE`` because of this. What it corrupts is the
-    published REASON. Across the boundary the same facts produce either
+    claim is worth more than a broad one that does not survive checking: for an
+    offer bounded only at its CLOSING end it does NOT flip the zero-cost class.
+    A non-null ``available_until`` yields ``Z2_TEMPORARY_OR_CONDITIONAL`` on
+    either side of the boundary, so no offer was ever published
+    ``Z0_TRUE_FREE`` because of this. What it corrupts is the published REASON.
+    Across the boundary the same facts produce either
 
         "Offer availability ended on 2029-12-31."
 
@@ -180,6 +233,17 @@ def classify(facts: OfferFacts, *, as_of: date) -> ClassificationResult:
     into ``material_facts.classification.reasons`` and served from the catalogue.
     A false sentence about an expired offer is a smaller defect than a false
     class, and still one this product does not get to ship.
+
+    **Scope of that invariant, recorded because it has since narrowed.** It was
+    measured over a population in which ``available_from`` was read by nothing,
+    so it was always a claim about ``available_until`` ALONE. Since the opening
+    gate was added ``as_of`` CAN move the class: an offer whose
+    ``available_from`` has not yet been reached is
+    ``Z2_TEMPORARY_OR_CONDITIONAL``, and the same facts become Z0-eligible once
+    it has. That is the gate's entire purpose and not a regression of the
+    property above -- the two statements cover disjoint populations (no
+    ``available_from`` versus a non-null one), and both are pinned by tests in
+    ``tests/unit/test_clock_inheritance.py``.
 
     Requiring ``as_of`` constrains every call site that will ever exist. A test
     only constrains the one written today: the full suite stayed green with the
@@ -247,6 +311,11 @@ def classify(facts: OfferFacts, *, as_of: date) -> ClassificationResult:
     unknown.extend(
         f"Unrecognised exhaustion behaviour '{b}' cannot be confirmed safe." for b in unrecognised
     )
+    # A window whose start falls after its end is contradictory, not merely
+    # conditional. It belongs HERE rather than in the Z2 gate below, because
+    # this gate precedes it and the module contract routes a contradictory
+    # material condition to UNKNOWN.
+    unknown.extend(_availability_contradictions(facts))
     if unknown:
         return ClassificationResult(
             zero_cost_class=UNKNOWN,
