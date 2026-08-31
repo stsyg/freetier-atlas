@@ -4690,3 +4690,157 @@ falsification is why the isolation re-runs above exist.
 Audit the remaining consumers of `fetch_stale_offer_version_ids` for the same superseded-version
 category error — this slice fixed the one call site it was scoped to and deliberately left the
 projection itself alone. Then obtain the Level 2 adversarial evaluation before any merge.
+
+---
+
+## 2026-08-31 — F008 bucket stale flag, ROUND 2: Level-2 rejected round 1, and it was right
+
+**Feature:** F008 · **Slice:** `bucket-stale-flag-latest-version` · **Branch:**
+`stsyg-bucket-stale-flag-latest-version` · Follows the entry above, which stands as the record of
+round 1. **Round 1 shipped a Z0-safety defect. This entry is the correction.**
+
+### What the independent Level-2 evaluator found
+
+A cross-vendor fresh-context evaluator (`gpt-5.6-sol`) graded round 1 **REJECT** on a blocking
+finding, and the finding was correct:
+
+> `latest_id not in stale_versions` does **not** imply the latest evidence is current.
+
+`fetch_stale_offer_version_ids` is a projection that reports only versions whose verdict is
+`stale=True`. `currency.py` documents two distinct ways a claim can fail to be current, and says so in
+capitals: `checked=True, stale=True` ("we looked, it expired") and `checked=False, stale=False`
+(**"we could not look at all"**), and that *"the second case must never be read as fresh"*.
+
+A latest version that is `UNCHECKED` is therefore **absent from the stale set for the opposite
+reason**. Round 1 tested absence, so it read "we could not look" as permission. The evaluator drove
+the real endpoint and got, from `/catalogue/categories`:
+
+```
+state = verified_free · derived_state = verified_free
+current_free_offer_count = 0 · evidence_currency.checked = false
+```
+
+A public `verified_free` badge on a cell that simultaneously admits it has **no checkable evidence**,
+where the old rule had correctly said `stale`. That is the product's one cardinal prohibition, and my
+own contract had named over-correction as this slice's principal risk — my withhold arm simply only
+covered the *expired* shape and never the *unchecked* one.
+
+### Reproduced before fixing, and a second defect found in the process
+
+I did not fix on the evaluator's say-so. I wrote the failing arms first and confirmed
+`assert 'verified_free' == 'stale'` against round 1's code. Doing so surfaced **a third case the
+evaluator did not name, and it is arguably worse**:
+
+Under `NO_CURRENCY` every anchor resolves to `UNCHECKED`, so round 1's rule cleared the flag for
+**every un-clocked caller**. `serialize_category_matrix(providers, cat_map)` is called with no
+currency argument by existing code (`test_publish_pipeline`), so round 1 made a live path *more
+permissive than base* — the exact opposite of the fail-closed posture `CurrencyContext` exists to
+enforce.
+
+### The corrected rule
+
+```python
+latest_is_current = is_publishable_free_claim(currency.for_version(latest_id))
+...
+flag[1] = flag[1] or (
+    any(v.id in stale_versions for v in offer.versions) and not latest_is_current
+)
+```
+
+**An ancestor's staleness is discharged only by POSITIVE evidence that the current claim is current** —
+via `is_publishable_free_claim`, the codebase's own named predicate for exactly this, which fails
+closed on both shapes of non-currency and is the same predicate the counts two lines above already
+use.
+
+This has a property round 1 lacked and which is now asserted directly: **`new_flag = old_flag AND NOT
+latest_is_current`, so the rule can only ever CLEAR a flag the all-versions rule set, never set one it
+left clear** — and it clears only on positive currency. Under `NO_CURRENCY` it reduces to exactly the
+pre-slice expression, so an un-clocked caller degrades to the old behaviour rather than acquiring the
+new one.
+
+### Verification
+
+| Run | Collected | Result |
+|---|---|---|
+| Baseline at `ab3dfc00`, clean DB | 2998 | 2995 passed, 3 skipped |
+| HEAD (round 2), clean DB | **3008** | **3005 passed, 3 skipped, exit 0** |
+
+Delta **+10 = exactly the tests added** (7 unit, 3 integration).
+
+**Three mutations now, all killed, on a clean database whose emptiness was asserted first:**
+
+| Mutation | Restores | Verdict | Killed by |
+|---|---|---|---|
+| **M-orig** | the original all-versions defect | KILLED, 4 failed / 3008 | 4, **all new** |
+| **M-over** (`or False`) | over-correction into never-stale | KILLED, 8 failed | 6 new **+ 2 pre-existing** review-queue guards |
+| **M-unchecked** | **round 1's own defect** (absence instead of positive currency) | KILLED, 3 failed | 3, **all new** |
+| Control | reverted | **GREEN** | 3005 passed / 3008 collected |
+
+`M-unchecked` is the important addition: it restores the exact code that shipped in round 1 and is
+killed by `test_an_unchecked_latest_version_cannot_discharge_a_stale_ancestor`,
+`test_a_matrix_with_no_clock_keeps_the_conservative_all_versions_behaviour` and
+`test_the_flag_is_only_ever_cleared_never_set_by_this_rule`. The defect the evaluator found now has a
+permanent guard, so it cannot come back silently.
+
+Isolated re-runs (unit module alone, 53 collected; floor asserted) confirm each arm fires
+independently of the two pre-existing guards that also catch `M-over`.
+
+### The evaluator's scope caveat, checked and answered with evidence
+
+It observed that the census used only `tests/fixtures/ingest/<provider>/html`. Measured: the 7 real
+configs declare **36 sources — 34 html, 1 rss, 1 mcp**. Both non-html sources are Cloudflare's
+(`cloudflare-changelog`, `cloudflare-docs-mcp`), and **no committed fixture exists for any non-html
+adapter of any real provider** — only the synthetic `example/` corpus has `mcp`/`rss`/`structured`
+fixtures, and `example` has no provider config, so it cannot be published at all. The census was
+therefore complete over everything offline-publishable. The caveat was fair; the answer is that the
+population was 34 of 36 declared sources and the other 2 are unreachable by any harness.
+
+### Two fixtures of mine were dishonest, and the corrected code exposed them
+
+`test_a_stale_latest_version_still_marks_the_bucket_stale` and
+`test_one_offer_whose_latest_is_stale_still_marks_the_whole_bucket` put a version in
+`stale_offer_version_ids` while the `CurrencyContext` called that same version *current*. In
+production one is a projection of the other and they cannot disagree, so those fixtures asserted
+against a state the system cannot reach. Round 1's rule never consulted the currency, so it never
+noticed. Both now move the clock and the stale set together, with the precondition asserted.
+
+### Corrections to my round-1 report
+
+Round 1 claimed the change "cannot cause an offer whose CURRENT evidence is expired to be presented as
+free". **That claim was too narrow and, as written, misleading**: expiry was indeed handled, but the
+*unchecked* shape was not, and the honest statement of the property is the one-directional
+`new ≤ old` invariant now asserted by `test_the_flag_is_only_ever_cleared_never_set_by_this_rule`.
+
+### Errors I made across both rounds
+
+1. **Round 1 shipped a Z0-safety defect.** My withhold arm tested only the *expired* shape of
+   non-currency, so it could not see the *unchecked* one — even though `currency.py` documents both in
+   the module docstring I had read and quoted. Caught by independent Level-2 evaluation, not by me.
+   This is the case for the evaluator existing.
+2. **Round 1 made an un-clocked path more permissive than base**, which no arm covered at all. Found
+   only because I reproduced the evaluator's finding rather than accepting it on trust.
+3. **Two of my unit fixtures asserted an unreachable state** (see above).
+4. **I polluted the suite's database with my own census** (round 1), producing a false 48-test "kill"
+   that the control run caught. Detailed in the previous entry.
+5. **I edited the test tree mid-measurement** (round 1), making two mutation arms non-comparable.
+
+### NOT VERIFIED — as prominently as the verdict
+
+- **Round 2 has NOT been independently evaluated yet.** Round 1's disposition was REJECT; the
+  correction above is the builder's own work verified by the builder's own harness plus a
+  reproduction of the evaluator's finding. **A second Level-2 pass is required before this may merge.**
+- **CI has not run** in either round.
+- **Nothing here measures production data.** A deployed instance that has been ingesting over time
+  will have multi-version offers, and for it the original defect was live, not latent.
+- **The corpus's published surface is small** — 6 offers, 5 buckets, 2 providers.
+- **The ageing step is constructed** (a direct `UPDATE` on `snapshot.fetched_at`).
+- **`fetch_stale_offer_version_ids` still returns ancestors** and its OTHER callers were not audited
+  for the same category error — and given round 1's defect, that audit should also ask whether those
+  callers confuse absence-from-the-set with currency.
+- **No browser/UI verification**; `apps/web` tests not run.
+
+### Recommended next action
+
+Obtain a second independent Level-2 evaluation of round 2. Then audit the remaining consumers of
+`fetch_stale_offer_version_ids` for both the superseded-version category error *and* the
+absence-is-not-currency error that round 1 demonstrated is easy to make.

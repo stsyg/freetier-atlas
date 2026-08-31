@@ -86,7 +86,10 @@
     "AC9 Full suite after the change shows a delta equal to exactly the tests added, against the recorded baseline.",
     "AC10 The across-offers axis is shown to be unchanged: a bucket with a second offer whose latest version is stale still derives 'stale'.",
     "AC11 agent-state/progress.md is appended to and proven append-only by raw byte-prefix comparison PLUS a flipped-byte negative control demonstrating the check can fail.",
-    "AC12 The database container and its volume are removed with EXACT-NAME filters and their absence verified, with the exact names reported."
+    "AC12 The database container and its volume are removed with EXACT-NAME filters and their absence verified, with the exact names reported.",
+    "AC13 (ADDED after Level-2 round 1 REJECTED the slice) An UNCHECKED latest version must not discharge a stale ancestor. fetch_stale_offer_version_ids reports only stale=True versions, so a version with no checkable fetch time is absent from that set for the OPPOSITE reason; testing absence alone reads 'we could not look at all' as permission and promotes the bucket to verified_free on unsupported evidence. The flag must fail closed on BOTH shapes of non-currency, via is_publishable_free_claim.",
+    "AC14 (ADDED, found by the builder while reproducing AC13) Under NO_CURRENCY every anchor resolves to UNCHECKED, so an un-clocked caller must degrade to exactly the pre-slice all-versions behaviour rather than silently acquiring the more permissive rule. serialize_category_matrix is called with no currency argument by existing callers, so this is a live path, not a hypothetical.",
+    "AC15 (ADDED) The rule must be provably one-directional: it may only ever CLEAR a flag the all-versions rule set, never set one it left clear. Asserted exhaustively over the four (ancestor stale?, latest currency) combinations rather than sampled."
   ],
 
   "verification_method": {
@@ -140,7 +143,7 @@
     "Select-Object -First/-Last N corrupts $LASTEXITCODE; exit codes are read from BARE calls."
   ],
 
-  "evaluator_disposition": "pending",
+  "evaluator_disposition": "round 1: REJECT (cross-vendor Level-2, gpt-5.6-sol). Blocking finding: `latest_id not in stale_versions` does not imply the latest evidence is CURRENT -- fetch_stale_offer_version_ids reports only stale=True versions, so an UNCHECKED latest version is absent from the set and the interim fix promoted the bucket to verified_free with evidence_currency.checked=false. Reproduced independently by the builder before changing anything, plus a second case the evaluator did not name (NO_CURRENCY made un-clocked callers MORE permissive than base). Corrected to discharge an ancestor only on positive currency via is_publishable_free_claim. Round 2 pending.",
 
   "not_verified": [
     "To be completed at the end of the slice, and stated as prominently as the verdict."

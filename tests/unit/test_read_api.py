@@ -951,14 +951,16 @@ def test_an_offers_currency_is_read_from_its_latest_version() -> None:
 # asserting freshness.
 
 
-def _versioned_graph(*, older_id: int = 999, latest_id: int = 1000) -> dict:
+def _versioned_graph(*, older_id: int = 999, latest_id: int = 1000, **kwargs) -> dict:
     """``_canonical_graph`` plus a SUPERSEDED ancestor version on the same offer.
 
     Mirrors the two-version shape a real offer acquires the moment a provider
     changes a page: version 1 is superseded, version 2 carries the live claim.
+    ``kwargs`` are forwarded, so a caller can ask for evidence with no fetch time
+    (``fetched_at=None``) and get the *unchecked* shape rather than the stale one.
     """
 
-    graph = _canonical_graph()
+    graph = _canonical_graph(**kwargs)
     older = OfferVersion(
         offer_id=100,
         version_number=0,
@@ -1022,17 +1024,29 @@ def test_a_stale_latest_version_still_marks_the_bucket_stale() -> None:
     guess, and no amount of tidying the ancestor rule may buy freshness the
     evidence does not support.
 
+    The clock and the stale-id set are moved TOGETHER on purpose. In production
+    ``fetch_stale_offer_version_ids`` is a projection of the same
+    ``fetch_evidence_currency`` index the ``CurrencyContext`` carries, so the two
+    can never disagree; a fixture that put version 1000 in the stale set while
+    the index called it current would be asserting against a state the system
+    cannot reach.
+
     Passes before and after, so it is made load-bearing by mutation M-over
     (`flag[1] or False`) rather than by assertion.
     """
 
     graph = _versioned_graph()
+    fetched = graph["evidence"].snapshot.fetched_at
+    expired_clock = fetched + timedelta(days=365 * 5)
+    currency = _graph_currency(graph, expired_clock)
+    assert currency.for_version(1000).stale is True, "fixture precondition: latest really expired"
+
     cell = _matrix_cell(
         service.serialize_category_matrix(
             [graph["provider"]],
             {1: graph["category"]},
-            _coverage_context({1000}),  # the LATEST version is the stale one
-            _graph_currency(graph),
+            _coverage_context({999, 1000}),  # the LATEST version is stale too
+            currency,
         ),
         "serverless-functions",
         "cloudflare",
@@ -1073,13 +1087,29 @@ def test_one_offer_whose_latest_is_stale_still_marks_the_whole_bucket() -> None:
     second.versions.append(second_version)
     graph["service"].offers.append(second)
 
+    # Keep the clock and the stale-id set consistent, as production does: the
+    # first offer's latest is genuinely current, the second offer's is genuinely
+    # expired, and the stale set names exactly the expired one.
+    fetched = graph["evidence"].snapshot.fetched_at
+    ctx = CurrencyContext(
+        index={
+            (ANCHOR_OFFER_VERSION, 1000): assess_currency(fetched, fetched, "daily"),
+            (ANCHOR_OFFER_VERSION, 1001): assess_currency(
+                fetched, fetched + timedelta(days=365 * 5), "daily"
+            ),
+        },
+        now=fetched,
+    )
+    assert ctx.for_version(1000).current is True, "fixture precondition"
+    assert ctx.for_version(1001).stale is True, "fixture precondition"
+
     cell = _matrix_cell(
         service.serialize_category_matrix(
             [graph["provider"]],
             {1: graph["category"]},
             # The FIRST offer's latest is current; the SECOND offer's latest is not.
             _coverage_context({1001}),
-            _graph_currency(graph),
+            ctx,
         ),
         "serverless-functions",
         "cloudflare",
@@ -1117,3 +1147,125 @@ def test_a_cell_cannot_report_current_evidence_and_a_stale_state_at_once() -> No
     assert cell.derived_state != "stale", (
         "a cell reporting current evidence must not simultaneously report a stale state"
     )
+
+
+def test_an_unchecked_latest_version_cannot_discharge_a_stale_ancestor() -> None:
+    """THE OTHER SHAPE OF NON-CURRENCY. "We could not look" is not "it is fine".
+
+    Found by Level-2 evaluation, and the reason the flag reads
+    ``is_publishable_free_claim`` rather than merely "the latest id is absent
+    from the stale set". ``fetch_stale_offer_version_ids`` reports only
+    ``stale=True`` versions; a version whose evidence has no checkable fetch time
+    is ``UNCHECKED`` and is therefore **not in that set**. Testing absence alone
+    would read "we could not look at all" as permission and promote the bucket to
+    ``verified_free`` -- an unsupported free claim on a public badge, which is
+    the one thing this product may never ship.
+
+    So a superseded version's staleness is discharged only by POSITIVE evidence
+    that the current claim is current. The offer below has a stale ancestor and a
+    latest version nobody could assess; the bucket must not be promoted.
+    """
+
+    graph = _versioned_graph(fetched_at=None)
+    currency = _graph_currency(graph)
+    assert currency.for_version(1000).checked is False, "fixture precondition: unchecked"
+    assert currency.for_version(1000).stale is False, "unchecked is NOT stale"
+
+    cell = _matrix_cell(
+        service.serialize_category_matrix(
+            [graph["provider"]],
+            {1: graph["category"]},
+            _coverage_context({999}),  # the ancestor is stale...
+            currency,  # ...and the latest cannot be assessed at all
+        ),
+        "serverless-functions",
+        "cloudflare",
+    )
+
+    assert cell.derived_state == "stale"
+    assert cell.current_free_offer_count == 0
+
+
+def test_the_flag_is_only_ever_cleared_never_set_by_this_rule() -> None:
+    """The safety property of the change, asserted directly.
+
+    Whatever the inputs, the latest-version rule may only ever CLEAR a flag the
+    all-versions rule set, and only on positive currency. It can never mark a
+    bucket stale that the previous rule left clear, so no reading of this code
+    can make the catalogue *more* pessimistic, and -- more importantly -- it
+    cannot be more permissive except where the current claim is known current.
+
+    Exhaustive over the four (ancestor stale?, latest currency) combinations
+    rather than a sample.
+    """
+
+    fresh_graph = _versioned_graph()
+    unchecked_graph = _versioned_graph(fetched_at=None)
+    fetched = fresh_graph["evidence"].snapshot.fetched_at
+
+    cases = [
+        # (label, graph, currency, stale ids, expected derived_state)
+        (
+            "ancestor stale, latest current",
+            fresh_graph,
+            _graph_currency(fresh_graph),
+            {999},
+            "verified_free",
+        ),
+        (
+            "latest stale",
+            fresh_graph,
+            _graph_currency(fresh_graph, fetched + timedelta(days=365 * 5)),
+            {999, 1000},
+            "stale",
+        ),
+        (
+            "ancestor stale, latest unchecked",
+            unchecked_graph,
+            _graph_currency(unchecked_graph),
+            {999},
+            "stale",
+        ),
+        (
+            "nothing stale, latest unchecked",
+            unchecked_graph,
+            _graph_currency(unchecked_graph),
+            set(),
+            "verified_free",
+        ),
+    ]
+
+    for label, graph, currency, stale_ids, expected in cases:
+        cell = _matrix_cell(
+            service.serialize_category_matrix(
+                [graph["provider"]], {1: graph["category"]}, _coverage_context(stale_ids), currency
+            ),
+            "serverless-functions",
+            "cloudflare",
+        )
+        assert cell.derived_state == expected, f"{label}: got {cell.derived_state!r}"
+
+
+def test_a_matrix_with_no_clock_keeps_the_conservative_all_versions_behaviour() -> None:
+    """No clock must not become permission.
+
+    ``NO_CURRENCY`` resolves every anchor to ``UNCHECKED``, so an un-updated or
+    un-clocked caller falls back to exactly the pre-slice behaviour: any stale
+    version in the offer marks the bucket. Degrading to "cannot assert currency"
+    rather than silently acquiring the more permissive rule is the same
+    fail-closed posture ``CurrencyContext`` was built for.
+    """
+
+    graph = _versioned_graph()
+    cell = _matrix_cell(
+        service.serialize_category_matrix(
+            [graph["provider"]],
+            {1: graph["category"]},
+            _coverage_context({999}),
+            # no currency argument at all
+        ),
+        "serverless-functions",
+        "cloudflare",
+    )
+
+    assert cell.derived_state == "stale"
