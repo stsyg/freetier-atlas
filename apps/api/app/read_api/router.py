@@ -338,7 +338,7 @@ def get_category_matrix(session: SessionDep) -> CategoryMatrixResponse:
     # payload could disagree about what "now" is.
     now = _now()
     context = queries.coverage_signal_context(session, providers, now=now)
-    currency = queries.currency_context(session, now=now)
+    currency = queries.currency_context(session, now=_now())  # SCRATCH: SECOND CLOCK
     return service.serialize_category_matrix(providers, cat_map, context, currency)
 
 
