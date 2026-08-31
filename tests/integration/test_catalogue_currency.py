@@ -136,13 +136,16 @@ def _free_offer(session: Session) -> Offer:
 
     provider = queries.fetch_provider(session, "cloudflare")
     assert provider is not None, "cloudflare provider should exist after publish"
+    matches = []
     for svc in provider.services:
         for offer in svc.offers:
             if not queries.is_published(offer) or offer.zero_cost_class != FREE:
                 continue
             version = queries.latest_version(offer)
             if version is not None and version.evidence:
-                return offer
+                matches.append(offer)
+    if matches:
+        return matches[-1]  # SCRATCH MUTATION: LAST match, not first
     raise AssertionError("no published Z0_TRUE_FREE offer with evidence was produced")
 
 
