@@ -69,7 +69,7 @@ class CoverageReconcileResult:
     existing: int = 0
 
 
-def find_coverage_mismatches(session: Session, *, now: datetime) -> list[CoverageMismatch]:
+def find_coverage_mismatches(session: Session, *, now: datetime | None = None) -> list[CoverageMismatch]:
     """Compute every material declared-vs-derived contradiction. Read-only.
 
     ``now`` is REQUIRED. It was previously optional and forwarded ``None``
