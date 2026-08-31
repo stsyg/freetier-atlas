@@ -4844,3 +4844,52 @@ free". **That claim was too narrow and, as written, misleading**: expiry was ind
 Obtain a second independent Level-2 evaluation of round 2. Then audit the remaining consumers of
 `fetch_stale_offer_version_ids` for both the superseded-version category error *and* the
 absence-is-not-currency error that round 1 demonstrated is easy to make.
+
+---
+
+## 2026-08-31 — F008 bucket stale flag, ROUND 2 DISPOSITION: **PASS**
+
+Closes the two entries above. A **second** independent cross-vendor Level-2 evaluation
+(`gemini-3.1-pro-preview`, fresh context, its own database) graded round 2 **PASS**.
+
+What it verified independently, rather than accepting:
+
+- **The round-1 defect is fixed.** An `UNCHECKED` latest version no longer discharges a stale
+  ancestor, because `is_publishable_free_claim` fails closed on both shapes of non-currency.
+- **The safety invariant is structural, not empirical.** `new_flag = old_flag AND NOT
+  latest_is_current`, and `A and not B` implies `A`, so it is *impossible* for the new rule to be
+  true where the base rule was false. It can only ever clear a flag, never set one.
+- **3008 collected**, the +10 delta reproduced (7 unit, 3 integration).
+- **All three mutations re-run and each kill confirmed**, including `M-unchecked`, which restores
+  round 1's own defect.
+- **Census completeness**: 36 declared sources across the 7 real configs; nothing publishable skipped.
+- **Governance**: `feature_list.json` blob still `154de1fef2ba…`, `progress.md` append-only, lockfiles
+  and CI untouched, `ruff` clean.
+- **No new defect from the correction.** It specifically checked the risk introduced by hoisting
+  `is_publishable_free_claim` out of the `FREE` branch — `bucket[3]` remains strictly gated on
+  `zero_cost_class == _FREE_CLASS`, so non-free offers cannot leak into the free count, and
+  `for_version(None)` degrades safely to `UNCHECKED`.
+
+**It refuted none of my numbers.**
+
+### One observation it made that I am reporting and NOT fixing
+
+It saw a **transient** `psycopg.errors.UndefinedTable` in
+`tests/integration/test_read_api_search.py` during one full-suite run, which it attributed to a leaky
+teardown from the migration-downgrade test, and which passed in isolation. **This is a pre-existing
+test-isolation artefact, not caused by this change**: it did not appear in any of my runs (3005
+passed, 0 failed, repeatedly) and no production code path is implicated. Recorded here as a candidate
+follow-up, deliberately out of scope for this slice.
+
+### Still NOT verified, after two evaluations
+
+- **CI has still not run.** Both evaluations were local. An absent CI signal reads exactly like a
+  green one.
+- **No production data was measured.** The "latent, not live" verdict is about the committed corpus
+  (6 offers, 5 buckets, 2 providers). A deployed instance that has been ingesting over time will have
+  multi-version offers, and for it the original defect was **live**.
+- **No browser/UI verification**; `apps/web` tests not run.
+- **Other callers of `fetch_stale_offer_version_ids` remain unaudited** — for the superseded-version
+  category error and for the absence-is-not-currency error round 1 proved is easy to make.
+
+**No feature marked passing.** `agent-state/feature_list.json` untouched. Draft PR; not merged.
