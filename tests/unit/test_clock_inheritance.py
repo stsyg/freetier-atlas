@@ -555,3 +555,166 @@ def test_every_clock_bearing_function_in_an_audited_module_is_accounted_for() ->
         + "\n  ".join(stale_internal)
         + "\n\nRemove it so this guard keeps covering what it claims to cover."
     )
+
+
+# --------------------------------------------------------------------------- #
+# One clock per RESPONSE, where a handler builds TWO contexts from it          #
+# --------------------------------------------------------------------------- #
+#
+# The guards above constrain how a clock travels once a request has one. They say
+# nothing about the moment a request SOURCES it, because `read_api/router.py` is
+# not an audited module -- and that is precisely where the two staleness oracles
+# meet. `get_category_matrix` builds a coverage-signal context and a currency
+# context and hands both to one serializer.
+#
+# That coupling is NEW. Before the bucket flag was assessed on latest-version
+# currency, `has_stale_evidence` came from `stale_offer_version_ids` alone and no
+# comparison between the two oracles existed, so a second clock could not change
+# a `derived_state`. Now it can: give the two contexts different moments and a
+# version can be absent from the stale set while its currency verdict says
+# otherwise, which would wrongly CLEAR a flag -- the wrongly-ASSERTED direction,
+# the severe one.
+#
+# Today the handler is correct and carries a comment saying so. A comment is a
+# symptom-level assurance: it constrains the call site somebody wrote, not the
+# call site somebody will write. This module's own docstring records what that
+# costs -- "the guard that missed the `coverage_signal_context` defect asserted
+# the symptom, and the full suite stayed green while a router built one response
+# payload from two different moments."
+#
+# So this guard asserts the CAPABILITY. A behavioural test counting `_now()`
+# calls would be the symptom again, and strictly weaker: it cannot see
+# `now=datetime.now(UTC)` written inline, which is the same defect without ever
+# touching the helper.
+
+_ROUTER = "apps/api/app/read_api/router.py"
+
+#: The two context builders that must be assessed at the SAME moment, because a
+#: serializer compares their outputs against each other.
+_PAIRED_CONTEXT_BUILDERS = {"coverage_signal_context", "currency_context"}
+
+#: Anything that can produce a fresh moment inside a handler. ``_now`` is this
+#: router's declared seam; the rest are the raw stdlib sources it exists to
+#: replace, so writing one inline is caught as readily as calling the seam twice.
+_CLOCK_SOURCES = {"_now"} | _INVENTIONS
+
+
+def _called_names(node: ast.AST) -> list[tuple[str, int]]:
+    """``(callee name, lineno)`` for every call inside ``node``."""
+
+    out: list[tuple[str, int]] = []
+    for sub in ast.walk(node):
+        if not isinstance(sub, ast.Call):
+            continue
+        fn = sub.func
+        name = fn.attr if isinstance(fn, ast.Attribute) else getattr(fn, "id", None)
+        if name:
+            out.append((name, sub.lineno))
+    return out
+
+
+def _handlers_building_both_contexts(tree: ast.AST) -> list[ast.FunctionDef]:
+    """Every function that constructs BOTH paired contexts.
+
+    Derived from the source rather than pinned by name, so a SECOND handler that
+    acquires this coupling is covered the day it is written instead of the day
+    somebody remembers to add it here.
+    """
+
+    found = []
+    for fn in ast.walk(tree):
+        if not isinstance(fn, ast.FunctionDef | ast.AsyncFunctionDef):
+            continue
+        called = {name for name, _ in _called_names(fn)}
+        if _PAIRED_CONTEXT_BUILDERS.issubset(called):
+            found.append(fn)
+    return found
+
+
+def test_a_handler_building_both_contexts_cannot_obtain_a_second_clock() -> None:
+    """Both staleness oracles in one response must be read at ONE moment.
+
+    Four properties, each of which independently forbids a second moment:
+
+    1. every ``now=`` handed to a paired builder is a bare NAME, never a call --
+       this is what stops ``now=datetime.now(UTC)`` inline;
+    2. all of them are the SAME name;
+    3. that name is bound exactly ONCE in the handler;
+    4. the handler contains exactly ONE clock-sourcing call.
+
+    A guard that matches nothing is not a guard, so the population is asserted
+    first: if the handler set is ever empty this test fails loudly rather than
+    passing vacuously.
+    """
+
+    source = (REPO_ROOT / _ROUTER).read_text(encoding="utf-8")
+    tree = ast.parse(source, filename=_ROUTER)
+    handlers = _handlers_building_both_contexts(tree)
+
+    assert handlers, (
+        f"{_ROUTER} contains no handler building both of {sorted(_PAIRED_CONTEXT_BUILDERS)}. "
+        "Either the coupling moved and this guard now covers nothing, or a builder "
+        "was renamed. Re-point it rather than deleting it -- a guard that collects "
+        "nothing reads exactly like a guard that passed."
+    )
+
+    problems: list[str] = []
+    for fn in handlers:
+        clock_args: list[ast.expr] = []
+        for node in ast.walk(fn):
+            if not isinstance(node, ast.Call):
+                continue
+            callee = (
+                node.func.attr
+                if isinstance(node.func, ast.Attribute)
+                else getattr(node.func, "id", None)
+            )
+            if callee not in _PAIRED_CONTEXT_BUILDERS:
+                continue
+            for kw in node.keywords:
+                if kw.arg in _CLOCK_KWARGS:
+                    clock_args.append(kw.value)
+
+        # (1) every clock argument is an inherited name, not a fresh derivation.
+        non_names = [ast.unparse(a) for a in clock_args if not isinstance(a, ast.Name)]
+        if non_names:
+            problems.append(
+                f"{fn.name}: passes a NON-NAME moment to a paired context builder: {non_names}"
+            )
+
+        # (2) and they are all the SAME name.
+        names = {a.id for a in clock_args if isinstance(a, ast.Name)}
+        if len(names) > 1:
+            problems.append(f"{fn.name}: paired contexts receive DIFFERENT names: {sorted(names)}")
+
+        # (3) that name is bound exactly once.
+        for name in names:
+            binds = [
+                t.lineno
+                for node in ast.walk(fn)
+                if isinstance(node, ast.Assign)
+                for t in node.targets
+                if isinstance(t, ast.Name) and t.id == name
+            ]
+            if len(binds) != 1:
+                problems.append(
+                    f"{fn.name}: {name!r} is bound {len(binds)} times (lines {binds}); "
+                    "one binding is what makes the two contexts provably the same moment"
+                )
+
+        # (4) exactly one clock is sourced in the whole handler.
+        sourced = [(n, ln) for n, ln in _called_names(fn) if n in _CLOCK_SOURCES]
+        if len(sourced) != 1:
+            problems.append(
+                f"{fn.name}: sources {len(sourced)} clocks {sourced}; a response must be "
+                "read against exactly one moment"
+            )
+
+    assert not problems, (
+        "a handler can obtain a SECOND clock for one response:\n  "
+        + "\n  ".join(problems)
+        + "\n\nThe coverage-signal context and the currency context are compared "
+        "against each other by serialize_category_matrix. Two moments there let a "
+        "version be absent from the stale set while its currency verdict disagrees, "
+        "which wrongly CLEARS a staleness flag -- the wrongly-asserted direction."
+    )

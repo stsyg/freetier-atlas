@@ -4893,3 +4893,148 @@ follow-up, deliberately out of scope for this slice.
   category error and for the absence-is-not-currency error round 1 proved is easy to make.
 
 **No feature marked passing.** `agent-state/feature_list.json` untouched. Draft PR; not merged.
+
+---
+
+## 2026-08-31 — F008 bucket stale flag, ROUND 3: a narrative correction and the one-clock guard
+
+Closes the three entries above. Two items raised on review of PR #108, both actioned.
+
+### ITEM 1 — I stated a FALSE MECHANISM for round 1's defect. Corrected.
+
+My round-2 write-up said round 1 failed *"because under `NO_CURRENCY` every anchor is `UNCHECKED`,
+so the previous rule cleared the flag for every un-clocked caller."*
+
+**That mechanism is false.** Verified by AST against `48b0d30`, round 1's expression was:
+
+```python
+flag[1] = flag[1] or (latest_id is not None and latest_id in stale_versions)
+```
+
+whose referenced names are exactly `{flag, latest_id, stale_versions}` and whose attribute
+references are `{}` — **no currency reference of any kind**. It could not have behaved differently
+clocked versus un-clocked, and the reviewer measured it clearing an identical 368 of 1792 cells in
+both conditions.
+
+**The conclusion was right and the reasoning was wrong**, which is the more dangerous combination.
+The real mechanism is simpler and worse:
+
+> Absence from `stale_versions` includes `UNCHECKED` versions **unconditionally** — irrespective of
+> any currency context, clocked or not. Round 1 read absence as permission **always**. The un-clocked
+> case was one *instance* of that, never its cause.
+
+Why the correction matters rather than being pedantry: this PR is merged by squash, so the PR body
+becomes main's permanent commit message, and a correct conclusion resting on a false model is
+precedent that the next reader will reason from. My own guard
+`test_a_matrix_with_no_clock_keeps_the_conservative_all_versions_behaviour` is still valid and still
+kills `M-unchecked` — but it does so as one instance of "absence is not currency", not because the
+no-clock path was a distinct defect.
+
+Corrected in the PR body. The `serialize_category_matrix` docstring was checked and needed **no**
+change: its `NO_CURRENCY` sentence describes the *shipped* rule, which genuinely does consult
+currency, so it is true as written.
+
+### ITEM 2 — the one-clock guard my change made necessary
+
+The reviewer's finding, which I verified: **204 of 268 cleared cells require the two staleness
+oracles to disagree**, and `router.py:339-341` prevents that today only by convention — one `now =
+_now()` passed to both contexts, with a comment saying why. **There was no test pinning it.**
+
+That dependency is **new**, and it is mine. Before this slice, `has_stale_evidence` came from
+`stale_offer_version_ids` alone, no comparison between the two oracles existed, and a second clock
+could not move a `derived_state`. Now it can — and in the **wrongly-ASSERTED** direction, the severe
+one, because a disagreeing pair wrongly *clears* a flag.
+
+Measured before writing anything: `apps/api/app/read_api/router.py` is **not** in
+`_AUDITED_MODULES`, so the handler had **no source-level clock guard at all** — the same shape as the
+Level-2 finding that added `publisher.py` to that tuple. I did **not** enrol `router.py` in the full
+audit machinery: that would force a classification pass over every clock-bearing function in the
+module, which is scope this review explicitly did not authorise.
+
+### MY FINDING DIFFERS FROM THE REVIEW'S HERE, AND MINE WINS
+
+The review stated it grepped for a one-clock assertion at this call site and *"found nothing"*.
+**There is one**:
+`tests/integration/test_catalogue_currency.py::test_one_clock_serves_the_whole_category_matrix_response`
+(line 1086). I found it by mutation, not by grep — it died under MR-A and MR-C.
+
+**The review's conclusion survives its own error, for two reasons it did not have.** Measured, not
+argued:
+
+| | pre-existing integration test | this slice's structural guard |
+|---|---|---|
+| MR-A (two seam calls) | KILLED | KILLED |
+| MR-C (rebind same name) | KILLED | KILLED |
+| **MR-B (`now=datetime.now(UTC)` inline)** | **PASSES — 1 passed** | **KILLED — 1 failed** |
+| Runs without `DATABASE_URL`? | **No — `skip_without_db`** | Yes (unit) |
+
+The pre-existing test asserts `len(moments) == 1` after patching `read_router._now`. That is the
+**symptom**: MR-B never touches the seam, so `_now` is still called exactly once and the assertion
+holds while the handler reads two moments. And being `skip_without_db`, it contributes nothing at all
+in a no-DB run — where 289 integration tests skip.
+
+So the gap was real, just not the gap as stated: not *"no test"* but *"a DB-gated, symptom-level
+test with a hole in exactly the shape a comment cannot prevent"*. That is precisely the failure this
+module's docstring already records, reproduced live.
+
+Instead, one named guard in the doctrinal home
+(`tests/unit/test_clock_inheritance.py::test_a_handler_building_both_contexts_cannot_obtain_a_second_clock`),
+asserting four properties of every handler that builds both contexts:
+
+1. every `now=` to a paired builder is a bare **name**, never a call (this is what catches
+   `now=datetime.now(UTC)` written inline);
+2. all such arguments are the **same** name;
+3. that name is **bound exactly once**;
+4. the handler sources **exactly one** clock.
+
+The handler set is **derived from the AST**, not pinned by name, so a second handler acquiring this
+coupling is covered the day it is written. The population is asserted first — an empty handler set
+fails loudly, because a guard that collects nothing reads exactly like a guard that passed.
+
+**Capability, not symptom, and deliberately so.** A behavioural test counting `_now()` calls would be
+strictly weaker: it cannot see the stdlib source written inline. That is not a hypothetical — it is
+mutation **MR-B** below, which a call-count test would pass. This module's own docstring already
+records the cost of the symptom-level choice: *"the guard that missed the `coverage_signal_context`
+defect asserted the symptom, and the full suite stayed green while a router built one response
+payload from two different moments."*
+
+### Mutation evidence for the new guard
+
+Three mutations, each introducing a second moment by a different route, each valid Python with
+unchanged arity, anchor asserted present before substitution:
+
+| Mutation | Shape | Named guard | Pre-existing one-clock test |
+|---|---|---|---|
+| **MR-A** | a second `_now()` bound to a second name | KILLED | KILLED |
+| **MR-B** | `now=datetime.now(UTC)` **inline**, never touching the seam | KILLED | **SURVIVES** |
+| **MR-C** | the same name **rebound** between the two uses | KILLED | KILLED |
+| Control | reverted | GREEN | GREEN |
+
+MR-C is the one that matters most in review: it looks almost exactly like the correct code. MR-B is
+the one that matters most for instrument choice: it is the case a call-count test cannot see, and it
+is why this guard is structural rather than behavioural.
+
+### What I got wrong across all rounds, consolidated
+
+1. Round 1 shipped a Z0-safety defect (absence read as permission). Caught by Level-2, not by me.
+2. Round 2 **explained** that defect with a false mechanism (`NO_CURRENCY`) — right answer, wrong
+   model. Caught on review, not by me.
+3. I polluted the suite's database with my own census, producing a false 48-test "kill"; the control
+   run caught it.
+4. I edited the test tree mid-measurement, making two mutation arms non-comparable.
+5. Two of my unit fixtures asserted a state production cannot reach.
+
+### NOT VERIFIED — as prominently as the verdict
+
+- **CI dispatch is the gate I still owe.** Local runs are not CI, and an absent CI signal reads
+  exactly like a green one.
+- **No production data measured.** The latency verdict is about the committed corpus (6 offers,
+  5 buckets, 2 providers). A deployed instance ingesting over time will have multi-version offers.
+- **`router.py` remains outside `_AUDITED_MODULES`.** The new guard covers the paired-context
+  handlers specifically, not every clock-bearing function in that module. Enrolling it fully is a
+  real follow-up and was deliberately not done here.
+- **Other callers of `fetch_stale_offer_version_ids` are still unaudited** — for the
+  superseded-version error and for the absence-is-not-currency error.
+- **No browser/UI verification**; `apps/web` tests not run.
+- The transient `psycopg.errors.UndefinedTable` in `test_read_api_search.py` observed by the round-2
+  evaluator remains **reported, not fixed** — pre-existing test isolation, out of scope.
