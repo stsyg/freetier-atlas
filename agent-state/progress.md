@@ -4488,3 +4488,205 @@ No production file modified. No database was needed or created, so none was remo
 Correct the standing builder instruction: the "carry the `classification` block forward" exception is no
 longer needed. Consider a separate slice for the dangling `AMENDMENT 8` reference, and a census of
 `evaluation.json` for the same coupling shape.
+
+---
+
+## 2026-08-31 — F008 bucket stale flag: assess it on the latest version, not every ancestor
+
+**Feature:** F008 · **Slice:** `bucket-stale-flag-latest-version` · **Branch:**
+`stsyg-bucket-stale-flag-latest-version` · **Base:** `ab3dfc00bcb9fe66685d1da0c0e272943bc0b79a`
+(asserted with `git rev-parse HEAD`; remote `main` was the same SHA, so nothing was owed a rebase)
+
+### THE MEASUREMENT FIRST: this defect was LATENT, not live
+
+**No real provider bucket's `derived_state` differs today.** Measured before a single production line
+was edited, and stated before anything else because the whole slice was gated on it.
+
+| Measurement | Result | Population |
+|---|---|---|
+| M1 version census, real publish of the committed corpus | **0 offers with ≥2 versions**; distribution `{1 version: 6 offers}` | 7 provider configs → 6 published offers, 6 `offer_version` rows |
+| M2 bucket diff, current rule vs latest-version rule | **0 differences** | **105 bucket-observations** = 5 buckets × 21 clocks |
+| M2 harness cross-check (transcribed vs shipped function) | **0 mismatches** | same 105 |
+
+The mechanism is `publisher.py:377`: a re-publish whose `content_hash` is unchanged returns
+`version_created=False` and **reuses** the prior version. A single pass over fixed committed fixtures
+therefore cannot mint a version 2, and where every offer has exactly one version the two rules are
+identically equal at every possible clock.
+
+**The vacuity guard did not fire and was not needed** — 6 published offers > 0, so "no difference
+found" is a real negative and not an empty-catalogue artefact. It was written first precisely so that
+a zero result could be distinguished from a vacuous one.
+
+The clock sweep was not a sample. It is every distinct `fetched_at + window` boundary in the corpus,
+each at −1s / +0s / +1s, plus far-past, far-future and real-now. Those boundaries are the only moments
+at which any verdict can change, so 21 clocks is the complete space of behaviourally distinct moments.
+
+**Blast radius is non-zero, which is why this is still worth fixing.** Under the current rule the
+corpus produces `verified_free` in 54 of those 105 observations and `stale` in 51. A bucket that
+reaches `verified_free` is exactly a bucket that one expired ancestor could take away.
+
+**It is reachable, and reaching it reproduces the defect.** Separately and *explicitly labelled as a
+constructed scenario* (M3, own database, own section — it cannot and does not speak to present-day
+incidence):
+
+- **P3 confirmed directly, not inferred:** re-publishing the corpus with **unchanged** fixtures gave
+  `published=0` and left the version count untouched — the content-hash short-circuit, executed.
+- **Reachability:** re-publishing with one quota figure changed created `version_number = 2` through
+  the real publisher.
+- **Manifestation:** with the ancestor's evidence aged 400 days and the latest version's evidence
+  current, `cloudflare/serverless-functions` derived **`stale` under the current rule and
+  `verified_free` under the latest-version rule** — direction **WRONGLY WITHHELD**.
+
+### My counts differ from the brief's, and the difference matters
+
+The brief put `latest_version(` at "9 times elsewhere" in `service.py`. **By AST — not string match,
+because a match can be a docstring, a comment or a quotation of the thing being retracted — there are
+9 call sites in total and one of them is line 677, inside `serialize_category_matrix` itself. So
+8 elsewhere, not 9.** Population: 206 `Call` nodes in the file.
+
+That off-by-one strengthens the case. The function already computes `latest` (677) and `latest_id`
+(678) and appends `latest_id` to `bucket_versions` (679) — and then line 693 ignored it.
+
+**A second inconsistency the brief did not name.** `evidence_currency` (line 726) rolls up
+`bucket_versions`, which holds **latest ids only**, while `has_stale_evidence` scanned **every** id.
+One cell of one JSON response could therefore report `evidence_currency` current **and**
+`derived_state` stale simultaneously. That is one row contradicting itself, which is a sharper
+demonstration than disagreement with eight call sites elsewhere, and it now has its own guard.
+
+### The change
+
+`apps/api/app/read_api/service.py`, one expression:
+
+```python
+-  flag[1] = flag[1] or any(v.id in stale_versions for v in offer.versions)
++  flag[1] = flag[1] or (latest_id is not None and latest_id in stale_versions)
+```
+
+**One rule, not two.** `CoverageSignals.has_stale_evidence` already documents itself as *"At least one
+source **backing this pair** is past its refresh window"* — and a superseded version does not back the
+pair. The fix makes the code mean what it already said.
+
+**On the conservatism defence, which I considered and reject.**
+`fetch_stale_offer_version_ids` calls itself deliberately conservative because overstating staleness
+"only ever makes the catalogue admit uncertainty". Conservatism is about uncertainty regarding *the
+current claim*. A superseded version carries none: it is evidence about a claim that has been
+**replaced**. Importing it is a category error wearing caution's clothes. It is also not conservative
+in *effect* — because `derive_coverage_state` returns `stale` before `verified_free`, that "caution"
+withheld the free badge from **every offer in the bucket**, and `coverage.py` has already ruled on
+that direction: *"Suppressing a true free claim is a defect too."*
+
+**Scope discipline — two axes, only one changed.** Across **offers**, one offer whose *latest* version
+is stale still marks the whole cell; that is what bucket-wide means and it is untouched (guarded).
+Across **versions of one offer**, an ancestor no longer speaks for the current claim; that was the
+defect. The S7 docstring conflated them and asserted the coarse rule was "deliberately not touched" —
+that sentence became false, so rewriting it was part of the change, not tidying.
+
+`fetch_stale_offer_version_ids` itself is deliberately **not** narrowed: other surfaces rely on its
+documented semantics and an integration test transcribes them, so changing it is a different slice.
+
+### Verification
+
+| Run | Collected | Result |
+|---|---|---|
+| Baseline at `ab3dfc00`, clean DB | **2998** | 2995 passed, 3 skipped, exit 0 |
+| HEAD, clean DB | **3005** | 3002 passed, 3 skipped, exit 0 |
+
+Delta **+7 collected / +7 passed = exactly the 7 tests added** (4 unit, 3 integration). The baseline is
+recorded as *executed*, not merely exit 0: 2995 tests ran and only 3 skipped, so the integration layer
+genuinely exercised a database.
+
+**Mutations — both restore behaviour, neither breaks arity.** `M-orig` is byte-identical to the
+expression at `ab3dfc00` (verified against `git show`), so "M-orig killed" is precisely "these guards
+fail at base".
+
+| Mutation | Restores | Verdict | Killed by (full suite, 3005 collected) |
+|---|---|---|---|
+| **M-orig** `or any(v.id in stale_versions for v in offer.versions)` | the original defect | **KILLED**, 3 failed | `test_an_expired_ancestor_does_not_withhold_the_bucket_badge`, `test_a_superseded_stale_version_does_not_withhold_the_bucket_badge`, `test_a_cell_cannot_report_current_evidence_and_a_stale_state_at_once` — **all three new; zero pre-existing** |
+| **M-over** `or False` | over-correction into never-stale | **KILLED**, 5 failed | 3 new (`test_an_expired_latest_version_still_marks_the_bucket_stale`, `test_a_stale_latest_version_still_marks_the_bucket_stale`, `test_one_offer_whose_latest_is_stale_still_marks_the_whole_bucket`) **+ 2 PRE-EXISTING** (`test_coverage_review_queue.py::test_a_stale_snapshot_unseats_a_published_free_claim`, `::test_the_public_api_refuses_to_serve_an_expired_free_claim`) |
+| Control | mutations reverted | **GREEN** | 3002 passed / 3005 collected, exit 0 |
+
+Under the full original defect the entire suite yields **exactly 3 failures in 3005 collected**, and
+all three are the new guards. Those three tests are what stands between this codebase and the defect.
+
+**M-over is also caught by two pre-existing guards, so its kill was NOT accepted at face value.**
+Re-run in isolation with a collected floor, each new arm fires on its own: the integration module alone
+(3 collected) kills M-orig via the permit arm and M-over via the withhold arm; the unit module alone
+(50 collected) kills M-orig via 2 arms and M-over via 2 arms. The withhold arm is therefore
+load-bearing by measurement, not by assertion — which matters because it passes at base and would
+otherwise be decoration.
+
+Every mutation run asserted its anchor was uniquely present before substitution (absent ⇒ abort),
+compiled the mutant to prove it was valid Python rather than an arity break, and treated exit 5 /
+`collected == 0` as *nothing collected* rather than as survival.
+
+`ruff check` and `ruff format --check`: both clean (240 files).
+
+### Errors I made, and how they were caught
+
+1. **I polluted the database the test suite reads, and it produced a false KILL.** The M1 census
+   *committed* the published corpus into the same `atlas` database the integration suite uses. The
+   first full-suite mutation run then reported M-orig "KILLED — 48 failed" and M-over "KILLED — 51
+   failed", with failures strewn across `test_publish_pipeline`, `test_ingest_config_sync` and
+   `test_domain_migration` — none of which touch this flag. **The control run caught it: with both
+   mutations reverted the suite still failed, 46 failed / exit 1.** A control that fails is the only
+   reason those numbers were not written down as a result. Remedied with a dedicated `suite` database
+   whose emptiness is *asserted* (`provider=0 offer=0 offer_version=0`) before use, on which the
+   control is green. **Had I skipped the control I would have reported a 48-test kill that was ~96%
+   noise** — the exact false-KILL failure this project has already paid for once.
+2. **I edited the test tree in the middle of a measurement.** The integration module was created
+   between M-orig and M-over of that same run, so the two arms collected 3002 and 3005 items and were
+   never comparable. Caught by reading the collected counts rather than only the verdicts. The whole
+   run was discarded and redone against a frozen tree.
+3. **The brief's call-site count was off by one and I did not inherit it.** 8 elsewhere, not 9.
+4. **A botched edit sequence briefly left imports duplicated** in the new integration module (hoisted
+   to module scope, then re-added function-locally). Caught by `ruff` F811/F401, not by review.
+
+### Files changed
+
+- `apps/api/app/read_api/service.py` — the flag expression, and the S7 docstring paragraph that the
+  change falsified, rewritten to draw the across-offers / across-versions distinction.
+- `tests/unit/test_read_api.py` — 4 arms: permit, withhold, the untouched across-offers axis, and the
+  cell-self-contradiction guard.
+- `tests/integration/test_coverage_bucket_staleness.py` — new; 3 arms on offer versions the **real
+  publisher** created via a second publish of changed content, since no committed fixture is
+  multi-version.
+- `agent-state/current_contract.json` — taken wholesale (single slot), predictions frozen before
+  measurement.
+- `agent-state/progress.md` — this entry (append-only).
+
+`agent-state/feature_list.json` untouched. **No feature marked passing.** Level 2 evaluation required
+and pending: this is a public coverage badge (`apps/web/src/catalogue/CategoryMatrix.tsx:174,185`).
+
+### Predictions, recorded before measurement and scored after
+
+P1 (HIGH) zero multi-version offers — **held**. P2 (HIGH) zero differing buckets — **held**.
+P3 (MEDIUM) unchanged re-publish creates no version — **held, and executed rather than inferred**.
+P4 (MEDIUM) changed content creates version 2 and reproduces the defect — **held**.
+P5 (LOW) at least one bucket reaches `verified_free`, so blast radius is non-zero — **held** (54 of
+105). P6 (MEDIUM) the defect mutation is killed only by new tests — **held for M-orig (3 of 3 new);
+partially falsified for M-over**, which two pre-existing review-queue guards also catch. That
+falsification is why the isolation re-runs above exist.
+
+### NOT VERIFIED — stated as prominently as the verdict
+
+- **CI has not run.** The local suite on one PostgreSQL 16 container is the only signal. An absent CI
+  signal reads exactly like a green one and must not be treated as one.
+- **The corpus's published surface is small: 6 offers, 5 buckets, 2 providers** (only cloudflare and
+  github published; aws, azure, gcp, oracle and vercel published nothing under the current gate). The
+  "no bucket differs today" claim is therefore true of a **small** catalogue. It is a real negative,
+  not a large one, and a bigger corpus could contain a multi-version offer this measurement never saw.
+- **Nothing here measures production data.** The measurement is of the committed corpus published
+  locally. If a deployed instance has been ingesting over time it *will* have multi-version offers,
+  and for it this defect was live, not latent. I could not check that and did not.
+- **The ageing step in M3 and in the integration arms is constructed** (a direct `UPDATE` on
+  `snapshot.fetched_at`). The version rows are real publisher output; the elapsed time is simulated.
+- **`fetch_stale_offer_version_ids` still returns ancestors** and is unchanged. Other callers of it
+  were **not** audited for the same category error. That is a real follow-up, not a closed question.
+- **No browser/UI verification.** `CategoryMatrix.tsx` was read to confirm `derived_state` reaches the
+  page; the rendered badge was not exercised. `apps/web` tests were not run (`npm ci` not invoked).
+
+### Recommended next action
+
+Audit the remaining consumers of `fetch_stale_offer_version_ids` for the same superseded-version
+category error — this slice fixed the one call site it was scoped to and deliberately left the
+projection itself alone. Then obtain the Level 2 adversarial evaluation before any merge.

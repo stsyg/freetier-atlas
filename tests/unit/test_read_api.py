@@ -924,3 +924,196 @@ def test_an_offers_currency_is_read_from_its_latest_version() -> None:
 
     assert cell.current_free_offer_count == 1
     assert cell.evidence_currency.current is True
+
+
+# --------------------------------------------------------------------------- #
+# The bucket STALE FLAG follows the latest version too                        #
+# --------------------------------------------------------------------------- #
+#
+# S7 gave this row's free-offer COUNT a clock and left `has_stale_evidence` --
+# the bucket-wide flag driving `derived_state` -- scanning EVERY version of every
+# published offer, superseded ancestors included. Because
+# `derive_coverage_state` returns "stale" BEFORE it can return "verified_free",
+# one expired ancestor anywhere in a bucket cost every offer in that bucket its
+# public verified_free badge.
+#
+# MEASURED, not assumed. Against the committed corpus published for real (7
+# provider configs, 6 published offers), every offer holds exactly ONE version,
+# so the two rules cannot diverge and NO real bucket differs today: 0 differences
+# across 105 bucket-observations (5 buckets x 21 clocks spanning every distinct
+# staleness boundary +/-1s). The defect was LATENT. It is reachable, though: a
+# second publish whose content hash differs creates version 2 via
+# `publisher.py:389`, and the divergence then appears immediately.
+#
+# Both arms are mandatory and BOTH carry their own mutation. A guard that cannot
+# be shown to PERMIT is indistinguishable from one that broke the product, and
+# here the permit arm is also what stops the fix over-correcting into wrongly
+# asserting freshness.
+
+
+def _versioned_graph(*, older_id: int = 999, latest_id: int = 1000) -> dict:
+    """``_canonical_graph`` plus a SUPERSEDED ancestor version on the same offer.
+
+    Mirrors the two-version shape a real offer acquires the moment a provider
+    changes a page: version 1 is superseded, version 2 carries the live claim.
+    """
+
+    graph = _canonical_graph()
+    older = OfferVersion(
+        offer_id=100,
+        version_number=0,
+        content_hash="hash-v0",
+        offer_type="always_free",
+        zero_cost_class="Z0_TRUE_FREE",
+        material_facts=_material_facts(),
+    )
+    older.id = older_id
+    graph["offer"].versions.insert(0, older)
+    assert queries.latest_version(graph["offer"]).id == latest_id, "fixture precondition"
+    graph["older_version"] = older
+    return graph
+
+
+def _coverage_context(stale_ids: set[int]) -> queries.CoverageSignalContext:
+    """A signal context carrying only the staleness projection under test."""
+
+    return queries.CoverageSignalContext(
+        declarations={},
+        conflicted_services=frozenset(),
+        stale_offer_version_ids=frozenset(stale_ids),
+    )
+
+
+def test_a_superseded_stale_version_does_not_withhold_the_bucket_badge() -> None:
+    """PERMIT ARM. A stale ANCESTOR must not cost a fresh bucket its badge.
+
+    The offer's claim rests on its latest version. Applying a superseded
+    version's expiry to it is not conservatism but a category error: it says
+    nothing about the claim actually being made, and because "stale" outranks
+    "verified_free" it withholds the free badge from EVERY offer in the bucket.
+    A wrongly-withheld free offer is a defect of the same severity as a
+    wrongly-asserted one, and it is the direction a reader cannot see.
+
+    FAILS at ab3dfc00 (reports "stale"); passes once the flag reads latest_id.
+    """
+
+    graph = _versioned_graph()
+    cell = _matrix_cell(
+        service.serialize_category_matrix(
+            [graph["provider"]],
+            {1: graph["category"]},
+            _coverage_context({999}),  # the SUPERSEDED version is the stale one
+            _graph_currency(graph),
+        ),
+        "serverless-functions",
+        "cloudflare",
+    )
+
+    assert cell.derived_state == "verified_free"
+    assert cell.free_offer_count == 1
+    assert cell.current_free_offer_count == 1
+
+
+def test_a_stale_latest_version_still_marks_the_bucket_stale() -> None:
+    """WITHHOLD ARM. The fix must not over-correct into never-stale.
+
+    Same fixture, same ancestor, but now it is the LATEST version whose evidence
+    has expired. The bucket must still report "stale" -- an expired claim is a
+    guess, and no amount of tidying the ancestor rule may buy freshness the
+    evidence does not support.
+
+    Passes before and after, so it is made load-bearing by mutation M-over
+    (`flag[1] or False`) rather than by assertion.
+    """
+
+    graph = _versioned_graph()
+    cell = _matrix_cell(
+        service.serialize_category_matrix(
+            [graph["provider"]],
+            {1: graph["category"]},
+            _coverage_context({1000}),  # the LATEST version is the stale one
+            _graph_currency(graph),
+        ),
+        "serverless-functions",
+        "cloudflare",
+    )
+
+    assert cell.derived_state == "stale"
+
+
+def test_one_offer_whose_latest_is_stale_still_marks_the_whole_bucket() -> None:
+    """The ACROSS-OFFERS axis is deliberately unchanged.
+
+    Two coarsenesses live in this flag and conflating them is how a fix
+    overshoots. Across VERSIONS of one offer, an ancestor must not speak for the
+    current claim -- that is the defect. Across OFFERS, one offer whose LATEST
+    version is stale marks the whole cell -- that is what bucket-wide means, and
+    this slice must leave it exactly as it was.
+    """
+
+    graph = _canonical_graph()
+    second = Offer(
+        service_id=10,
+        offer_type="always_free",
+        zero_cost_class="Z0_TRUE_FREE",
+        status="active",
+        requires_card=False,
+        has_paid_dependencies=False,
+    )
+    second.id = 101
+    second_version = OfferVersion(
+        offer_id=101,
+        version_number=1,
+        content_hash="hash-v1-b",
+        offer_type="always_free",
+        zero_cost_class="Z0_TRUE_FREE",
+        material_facts=_material_facts(),
+    )
+    second_version.id = 1001
+    second.versions.append(second_version)
+    graph["service"].offers.append(second)
+
+    cell = _matrix_cell(
+        service.serialize_category_matrix(
+            [graph["provider"]],
+            {1: graph["category"]},
+            # The FIRST offer's latest is current; the SECOND offer's latest is not.
+            _coverage_context({1001}),
+            _graph_currency(graph),
+        ),
+        "serverless-functions",
+        "cloudflare",
+    )
+
+    assert cell.free_offer_count == 2
+    assert cell.derived_state == "stale"
+
+
+def test_a_cell_cannot_report_current_evidence_and_a_stale_state_at_once() -> None:
+    """One cell, one answer about which versions back the claim.
+
+    `evidence_currency` is a rollup over `bucket_versions`, which holds LATEST
+    ids only, while `has_stale_evidence` scanned every id. The two fields of the
+    same cell therefore disagreed about the same question, and a reader saw
+    "evidence is current" printed beside "state: stale" in one response.
+
+    This asserts the agreement rather than either value on its own, so it stays
+    meaningful if the displayed labels are ever renamed.
+    """
+
+    graph = _versioned_graph()
+    cell = _matrix_cell(
+        service.serialize_category_matrix(
+            [graph["provider"]],
+            {1: graph["category"]},
+            _coverage_context({999}),
+            _graph_currency(graph),
+        ),
+        "serverless-functions",
+        "cloudflare",
+    )
+
+    assert cell.evidence_currency.current is True
+    assert cell.derived_state != "stale", (
+        "a cell reporting current evidence must not simultaneously report a stale state"
+    )

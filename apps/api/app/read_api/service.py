@@ -648,10 +648,35 @@ def serialize_category_matrix(
     assessed on its **latest** version, matching every other catalogue surface
     (:func:`serialize_provider_summary`, :func:`serialize_category_states`).
 
-    Note this is intentionally finer-grained than ``has_stale_evidence``, which
-    is a *bucket-wide* flag driving ``derived_state`` -- one stale version there
-    marks the whole cell. That coarser rule is unchanged by this slice; its
-    behaviour is deliberately not touched, because it feeds a classification.
+    The bucket flag follows the latest version too
+    ----------------------------------------------
+    ``has_stale_evidence`` is a *bucket-wide* flag driving ``derived_state``, and
+    it is coarse along two axes that are easy to conflate:
+
+    * **across offers** -- one offer whose *latest* version is stale marks the
+      whole cell. That is what bucket-wide means. It is deliberate, and it is
+      unchanged here.
+    * **across versions of one offer** -- until this slice a *superseded*
+      version could mark the cell. That is not coarseness but a category error:
+      the offer's claim rests on its latest version, so an ancestor's expiry
+      says nothing about the claim actually being made.
+
+    S7 recorded the second axis as deliberately untouched. It is touched now,
+    because its cost lands in the direction that leaves no trace on the page.
+    :func:`~app.read_api.coverage.derive_coverage_state` returns ``stale``
+    *before* it can return ``verified_free``, so a single expired ancestor
+    withheld the free badge from **every** offer in the bucket -- and a
+    wrongly-withheld free offer is a defect of the same severity as a
+    wrongly-asserted one. Nor was the old rule conservative in the sense
+    ``fetch_stale_offer_version_ids`` claims for itself: overstating staleness
+    admits uncertainty about *a current claim*, whereas a superseded version
+    carries no uncertainty about the current claim at all.
+
+    The flag is therefore assessed on ``latest_id`` -- the same value the counts
+    and ``evidence_currency`` in this loop already use. Sharing it also removes a
+    self-contradiction: one cell could report ``evidence_currency`` current (a
+    rollup over latest ids) and ``derived_state`` stale (a scan over every id) in
+    the same response.
     """
 
     ordered_providers = sorted(providers, key=lambda p: p.slug)
@@ -690,7 +715,7 @@ def serialize_category_matrix(
                     bucket[2] += 1
                 flag = flags.setdefault(key, [False, False])
                 flag[0] = flag[0] or service_conflicted
-                flag[1] = flag[1] or any(v.id in stale_versions for v in offer.versions)
+                flag[1] = flag[1] or (latest_id is not None and latest_id in stale_versions)
 
     rows: list[CategoryMatrixRow] = []
     for taxon in CATEGORY_TAXONOMY:
