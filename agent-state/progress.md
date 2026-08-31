@@ -4196,3 +4196,165 @@ While running the secret-scan gate I invoked `detect-secrets scan --baseline .se
 Caught immediately because I diffed the file straight after the command specifically to confirm it was untouched — the check was aimed at exactly this and it fired. Restored with `git checkout -- .secrets.baseline`; the blob now hashes `4529811ac39b471377afdd780e9465357346a168`, identical to `HEAD:.secrets.baseline`, and the working tree contains only the seven intended modifications plus the one new test file.
 
 The generalisable lesson: **a read-only-sounding verb is not a read-only command.** "scan" mutated its own reference file. Any gate run against a protected artefact must either be given a throwaway copy or be diffed immediately afterwards — announcing that a command is read-only is not the same as establishing it, which is the same failure shape as an unapplied mutation and an unchecked `CREATE DATABASE`.
+
+---
+
+## F008 slice — whose boundary is it? The unordered anchor under three rollup assertions
+
+- **Feature / objective:** F008. `tests/integration/test_catalogue_currency.py::_free_offer` picks an ANCHOR offer by walking `provider.services` then `svc.offers` and returning the FIRST match. Neither relationship declares `order_by`, so "first" is whatever order the database happens to return. That anchor's own expiry boundary was then used by tests whose assertions range over a PROVIDER-level or CATEGORY-CELL-level rollup, and an exact-equality assertion flipped depending only on which offer came back first. **Test-only defect. The remedy is the moment, not the ordering.**
+
+### The base reproduction — done FIRST, before anything was changed
+
+The defect is intermittent, so "the test passes now" proves nothing; it passed most of the time before. At `23eff7e3`, changing **only** the anchor (`_free_offer` walks `reversed(...)`, returning the LAST match) produced:
+
+| Anchor at `23eff7e3` | Result over the module |
+| --- | --- |
+| FIRST match (as shipped) | **22 passed, 0 failed** |
+| LAST match | **3 failed, 19 passed** |
+
+The three failures, with the exact assertion each died on:
+
+| Test | Line | Assertion |
+| --- | --- | --- |
+| `test_providers_list_freshness_follows_the_clock` | 563 | `at_boundary["evidence_currency"]["current"] is True` |
+| `test_zero_freshness_is_a_measurement_and_null_freshness_is_not` | 594 | `row["evidence_currency"]["current"] is True` |
+| `test_the_free_offer_count_is_qualified_once_its_evidence_expires` | 831 | `before["current_free_offer_count"] == before["free_offer_count"]` → `0 == 1` |
+
+**THE BRIEF NAMED TWO TESTS. I MEASURED THREE. Mine wins.** The third has the same cause with a category-cell rollup in place of a provider rollup: its loop ranges over *every* free cell, so the cell holding the sibling offer had already dropped its qualified count to zero. It was also, separately, **my own prediction P1.5 that this would not happen** — recorded in writing beforehand, and falsified by the measurement.
+
+`test_provider_detail_rollup_reports_its_stalest_claim` — the sibling that was fixed for itself — **passed under BOTH anchors**, confirming that the remedy shape works and that its fix was genuine.
+
+### Counts I measured myself, with populations
+
+| Measurement | Population | Count |
+| --- | --- | --- |
+| `order_by` in `apps/api/app/models/domain.py` | that one file at `23eff7e3` | **0** |
+| `relationship()` attributes declaring `order_by` | the whole `apps/api/app/models/` package, 13 relationships | **0 of 13** |
+| Offers reachable from provider `cloudflare` after one publish | that provider's full corpus | **2** |
+| …published AND `Z0_TRUE_FREE` AND evidence-backed (the anchor-eligible set) | same | **2** — so *every* offer is anchor-eligible |
+| Evidence rows per published version | those 2 versions | **1 each** |
+| Snapshot spread between the two versions | those 2 versions | **123.044 ms** |
+| Tests in the module | the module | **22** at base, **23** after |
+
+**The brief said the spread was ~102.5 ms; I measured 123.044 ms.** Mine wins for my run — but the honest reading is that **neither is a constant.** It is ingest wall-clock jitter, a per-run variate. The load-bearing property is `0 < spread < 1 second`, not any particular figure, and quoting either number as a fact would be the mistake.
+
+**The defect is arithmetic, not conjecture.** Window is 7 days for both claims.
+
+- Anchor = offer 7 (earlier snapshot) → `current_at` = its expiry → provider-wide worst age **exactly 7 days** → not stale (`>` is strict) → rollup **current** → tests pass.
+- Anchor = offer 8 → `current_at` = its expiry → provider-wide worst age **7 days + 123.044 ms** → **stale** → rollup not current → tests fail.
+
+### The fix, and why it follows the sibling's principle rather than its literal move
+
+The sibling's docstring states the principle exactly: *"The boundary belongs to a single anchor; a rollup needs a moment that is unambiguous for all of them."* Its literal move was to retreat from the boundary to the fetch moment.
+
+**That literal move was not available here, and the reason is the whole argument.** `test_zero_freshness_is_a_measurement_and_null_freshness_is_not` exists to prove that `0.0` and `null` are different answers **at the exact expiry boundary**. Freshness at the fetch moment is `1.0`. Retreating from the boundary would have left no `0.0` to distinguish from `null` — it would have deleted the test's subject rather than repaired it. The module docstring calls this one-second differential *"the impossible-value floor these instruments need in order to be able to fail"*; stepping off it lowers that floor.
+
+So the principle is applied **at** the boundary instead of by retreating from it. A new `provider_boundary` fixture derives the moment from the **provider's own earliest-expiring published claim** — `min(fetched_at + window)` over every published version — and consults no anchor at all.
+
+- At `M = min(expiry)`: every claim has `age <= window`, and the comparison is strict, so **nothing** is stale. The rollup is unambiguously current and its worst freshness is exactly `0.0`.
+- At `M + 1s`: the earliest-expiring claim is past its window, and so is every other claim.
+
+`min(fetched_at + window)` rather than `min(fetched_at) + window` is deliberate: it stays correct if two sources ever declare different schedules.
+
+**Rejected: pinning `_free_offer` to a deterministic order.** It would make the tests reproducible while leaving them reading a multi-offer rollup at a single-offer boundary — re-armed by the first corpus change that adds an offer with an earlier snapshot. It would also fail the acceptance test: the tests would be **pinned**, not **invariant**. `order_by` on the relationships was not added; it changes query behaviour repo-wide and needs its own evidence and its own slice.
+
+### The anchor-invariance demonstration — the actual evidence, not greenness
+
+| | FIRST-match anchor | LAST-match anchor |
+| --- | --- | --- |
+| **BASE `23eff7e3`** | 22 passed, 0 failed | **3 FAILED**, 19 passed |
+| **After the fix** | **23 passed, 0 failed** | **23 passed, 0 failed** |
+
+The anchor choice **no longer changes the outcome**. And because the anchor-eligible population is exactly **2**, first-vs-last is the **complete permutation space** — this is exhaustive for this corpus, not a sample of it.
+
+### Two preconditions asserted in the fixture, not announced
+
+1. **`spread < 1 second`.** The `+1s` arm is unambiguous for every claim only while they all expire inside that same second. A future corpus that spread wider would otherwise reintroduce exactly the ambiguity this fixture removes — silently, and in the comfortable direction.
+2. **The oldest-*fetched* claim is also the earliest-*expiring* one.** `worst()` returns the oldest still-current verdict, so the rollup's freshness at the boundary is that claim's ratio, and it is exactly `0.0` only under this condition. Equal windows make it automatic; unequal windows would not.
+
+### Mutation results (each restores a wrong-but-valid choice; none is an arity break)
+
+| # | Mutation | Predicted | Result |
+| --- | --- | --- | --- |
+| M1 | `provider_boundary` uses `max(expiries)` instead of `min` | KILLED | **KILLED** — 4 failed, and the new self-check caught it FIRST |
+| M2 | Delete the `spread < 1 second` precondition | **SURVIVED** | **SURVIVED**, as predicted |
+| M3 | Point `test_zero_freshness_…` back at the per-offer `boundary`, under the LAST-match anchor | KILLED | **KILLED** — 1 failed, precisely and only the right test |
+| M4 | `_published_claim_expiries` reads the NEWEST evidence instead of the oldest | KILLED | **SURVIVED — MY PREDICTION WAS WRONG** |
+
+**M4's survival is a real gap, not a nuisance.** Every published version in this corpus carries **exactly one** evidence row, so `min(ages)` and `max(ages)` are the same value: the mutation applied cleanly (the pre-grep guard confirmed it) but its discriminating population is **empty**. The choice of *oldest* evidence per version is therefore **UNTESTED by this corpus.** That is the same family as an unapplied mutation — the difference is that here the instrument worked and the *data* could not tell the two behaviours apart.
+
+**M2's survival is expected and must not be read as a weakness**: it is a guard against a future corpus, so today's data cannot falsify it. Reported rather than dressed up as tested.
+
+### Part 2 — the production measurement (READ-ONLY; nothing under `apps/` was changed)
+
+**Verdict: I found NO production path that takes a first match over an unordered collection.** This was the open question and my recorded prediction (P3.3) was "zero, at LOW confidence".
+
+| Hazard shape | Population | Order-dependent |
+| --- | --- | --- |
+| H1 `for` over an unordered relationship with an early `return`/`break` | **12** such loops across **104** Python files under `apps/` | **0** |
+| H3 direct subscripting of an unordered relationship (`x.offers[0]`) | same 104 files | **0** |
+| H2 `select`/`query` ending in `.first()`/`.limit()` with no `.order_by()` | **16** raw hits | **0 after hand-reading** |
+| `next(...)` over any collection | **3** sites | **0** |
+| `sorted(...)[0]` | **1** site | **0** |
+
+Every H2 hit resolves to one of two safe shapes: a **primary-key equality lookup** (`RequestDedupe.dedupe_key`, `CircuitBreaker.provider`, `PowChallenge.challenge_id` are each `primary_key=True`, so at most one row matches), or a `select(X.id) … .limit(1)` used purely as an **existence probe** returning `bool`, where any row proves existence. The three `next(...)` sites: `ingest/reconcile.py:709` iterates a list loaded with `.order_by(Candidate.id)` — a total order on the PK; `adapters/html.py:690` walks parsed HTML in document order, not database order; `worker/queue.py` claims via SQL carrying `ORDER BY enqueued_at`. `adviser/recommend.py:343` sorts by `(provider_slug, offer_id)` before taking `[0]` — `offer_id` is unique, so that is a **total** order. The codebase is already doing the right thing at every decision point.
+
+**Two nuances that are NOT defects but are worth recording.** The twelve H1 loops all aggregate (mean, sum, `worst`, collect-all), so membership and every verdict are order-independent — but the *presentation order* of some rendered lists (e.g. the evidence refs built in `adviser/explain.py:74`) is unspecified. It affects display sequence only, never a Z0 verdict. And `worker/queue.py`'s `ORDER BY enqueued_at` has no tie-break, so simultaneously-enqueued jobs are claimed in arbitrary order — harmless, since any pending job is equally valid to claim.
+
+**Conclusion for the orchestrator: this is a TEST-ONLY defect, not a product one.** On that evidence I did **not** need `order_by` on the relationships, and did not add it.
+
+### Tests and exact results
+
+All figures below were measured by me against my own PostgreSQL, and every run asserted `collected N > 0` before any verdict was accepted (pytest exit **5** is treated as NOTHING COLLECTED and aborts).
+
+| Run | passed | skipped | failed | collected | runtime |
+| --- | --- | --- | --- | --- | --- |
+| Module, no `DATABASE_URL` (control) | 0 | **22** | 0 | 22 | 9.5 s |
+| **BASE `23eff7e3`, full suite**, scratch worktree | **2994** | 3 | **0** | — | 229.6 s |
+| **HEAD, full suite**, first run | **2995** | 3 | **0** | 2998 | 1109.4 s |
+| **HEAD, full suite**, warm re-run | **2995** | 3 | **0** | — | 192.4 s |
+
+**Delta = +1, exactly the one test added. Zero regressions — measured, not subtracted.** The base total was obtained by running the suite at `23eff7e3` in a scratch worktree (SHA asserted after checkout, not taken from the commit message), specifically because a figure derived by subtracting two others is internally consistent and therefore hard to spot when wrong.
+
+**A large runtime deviation appeared and was chased down rather than ignored.** The first HEAD run took 1109.4 s against the base's 229.6 s — a 4.8× deviation, which the method rules say is evidence about the *environment*. Re-running HEAD warm gave **192.4 s**, *faster* than base, so the deviation was cold-cache first-touch and not attributable to the change. Stating the first figure without the third would have been advocacy.
+
+`ruff check .` and `ruff format --check .` both clean repo-wide (239 files), as CI runs them.
+
+Integration ran against a dedicated `postgres:16-alpine`, container `fta-anchor-slice-pg`, named volume `fta-anchor-slice-pgdata`, port **55437** (asserted free before use), database `ftaanchor` — seeded separately from the suite's own. Reachability was **asserted, not announced**: `pg_isready` with a checked exit code, then the database confirmed present in `pg_database`, then a trivial query confirmed to *execute* and return the expected value.
+
+### Files changed
+
+- `tests/integration/test_catalogue_currency.py` — new `_published_claim_expiries` helper; new `provider_boundary` fixture with its two asserted preconditions; the three affected tests switched onto it with docstrings recording why; one new instrument self-check test; a module-docstring section naming the hazard and recording that `order_by` was deliberately **not** added.
+- `agent-state/current_contract.json` — this slice's contract, carrying the `classification` block forward **verbatim**.
+- `agent-state/progress.md` — this entry, appended.
+
+**No production file was modified.** `agent-state/feature_list.json` is byte-identical (blob `154de1fef2ba…`), as are `.github/workflows/ci.yml`, `scripts/check_urls.py`, `tests/unit/test_url_allowlist.py`, `.secrets.baseline`, and both lockfiles — each verified by comparing `git hash-object` against the base blob.
+
+### Errors I made, and how each was caught
+
+1. **My prediction P1.5 was falsified.** I predicted the other boundary-consuming tests would survive a flipped anchor. Three failed, not two. Caught because I ran the mutation over the **whole module** rather than only the two tests the brief named. Had I scoped the run to the named tests, I would have "confirmed" the brief and shipped a fix that left a third test still defective. *Scoping a reproduction to the tests you were told about is how you inherit someone else's incomplete diagnosis.*
+2. **My prediction on mutation M4 was wrong**, and the reason is worth more than the mutation: the discriminating population is empty (one evidence row per version). Caught because I ran it instead of reasoning about it. Now reported as an untested behaviour rather than a passing one.
+3. **My mutation harness became ambiguous the moment I wrote the fix.** The new `_published_claim_expiries` helper contains the same `for svc in provider.services: / for offer in svc.offers:` shape as `_free_offer`, so the anchor mutation's search text matched **twice**. The pre-grep guard **aborted** instead of substituting. Without it, `.Replace()` would have silently mutated *both* sites — including the fixture's own helper — and the "invariance" run would have been measuring something else entirely while looking identical. Search text narrowed to include the `zero_cost_class != FREE` line, which is unique to `_free_offer`. **This is the third time this project has paid for the lesson that an unapplied — or misapplied — mutation reads exactly like a clean result.**
+4. **The same guard fired again on mutation M3**, where `_at(monkeypatch, provider_boundary["current_at"])` occurs twice in the file. Aborted before writing; the file was verified untouched afterwards. Search text extended with its following line.
+5. **My test runner's own collection parser was broken on its first use.** Under `-q`, pytest omits the `collected N items` header, so the runner read `collected 0` and ABORTED a run that had legitimately executed 22 tests. Caught because the abort was loud. Fixed to fall back to summing the outcome counts. *An instrument that cannot see its own sample size cannot enforce a floor on it* — and it failed toward refusing to report, which is the safe direction, but only by luck.
+6. **My mutation harness restored via `git checkout --`**, which was correct while the fix was uncommitted-and-absent but would have **destroyed the fix** once written. Caught before it ran by reading the restore path when I re-used the harness. Switched to an exact-byte snapshot, with restoration verified by content comparison plus a check that the mutated text is gone and the original is back exactly once.
+
+### NOT VERIFIED — stated as prominently as the verdict
+
+1. **The `spread < 1 second` precondition is unfalsifiable with today's corpus** (mutation M2 SURVIVED). It is a guard against a future corpus, and today's data cannot exercise it. It is not tested; it is asserted.
+2. **`_published_claim_expiries`'s choice of the OLDEST evidence per version is untested** (mutation M4 SURVIVED). Every published version here carries exactly **one** evidence row, so oldest and newest are the same row. The behaviour is correct by construction and by the module it mirrors, but this corpus cannot distinguish it from the wrong choice.
+3. **Anchor invariance is proven exhaustively for a population of 2.** First-vs-last covers the complete permutation space *for this corpus*. It is NOT proven for a corpus with three or more anchor-eligible offers, where orderings exist that are neither first nor last. The fix is order-independent by construction — `provider_boundary` never consults the anchor — but that is an argument from the code, not a measurement.
+4. **Only the `cloudflare` provider was exercised.** The fixture hard-codes that slug, exactly as the per-offer `boundary` fixture already did. Other providers' corpora are unmeasured here.
+5. **The part-2 census over-reports by design and was then hand-read.** The H1/H2/H3 counts are mechanical; the reduction from 16 raw H2 hits to 0 order-dependent ones rests on my reading of each site plus the `primary_key=True` declarations I checked. A reviewer should re-read those 16, not take the 0 on trust.
+6. **The census covers `apps/` only.** `migrations/`, `scripts/`, and `apps/web` (TypeScript) were not scanned for this hazard.
+7. **No feature was marked passing and `agent-state/feature_list.json` was not touched.** F008 remains `passes: false`.
+8. **The intermittent's original sighting is now explained but was never reproduced in its original form.** PR #100's progress entry records a one-off failure of `test_providers_list_freshness_follows_the_clock` that did not reproduce. The mechanism established here is a sufficient explanation for it, and the arithmetic matches — but I did not reproduce *that* occurrence, only the class it belongs to.
+
+### Recommended next action
+
+Fresh-context evaluation (Level 1 by the harness's own criteria — no production code, no schema, no Z0 logic, no security boundary). **The reviewer's sharpest question should be whether the repair blunted the guards**, since the tests being repaired are themselves guards over Z0 evidence currency. The evidence offered against that is that every original assertion survives byte-for-byte in meaning, that the one-second differential was preserved rather than retreated from, and that mutations M1 and M3 both kill.
+
+Two items for the orchestrator, reported and not fixed here:
+
+- **`tests/unit/test_clock_inheritance.py::test_the_participant_list_matches_the_contract` still reads `agent-state/current_contract.json`**, which is single-slot and rewritten by every slice. I carried the `classification` block forward verbatim and **proved the coupling by negative control** — removing the block yields `KeyError: 'classification'` and 1 failed; restoring it yields 1 passed. This hazard was already reported by the previous slice and is still open: a permanent test resting on a per-slice file will eventually be dropped, and the failure will look like a code defect.
+- **The corpus cannot currently exercise multi-evidence versions** (finding 2 above). A provider fixture with two evidence rows on one version would close that gap and is worth its own small slice.

@@ -39,6 +39,29 @@ here the anchor is PRESENT and reaches ``UNCHECKED`` through
 ``assess_currency``'s own ``fetched_at is None`` branch -- a different code path
 to the same verdict.
 
+Whose boundary is it? -- the rollup anchor hazard
+-------------------------------------------------
+``_free_offer`` picks an ANCHOR by walking ``provider.services`` and then
+``svc.offers`` and returning the FIRST match. Neither relationship declares an
+``order_by``, so "first" is whatever order the database happens to return: it is
+unspecified, and free to differ between runs.
+
+That is harmless for a per-offer surface, where the anchor and the thing asserted
+about are the same offer. It is NOT harmless for a surface that ROLLS UP: the
+provider list, the provider detail and the category-matrix cells each report the
+verdict of their STALEST member (``currency.for_versions`` -> ``worst``). One
+ingest stamps every snapshot within a few hundred milliseconds of the others, so
+at ``anchor_fetched_at + window`` a sibling claim fetched slightly EARLIER is
+already a fraction of a second past its own window -- and an exact-equality
+assertion flips depending only on which offer the database handed back first.
+
+The remedy is the MOMENT, not the ordering: :func:`provider_boundary` derives the
+clock from the PROVIDER's earliest-expiring published claim, so it is the same
+moment whichever offer the anchor happens to be. Adding ``order_by`` to the
+relationships would change query behaviour repo-wide and is deliberately NOT done
+here; pinning the anchor would merely make the tests reproducible while leaving
+them reading a multi-offer rollup at a single-offer boundary.
+
 Both directions, everywhere
 ---------------------------
 Every surface is asserted to STOP repeating an unsupported free claim AND to
@@ -183,6 +206,109 @@ def boundary(session: Session) -> dict:
     }
 
 
+def _published_claim_expiries(
+    session: Session, provider_slug: str
+) -> list[tuple[int, datetime, timedelta]]:
+    """``(version_id, oldest fetched_at, window)`` for every published claim.
+
+    One row per published offer's CURRENT version -- precisely the set that
+    ``serialize_provider_summary`` and the category-matrix cells roll up over via
+    ``CurrencyContext.for_versions``. Claims with no checkable fetch time are
+    omitted, because they contribute ``UNCHECKED`` rather than an expiry.
+    """
+
+    provider = queries.fetch_provider(session, provider_slug)
+    assert provider is not None, f"{provider_slug} provider should exist after publish"
+
+    claims: list[tuple[int, datetime, timedelta]] = []
+    for svc in provider.services:
+        for offer in svc.offers:
+            if not queries.is_published(offer):
+                continue
+            version = queries.latest_version(offer)
+            if version is None:
+                continue
+            ages = [
+                (e.snapshot.fetched_at, e.source.schedule)
+                for e in version.evidence
+                if e.snapshot is not None and e.snapshot.fetched_at is not None
+            ]
+            if not ages:
+                continue
+            oldest, schedule = min(ages, key=lambda pair: pair[0])
+            claims.append((version.id, oldest, parse_schedule_window(schedule)))
+    return claims
+
+
+@pytest.fixture
+def provider_boundary(session: Session) -> dict:
+    """The boundary of the PROVIDER, not of one arbitrarily-chosen offer.
+
+    ``boundary`` above is the right clock for a surface that reports ONE offer.
+    It is the wrong clock for a surface that rolls several up, because the moment
+    it yields belongs to whichever offer ``_free_offer`` happened to be handed
+    first by an unordered relationship. This fixture consults no anchor at all:
+    every figure below is derived from the provider's own published claims, so
+    the moment is identical whichever offer the database returns first.
+
+    ``current_at`` is the EARLIEST expiry across those claims -- ``min(fetched_at
+    + window)``, not ``min(fetched_at) + window``, so it stays correct if two
+    sources ever declare different schedules. At that instant every claim has
+    ``age <= window`` and the comparison is strict, so NOTHING is stale and the
+    rollup is unambiguously current. One second later the earliest-expiring claim
+    is past its window, so the rollup is unambiguously stale.
+
+    The one-second differential of mechanism G is preserved, not retreated from:
+    these tests need the boundary itself, which is why they take a different
+    boundary rather than an earlier clock.
+    """
+
+    _publish(session)
+    slug = "cloudflare"
+    claims = _published_claim_expiries(session, slug)
+    assert claims, "the provider must publish at least one evidence-backed claim"
+
+    expiries = [fetched + window for _, fetched, window in claims]
+    current_at = min(expiries)
+    spread = max(expiries) - current_at
+
+    # ASSERTED, not announced. The stale arm reads exactly one second later, so
+    # it is unambiguous for EVERY claim only while they all expire inside that
+    # same second. Today they are stamped a fraction of a second apart by one
+    # ingest. A future corpus that spread wider would otherwise reintroduce the
+    # very ambiguity this fixture exists to remove -- silently, and in the
+    # comfortable direction. Fail loudly with the measurement instead.
+    assert spread < timedelta(seconds=1), (
+        "the published claims no longer expire within one second of each other "
+        f"(spread {spread}), so a one-second differential can no longer be "
+        "unambiguous for all of them; widen the differential deliberately rather "
+        "than letting an assertion flip"
+    )
+
+    # ``worst()`` returns the OLDEST still-current verdict, so the freshness the
+    # rollup publishes at ``current_at`` is that claim's own ratio -- exactly 0.0
+    # only when the oldest-FETCHED claim is also the earliest-EXPIRING one. Equal
+    # windows make that automatic; unequal windows would not, so check it.
+    earliest_fetched = min(claims, key=lambda claim: claim[1])
+    earliest_expiry = min(claims, key=lambda claim: claim[1] + claim[2])
+    assert earliest_fetched[0] == earliest_expiry[0], (
+        "the oldest-fetched claim is no longer the earliest-expiring one, so the "
+        "rollup's freshness at the boundary is no longer that claim's 0.0"
+    )
+
+    return {
+        "provider_slug": slug,
+        "claim_count": len(claims),
+        "expiry_spread": spread,
+        # The provider-wide fetch moment: every claim is unambiguously current.
+        "fetched_at": earliest_fetched[1],
+        # age == window for the earliest-expiring claim -> NOT stale (strict).
+        "current_at": current_at,
+        # age  > window for it, and for every other claim -> all stale.
+        "stale_at": current_at + timedelta(seconds=1),
+    }
+
+
 @pytest.fixture
 def client(session: Session) -> Iterator[TestClient]:
     def _override() -> Iterator[Session]:
@@ -228,6 +354,68 @@ def test_the_boundary_is_a_real_discontinuity_one_second_wide(
     # The clocks really are one second apart, and the data did not move.
     assert boundary["stale_at"] - boundary["current_at"] == timedelta(seconds=1)
     assert at_boundary.oldest_fetched_at == one_second_later.oldest_fetched_at
+
+
+@skip_without_db
+def test_the_provider_boundary_is_unambiguous_for_every_published_claim(
+    session: Session, provider_boundary: dict
+) -> None:
+    """The rollup instrument's own floor, asserted before anything rests on it.
+
+    A rollup surface reports its STALEST member, so a moment is only usable for
+    one if it gives the SAME verdict for every member. The per-offer ``boundary``
+    does not: it is one claim's expiry, and a sibling claim fetched a fraction of
+    a second earlier is already past its own window there. That is what made two
+    provider-rollup assertions and one category-cell assertion flip on nothing
+    but the order an unordered relationship returned rows in.
+
+    This asserts the property directly, from the rows rather than through the
+    API, so that a corpus change which broke it would fail HERE with a named
+    reason instead of surfacing as an intermittent somewhere downstream.
+    """
+
+    claims = _published_claim_expiries(session, provider_boundary["provider_slug"])
+    assert len(claims) == provider_boundary["claim_count"]
+
+    # The hazard must be OBSERVABLE, or this test cannot detect its return. With
+    # a single claim, or with claims that expire together, a per-offer boundary
+    # would be accidentally safe and the guard would be vacuous.
+    assert len(claims) >= 2, (
+        "the corpus publishes fewer than two evidence-backed claims for this "
+        "provider, so the rollup-anchor hazard cannot be exercised at all"
+    )
+    expiries = [fetched + window for _, fetched, window in claims]
+    assert min(expiries) < max(expiries), (
+        "the published claims now expire at the same instant, so a per-offer "
+        "boundary is accidentally safe and this guard proves nothing"
+    )
+
+    current_at = provider_boundary["current_at"]
+    stale_at = provider_boundary["stale_at"]
+    assert current_at == min(expiries)
+    assert stale_at - current_at == timedelta(seconds=1)
+
+    # At the provider boundary EVERY claim is still current (strict inequality),
+    # so the rollup cannot be dragged stale by whichever member is consulted.
+    at_boundary = queries.fetch_evidence_currency(session, now=current_at)
+    for version_id, _, _ in claims:
+        verdict = at_boundary[("offer_version", version_id)]
+        assert verdict.current is True, f"version {version_id} not current at the provider boundary"
+
+    # One second later EVERY claim is stale, so the withhold arm is unambiguous
+    # in the other direction too -- this is what the spread assertion buys.
+    one_second_later = queries.fetch_evidence_currency(session, now=stale_at)
+    for version_id, _, _ in claims:
+        verdict = one_second_later[("offer_version", version_id)]
+        assert verdict.stale is True, f"version {version_id} still current one second past expiry"
+
+    # And the per-offer boundary really is NOT interchangeable with it: reading
+    # at the LATEST expiry would already have carried the earliest claim past its
+    # own window. This is the defect, pinned as an executable statement.
+    at_latest_expiry = queries.fetch_evidence_currency(session, now=max(expiries))
+    assert any(
+        at_latest_expiry[("offer_version", version_id)].stale for version_id, _, _ in claims
+    ), "no claim is stale at the latest expiry, so the anchor hazard is no longer reproducible"
 
 
 @skip_without_db
@@ -547,22 +735,32 @@ def test_offer_history_gives_every_version_its_own_verdict(
 
 @skip_without_db
 def test_providers_list_freshness_follows_the_clock(
-    client: TestClient, boundary: dict, monkeypatch: pytest.MonkeyPatch
+    client: TestClient, provider_boundary: dict, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """Every figure here is a PROVIDER rollup, so it takes the provider's clock.
+
+    This asserted at a single offer's boundary and therefore flipped on which
+    offer an unordered relationship returned first. Same principle as
+    ``test_provider_detail_rollup_reports_its_stalest_claim`` below -- the
+    boundary belongs to a single anchor, and a rollup needs a moment that is
+    unambiguous for all of them -- but satisfied AT the boundary rather than by
+    stepping off it, because the boundary read is this test's whole point.
+    """
+
     def _row(moment: datetime) -> dict:
         _at(monkeypatch, moment)
         rows = client.get("/catalogue/providers").json()
-        return next(r for r in rows if r["slug"] == boundary["provider_slug"])
+        return next(r for r in rows if r["slug"] == provider_boundary["provider_slug"])
 
     # Read at the fetch moment itself, where freshness is unambiguously high.
-    just_fetched = _row(boundary["fetched_at"])
+    just_fetched = _row(provider_boundary["fetched_at"])
     assert just_fetched["freshness"] == pytest.approx(1.0)
     assert just_fetched["evidence_currency"]["current"] is True
 
-    at_boundary = _row(boundary["current_at"])
+    at_boundary = _row(provider_boundary["current_at"])
     assert at_boundary["evidence_currency"]["current"] is True
 
-    stale = _row(boundary["stale_at"])
+    stale = _row(provider_boundary["stale_at"])
     assert stale["evidence_currency"]["current"] is False
     assert stale["evidence_currency"]["stale"] is True
 
@@ -574,7 +772,7 @@ def test_providers_list_freshness_follows_the_clock(
 
 @skip_without_db
 def test_zero_freshness_is_a_measurement_and_null_freshness_is_not(
-    client: TestClient, boundary: dict, monkeypatch: pytest.MonkeyPatch
+    client: TestClient, provider_boundary: dict, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """0.0 and null are different answers, and the difference is load-bearing.
 
@@ -583,13 +781,21 @@ def test_zero_freshness_is_a_measurement_and_null_freshness_is_not(
     bottom of the scale. "We could not check" must NOT produce that same 0.0,
     because the web formatter renders 0 as "0%" and null as "Unknown": collapsing
     them would put a number where there is no measurement.
+
+    The boundary is the PROVIDER's, because ``evidence_currency`` on this row is
+    a rollup. Read at one offer's boundary this asserted 0.0 about a value a
+    sibling claim had already carried past its own window, so it depended on
+    which offer an unordered relationship returned first. Stepping off the
+    boundary was not available as a remedy: it would have deleted the subject,
+    since freshness at the fetch moment is 1.0 and there would be no 0.0 left to
+    distinguish from null.
     """
 
-    _at(monkeypatch, boundary["current_at"])
+    _at(monkeypatch, provider_boundary["current_at"])
     row = next(
         r
         for r in client.get("/catalogue/providers").json()
-        if r["slug"] == boundary["provider_slug"]
+        if r["slug"] == provider_boundary["provider_slug"]
     )
     assert row["evidence_currency"]["current"] is True
     assert row["evidence_currency"]["checked"] is True
@@ -807,19 +1013,25 @@ def _cells(payload: dict) -> dict[tuple[str, str], dict]:
 
 @skip_without_db
 def test_the_free_offer_count_is_qualified_once_its_evidence_expires(
-    client: TestClient, boundary: dict, monkeypatch: pytest.MonkeyPatch
+    client: TestClient, provider_boundary: dict, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Both arms, on the live endpoint, over the SAME unmodified rows.
 
     Nothing in the database moves between the two reads -- only the clock, by one
     second, across the strict ``age > window`` inequality. A count served without
     reference to a clock cannot respond to that.
+
+    The loop below ranges over EVERY free cell, so it is a rollup assertion and
+    takes the provider's boundary rather than one offer's. Read at a single
+    offer's boundary, the cell holding a sibling offer had already dropped its
+    qualified count to zero and the permit arm failed -- for a reason that was
+    about relationship ordering, not about the product.
     """
 
-    _at(monkeypatch, boundary["current_at"])
+    _at(monkeypatch, provider_boundary["current_at"])
     current = _cells(client.get("/catalogue/categories").json())
 
-    _at(monkeypatch, boundary["stale_at"])
+    _at(monkeypatch, provider_boundary["stale_at"])
     expired = _cells(client.get("/catalogue/categories").json())
 
     free_cells = [key for key, cell in current.items() if cell["free_offer_count"] > 0]
