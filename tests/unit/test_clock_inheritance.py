@@ -21,7 +21,6 @@ from __future__ import annotations
 
 import ast
 import inspect
-import json
 from datetime import date, timedelta
 from pathlib import Path
 
@@ -42,12 +41,13 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 #: Every function converted from an invented clock to an inherited one, with the
 #: name of the parameter that must now be supplied.
 #:
-#: This list is checked against the contract by
-#: ``test_every_converted_participant_is_pinned_here``. It previously held six
-#: entries while the contract claimed seven, and the missing one --
-#: ``reconcile_coverage`` -- could be re-optionalised WITHOUT an ``or`` fallback
-#: and survive green: the RELOCATOR shape, which forwards ``None`` onward rather
-#: than inventing locally, and which the source guard below cannot see.
+#: This list is checked for drift by
+#: :func:`test_every_clock_bearing_function_in_an_audited_module_is_accounted_for`.
+#: It previously held six entries while the contract claimed seven, and the
+#: missing one -- ``reconcile_coverage`` -- could be re-optionalised WITHOUT an
+#: ``or`` fallback and survive green: the RELOCATOR shape, which forwards
+#: ``None`` onward rather than inventing locally, and which the fallback-shape
+#: source guard below cannot see.
 PARTICIPANTS = [
     pytest.param(classify, "as_of", id="classify"),
     pytest.param(classify_offer, "as_of", id="classify_offer"),
@@ -247,6 +247,55 @@ _DEFERRED_INVENTORS = {
     "apps/api/app/publish/publisher.py": {"publish_candidate", "publish_scan"},
 }
 
+#: Functions in an audited module that REQUIRE a clock but were never conversion
+#: participants -- private helpers that were born taking the caller's moment.
+#:
+#: Measured, not assumed: at the time of writing the audited modules contain
+#: eleven functions with a required clock parameter, of which seven are pinned
+#: :data:`PARTICIPANTS`; these four are the remainder. They are listed rather
+#: than pattern-matched on the leading underscore so that a NEW private helper
+#: cannot join them silently -- it fails the closure test until someone decides
+#: which bucket it belongs in.
+_INTERNAL_CLOCK_REQUIRERS = {
+    "apps/api/app/classify/engine.py": {"_availability_reasons"},
+    "apps/api/app/publish/publisher.py": {"_build_conditions", "_resolve_offer", "_do_publish"},
+}
+
+
+def _clock_bearing_functions_in(rel: str) -> tuple[set[str], set[str]]:
+    """Names in ``rel`` taking a clock, split into (required, optional).
+
+    Read from the source rather than by importing, so a function that is never
+    imported by this module is still seen. A parameter counts as REQUIRED when it
+    has no default -- positional or keyword-only alike, since a keyword-only
+    parameter with no default is every bit as mandatory as a positional one.
+    """
+
+    tree = ast.parse((REPO_ROOT / rel).read_text(encoding="utf-8"), filename=rel)
+
+    required: set[str] = set()
+    optional: set[str] = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        args = node.args
+        positional = args.posonlyargs + args.args
+        defaulted = set()
+        if args.defaults:
+            defaulted = {a.arg for a in positional[len(positional) - len(args.defaults) :]}
+        defaulted |= {
+            kw.arg
+            for kw, default in zip(args.kwonlyargs, args.kw_defaults, strict=True)
+            if default is not None
+        }
+
+        for arg in positional + args.kwonlyargs:
+            if arg.arg not in _CLOCK_KWARGS:
+                continue
+            (optional if arg.arg in defaulted else required).add(node.name)
+
+    return required, optional
+
 
 def _enclosing_function(tree: ast.AST, lineno: int) -> str:
     best = "<module>"
@@ -395,8 +444,8 @@ def test_a_clock_argument_passes_the_inherited_moment_not_a_re_derived_one(rel: 
     )
 
 
-def test_the_participant_list_matches_the_contract() -> None:
-    """The pinned list must not silently drift from what the contract claims.
+def test_every_clock_bearing_function_in_an_audited_module_is_accounted_for() -> None:
+    """The pinned list must not silently drift from what the SOURCE contains.
 
     A Level-2 evaluator found the contract claiming SEVEN converted participants
     while this file pinned SIX. The unpinned one, ``reconcile_coverage``, could
@@ -405,15 +454,104 @@ def test_the_participant_list_matches_the_contract() -> None:
     and which the fallback-shape guard above cannot see.
 
     A list maintained by hand drifts. This makes the drift fail a test instead.
+
+    **Why this reads the source and NOT ``agent-state/current_contract.json``.**
+    It used to read that file and compare against
+    ``classification.PARTICIPANT_converted``. That was a real coupling with a
+    real cost: ``current_contract.json`` describes the slice CURRENTLY IN
+    FLIGHT and every builder is instructed to overwrite it wholesale, so a
+    permanent guard was reading a single-slot scratchpad. Two consecutive
+    builders had to notice the trap while planning and carry the block forward
+    verbatim; the third would eventually not, and the failure would surface as a
+    unit-test error with no code change to explain it. The same hazard has
+    ALREADY landed elsewhere: ``apps/api/app/ingest/config_sync.py`` still cites
+    "AMENDMENT 8 in ``agent-state/current_contract.json``", a section that no
+    longer exists in that file.
+
+    The remedy is not to manage the coupling but to remove it, and the honest
+    replacement is not a second hand-written list next to the first -- two lists
+    in one file are edited in one breath, which would leave the guard weaker
+    than the cross-artifact check it replaced. The durable oracle is THE SOURCE
+    ITSELF: derive every clock-bearing function in the audited modules and
+    require that each one is classified into exactly one bucket here.
+
+    That closes the original defect from both sides:
+
+    * drop a participant from :data:`PARTICIPANTS` and it appears in the derived
+      REQUIRED set with no bucket, so this fails;
+    * re-optionalise it as well -- the RELOCATOR move that survives every other
+      guard in this file -- and it appears in the derived OPTIONAL set without
+      being a documented deferral, so this still fails.
+
+    Deliberately NOT reintroduced: a rule of the form "overwrite the contract
+    file except for the parts you must not". That is precisely the invisible
+    coupling that caused the incident, and enforcing it would need a second
+    permanent test reading the same volatile file.
     """
 
-    contract = json.loads((REPO_ROOT / "agent-state" / "current_contract.json").read_text("utf-8"))
-    claimed = contract["classification"]["PARTICIPANT_converted"]
-    claimed_names = {entry.split("::", 1)[1].split(" ", 1)[0] for entry in claimed}
-    pinned_names = {p.id for p in PARTICIPANTS}
+    unclassified_required: list[str] = []
+    unclassified_optional: list[str] = []
+    pinned_missing_from_source: list[str] = []
+    stale_internal: list[str] = []
 
-    assert claimed_names == pinned_names, (
-        "current_contract.json and PARTICIPANTS disagree about what was converted.\n"
-        f"  claimed in contract but NOT pinned: {sorted(claimed_names - pinned_names)}\n"
-        f"  pinned but NOT claimed in contract: {sorted(pinned_names - claimed_names)}"
+    participants_by_module: dict[str, set[str]] = {}
+    for param in PARTICIPANTS:
+        func = param.values[0]
+        rel = Path(inspect.getsourcefile(func)).resolve().relative_to(REPO_ROOT).as_posix()
+        participants_by_module.setdefault(rel, set()).add(func.__name__)
+
+    # Found by mutation, not by reasoning: pinning a participant that lives
+    # OUTSIDE _AUDITED_MODULES made it invisible to the loop below, because the
+    # loop only ever visits audited modules. A participant with no source-level
+    # audit is half-guarded, so the two lists are required to agree on scope
+    # before anything else is checked.
+    unaudited = sorted(set(participants_by_module) - set(_AUDITED_MODULES))
+    assert not unaudited, (
+        "PARTICIPANTS pins a function from a module that is not audited:\n  "
+        + "\n  ".join(unaudited)
+        + "\n\nAdd the module to _AUDITED_MODULES so the source-level guards "
+        "cover it, or the pin buys only a signature check."
+    )
+
+    for rel in _AUDITED_MODULES:
+        required, optional = _clock_bearing_functions_in(rel)
+
+        pinned = participants_by_module.get(rel, set())
+        internal = _INTERNAL_CLOCK_REQUIRERS.get(rel, set())
+        deferred = _DEFERRED_INVENTORS.get(rel, set())
+
+        unclassified_required += [f"{rel}::{n}" for n in sorted(required - pinned - internal)]
+        unclassified_optional += [f"{rel}::{n}" for n in sorted(optional - deferred)]
+        pinned_missing_from_source += [f"{rel}::{n}" for n in sorted(pinned - required)]
+        stale_internal += [f"{rel}::{n}" for n in sorted(internal - required)]
+
+    # A participant pinned here but no longer REQUIRING a clock in source is the
+    # exact regression this file exists to catch, so it is named first.
+    assert not pinned_missing_from_source, (
+        "PARTICIPANTS pins a function that no longer requires a clock in source:\n  "
+        + "\n  ".join(pinned_missing_from_source)
+        + "\n\nEither the conversion was undone, or the function moved out of "
+        "_AUDITED_MODULES and lost its source-level guard."
+    )
+    assert not unclassified_required, (
+        "an audited module REQUIRES a clock in a function that is classified nowhere:\n  "
+        + "\n  ".join(unclassified_required)
+        + "\n\nPin it in PARTICIPANTS if it was converted, or list it in "
+        "_INTERNAL_CLOCK_REQUIRERS if it always required one. Leaving it "
+        "unclassified is how a converted function silently stops being guarded."
+    )
+    assert not unclassified_optional, (
+        "an audited module makes a clock OPTIONAL in a function that is not a "
+        "documented deferral:\n  "
+        + "\n  ".join(unclassified_optional)
+        + "\n\nAn optional clock lets a caller silently receive a SECOND moment. "
+        "Convert it, or add it to _DEFERRED_INVENTORS with the reason."
+    )
+    # Mirrors the both-directions rule on _DEFERRED_INVENTORS: an allowance must
+    # not outlive the thing it documents, or the bucket rots into a blanket
+    # exemption nobody rechecks.
+    assert not stale_internal, (
+        "_INTERNAL_CLOCK_REQUIRERS names a function that no longer requires a clock:\n  "
+        + "\n  ".join(stale_internal)
+        + "\n\nRemove it so this guard keeps covering what it claims to cover."
     )
