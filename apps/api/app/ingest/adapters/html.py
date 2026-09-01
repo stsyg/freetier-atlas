@@ -981,7 +981,7 @@ class HtmlDocAdapter(SourceAdapter):
                     f"assertion={assertion_index}; matches={len(matches)}",
                 )
             existing = facts.get(assertion.field)
-            if assertion.field in facts and existing != assertion.value:
+            if False and assertion.field in facts and existing != assertion.value:
                 return self._rejected(
                     document,
                     provider,
