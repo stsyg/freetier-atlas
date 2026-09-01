@@ -5527,3 +5527,31 @@ Figures re-measured at the rebased tree, NOT carried forward:
 - **Head:** 2746 passed, 302 skipped, exit 0 — delta **+1** (the one new guard). Skips unchanged at 302, so no DB/stack-gated test was added.
 - **Mutation A at the new base still kills the named guard:** injecting `(REPO_ROOT / "agent-state/current_contract.json").read_text()` into a permanent test makes `test_no_permanent_test_reads_a_per_slice_agent_state_file` FAIL (exit 1), offender named by file:line.
 - `ruff check .` → All checks passed! ; `ruff format --check .` → 246 files already formatted (the base grew 244→246 with #116).
+
+---
+
+## 2026-09-01 — apps/web ESLint gate made load-bearing (`--max-warnings 0`)
+
+**Defect.** `.github/workflows/ci.yml` step `ESLint (apps/web)` runs `npm run lint`; `apps/web/package.json` defined `"lint": "eslint ."` with no `--max-warnings`. ESLint exits 0 when only warnings exist, so `react-refresh/only-export-components` (`warn`) — and every future warn-level rule — could not fail CI. Latent defect disclosed by the author of #81.
+
+**Fix.** `apps/web/package.json` lint script → `eslint . --max-warnings 0`. No change to `.github/workflows/ci.yml` (protected), no rule downgraded, no `eslint-disable`, no `ignores` addition, no non-zero warning allowance.
+
+**Measure before/after (by rule).** Clean tree: 0 warnings / 0 errors both before and after — no pre-existing warnings to fix. Contrast proof with a deliberate `react-refresh/only-export-components` violation (temp `src/__probe_refresh.tsx`, since removed):
+- OLD script `eslint .` with violation present → **exit 0** (defect: gate green while rule violated).
+- NEW script `eslint . --max-warnings 0` with same violation → **exit 1**, output names `react-refresh/only-export-components` and `ESLint found too many warnings (maximum: 0)`.
+- NEW script, violation removed → **exit 0**.
+
+**Other apps/web gates (local):** typecheck 0, test 0 (141 passed), build 0, format:check 0.
+
+**Lockfile boundary.** Installed with `npm ci` only. `apps/web/package-lock.json` hash `98f786c2bb0d…` and root `package-lock.json` `737f99159e58…` — both byte-identical to `origin/main` baseline. Never ran `npm install/i/update/audit fix`.
+
+### Addendum — rebased onto 93325bc5 (PR #117) and re-measured; a pre-existing audit failure surfaced
+
+Orchestrator moved main to `93325bc5` (PR #117, the agent-state coupling census). Rebased onto it. Conflicts only in the two artefacts both slices touch: kept BOTH `progress.md` appends in chronological order (#117's block, then the ESLint block) and kept `current_contract.json` as mine (single-slot). Diff vs `origin/main` is now clean: 3 files, `progress.md` net +17, `package.json` the one-line change, no #117 reverts, no protected path touched.
+
+Figures re-measured at the rebased tree (NOT carried forward):
+- `npm run lint` (clean tree, `eslint . --max-warnings 0`): exit 0, 0 warnings.
+- `npm run typecheck`: exit 0. `npm run format:check`: exit 0. `npm run test`: exit 0 (141 passed, 9 files). `npm run build`: exit 0.
+- `apps/web/package-lock.json` = `98f786c2bb0d…`, root = `737f99159e58…` — both byte-identical to `origin/main` (git diff of both lockfiles vs origin/main = 0 lines).
+
+**CI: 5/6 green; Dependency audit FAILED, and it is a PRE-EXISTING main-wide condition, not caused by this slice.** `npm audit --audit-level=high` in apps/web reports one high-severity `browserslist <=4.28.6` advisory (GHSA-c83g-rgw3-j3cx, GHSA-73wf-gq98-2v4g), reproducible locally with the SAME exit 1. `browserslist` is pinned in `origin/main`'s own lockfile and this branch's lockfiles have ZERO diff vs `origin/main`, so main itself fails this audit right now — a freshly-published advisory, not a regression from the one-line lint change. The only offered remedy is `npm audit fix`, which is FORBIDDEN on this machine (it rewrites lockfile `resolved` URLs to the internal feed, leaking internal infra into a public repo). Reported, not fixed — bumping browserslist is a separate slice with its own lockfile change and evaluation.

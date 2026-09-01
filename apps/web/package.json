@@ -13,7 +13,7 @@
     "build": "tsc -b && vite build",
     "typecheck": "tsc -b",
     "preview": "vite preview",
-    "lint": "eslint .",
+    "lint": "eslint . --max-warnings 0",
     "format:check": "prettier --check .",
     "format": "prettier --write .",
     "test": "vitest run",

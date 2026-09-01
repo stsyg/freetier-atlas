@@ -1,52 +1,47 @@
 {
-  "feature_id": "F-GUARD-AUDIT",
-  "slice": "census-per-slice-agent-state-couplings",
-  "title": "Census every PERMANENT test that reads a per-slice agent-state/ artefact for its CONTENTS, fix genuine couplings, and add a durable guard against regrowth",
-  "branch": "stsyg-census-agent-state-couplings",
-  "base_commit": "69d989d4",
-  "objective": "PR #106 removed ONE coupling: a permanent test (tests/unit/test_clock_inheritance.py) read agent-state/current_contract.json for its CONTENTS, a single-slot file overwritten every slice. That census was scoped to that one file. This slice applies the same discriminator (reads CONTENTS = coupling vs asserts EXISTS/PARSES = durable) to every other agent-state/ artefact, fixes only genuine couplings, and installs a load-bearing guard so the shape cannot silently regrow.",
-  "population_measured": {
-    "method": "git ls-files, then per-file substring scan for each artefact name, then AST read of every test hit; plus a directory-walk/iterdir/rglob scan across tests/ for indirect access.",
-    "current_contract.json": {"files_mentioning": 21, "tests_reading_contents": 0, "note": "was 1, fixed by #106"},
-    "evaluation.json": {"files_mentioning": 14, "tests_reading_contents": 0},
-    "feature_list.json": {"files_mentioning": 19, "tests_reading_contents": 0, "note": "durable, protected; shape check in test_repo_baseline is correct"},
-    "progress.md": {"files_mentioning": 19, "tests_reading_contents": 0},
-    "agent-state/evaluations/": {"files_mentioning": 2, "tests_reading_contents": 0},
-    "agent-state (any string)": {"files_mentioning": 27, "tests_reading_contents": 0}
+  "feature_id": "F-CI-GATE",
+  "slice": "eslint-web-warning-gate",
+  "title": "Make apps/web's ESLint gate able to fail on a warning-level rule via --max-warnings 0",
+  "branch": "stsyg-eslint-web-warning-gate",
+  "base_commit": "69d989d4eb25a44d8f8a3c12a5a3791d82f887a9",
+  "objective": "CI step 'ESLint (apps/web)' runs 'npm run lint', which was 'eslint .' with no --max-warnings. ESLint exits 0 when only warnings exist, so react-refresh/only-export-components (warn) and every future warn-level rule could not fail the build. This slice adds --max-warnings 0 to the lint script so the gate is load-bearing, fixing any warnings that surface (none did).",
+  "in_scope": [
+    "apps/web/package.json lint script: 'eslint .' -> 'eslint . --max-warnings 0'.",
+    "Measuring before/after warning counts by rule.",
+    "Proving the gate is now load-bearing with a deliberate warn-level violation and exit-code contrast."
+  ],
+  "out_of_scope": [
+    "Editing .github/workflows/ci.yml (protected).",
+    "Weakening any rule (no warn->off, no eslint-disable, no ignores, no non-zero allowance).",
+    "Any lockfile change or npm install/i/update/audit fix.",
+    "Marking any feature passing."
+  ],
+  "acceptance_criteria": [
+    "Clean tree: npm run lint exits 0 with the new script.",
+    "With a deliberate react-refresh/only-export-components violation: OLD script exits 0 (the defect), NEW script exits non-zero and names the rule.",
+    "Both package-lock.json files byte-identical to origin/main baselines (98f786c2bb0d, 737f99159e58).",
+    "apps/web typecheck, test, build, format:check all pass locally."
+  ],
+  "measurements": {
+    "warnings_before_by_rule": "0 (clean tree)",
+    "warnings_after_by_rule": "0 (clean tree)",
+    "gate_load_bearing_proof": {
+      "probe": "src/__probe_refresh.tsx exporting a non-component function alongside a component (removed after test)",
+      "old_script_exit_with_violation": 0,
+      "new_script_exit_with_violation": 1,
+      "new_script_exit_clean": 0,
+      "rule_named": "react-refresh/only-export-components"
+    },
+    "other_gates": { "typecheck": 0, "test": "0 (141 passed)", "build": 0, "format:check": 0 }
   },
-  "hits_classified": [
-    "tests/test_repo_baseline.py: existence+parse of three files and a shape check on the durable/protected feature_list.json. Correct as written; untouched.",
-    "tests/unit/test_clock_inheritance.py: reads Python source via AST only; current_contract.json in prose (the #106 remedy). No read.",
-    "tests/unit/test_assertion_capture_grounding.py: reads provider YAML + capture fixtures; one docstring provenance citation to an evaluations/ file. No coupling.",
-    "tests/integration/test_ingest_sync_savepoint.py: one docstring citation to a vanished AMENDMENT 8 in current_contract.json. No runtime read."
-  ],
-  "finding": "ZERO further runtime couplings. The single coupling of this shape was already removed by #106.",
-  "changes": [
-    "Rewrote two dangling PROSE pointers that cited 'AMENDMENT 8 in agent-state/current_contract.json' (a section that no longer exists in the overwritten single-slot file): tests/integration/test_ingest_sync_savepoint.py and apps/api/app/ingest/config_sync.py now explain the declined check on their own. Updated test_clock_inheritance.py's cross-reference to match.",
-    "Added tests/unit/test_no_permanent_test_reads_a_per_slice_agent_state_file.py: an AST guard that fails any permanent test reading a per-slice agent-state/ artefact for its contents. The per-slice file set is derived from the tree at test time (not hand-maintained); feature_list.json is exempt as durable."
-  ],
-  "proof_obligations": {
-    "mutation_A": "Injecting (REPO_ROOT / 'agent-state/current_contract.json').read_text() into a permanent test makes test_no_permanent_test_reads_a_per_slice_agent_state_file FAIL (exit 1), named offender by file:line.",
-    "mutation_B": "open(...), json.loads(...read_text()), and progress.md reader forms each also FAIL the same named guard.",
-    "mutation_C": "A feature_list.json read (exempt) and a bare prose mention each still PASS -- the guard is an AST content-read check, not a name-ban.",
-    "mutation_D": "Breaking the derivation to an empty set trips the guard's anti-vacuous self-check, so it cannot pass vacuously.",
-    "baseline_executed": "Re-measured after rebase onto 69d989d4. New base: 2745 passed, 302 skipped, exit 0. Head: 2746 passed, 302 skipped, exit 0 -- delta +1 (the one new guard); skips unchanged, so no DB/stack-gated test added. Touched files collected 52. pytest exit 5 watched for, did not occur.",
-    "lint_format": "ruff check -> All checks passed! ; ruff format --check -> 246 files already formatted (at rebased tree)."
-  },
-  "not_verified": [
-    "The 292 DB/stack-gated integration tests: not run locally (no DATABASE_URL, no stack). Covered by CI on the PR.",
-    "Node/Web CI gates: not run locally by design -- this machine's npm registry is an internal feed and npm ci/install could write internal resolved URLs into a public lockfile. This slice touches no JavaScript. Covered by CI."
-  ],
   "hard_rules_acknowledged": [
-    "Draft PR. Not merged.",
-    "No feature marked passing; agent-state/feature_list.json untouched.",
-    "agent-state/progress.md appended to only, proved by byte-prefix comparison against HEAD.",
-    "agent-state/current_contract.json taken wholesale (single-slot).",
-    "No npm install/i/update/audit fix.",
-    "No guard weakened; the two edits to permanent tests are a prose fix and a pure addition.",
-    "Rebased on origin/main (69d989d4, PR #116) before pushing; re-measured, figures not carried forward from the old base."
+    "PR opened, not merged.",
+    "ci.yml untouched.",
+    "Installed with npm ci only; never npm install/i/update/audit fix.",
+    "Both lockfiles byte-identical to baseline, verified via git hash-object.",
+    "No rule weakened.",
+    "agent-state/progress.md appended to only; current_contract.json replaced (single-slot)."
   ],
   "required_evaluation_level": 1,
-  "required_evaluation_level_reason": "Test-and-prose-only change with no product behaviour touched: one new permanent test, two docstring/comment rewrites, one cross-reference update. Not a provider adapter, schema, security boundary, or classification path.",
   "evaluator_disposition": "not yet evaluated"
 }
