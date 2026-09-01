@@ -1,151 +1,114 @@
 {
-  "feature_id": "F008",
-  "slice": "bucket-stale-flag-latest-version",
-  "title": "Assess the (provider, category) bucket stale flag on the latest version, not every ancestor",
-  "branch": "stsyg-bucket-stale-flag-latest-version",
-  "base_commit": "ab3dfc00bcb9fe66685d1da0c0e272943bc0b79a",
+  "feature_id": "F-GUARD-AUDIT",
+  "slice": "five-not-reached-guards-audit",
+  "title": "Read the assertions of the five guards PR #77 marked NOT REACHED, classify them by failure direction, and pin what is measurably unreached",
+  "branch": "stsyg-five-not-reached-guards-audit",
+  "base_commit": "6e14a4714897efc951605d06762ba3819d2df18c",
+  "objective": "PR #77 classified 17 repository-owned guards and deliberately marked five NOT REACHED: it read their names, locations and purpose but NOT their assertions. This slice reads the assertions, classifies each by failure direction (A = wrongly reject, B = wrongly accept), and establishes reachability by MUTATION rather than by coverage. Where a guard does not bite, the hole is REPORTED and NOT repaired. Where a guard does bite, tests are added only to pin behaviour that already exists.",
 
-  "objective": "apps/api/app/read_api/service.py:693 sets the bucket-wide has_stale_evidence flag with `any(v.id in stale_versions for v in offer.versions)` -- EVERY version of every published offer, superseded ancestors included. Because coverage.derive_coverage_state returns 'stale' before it can return 'verified_free', one stale ancestor version anywhere in a bucket costs EVERY offer in that bucket its verified_free badge on the public catalogue. The offer's actual claim rests on queries.latest_version(offer); PR #95 settled that basis and F008 S7 applied it to the counts on this very row. The flag never got that treatment.",
-
-  "measurements_i_made_rather_than_inherited": {
-    "note": "The brief supplied provisional figures. These are mine, generated independently. Where they differ, mine are used.",
-    "line_693_text_confirmed": "flag[1] = flag[1] or any(v.id in stale_versions for v in offer.versions)",
-    "latest_version_call_sites_in_service_py": {
-      "method": "AST walk over ast.Call nodes, NOT a string count -- a string match can be a docstring, a comment, or a quotation of the thing being retracted",
-      "total_call_sites": 9,
-      "inside_serialize_category_matrix": [677],
-      "elsewhere_in_file": 8,
-      "population_total_call_nodes_in_file": 206,
-      "brief_said": "9 elsewhere",
-      "disagreement": "MINE DIFFERS: 8 elsewhere, not 9. The 9th call is line 677, INSIDE the loop being repaired. This strengthens the case rather than weakening it: the function already computes `latest` (677) and `latest_id` (678), appends latest_id to bucket_versions (679), and then line 693 ignores it."
-    },
-    "second_inconsistency_not_named_in_the_brief": "Within serialize_category_matrix itself, the cell's DISPLAYED evidence_currency (line 726) is computed from bucket_versions, which holds LATEST ids only (line 679), while has_stale_evidence (line 693) is computed from ALL versions. The same cell of the same JSON response can therefore report evidence_currency = current and derived_state = 'stale' simultaneously. This is one row contradicting itself, which is a sharper demonstration than disagreement with 8 other call sites.",
-    "why_ancestors_are_in_the_set": "queries.fetch_stale_offer_version_ids calls fetch_evidence_currency(session, now=now) with NO offer_version_ids scope, so the returned frozenset spans every offer version in the database, superseded ancestors included. Both halves of the mechanism are confirmed, not assumed.",
-    "public_badge_confirmed": "apps/web/src/catalogue/CategoryMatrix.tsx:174 renders derived_state into the cell title text and :185 emits it as a data-derived-state attribute. This is user-facing state, hence Level 2.",
-    "precedence_confirmed": "app/read_api/coverage.py derive_coverage_state: 'stale' returned at lines 190-191, 'verified_free' at 192-193."
-  },
-
-  "predictions_frozen_before_any_measurement": {
-    "protocol": "Recorded in writing BEFORE the measurement harness was run, including the arms I am confident about. A confident prediction that fails is the most informative result available. The baseline suite (2995 passed / 3 skipped / 2998 collected) was taken before this file was written; no measurement of the DEFECT had been run at the time these were recorded.",
-    "P1": {"confidence": "HIGH", "claim": "A real publish of the committed corpus yields ZERO offers with >= 2 versions.", "mechanism": "publisher.py:377 returns early with version_created=False when prior.content_hash == content_hash, and a single pass over fixed committed fixtures cannot change the hash. version_number only increments at publisher.py:389."},
-    "P2": {"confidence": "HIGH", "claim": "Therefore the clock sweep finds ZERO bucket derived_state differences between the two rules at EVERY clock, and the defect is LATENT rather than live."},
-    "P3": {"confidence": "MEDIUM", "claim": "Publishing the committed corpus TWICE with unchanged fixtures still yields exactly 1 version per offer, exercising the content-hash short-circuit directly rather than by inference."},
-    "P4": {"confidence": "MEDIUM", "claim": "A second pass with CHANGED content does create version_number = 2 and does reproduce the defect, establishing that the code path is reachable in production even though the corpus does not exercise it."},
-    "P5": {"confidence": "LOW", "claim": "At least one corpus bucket currently derives verified_free, so the blast radius is non-zero. Falsifiable: the committed fixtures may all be past their refresh window at real now, in which case every bucket is already stale for an unrelated reason and the blast-radius claim goes UNMEASURED and must be reported as such."},
-    "P6": {"confidence": "MEDIUM", "claim": "The defect-restoring mutation will be killed ONLY by the new PERMIT test, not by any pre-existing test, because no existing fixture in the repository is multi-version. If a pre-existing guard kills it, that is investigated before the kill is accepted -- accepting a kill by a pre-existing guard is how a holed guard ships called verified."}
-  },
-
-  "measure_first_gate": {
-    "question": "Does ANY real provider's derived_state differ TODAY between the current all-versions rule and a latest-version rule?",
-    "why_it_gates": "Nobody has measured this. If no real bucket is affected the slice is a latent-correctness fix plus a guard and must SAY SO PROMINENTLY. If real buckets ARE affected it is a live defect on a public badge and must be reported to the owner BEFORE any implementation.",
-    "M1_version_census": "Real ingest+publish of all 7 configs under config/examples/providers against their committed tests/fixtures/ingest fixtures, via build_fixture_fetcher + run_provider_scans(publish=True). VACUITY GUARD FIRST: assert published offers > 0, because 'no difference found' over an empty catalogue proves nothing and will be reported as nothing rather than as reassurance. Then the distribution of versions-per-offer, stating the population.",
-    "M2_clock_sweep_diff": "For each clock in a sweep (every distinct fetched_at + window boundary +/- 1s, plus far-past and far-future), compute for every (provider, category) bucket the derived_state under the current all-versions rule and under the proposed latest-only rule, and report every difference WITH DIRECTION (stale -> verified_free is wrongly WITHHELD; verified_free -> stale is wrongly ASSERTED). Both columns are TRANSCRIBED from the ORM graph rather than imported -- comparing a function to itself would look rigorous and prove nothing -- and the current-rule column is then cross-checked against the shipped serialize_category_matrix output. A mismatch there invalidates the harness, not the code. Population reported as buckets x clocks.",
-    "M3_reachability": "Two real publish passes where the second pass's content differs, producing version_number = 2. EXPLICITLY LABELLED CONSTRUCTED and quarantined in its own section: it establishes that the code path is reachable as providers change terms, and it CANNOT answer 'does this happen today'. Synthetic data is admissible for testing the guard and inadmissible as evidence about the world.",
-    "fork_decided_in_advance": {
-      "no_real_bucket_affected": "Lead the report with LATENT, not live. Slice becomes a consistency fix plus a guard.",
-      "real_buckets_affected": "STOP. Report providers, categories and direction to the owner before implementing anything."
-    }
-  },
-
-  "design_decision_one_rule_or_two": {
-    "decision": "ONE rule. The bucket flag is assessed on queries.latest_version(offer), the same basis as every other currency assessment in the codebase.",
-    "argument_1_the_code_contradicts_its_own_docstring": "CoverageSignals.has_stale_evidence is documented as 'At least one SOURCE BACKING THIS PAIR is past its refresh window'. A superseded version does not back the pair; the pair's claim rests on current versions. The fix makes the code mean what it already says.",
-    "argument_2_self_contradiction_not_merely_inconsistency": "See second_inconsistency_not_named_in_the_brief above. One cell, two answers about which versions back the claim.",
-    "argument_3_the_conservatism_defence_fails_here": "fetch_stale_offer_version_ids documents itself as deliberately conservative because 'overstating staleness only ever makes the catalogue admit uncertainty, which is the direction the product errs in'. I agree with the brief that this is weaker than it looks, and for a reason worth stating precisely: conservatism concerns uncertainty about THE CURRENT CLAIM. A superseded version carries no uncertainty about the current claim -- it is evidence about a claim that has been REPLACED. Importing it is a category error wearing caution's clothes. It is also not conservative in EFFECT: because stale outranks verified_free in derive_coverage_state, this 'caution' WITHHOLDS a true free claim from every offer in the bucket, and coverage.py has already ruled on that direction in MATERIAL_MISMATCH_DISPLAY -- 'Suppressing a true free claim is a defect too.' A wrongly-withheld free offer is a defect of equal severity to a wrongly-asserted one, and it is the direction a reader cannot see, because an omission leaves no trace on the page.",
-    "argument_4_precedent": "PR #95 settled that an offer's claim is assessed on latest_version(offer), with rollups taking currency.for_versions([latest ids]).worst(). F008 S7 (PR #99) applied that basis to free_offer_count / current_free_offer_count on this same row. This is the flag half of a fix already half-landed.",
-    "scope_discipline_the_axis_NOT_changed": "There are TWO distinct coarsenesses here and the S7 docstring blurs them. (a) ACROSS OFFERS in a bucket: one offer whose LATEST version is stale marks the whole cell. That is what bucket-wide properly means; it is legitimate, deliberate and DELIBERATELY UNTOUCHED by this slice. (b) ACROSS VERSIONS within one offer: a superseded ancestor marks the offer. That is the defect. Only (b) changes.",
-    "docstring_obligation": "service.py lines 651-654 currently assert that the coarser rule 'is unchanged by this slice; its behaviour is deliberately not touched'. That sentence becomes FALSE the moment this lands, so rewriting it is part of the change, not an optional tidy. It will be rewritten to draw the (a)/(b) distinction rather than to delete the paragraph."
-  },
-
-  "in_scope": [
-    "apps/api/app/read_api/service.py -- the flag expression at line 693 and the docstring paragraph it falsifies",
-    "tests/unit/test_read_api.py -- PERMIT and WITHHOLD arms, placed beside the existing S7 permit/withhold pair",
-    "one integration arm proving the behaviour end-to-end on a genuine two-version publish",
-    "agent-state/current_contract.json (this file, single-slot, taken wholesale)",
-    "agent-state/progress.md (append-only)"
+  "what_this_slice_is_not": [
+    "It is not a repair. No guard's matching rule, admission criterion, accept set or reject set is changed. apps/api/app/ingest/adapters/html.py, apps/api/app/ingest/fetch.py, apps/api/app/ingest/trust.py, apps/api/app/publish/gate.py, apps/api/app/publish/publisher.py, apps/api/app/ingest/reconcile.py and scripts/refresh_secrets_baseline.py are all byte-identical to base, verified by git blob hash.",
+    "It does not mark any feature passing. agent-state/feature_list.json is untouched (blob 154de1fef2ba).",
+    "It does not touch .github/workflows/ci.yml, scripts/check_urls.py, tests/unit/test_url_allowlist.py, .secrets.baseline, or either lockfile.",
+    "No npm install / i / update / audit fix was run. No Node gate was executed at all (see not_verified)."
   ],
 
-  "out_of_scope_zero_diff": [
-    "agent-state/feature_list.json -- blob 154de1fef2ba, NOT edited, no feature marked passing",
-    ".github/workflows/ci.yml, scripts/check_urls.py, tests/unit/test_url_allowlist.py, .secrets.baseline, package-lock.json, apps/web lockfile",
-    "the across-offers bucket-wide axis (a) described above",
-    "fetch_stale_offer_version_ids itself -- its documented semantics are relied upon by other surfaces and an integration test transcribes them; narrowing it there would change behaviour repo-wide and needs its own evidence and slice",
-    "adding order_by to any relationship",
-    "npm install / i / update / audit fix -- never run; npm ci only"
-  ],
+  "the_five_guards_as_named_by_pr_77": {
+    "note": "PR #77's inventory row 16 names the runtime staleness gate as app/ingest/trust.py. That file contains NO staleness logic; it is the community/official trust separation boundary. The runtime staleness gate is assess_staleness in app/ingest/reconcile.py, consumed by publisher._build_conditions. Both were audited rather than choosing between them, because classifying from a name is the precise error this slice exists to attack.",
+    "1_baseline_refresher": "scripts/refresh_secrets_baseline.py",
+    "2_provider_assertion_evidence_floor": "apps/api/app/ingest/adapters/html.py",
+    "3_fetch_address_validation": "apps/api/app/ingest/fetch.py",
+    "4_runtime_staleness_gate": "app/ingest/reconcile.py assess_staleness + publisher._build_conditions (NOT trust.py); trust.py audited separately",
+    "5_publication_gate": "apps/api/app/publish/gate.py"
+  },
 
-  "acceptance_criteria": [
-    "AC1 MEASURE FIRST reports before any production edit: whether any real provider bucket differs today, which, and in which direction, with the population stated beside every count.",
-    "AC2 The vacuity guard fires or passes explicitly: a 'no difference' result over zero published offers is reported as proving nothing.",
-    "AC3 PERMIT ARM: a bucket whose offers' latest versions are all current, but which contains a stale superseded ancestor version, derives 'verified_free'. This test FAILS at base commit ab3dfc00 and passes after the fix.",
-    "AC4 WITHHOLD ARM: a bucket whose LATEST version is genuinely stale still derives 'stale'. Passes both before and after, and is proven load-bearing by its own mutation rather than asserted to be.",
-    "AC5 Mutation M-orig restores the ORIGINAL DEFECT as valid code with correct arity (not an arity break) and is KILLED, with the killing test id NAMED.",
-    "AC6 Mutation M-over ('or False') is KILLED by the WITHHOLD arm, demonstrating the fix cannot over-correct into wrongly asserting freshness.",
-    "AC7 Every mutation run asserts its search text is PRESENT before substitution and ABORTS if absent, reports collected N > 0, and treats pytest exit 5 as nothing-collected.",
-    "AC8 If any mutation is killed by a PRE-EXISTING guard, that is investigated and reported rather than accepted as confirmation.",
-    "AC9 Full suite after the change shows a delta equal to exactly the tests added, against the recorded baseline.",
-    "AC10 The across-offers axis is shown to be unchanged: a bucket with a second offer whose latest version is stale still derives 'stale'.",
-    "AC11 agent-state/progress.md is appended to and proven append-only by raw byte-prefix comparison PLUS a flipped-byte negative control demonstrating the check can fail.",
-    "AC12 The database container and its volume are removed with EXACT-NAME filters and their absence verified, with the exact names reported.",
-    "AC13 (ADDED after Level-2 round 1 REJECTED the slice) An UNCHECKED latest version must not discharge a stale ancestor. fetch_stale_offer_version_ids reports only stale=True versions, so a version with no checkable fetch time is absent from that set for the OPPOSITE reason; testing absence alone reads 'we could not look at all' as permission and promotes the bucket to verified_free on unsupported evidence. The flag must fail closed on BOTH shapes of non-currency, via is_publishable_free_claim.",
-    "AC14 (ADDED, found by the builder while reproducing AC13) Under NO_CURRENCY every anchor resolves to UNCHECKED, so an un-clocked caller must degrade to exactly the pre-slice all-versions behaviour rather than silently acquiring the more permissive rule. serialize_category_matrix is called with no currency argument by existing callers, so this is a live path, not a hypothetical.",
-    "AC15 (ADDED) The rule must be provably one-directional: it may only ever CLEAR a flag the all-versions rule set, never set one it left clear. Asserted exhaustively over the four (ancestor stale?, latest currency) combinations rather than sampled."
-  ],
-
-  "verification_method": {
-    "database": "Own PostgreSQL, container fta-bucketstale-pg, volume fta-bucketstale-vol, host port 55440 probed free before use (5432 is freetier-atlas-postgres-1, 55432 is ftci-pg). Seeded separately from the suite's DB.",
-    "environment_preconditions_asserted_not_announced": [
-      "A1 docker inspect .State.Running == true (exact-name filter)",
-      "A2 pg_isready exit code 0, polled, CHECKED",
-      "A3 a real SELECT 1 through SQLAlchemy over the EXACT DATABASE_URL the tests use",
-      "A4 alembic upgrade head exit code 0",
-      "A5 required tables present in information_schema"
-    ],
-    "why": "A CREATE DATABASE with an unchecked exit code once printed 'ready', every integration test then failed on the missing DB, and the harness read that as a KILL. A false KILL confirms whatever you hoped.",
-    "baseline_shown_to_have_executed": "2995 passed, 3 skipped, 2998 collected, exit 0, recorded BEFORE any edit. Not merely exit 0: 2995 tests demonstrably executed, and only 3 skipped, so the integration layer really ran against this database.",
-    "commands": [
-      "python -m pytest -q",
-      "python -m pytest tests/unit/test_read_api.py -q",
-      "python -m ruff check .",
-      "python -m ruff format --check ."
+  "method": {
+    "primary_instrument": "MUTATION, not name-grep and not coverage. A name-grep answers 'who calls this symbol', not 'what guards this behaviour'; executed-and-unasserted is worse than never-executed because coverage reports it green while deleting the guard fails no test.",
+    "every_mutation_restores_the_original_defect": "No mutation deletes an argument or breaks arity. Each one re-opens the specific hole its guard exists to close, and the killing test node ids are recorded so a kill by a DIFFERENT guard is never accepted as evidence for the one under test.",
+    "baseline_shown_to_have_executed": "Round 1: exit 0, 3006 collected, 3006 passed, recorded BEFORE any edit. Round 2 (after the new tests): exit 0, 3031 collected, 3031 passed. pytest exit 5 is treated as NOTHING COLLECTED and aborts the run; a run collecting 0 is never read as a pass.",
+    "anchor_preflight": "Every mutation's search text is asserted to match EXACTLY ONCE before it is applied; a missing anchor ABORTS, because an unapplied mutation reads exactly like a surviving one. 22 of 22 (round 1) and 9 of 9 (round 2) matched exactly once.",
+    "restoration_proved": "Every target file's git blob hash is compared before and after; all 31 mutations restored byte-exact, and git status is clean of production-file changes.",
+    "structure_over_phrase": "The conflicting_assertion branch question was settled by temporarily tagging the two detail strings and driving both input shapes, and by an ast walk over _apply_assertions -- not by counting tokens.",
+    "environment_precondition_asserted_not_announced": [
+      "Own PostgreSQL: container fta-guardaudit-pg, volume fta-guardaudit-pgdata, port 55440 probed free before use, bound to 127.0.0.1, seeded separately from any other stack.",
+      "Reachability asserted by executing 'select version()' from the venv python and reading a bare exit code, not by reading a docker status line.",
+      "The integration suite is asserted to have RUN rather than skipped: 294 integration tests passed; without DATABASE_URL every one of them skips, and a skipped suite would have read as a KILL for every staleness mutation."
     ]
   },
 
-  "migration_and_data_implications": "None. No schema change, no migration, no write. app.read_api holds a reads-and-never-writes invariant and this slice does not breach it. The derivation remains computed on demand and unstored, per decision Q11 -- a stored projection would become a second source of truth that silently goes stale, which is the failure the stale state exists to expose.",
+  "in_scope": [
+    "Read and quote the assertions of all five guards plus trust.py.",
+    "Classify each by failure direction and establish reachability by mutation.",
+    "ADD tests that pin CURRENT behaviour where a mutation proved a guard does not bite.",
+    "Report, and do not repair, any guard that does not bite."
+  ],
+
+  "out_of_scope": [
+    "Changing what any guard matches, accepts or rejects. Three of the five sit in mandatory Level-2 categories (provider adapters and evidence extraction; publication decisions) and one is a security boundary.",
+    "Removing the structurally dead second conflicting_assertion branch in _apply_assertions. It is reported. Deleting a refusal from an evidence-extraction path is an owner decision.",
+    "Any Node-side gate, for the reason recorded in not_verified.",
+    "Marking any feature passing."
+  ],
+
+  "acceptance_criteria": [
+    "Each of the five guards has its assertion QUOTED, a failure direction assigned from that assertion rather than from its name, and a REACHED / NOT REACHED verdict established by mutation with the killing test named.",
+    "Every guard reported as reached names at least one test that goes red when its defect is restored.",
+    "Every guard reported as NOT reached survived a defect-restoring mutation against the whole tree, with the baseline shown green and non-empty first.",
+    "Each added test file asserts BOTH directions: a refusing arm and a permitting arm differing in exactly one input, so it cannot pass against code that refuses everything.",
+    "Every added test is shown to BITE by re-running the mutation it was written for and observing it go from SURVIVED to KILLED, naming the killing test.",
+    "No production file changes. Byte-identity proved by git blob hash.",
+    "Errors made during the slice are reported as prominently as the verdict."
+  ],
+
+  "verification_method": {
+    "database": "Own PostgreSQL 16, container fta-guardaudit-pg, volume fta-guardaudit-pgdata, host port 55440 (probed free; the repo default 5432 and the previously used 55432 were both already allocated). Removed with exact-name ^...$ filters at end of slice, because Docker's default filter is a SUBSTRING match.",
+    "commands": [
+      "python -m venv .venv && .venv/Scripts/python -m pip install -e \".[dev]\"   (scripts/bootstrap-dev.ps1 NOT used: it runs npm install, which is forbidden here)",
+      ".venv/Scripts/python -m pytest tests/unit -q -p no:randomly",
+      ".venv/Scripts/python -m alembic upgrade head   (against the audit database only)",
+      ".venv/Scripts/python -m pytest tests/integration -q -p no:randomly",
+      ".venv/Scripts/python -m pytest tests -q -p no:randomly   (whole-tree selector used for every mutation)",
+      ".venv/Scripts/python -m ruff check . && .venv/Scripts/python -m ruff format --check ."
+    ]
+  },
+
+  "migration_and_data_implications": "None. No schema change, no migration, no production write. The audit database is created, migrated and destroyed inside the slice.",
 
   "security_privacy_portability_z0": {
-    "security": "No boundary, secret, auth or input-handling change. No user-controlled URL. No network access added.",
+    "security": "apps/api/app/ingest/fetch.py is a security boundary and was NOT modified. Its guards were exercised by mutation only, with every mutation restored byte-exact. No security check was weakened, suppressed or relaxed; no allowlist entry was added. Where a mutation survived, the finding is reported rather than repaired.",
     "privacy": "No personal data touched.",
-    "portability": "No new dependency, no provider-specific logic, no mandatory managed-cloud service. PostgreSQL remains the only mandatory stateful service.",
-    "z0": "DIRECTLY MATERIAL and the reason this is Level 2. The change can only ever move a bucket FROM 'stale' TO a state the evidence supports, and only when the latest version's evidence is current. It cannot cause an offer whose CURRENT evidence is expired to be presented as free -- that path is unchanged and is guarded by AC4. The zero-cost-safety risk of this slice is over-correction, which is why the WITHHOLD arm carries its own mutation rather than merely existing."
+    "portability": "No dependency added or changed. Neither lockfile touched.",
+    "z0": "Material. Two of the guards audited stand directly between an unsupported free claim and publication: the provider assertion floor (an unpinned claim must never become a fact) and the publication gate's fresh hard condition (a stale claim must never auto-publish). Both were proved to bite. The one publication-side hole found -- a source with NO snapshot at all being reportable as fresh -- is the unknown-treated-as-verified shape, and is now pinned by test at its current fail-closed value."
   },
 
   "regression_risks": [
-    "Over-correction into never-stale, wrongly ASSERTING freshness -- guarded by AC4 + AC6.",
-    "Silently changing the across-offers bucket-wide semantics -- guarded by AC10.",
-    "Leaving the S7 docstring asserting something that is no longer true -- addressed as part of the change, not as tidying.",
-    "A latent-vs-live misreport in either direction -- guarded by the vacuity guard AC2 and by transcribing rather than importing the comparison columns."
+    "The added tests are pure additions; no existing test was modified or weakened.",
+    "tests/unit/test_secrets_refresher.py drives scripts/refresh_secrets_baseline.py's main() against a TEMPORARY root and stubs run_scan, so detect-secrets is never invoked and the committed .secrets.baseline is never read or written. The redirection is asserted inside the fixture, not assumed.",
+    "The new test files contain no 40-hex literal; every digest is computed at run time, so they introduce no new detect-secrets finding and cannot make the committed baseline stale."
   ],
 
   "required_evaluation_level": 2,
-  "required_evaluation_level_reason": "Public catalogue coverage badge / user-facing state. derived_state is rendered to the public page by apps/web/src/catalogue/CategoryMatrix.tsx (lines 174 and 185), and it gates the verified_free badge, which is the product's headline claim. Mandatory Level-2 category per docs/AGENT_HARNESS.md.",
+  "required_evaluation_level_reason": "The audit reads and exercises guards in three mandatory Level-2 categories (provider adapters and evidence extraction; publication decisions; security boundaries). No behaviour is changed, but the CLAIMS made about those guards' reachability are exactly the kind of claim that must be independently checked, and two of the added test files sit against Level-2 code.",
 
   "hard_rules_acknowledged": [
-    "Draft PR only. Not merged.",
-    "No feature marked passing; feature_list.json not edited.",
-    "npm install/i/update/audit fix NEVER run -- the registry here is an internal package feed and those rewrite 'resolved' to an internal host, leaking internal infrastructure into a public repository. npm ci only.",
-    "Internal feed hostnames are never written into the repository, a commit message, a PR body, a CI log or this report.",
-    "Own PostgreSQL on an unused port, removed with its volume using exact-name filters because Docker's default is a SUBSTRING match.",
-    "progress.md append-only, proven by byte prefix plus a flipped-byte negative control.",
-    "current_contract.json is single-slot and taken wholesale; no block carried forward (that coupling was removed in PR #106).",
-    "Rebase before pushing if main moved -- a CONFLICTING PR is never dispatched to CI, and an absent signal reads exactly like a green one.",
-    "Do not re-type any count from the brief; generate it and state the population beside it.",
-    "Select-Object -First/-Last N corrupts $LASTEXITCODE; exit codes are read from BARE calls."
+    "Draft PR. Not merged.",
+    "No feature marked passing; agent-state/feature_list.json untouched.",
+    "agent-state/progress.md appended to only, proved by raw byte-prefix comparison plus a flipped-byte negative control.",
+    "agent-state/current_contract.json taken wholesale (single-slot, no carry-forward since PR #106).",
+    "No npm install/i/update/audit fix.",
+    "No security check weakened.",
+    "Own PostgreSQL on a probed-free port; container and volume removed and named in the report using exact-name ^...$ filters.",
+    "Rebased on main before pushing if main moved, because a conflicting PR is never dispatched to CI and an absent signal reads exactly like a green one."
   ],
 
-  "evaluator_disposition": "round 1: REJECT (cross-vendor Level-2, gpt-5.6-sol). Blocking finding: `latest_id not in stale_versions` does not imply the latest evidence is CURRENT -- fetch_stale_offer_version_ids reports only stale=True versions, so an UNCHECKED latest version is absent from the set and the interim fix promoted the bucket to verified_free with evidence_currency.checked=false. Reproduced independently by the builder before changing anything, plus a second case the evaluator did not name (NO_CURRENCY made un-clocked callers MORE permissive than base). Corrected to discharge an ancestor only on positive currency via is_publishable_free_claim. || round 2: PASS (second cross-vendor Level-2, gemini-3.1-pro-preview, fresh context, independent DB). Confirmed the round-1 defect is fixed; proved the safety invariant structurally (`A and not B` implies `A`, so the rule can only ever CLEAR a flag the base rule set); independently reproduced 3008 collected and the +10 delta; re-ran all three mutations and confirmed each kill; confirmed the census was complete over the 36 declared sources; confirmed governance (feature_list blob unchanged, progress.md append-only, lockfiles and CI untouched). Refuted none of the builder's numbers. Found NO new defects, and specifically checked that hoisting is_publishable_free_claim out of the FREE branch does not leak non-free offers into bucket[3]. NOTE: it observed one TRANSIENT psycopg UndefinedTable in tests/integration/test_read_api_search.py which it attributed to a leaky teardown from the migration-downgrade test, passing in isolation -- a PRE-EXISTING test-isolation artefact, not reproduced in any of the builder's runs (3005 passed, 0 failed) and not caused by this change. Reported, not fixed; out of scope for this slice.",
-
   "not_verified": [
-    "To be completed at the end of the slice, and stated as prominently as the verdict."
-  ]
+    "NODE-SIDE GATES: not run at all. This machine's npm registry is an internal package feed, so running npm ci or npm install could write internal resolved URLs into a lockfile -- the exact disclosure scripts/check_urls.py exists to catch, in a public repository. The apps/web type-check, lint, test and build gates are therefore UNVERIFIED BY ME, deliberately. Nothing in this slice touches apps/web.",
+    "TIMEZONE-SENSITIVE BEHAVIOUR: not probed. Windows CPython has no time.tzset() and silently ignores TZ, so any timezone divergence would have to run in a Linux container and assert the divergence occurred. The staleness guards were exercised with explicit UTC clocks only.",
+    "CI ITSELF: I did not observe a CI run. The verdicts here are from local execution against my own PostgreSQL.",
+    "REACHABILITY IN PRODUCTION of the publisher's freshest-is-None branch: I proved the branch is live through the seam an existing unit test already uses, and pinned it. I did NOT establish whether the real pipeline can produce a candidate for a source with zero snapshots. If it cannot, the branch is a fail-closed default for an unreachable state, which is still correct and still worth pinning.",
+    "THE PERMIT DIRECTION OF THE REFRESHER AGAINST REAL detect-secrets: the added tests stub run_scan. They prove the wrapper's REACTION to a scan result, not that detect-secrets produces the results modelled. The four historical corruption shapes those models are drawn from are the ones already recorded in tests/unit/test_secrets_baseline.py.",
+    "THE IPv4-MAPPED UNMASK in address_block_reason: NOT classifiable by mutation on this interpreter. My mutation was EQUIVALENT, not defect-restoring -- CPython's ipaddress already delegates mapped addresses internally, so removing the explicit unmask changes neither the verdict nor the reason string for ::ffff:127.0.0.1, ::ffff:10.0.0.1, ::ffff:8.8.8.8 or ::ffff:1.1.1.1 (all four probed). Its survival is therefore evidence about my instrument, not about the tests."
+  ],
+
+  "evaluator_disposition": "not yet evaluated"
 }

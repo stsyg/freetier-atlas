@@ -5038,3 +5038,110 @@ is why this guard is structural rather than behavioural.
 - **No browser/UI verification**; `apps/web` tests not run.
 - The transient `psycopg.errors.UndefinedTable` in `test_read_api_search.py` observed by the round-2
   evaluator remains **reported, not fixed** — pre-existing test isolation, out of scope.
+
+---
+
+## 2026-08-31 — Guard audit: reading the assertions of the five PR #77 marked NOT REACHED
+
+- **Feature / objective:** F-GUARD-AUDIT, slice `five-not-reached-guards-audit`. PR #77 classified 17 repository-owned guards and deliberately marked five **NOT REACHED**, having read their names, locations and purpose but **not their assertions**. That refusal is what made #77 honest. This slice reads the assertions, classifies each guard by failure direction, and establishes reachability by **mutation** rather than by coverage. Base `6e14a4714897efc951605d06762ba3819d2df18c`.
+
+- **The headline, stated before the detail:** of the five, **three are now REACHED and bite**, and two contained measurable holes. Four defect-restoring mutations survived the entire 3031-test tree. All four are now pinned by added tests, and every added test was proved to bite by re-running the mutation it was written for.
+
+### 0. A correction to PR #77's inventory, found by reading rather than by name
+
+Row 16 names the **runtime staleness gate** as `app/ingest/trust.py`. That file contains **no staleness logic whatsoever**. It is the community/official trust separation boundary: `is_official_source` and `assert_evidence_permitted`. The runtime staleness gate is `assess_staleness` in `app/ingest/reconcile.py`, consumed by `publisher._build_conditions`. I audited **both** rather than choosing, because picking one from the name is the exact error this slice exists to attack.
+
+### 1. The five guards, classified from their assertions
+
+`A` = wrongly REJECT (false alarm). `B` = wrongly ACCEPT (silent hole). Population for every reachability verdict: **the whole tree, 3006 tests collected and green before any edit** (3031 after the additions), whole-suite selector, own PostgreSQL so the 294 integration tests RAN rather than skipped.
+
+| # | Guard | Assertion (quoted) | Direction it fails | Reached? | Killing test |
+|---|---|---|---|---|---|
+| 1 | Baseline refresher refuse-to-write, `scripts/refresh_secrets_baseline.py` | `if problems: restore(); print("refresh REFUSED: ...); return 1` | **B** — writes a baseline the checker would reject | **NO → now yes** | was: nothing in 3006. now: `test_secrets_refresher.py` ×6 |
+| 2a | Evidence floor, `html.py validate()` | `if not candidate.evidence: problems.append("Candidate has no evidence location.")` | B | **YES** | `test_adapter_evidence_floor.py` ×2 |
+| 2b | Runtime assertion floor, `_assertion_only_candidate` | `if not candidate.evidence: return self._rejected(..., "no_assertion_evidence", ...)` | B | **YES** | `test_an_assertion_only_extraction_with_no_evidence_is_rejected` |
+| 2c | Required assertion | `if not matches: if assertion.required: return self._rejected(..., "assertion_not_found", ...)` | B | **YES, strongest in the tree** | **117 tests** across 6 provider suites |
+| 2d | Ambiguous assertion | `if len(matches) != 1: return self._rejected(..., "ambiguous_assertion", ...)` | B | **YES** | 63 tests |
+| 2e | Conflict, table vs assertion | `if assertion.field in facts and existing != assertion.value:` | B | **NO → now yes** | was: nothing in 3006. now: `test_adapter_html_conflict.py` ×2 |
+| 2f | Conflict, assertion vs assertion | `if (assertion.field in asserted_fields and asserted_fields[assertion.field] != assertion.value):` | B | **STRUCTURALLY DEAD** | see §3 |
+| 3a | Pre-connect SSRF, `check_addresses` | `if reason is not None: raise BlockedAddressError(f"Refusing to connect: {reason}")` | B | **YES** | `test_allowlisted_host_resolving_to_private_ip_is_blocked` +1 |
+| 3b | DNS-rebinding peer re-check, `check_peer_address` | `if reason is not None: raise BlockedAddressError(f"Refusing to use the connection: {reason}")` | B | **YES** | `test_dns_rebinding_between_validation_and_connect_is_refused` +2 |
+| 3c | Empty resolution | `if not addrs: raise BlockedAddressError("Host did not resolve to any address.")` | B | **YES** | `test_an_empty_resolution_is_refused` |
+| 3d | Host allowlist, pre-DNS | `if not host_is_allowlisted(host, official_domains): raise DisallowedHostError(...)` | B | **YES** | 6 tests across 4 adapter suites + fetch |
+| 4a | Staleness, `assess_staleness` | `return StalenessAssessment(stale=age > window, age=age, window=window)` | B | **YES** | 52 tests |
+| 4b | Staleness wiring, `publisher._build_conditions` | `staleness = assess_staleness(freshest, now, source.schedule); fresh = not staleness.stale` | B | **YES** | 8 tests, 7 of them provider `stale_case_never_publishes` |
+| 4c | Absent-snapshot default, same function | `if freshest is None: fresh = False; fresh_ratio = 0.0` | **B** — "no evidence of freshness" read as fresh | **NO → now yes** | was: nothing in 3006. now: `test_publish_freshness_wiring.py` ×2 |
+| 4d | Trust boundary, `trust.py` | `if not candidate_official: raise SeparationError("Refusing to create evidence for a non-official ... candidate")` | B | **YES** | `test_ingest_trust.py` + integration separation |
+| 4e | Trust boundary, `is_official_source` | `return getattr(source, "trust_level", None) == OFFICIAL_TRUST_LEVEL` | B | **YES** | 12 tests |
+| 5a | Publication gate, structural | `if not conditions.official or not conditions.evidence_backed: → WITHHOLD` | B | **YES** | `test_unofficial_is_withheld_never_reviewed`, `test_unevidenced_is_withheld` |
+| 5b | Publication gate, `fresh` hard condition | `"fresh": self.fresh,` in `failed_hard()` | B | **YES** | 9 tests, incl. 7 provider stale cases |
+| 5c | Publication gate, confidence bar | `if not failed and conf >= automatic_threshold: → PUBLISH` | B | **YES** | `test_confidence_in_uncertain_band_reviews` +1 |
+| 5d | Publication gate, contradiction | `if not conditions.no_contradiction: → REVIEW` | B | **YES** | `test_contradiction_routes_to_review_not_publish` |
+
+**Read that as: 16 of 20 assertions bite. Four did not, and they are named above, not folded into a coverage figure.**
+
+**Can each be shown to PERMIT as well as REFUSE?** Yes for every guard that is reached: `test_address_classifier_allows_public_addresses`, `test_is_official_source_true_only_for_exact_official`, `test_assert_evidence_permitted_allows_official_candidate`, `test_all_conditions_and_high_confidence_publishes`, the evidence-floor sweep's paired positive arm, and — for the three guards I pinned — a permitting arm in each new file that differs from its refusing arm in exactly one input. A control mutation (`R2-CONTROL-permit-arm`, making the conflict check fire on *agreement* too) was **KILLED** by `test_a_table_cell_and_an_assertion_that_AGREE_are_accepted`, so the permit arms are load-bearing rather than decorative.
+
+### 2. The guards that did not bite — REPORTED, NOT REPAIRED
+
+1. **The refresher's refuse-to-write had no test at all.** Its four predicates are well covered by `test_secrets_baseline.py`; the **decision to act on them** was not. `if problems:` → `if problems and False:` left all 3006 GREEN. So did dropping the `direction_problems` call. A grep for the script's name over `tests/` returns exactly one hit, in a docstring — which is why a name-grep is the wrong instrument.
+2. **The table-vs-assertion conflict refusal had no test.** This is the wrongly-ACCEPT direction that matters most here: accepted, the assertion would overwrite the table cell and a `trial` offer would republish as `always_free` **with pinned evidence attached** — an unsupported free claim carrying provenance.
+3. **The publisher's absent-snapshot default had no test.** Flipping `fresh = False` to `fresh = True` for a source with **no snapshot whatsoever** left all 3006 GREEN. This is the unknown-treated-as-verified shape the product forbids.
+4. **The second conflict refusal is structurally dead** (§3).
+
+**No repair was made to any of them.** I added tests that pin the CURRENT behaviour and changed nothing about what any guard matches, accepts or rejects. Three of the five sit in mandatory Level-2 categories and one is a security boundary; altering a matching rule or an admission criterion there is an owner decision, not a builder's.
+
+### 3. A dead branch, settled by structure rather than by reading
+
+`_apply_assertions` carries **two** `conflicting_assertion` refusals. Disabling **either one alone** left all 3006 green, which looks like "both untested". Instrumenting the two `detail` strings and driving both input shapes shows why: **branch A answers both.** After an accepted assertion, `facts[field]` and `asserted_fields[field]` are written together and can never diverge, so B implies A and A is evaluated first — **branch B can never fire on any input this engine can construct.**
+
+Disabling **both at once** is KILLED, including by the pre-existing `test_conflicting_assertions_fail_closed`. So the guard bites as a whole; only its halves were individually invisible.
+
+A reworded copy in a branch that never runs is invisible to every behavioural test in the tree. The added `test_every_conflict_refusal_in_apply_assertions_uses_one_error_string` parses the **AST** of `_apply_assertions` and asserts both refusals still pass the identical literal, with a vacuity floor (`>= 4` literals found) so an AST walk that stopped seeing them fails loudly. Mutating branch B's literal alone is KILLED **only** by that test — nothing else can see it. **Deleting the dead branch is not in this slice.**
+
+### 4. What I added versus what I only observed
+
+- **Observed only, no change:** guards 2a–2d, 3a–3d, 4a, 4b, 4d, 4e, 5a–5d. All already bite; I added nothing to them.
+- **Added:** `tests/unit/test_secrets_refresher.py` (15 tests), `tests/unit/test_adapter_html_conflict.py` (6), `tests/unit/test_publish_freshness_wiring.py` (4). 25 tests, all pinning existing behaviour, each file carrying both a refusing and a permitting arm.
+- **Production files: byte-identical to base**, proved by git blob hash — `html.py bcde62bf4051`, `fetch.py b7633e38b962`, `trust.py 24376bf1ae6c`, `gate.py a4b273bc06fa`, `publisher.py 01166fcc4e7c`, `reconcile.py 20d62dbe00d2`, `refresh_secrets_baseline.py 104a07a2e50b`. Untouched too: `feature_list.json 154de1fef2ba`, `ci.yml`, `check_urls.py`, `test_url_allowlist.py`, `.secrets.baseline`, both lockfiles.
+
+### 5. Errors I made, and how I caught them
+
+1. **[M] I wrote a mutation that was EQUIVALENT, not defect-restoring.** Removing the explicit IPv4-mapped unmask from `address_block_reason` survived, and my first reading was "the mapped-address tests do not bite". Probing all four mapped addresses showed CPython's `ipaddress` already delegates mapped addresses internally, so removal changes neither the verdict nor the reason string. **Its survival is evidence about my instrument, not about the tests.** The explicit unmask remains correct defence-in-depth against a stdlib change, and is simply not classifiable by mutation on this interpreter. Recorded in the contract's `not_verified`, not as a coverage claim.
+2. **[M] I created a new test file inside `tests/` while the mutation harness was running**, which would have let my own new tests contaminate later mutation results — and, worse, would have made the G1 mutations look killed by tests that did not yet exist when they were measured. Caught within the same minute, moved out of the tree, and every mutation's `collected` count checked afterwards: **all 22 reported exactly 3006**, so nothing was contaminated.
+3. **[M] I probed the secrets baseline with the wrong command.** I used `detect-secrets scan --baseline`, which always rewrites `generated_at`, and read "the baseline WOULD change" as a CI failure. CI actually runs `detect-secrets-hook`. Re-run with CI's exact command over all 664 tracked files: **exit 0, baseline bytes unchanged.**
+4. **[M] My first version of the refresher test introduced a real detect-secrets finding** — `hashed_secret` beside a quoted literal is a Secret Keyword match — which would have made the committed baseline stale, i.e. this suite creating the exact problem it audits. Found by scanning the file rather than assuming. **Fixed by removing the trigger, not by adding a pragma:** the malformed digest is now a real digest with one character removed, built at run time. No suppression, no allowlist entry.
+5. **[M] My fixture wrote its baseline with Windows CRLF** while the refresher writes LF, so the "already current" case failed for a reason unrelated to the guard. Fixture bug, fixed, with `assert b"\r\n" not in ...` added so it cannot recur silently.
+
+### 6. Method rails, and what each one caught
+
+- **Anchor preflight:** every mutation's search text asserted to match **exactly once** before application. 22/22 and 9/9 matched. An unapplied mutation reads exactly like a surviving one.
+- **Baseline shown to have executed:** exit 0 with **3006** then **3031** collected, recorded before any edit; pytest exit 5 treated as NOTHING COLLECTED and aborts.
+- **Environment precondition asserted, not announced:** port 55440 probed free; `select version()` executed from the venv with a bare exit code read; **294 integration tests observed to pass**, which without `DATABASE_URL` would all have skipped — and a skipped suite would have read as a KILL for every staleness mutation.
+- **Attribution:** killing test node ids recorded for every kill. The rebinding mutation was killed by `test_dns_rebinding_between_validation_and_connect_is_refused` itself, not by the pre-connect guard — so the kill is evidence for the guard actually under test.
+- **Restoration:** git blob hash compared before and after all 31 mutations. All byte-exact; `git status` clean of production changes.
+- **`Select-Object -First/-Last` never used to read `$LASTEXITCODE`;** every exit code read from a bare call.
+
+### 7. Tests and checks run
+
+- Full suite against a real PostgreSQL 16: **3031 passed, 3 skipped, exit 0** (skips: two `test_stack_health` needing a running API, one unbound-source capture).
+- Unit alone 2552→2577 passed; integration alone **294 passed** (they ran, not skipped).
+- `ruff check .` clean; `ruff format --check .` clean across 243 files.
+- `scripts/check_urls.py`: 1263 URLs, 57 hosts, all allowlisted, exit 0.
+- `scripts/check_secrets_baseline.py`: 68 files, 289 entries, exit 0.
+- CI's exact secret scan (`detect-secrets-hook --baseline` over 664 enumerated tracked files): **exit 0, baseline bytes unchanged**.
+- Mutation rounds: **31 mutations, 25 killed, 6 survived** (4 genuine holes now pinned, 1 dead branch explained, 1 equivalent mutant disclosed as my error).
+
+### 8. What I could NOT verify — stated as prominently as the verdict
+
+- **Node-side gates: not run at all, deliberately.** This machine's npm registry is an internal package feed; running `npm ci`/`install` risks writing internal resolved URLs into a lockfile — the exact disclosure `check_urls.py` exists to catch, in a **public** repository. The `apps/web` type-check, lint, test and build gates are **unverified by me**. Nothing in this slice touches `apps/web`.
+- **CI itself: not observed.** Every verdict here is local.
+- **Timezone-sensitive behaviour: not probed.** Windows CPython has no `time.tzset()` and silently ignores `TZ`; a real divergence probe needs a Linux container and an assertion that the divergence occurred. All staleness work used explicit UTC clocks.
+- **Production reachability of the absent-snapshot branch:** I proved the branch is live through the seam an existing unit test already uses, and pinned it. I did **not** establish whether the real pipeline can produce a candidate for a source with zero snapshots. If it cannot, it is a fail-closed default for an unreachable state — still correct, still worth pinning, but not the same claim.
+- **The refresher's behaviour against real `detect-secrets`:** the added tests stub `run_scan`. They pin the wrapper's **reaction** to a scan result, not that `detect-secrets` produces the results modelled. The modelled shapes are the four historical corruptions already recorded in `test_secrets_baseline.py`.
+- **The IPv4-mapped unmask:** not classifiable by mutation on this interpreter (§5.1).
+
+- **Evaluator disposition:** NOT YET EVALUATED. Level 2 required: the audit exercises guards in three mandatory Level-2 categories, and the reachability CLAIMS are exactly what an independent evaluator should re-derive.
+- **Feature ledger:** untouched. **No feature marked passing.**
+- **Scratch resources:** PostgreSQL container `fta-guardaudit-pg` and volume `fta-guardaudit-pgdata`, both removed at end of slice using exact-name `^...$` filters, because Docker's default filter is a substring match.
+- **Recommended next action:** take the four findings to the owner as a separate, evaluated slice — specifically (a) whether the dead second `conflicting_assertion` branch should be removed, and (b) whether the absent-snapshot default deserves a louder signal than a silent `fresh = False`. Both are behaviour changes in mandatory Level-2 code and are deliberately **not** in this one.
