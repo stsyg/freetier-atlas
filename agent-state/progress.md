@@ -5156,3 +5156,133 @@ CI ran on the draft PR and I observed it, so two disclaimers above are now stale
 The remaining `not_verified` items are unchanged and still stand: timezone-sensitive behaviour was not probed, production reachability of the absent-snapshot branch was not established, the refresher was not exercised against real `detect-secrets`, and the IPv4-mapped unmask is not classifiable by mutation on this interpreter.
 
 Scratch resources removed and verified with exact-name `^...$` filters: container `fta-guardaudit-pg`, volume `fta-guardaudit-pgdata`. A substring control (`name=postgres`) still returned three other stacks in the same call, so the empty exact-name result is a real absence rather than a filter that stopped working. No other scratch branch or PR was created.
+
+## 2026-09-01 — The second `conflicting_assertion` branch: dead by DOMINATION, not by an upstream guarantee
+
+**REPORT ONLY. No production file changed.** `apps/api/app/ingest/adapters/html.py` is byte-identical to base, blob `bcde62bf4051dd27b9062a7002dbae7e13a878b1` before and after all six mutations. The decision that follows — whether to delete the redundant branch — is the owner's, and is deliberately not taken here.
+
+**Feature:** F-GUARD-AUDIT, slice `assertion-conflict-branch-deadness`. Base `5aa7678`.
+
+### 1. The question, and the answer
+
+PR #110 reported the second `conflicting_assertion` refusal in `HtmlDocAdapter._apply_assertions` as STRUCTURALLY DEAD. Its instrumentation was temporary and is gone, so nothing standing in the tree established *why*. Deadness matters because an untested guard may still fire in production while a dead one never will, and **both look identical in a coverage report and neither is visible in a green build**.
+
+The two refusals, which emit the **identical error string** so no assertion on `error` can tell them apart:
+
+* **A** — line 984, `if assertion.field in facts and existing != assertion.value:`
+* **B** — lines 991-994, `if assertion.field in asserted_fields and asserted_fields[...] != assertion.value:`
+
+**Verdict: none of the three candidate cases holds as written. B is dead by DOMINATION from a co-located guard, and the intent it encodes is FULLY ENFORCED — by A.**
+
+* **NOT case 3 (upstream defect swallowing a conflict).** The constructed conflicting document is **REFUSED**, not accepted.
+* **NOT case 2 (wrong call path).** B is in exactly the right place and is **functional** — it answered the same input the moment A was removed.
+* **NOT case 1 as stated.** Case 1 asks for an *upstream* mechanism guaranteeing one assertion per field. **There is none, and I checked rather than assumed.** `HtmlExtractionProfile.__post_init__` (html.py **194-288**) normalises text and scope and validates the field vocabulary and the verbatim rule; it neither de-duplicates assertions by field nor refuses two assertions on one field. A profile carrying two `offer_type` assertions with different values **constructs successfully and reaches the loop**.
+
+### 2. The input I constructed, and what actually happened to it
+
+A `mode="assertions"` profile with two assertions on the SAME field and DIFFERENT values, pinned to two blocks each occurring once:
+
+```
+<p>Free plan</p><p>Trial plan</p>
+  assertion[0]  offer_type = "always_free"   pinned to "Free plan"
+  assertion[1]  offer_type = "trial"         pinned to "Trial plan"
+```
+
+Result at pristine base: **1 candidate, `verification_state='rejected'`, `error='conflicting_assertion'`, `detail="field='offer_type'"`**, and no extracted facts survive on the rejected candidate. **The conflict is refused, not swallowed.**
+
+### 3. WHICH guard answered — measured, not inferred
+
+Both branches emit the same string, so the discriminator has to be the **call site**. `_rejected` was wrapped and the caller's frame line number recorded, compared against spans taken from the **AST** of the module under test (never a hardcoded literal).
+
+| Tree state | Assertion-vs-assertion input | Table-cell-vs-assertion input | Killing tests |
+|---|---|---|---|
+| **pristine** | rejected at **line 985 = branch A** | rejected at **985 = branch A** | — (134/134 green) |
+| **A removed** | still rejected — now at **line 987 = branch B** | **ACCEPTED**, `offer_type='always_free'` | `test_a_table_cell_and_an_assertion_that_disagree…`, `…identical_error_string`, `…uses_one_error_string` |
+| **B removed** | rejected at **985 = branch A** | rejected at **985 = branch A** | **only** `test_every_conflict_refusal_in_apply_assertions_uses_one_error_string` |
+| **A and B removed** | **ACCEPTED**, `offer_type='trial'` | **ACCEPTED** | 5 tests |
+
+Three things follow, and the second is the one that matters:
+
+1. **A answers both shapes.** Branch B never executes on any input this engine can construct.
+2. **B is FUNCTIONAL, not merely unexecuted.** Remove A and B fires on the same document, at line 987. So the deadness is domination, not impossibility — which is precisely why "I mutated it and nothing failed" would have been the wrong instrument on its own.
+3. **The counterfactual shows what the pair prevents.** With both gone the contradicted document is **accepted carrying `offer_type='trial'`** — the last assertion silently overwriting the first. That is the accepted-but-contradicted field this product must never publish. It is prevented today, by A.
+
+### 4. The mechanism, named with its lines
+
+Line **1002** `facts[assertion.field] = assertion.value` executes unconditionally in the same loop iteration, immediately after line **1001** `asserted_fields[assertion.field] = assertion.value`. So at the top of every iteration the invariant
+
+> for every `f` in `asserted_fields`, `facts[f]` **is** `asserted_fields[f]`
+
+holds. B's predicate is therefore the same comparison on the same operands as A's, restricted to a subset of the keys A tests — and A is judged **seven lines earlier**. `facts` is never narrowed: it is seeded from `candidate.facts` at line 955 and only ever written at 1002.
+
+**A reader who sees branch B and concludes the assertion-vs-assertion case is covered is CORRECT — just about the wrong line.** That is materially different from the dangerous shape this investigation was looking for.
+
+### 5. Has either branch ever had a real chance to fire?
+
+**Population: 35 HTML extraction profiles registered across every provider module; 31 declare at least one assertion. Profiles declaring the same field twice: ZERO.** So no committed profile can produce an assertion-vs-assertion conflict at all today. The pair guards a future authoring mistake, not anything currently in the tree.
+
+### 6. What I added, and what I deliberately did not
+
+**Added** (test-only, no behaviour change): three tests in `tests/unit/test_adapter_html_conflict.py` that convert PR #110's transient hand-instrumentation into a standing measurement — which branch actually answers, anchored to the **predicate** each refusal sits under (`facts` vs `asserted_fields`, read from the AST) rather than to line numbers or source order. Plus a **negative control** proving the probe can report a site other than the conflict branch; without it a probe hardwired to A's line would agree no matter what executed.
+
+The gap this closes: measured here, **removing branch A left `test_two_assertions_that_disagree_on_one_field_reject_the_document` PASSING**, because B silently took over. The tree could not distinguish "A answers both" from "each answers its own". It can now.
+
+**Not done: the deletion.** The brief licenses removal only on a proved *upstream* mechanism and there is none; `html.py` is a mandatory Level-2 category; and PR #110's own handoff recommended this as an owner decision. Deleting B changes no observable behaviour (measured: §3 row 3 — **no behavioural test sees it**), but it removes the refusal that would answer if A were ever weakened.
+
+### 7. My errors, and how I caught them
+
+1. **[MISS] I predicted "B removed → the targeted suite stays green".** It did not: `test_every_conflict_refusal_in_apply_assertions_uses_one_error_string` failed. The prediction was wrong about the *population* that sees B. The correct statement, which is narrower and more useful: **no BEHAVIOURAL test sees B removed; one SOURCE-SHAPE (AST) test does.** PR #110's count test is what makes a deletion non-silent, and it is the right reporter for it.
+2. **[M] My own negative control was coupled to branch A's existence.** It called `_conflict_branch_spans()`, whose vacuity floor requires a `facts` branch, so under the A-removed mutation the *instrument* test failed too — a missing guard would have read as a broken instrument. Caught by the bite-check, not by review. Fixed by scoping the floor (`require_facts=False`) to that caller only; the floor stays where a missing branch A genuinely invalidates the attribution. Re-measured: A-removed now fails the two attribution tests and **passes** the negative control.
+
+### 8. Method rails, and what each caught
+
+- **Predictions recorded in writing before every run** — 13 recorded, 12 matched, 1 missed (§7.1).
+- **Baseline shown to have EXECUTED:** 134 collected / 134 passed / exit 0 over the three html adapter test files, before any edit. Exit 5 treated as NOTHING COLLECTED.
+- **Environment asserted, not announced:** Python 3.13.15, pytest 9.0.3, `import app.ingest` executed and observed; no coverage plugin configured in `addopts`.
+- **Instrument negative control before trusting any result** — the probe was shown to report line 966 for a *different* refusal before its line-985 answer was believed.
+- **Mutations restore the original defect** (the guard simply absent), never a broken call or arity, and **`ruff format --check` + `ruff check` were run on every mutated tree (exit 0, 6/6)** so a formatting nit could never turn a conclusion red for a reason unrelated to the product.
+- **Attribution:** killing test node ids recorded per mutation, so a kill by a pre-existing guard is never read as evidence for the branch under test.
+- **New tests shown to BITE:** re-running the A-removed mutation with them present moved them SURVIVED → KILLED.
+- **Structure over phrase:** every branch identity and every expected span derived from the AST.
+- **Restoration proved:** blob hash compared before and after; byte-exact, `git status --porcelain` empty for the file.
+- **`Select-Object -First/-Last` never used to read `$LASTEXITCODE`;** all exit codes read from bare calls.
+
+### 9. Tests and checks run
+
+- Full suite: **2745 passed, 292 skipped, exit 0** (population: whole tree, no `DATABASE_URL`; the 292 skips are the DB-gated integration layer plus 2 stack-health and 1 unbound-source capture).
+- Targeted: **137 passed** (134 pre-existing + 3 added) over the three html adapter files.
+- `ruff check .` clean; `ruff format --check .` clean across **243 files**.
+- `scripts/check_urls.py`: 1263 URLs, 57 hosts, all allowlisted, exit 0.
+- `scripts/check_secrets_baseline.py`: 68 files, 289 entries, exit 0.
+- Mutation rounds: **6 mutations** (3 shapes × before/after adding tests), all restored byte-exact.
+
+### 10. What I could NOT verify — stated as prominently as the verdict
+
+- **The integration layer did not run locally: 292 skipped, no `DATABASE_URL`.** I did **not** stand up a database, because this slice adds three in-process unit tests to one file and changes no production code; nothing in it can reach the DB layer. CI runs the same suite against a `postgres:16-alpine` service container, so that layer is dispatched there, **not measured by me**.
+- **Node-side gates: not run at all, deliberately.** This machine's npm registry is an internal package feed; `npm ci`/`install` could write internal resolved URLs into a lockfile in a **public** repository. This slice touches no JavaScript.
+- **CI itself: not yet observed at the time of writing.** Every verdict above is local.
+- **I did not establish what SHOULD happen if branch A is ever weakened.** I measured that B would then become the live guard — a branch that has never executed. Whether that is acceptable cover is a design question I did not answer.
+- **The domination argument is over the CURRENT function body.** I did not prove it for `facts` objects with pathological `__eq__`; I established instead that both predicates compare the *same stored object* against the *same operand* with the *same operator*, so no asymmetry between them is possible. That is a narrower claim than "no value can ever distinguish them", and it is the one I can support.
+- **Evaluator disposition: NOT YET EVALUATED.** Level 2 required — provider adapter / evidence extraction. The reachability CLAIM is exactly what an independent evaluator should re-derive.
+- **Feature ledger untouched. No feature marked passing.**
+- **Scratch resources:** none. No database, container, volume, scratch branch or scratch PR was created, so none required removal.
+
+### 11. Recommended next action — an owner decision, stated as a question
+
+**Should branch B be deleted?** The evidence for either answer is above and the choice is not mine:
+
+* **Delete it** — it is provably unreachable, it changes no behaviour (measured), and a refusal that cannot fire misleads every future reader about where the protection lives. If deleted, record *why* in a comment at branch A so nobody re-adds it, and PR #110's AST count test must be updated in the same change (it asserts exactly two conflict refusals and is the correct reporter for the deletion).
+* **Keep it** — it costs nothing at runtime and is live cover if branch A is ever narrowed. If kept, it should carry a comment saying it is currently dominated by A, so the next reader does not mistake it for the guard that fires.
+
+Either way the added tests hold: they attribute the refusal to the `facts` branch and skip the "not B" assertion when B is absent.
+
+### Addendum, same day — two "not verified" items retired by CI
+
+CI ran on draft PR #113 and I observed it, so two disclaimers above are now stale and are corrected here rather than left to read as permanent:
+
+- **The integration layer: now VERIFIED, by CI rather than by me.** Run `33529505116`, job `Python lint, format, tests`: **3034 passed, 3 skipped, exit 0** in 54s against the `postgres:16-alpine` service container. The only remaining skips are the two `test_stack_health` tests needing a live API and the one unbound-source capture. Locally I measured 2745 passed / 292 skipped with no `DATABASE_URL`; the difference is the DB-gated layer, which therefore **ran**. The arithmetic corroborates the count independently: main's suite was recorded at **3031** in the previous slice, and this slice adds exactly **3** tests.
+- **CI itself: now OBSERVED.** All six checks green — Python lint/format/tests (1m35s), Node format and lint (11s), Web type-check/tests/build (34s), Secret scan (35s), Dependency audit (39s), GitGuardian (1s). The PR is `MERGEABLE`, so the run was genuinely dispatched — a conflicting PR is never dispatched at all, and an absent signal reads exactly like a green one.
+
+My reason for not running the Node gates locally stands unchanged — this machine's npm registry is an internal package feed and `npm ci`/`install` could write internal resolved URLs into a lockfile in a **public** repository — but those gates are no longer unmeasured.
+
+The remaining `not_verified` items are unchanged and still stand: I did not decide what should happen if branch A is ever weakened; the domination argument is over the current function body and is the narrower same-object/same-operator claim rather than a general one about `__eq__`; and the zero-duplicate profile count is a statement about this repository's committed configuration, not about what a future author might write.
