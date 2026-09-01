@@ -5544,3 +5544,14 @@ Figures re-measured at the rebased tree, NOT carried forward:
 **Other apps/web gates (local):** typecheck 0, test 0 (141 passed), build 0, format:check 0.
 
 **Lockfile boundary.** Installed with `npm ci` only. `apps/web/package-lock.json` hash `98f786c2bb0d…` and root `package-lock.json` `737f99159e58…` — both byte-identical to `origin/main` baseline. Never ran `npm install/i/update/audit fix`.
+
+### Addendum — rebased onto 93325bc5 (PR #117) and re-measured; a pre-existing audit failure surfaced
+
+Orchestrator moved main to `93325bc5` (PR #117, the agent-state coupling census). Rebased onto it. Conflicts only in the two artefacts both slices touch: kept BOTH `progress.md` appends in chronological order (#117's block, then the ESLint block) and kept `current_contract.json` as mine (single-slot). Diff vs `origin/main` is now clean: 3 files, `progress.md` net +17, `package.json` the one-line change, no #117 reverts, no protected path touched.
+
+Figures re-measured at the rebased tree (NOT carried forward):
+- `npm run lint` (clean tree, `eslint . --max-warnings 0`): exit 0, 0 warnings.
+- `npm run typecheck`: exit 0. `npm run format:check`: exit 0. `npm run test`: exit 0 (141 passed, 9 files). `npm run build`: exit 0.
+- `apps/web/package-lock.json` = `98f786c2bb0d…`, root = `737f99159e58…` — both byte-identical to `origin/main` (git diff of both lockfiles vs origin/main = 0 lines).
+
+**CI: 5/6 green; Dependency audit FAILED, and it is a PRE-EXISTING main-wide condition, not caused by this slice.** `npm audit --audit-level=high` in apps/web reports one high-severity `browserslist <=4.28.6` advisory (GHSA-c83g-rgw3-j3cx, GHSA-73wf-gq98-2v4g), reproducible locally with the SAME exit 1. `browserslist` is pinned in `origin/main`'s own lockfile and this branch's lockfiles have ZERO diff vs `origin/main`, so main itself fails this audit right now — a freshly-published advisory, not a regression from the one-line lint change. The only offered remedy is `npm audit fix`, which is FORBIDDEN on this machine (it rewrites lockfile `resolved` URLs to the internal feed, leaking internal infra into a public repo). Reported, not fixed — bumping browserslist is a separate slice with its own lockfile change and evaluation.
