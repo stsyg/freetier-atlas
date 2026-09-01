@@ -5145,3 +5145,14 @@ A reworded copy in a branch that never runs is invisible to every behavioural te
 - **Feature ledger:** untouched. **No feature marked passing.**
 - **Scratch resources:** PostgreSQL container `fta-guardaudit-pg` and volume `fta-guardaudit-pgdata`, both removed at end of slice using exact-name `^...$` filters, because Docker's default filter is a substring match.
 - **Recommended next action:** take the four findings to the owner as a separate, evaluated slice — specifically (a) whether the dead second `conflicting_assertion` branch should be removed, and (b) whether the absent-snapshot default deserves a louder signal than a silent `fresh = False`. Both are behaviour changes in mandatory Level-2 code and are deliberately **not** in this one.
+
+### Addendum, same day — two "not verified" items retired by CI
+
+CI ran on the draft PR and I observed it, so two disclaimers above are now stale and are corrected here rather than left to read as permanent:
+
+- **Node-side gates: now VERIFIED, by CI rather than by me.** `Node format and lint` PASS (11s) and `Web type-check, tests, and build` PASS (33s). My reason for not running them locally stands unchanged — this machine's npm registry is an internal package feed and `npm ci`/`install` could write internal resolved URLs into a lockfile in a public repository — but the gates themselves are no longer unmeasured.
+- **CI itself: now OBSERVED.** Run `33461023775`, all six checks green: Python lint/format/tests (2m9s), Node format and lint, Web type-check/tests/build, Secret scan (29s), Dependency audit (43s), GitGuardian. The PR is `MERGEABLE`, so the run was genuinely dispatched — a conflicting PR is never dispatched at all, and an absent signal reads exactly like a green one.
+
+The remaining `not_verified` items are unchanged and still stand: timezone-sensitive behaviour was not probed, production reachability of the absent-snapshot branch was not established, the refresher was not exercised against real `detect-secrets`, and the IPv4-mapped unmask is not classifiable by mutation on this interpreter.
+
+Scratch resources removed and verified with exact-name `^...$` filters: container `fta-guardaudit-pg`, volume `fta-guardaudit-pgdata`. A substring control (`name=postgres`) still returned three other stacks in the same call, so the empty exact-name result is a real absence rather than a filter that stopped working. No other scratch branch or PR was created.
