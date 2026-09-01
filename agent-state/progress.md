@@ -5464,3 +5464,14 @@ Two items for the orchestrator, reported and not fixed here:
 
 - **`schedule_ref` never parses into a window** (finding 1 above). Every source in the tree falls back to the 7-day default. This is production behaviour and deserves its own slice: either `schedule_ref` should resolve through a schedule definition, or `Source.schedule` should not be fed a reference it cannot parse.
 - **The published corpus still has one evidence row per version and one window.** The synthetic corpora close the *reachability* question but not the *incidence* one. A real provider fixture with a multi-evidence version would be worth its own slice, and would let these guards be exercised against ingest output rather than constructed rows.
+
+#### Addendum, same day — two "not verified" items retired by CI
+
+Draft PR **#116**, run **33533775934**: **all six checks green** — Python lint/format/tests (1m45s), Node format and lint, Web type-check/tests/build, Secret scan, Dependency audit, GitGuardian.
+
+- **CI ITSELF: RETIRED.** `mergeStateStatus` is **CLEAN** and the PR is **MERGEABLE**, so the run was genuinely dispatched. That distinction is the point of checking: a conflicting PR is never dispatched at all, and an **absent** signal reads exactly like a green one. This is also why the branch was rebased onto `9f66d9b` before pushing rather than after.
+- **NODE-SIDE GATES: RETIRED by CI, not by me.** I did not run them locally because this machine's npm registry is an internal package feed and `npm ci/install` could write internal resolved URLs into a lockfile — the exact disclosure `scripts/check_urls.py` exists to catch, in a public repository. CI ran them and both passed. **Verified, but not by me**, and this slice touches no JavaScript in any case.
+
+**The remaining `not_verified` items are NOT retired** and none of them is retired by a green CI run — in particular the unparseable `schedule_ref` finding (a production observation deliberately left unfixed), real-provider coverage still being one, anchor invariance for the published corpus still standing only at n = 2, and the fact that the M2 kill rests on a corpus I constructed rather than on one that has ever occurred.
+
+Teardown confirmed: container `fta-discriminate-pg` and volume `fta-discriminate-pgdata` both removed, verified with exact-name `^...$` filters (Docker's default filter is a **substring** match, so an unanchored name could have matched — or destroyed — something else), and port **55451** confirmed to have no remaining listener.
