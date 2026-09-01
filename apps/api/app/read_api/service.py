@@ -648,10 +648,54 @@ def serialize_category_matrix(
     assessed on its **latest** version, matching every other catalogue surface
     (:func:`serialize_provider_summary`, :func:`serialize_category_states`).
 
-    Note this is intentionally finer-grained than ``has_stale_evidence``, which
-    is a *bucket-wide* flag driving ``derived_state`` -- one stale version there
-    marks the whole cell. That coarser rule is unchanged by this slice; its
-    behaviour is deliberately not touched, because it feeds a classification.
+    The bucket flag follows the latest version too
+    ----------------------------------------------
+    ``has_stale_evidence`` is a *bucket-wide* flag driving ``derived_state``, and
+    it is coarse along two axes that are easy to conflate:
+
+    * **across offers** -- one offer whose *latest* version is stale marks the
+      whole cell. That is what bucket-wide means. It is deliberate, and it is
+      unchanged here.
+    * **across versions of one offer** -- until this slice a *superseded*
+      version could mark the cell. That is not coarseness but a category error:
+      the offer's claim rests on its latest version, so an ancestor's expiry
+      says nothing about the claim actually being made.
+
+    S7 recorded the second axis as deliberately untouched. It is touched now,
+    because its cost lands in the direction that leaves no trace on the page.
+    :func:`~app.read_api.coverage.derive_coverage_state` returns ``stale``
+    *before* it can return ``verified_free``, so a single expired ancestor
+    withheld the free badge from **every** offer in the bucket -- and a
+    wrongly-withheld free offer is a defect of the same severity as a
+    wrongly-asserted one. Nor was the old rule conservative in the sense
+    ``fetch_stale_offer_version_ids`` claims for itself: overstating staleness
+    admits uncertainty about *a current claim*, whereas a superseded version
+    carries no uncertainty about the current claim at all.
+
+    An ancestor is discharged only by POSITIVE currency
+    ---------------------------------------------------
+    The rule is emphatically **not** "the latest id is absent from the stale
+    set". ``fetch_stale_offer_version_ids`` reports only versions it found
+    ``stale``; a version whose evidence has no checkable fetch time is
+    :data:`~app.read_api.currency.UNCHECKED` and is therefore *absent from that
+    set for the opposite reason*. Reading absence as permission would let "we
+    could not look at all" promote a bucket to ``verified_free`` -- an
+    unsupported free claim on a public badge, which is the one thing this
+    product may never ship.
+
+    So the ancestor's staleness is discharged only by
+    :func:`~app.read_api.currency.is_publishable_free_claim` -- the same
+    predicate the counts above use, which fails closed on *both* shapes of
+    non-currency. Two consequences worth naming: this rule can only ever
+    **clear** a flag the all-versions rule set, never set one it left clear; and
+    under :data:`~app.read_api.currency.NO_CURRENCY` every anchor is
+    ``UNCHECKED``, so an un-clocked caller degrades to exactly the pre-slice
+    all-versions behaviour instead of silently acquiring the more permissive one.
+
+    Sharing ``latest_is_current`` with the counts also removes a
+    self-contradiction: one cell could report ``evidence_currency`` current (a
+    rollup over latest ids) and ``derived_state`` stale (a scan over every id) in
+    the same response.
     """
 
     ordered_providers = sorted(providers, key=lambda p: p.slug)
@@ -676,21 +720,24 @@ def serialize_category_matrix(
                 key = (provider.slug, slug)
                 latest = queries.latest_version(offer)
                 latest_id = latest.id if latest is not None else None
+                # The one predicate that fails closed on BOTH shapes of
+                # non-currency -- expired, and "we could not look at all".
+                latest_is_current = is_publishable_free_claim(currency.for_version(latest_id))
                 bucket_versions.setdefault(key, []).append(latest_id)
                 bucket = tally.setdefault(key, [0, 0, 0, 0])
                 bucket[0] += 1
                 if offer.zero_cost_class == _FREE_CLASS:
                     bucket[1] += 1
-                    # Fails closed on BOTH shapes of non-currency: expired, and
-                    # "we could not look at all". A missing clock therefore
-                    # yields 0, never the whole tally.
-                    if is_publishable_free_claim(currency.for_version(latest_id)):
+                    # A missing clock therefore yields 0, never the whole tally.
+                    if latest_is_current:
                         bucket[3] += 1
                 elif offer.zero_cost_class in (None, coverage.UNCLASSIFIED_ZERO_COST_CLASS):
                     bucket[2] += 1
                 flag = flags.setdefault(key, [False, False])
                 flag[0] = flag[0] or service_conflicted
-                flag[1] = flag[1] or any(v.id in stale_versions for v in offer.versions)
+                flag[1] = flag[1] or (
+                    any(v.id in stale_versions for v in offer.versions) and not latest_is_current
+                )
 
     rows: list[CategoryMatrixRow] = []
     for taxon in CATEGORY_TAXONOMY:
