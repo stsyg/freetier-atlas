@@ -5527,3 +5527,20 @@ Figures re-measured at the rebased tree, NOT carried forward:
 - **Head:** 2746 passed, 302 skipped, exit 0 — delta **+1** (the one new guard). Skips unchanged at 302, so no DB/stack-gated test was added.
 - **Mutation A at the new base still kills the named guard:** injecting `(REPO_ROOT / "agent-state/current_contract.json").read_text()` into a permanent test makes `test_no_permanent_test_reads_a_per_slice_agent_state_file` FAIL (exit 1), offender named by file:line.
 - `ruff check .` → All checks passed! ; `ruff format --check .` → 246 files already formatted (the base grew 244→246 with #116).
+
+---
+
+## 2026-09-01 — apps/web ESLint gate made load-bearing (`--max-warnings 0`)
+
+**Defect.** `.github/workflows/ci.yml` step `ESLint (apps/web)` runs `npm run lint`; `apps/web/package.json` defined `"lint": "eslint ."` with no `--max-warnings`. ESLint exits 0 when only warnings exist, so `react-refresh/only-export-components` (`warn`) — and every future warn-level rule — could not fail CI. Latent defect disclosed by the author of #81.
+
+**Fix.** `apps/web/package.json` lint script → `eslint . --max-warnings 0`. No change to `.github/workflows/ci.yml` (protected), no rule downgraded, no `eslint-disable`, no `ignores` addition, no non-zero warning allowance.
+
+**Measure before/after (by rule).** Clean tree: 0 warnings / 0 errors both before and after — no pre-existing warnings to fix. Contrast proof with a deliberate `react-refresh/only-export-components` violation (temp `src/__probe_refresh.tsx`, since removed):
+- OLD script `eslint .` with violation present → **exit 0** (defect: gate green while rule violated).
+- NEW script `eslint . --max-warnings 0` with same violation → **exit 1**, output names `react-refresh/only-export-components` and `ESLint found too many warnings (maximum: 0)`.
+- NEW script, violation removed → **exit 0**.
+
+**Other apps/web gates (local):** typecheck 0, test 0 (141 passed), build 0, format:check 0.
+
+**Lockfile boundary.** Installed with `npm ci` only. `apps/web/package-lock.json` hash `98f786c2bb0d…` and root `package-lock.json` `737f99159e58…` — both byte-identical to `origin/main` baseline. Never ran `npm install/i/update/audit fix`.
