@@ -1,107 +1,52 @@
 {
   "feature_id": "F-GUARD-AUDIT",
-  "slice": "discriminate-provider-boundary",
-  "title": "Build a corpus that can tell the provider_boundary formulations apart, then re-run the two mutations that survived because it could not",
-  "branch": "stsyg-discriminate-provider-boundary",
-  "base_commit": "9f66d9bc92f55a8bc6bb56aeef04ec3e7fde243d",
-  "base_commit_note": "Originally developed on 5aa7678ddb51d5583ecc4b3aa2317aa64af218e5 and REBASED onto 9f66d9bc after PR #113 landed, because a conflicting PR is never dispatched to CI and an absent signal reads exactly like a green one. Every measurement in this contract was taken at 5aa7678; the whole suite was re-run after the rebase and the figures are reported for both.",
-  "objective": "PR #103 shipped a provider_boundary fixture whose author ran mutations against it and reported two SURVIVORS, both for the same reason: today's corpus cannot discriminate them. M4 (select the OLDEST evidence row per version) has an EMPTY discriminating population because every published version carries exactly one evidence row. M2 (the spread < 1s precondition) is unfalsifiable because the corpus declares a single window. That is UNTESTED-BECAUSE-UNDISCRIMINATED, not untested-because-unchecked, which is why it shipped -- but it goes live UNGUARDED the moment a provider publishes a version with two evidence rows or two sources declare different windows, and the fixture would keep passing whichever way it was written. This slice constructs input that can tell the formulations apart, re-runs both mutations against it, and reports what that reveals.",
-  "what_this_slice_is_not": [
-    "It is not a production change. Nothing under apps/, migrations/ or scripts/ is modified; every change is under tests/.",
-    "It does not touch apps/api/app/ingest/adapters/html.py (blob bcde62bf4051), which a parallel slice is investigating.",
-    "It does not mark any feature passing. agent-state/feature_list.json is untouched (blob 154de1fef2ba).",
-    "It does not touch .github/workflows/ci.yml, scripts/check_urls.py, tests/unit/test_url_allowlist.py, .secrets.baseline, or either lockfile. Each verified by git blob hash against base.",
-    "No npm install / i / update / audit fix was run. This slice touches no JavaScript."
-  ],
-  "why_synthetic_data_is_the_correct_instrument_here": "The question is the REACHABILITY of a code path, not present-day incidence, so constructing the input is the right instrument. This is the opposite of a currency or coverage measurement, where seeding a corpus would only measure the suite's own ingest clock. The synthetic rows live inside a rolled-back transaction, are prefixed synthetic-boundary-probe, describe no real provider and make no claim that anything is free.",
-  "what_the_published_corpus_actually_contains": {
-    "measured_at": "5aa7678, against config/examples/providers/cloudflare.example.yaml, the only provider config in the tree",
-    "offers_reachable_from_provider_cloudflare": 2,
-    "published_and_Z0_TRUE_FREE_and_evidence_backed": 2,
-    "evidence_rows_per_published_version": "1 each -- M4's discriminating population is EMPTY",
-    "distinct_declared_schedules_across_those_sources": 1,
-    "deeper_finding": "That one schedule is 'official_pages'. Source.schedule holds the config's schedule_ref verbatim (config_sync.py: schedule -> config.schedule_ref), and neither 'official_pages' nor 'rss' nor 'mcp_documentation' is parseable by parse_schedule_window, so EVERY window in the corpus is the 7-day fallback. The emptiness is doubly deep: there is neither a version with two evidence rows NOR a source with a parseable schedule.",
-    "expiry_spread_across_the_two_claims": "0.311665 s in my run -- ingest wall-clock jitter, a per-run variate, not a constant"
+  "slice": "census-per-slice-agent-state-couplings",
+  "title": "Census every PERMANENT test that reads a per-slice agent-state/ artefact for its CONTENTS, fix genuine couplings, and add a durable guard against regrowth",
+  "branch": "stsyg-census-agent-state-couplings",
+  "base_commit": "69d989d4",
+  "objective": "PR #106 removed ONE coupling: a permanent test (tests/unit/test_clock_inheritance.py) read agent-state/current_contract.json for its CONTENTS, a single-slot file overwritten every slice. That census was scoped to that one file. This slice applies the same discriminator (reads CONTENTS = coupling vs asserts EXISTS/PARSES = durable) to every other agent-state/ artefact, fixes only genuine couplings, and installs a load-bearing guard so the shape cannot silently regrow.",
+  "population_measured": {
+    "method": "git ls-files, then per-file substring scan for each artefact name, then AST read of every test hit; plus a directory-walk/iterdir/rglob scan across tests/ for indirect access.",
+    "current_contract.json": {"files_mentioning": 21, "tests_reading_contents": 0, "note": "was 1, fixed by #106"},
+    "evaluation.json": {"files_mentioning": 14, "tests_reading_contents": 0},
+    "feature_list.json": {"files_mentioning": 19, "tests_reading_contents": 0, "note": "durable, protected; shape check in test_repo_baseline is correct"},
+    "progress.md": {"files_mentioning": 19, "tests_reading_contents": 0},
+    "agent-state/evaluations/": {"files_mentioning": 2, "tests_reading_contents": 0},
+    "agent-state (any string)": {"files_mentioning": 27, "tests_reading_contents": 0}
   },
-  "method": {
-    "primary_instrument": "MUTATION against a corpus built to have a non-empty discriminating population, with each kill attributed to a NAMED test and compared name-by-name against a recorded baseline.",
-    "kills_checked_against_production_not_against_a_restatement": "The M4 arm requires the derived expiry to be the exact moment queries.fetch_evidence_currency flips the version, which is decided by worst() in application code. The M2 arm requires the derivation to ACCEPT a corpus only when that corpus's one-second arm is measurably unambiguous in the database. Neither restates the helper's own arithmetic, so neither is the tautology that an assert asserts.",
-    "baseline_shown_to_have_executed": "Module baseline at 5aa7678: exit 0, collected 23, passed 23. Whole-suite base: collected 3034, passed 3031, skipped 3, failed 0. pytest exit 5 is treated as NOTHING COLLECTED and aborts; a negative control (-k on a name that does not exist) was run first and DID abort with collected 0.",
-    "anchor_preflight": "Every mutation's search text is asserted to occur EXACTLY ONCE before it is applied; 0 or >1 ABORTS. A dedicated CONTROL mutation with deliberately-absent search text was run and aborted with occurrences 0 -- load-bearing here, because this slice investigates mutations that SURVIVED and an unapplied mutation reads exactly like a surviving one.",
-    "restoration_proved": "Exact-byte snapshot taken before each write and restored after; restoration verified by content equality, by the original text being present exactly once, and by the mutated text being absent. Never git checkout --, which would have destroyed the uncommitted work.",
-    "structure_over_phrase": "Test outcomes are parsed from pytest's JUnit XML, not scraped from stdout. The attribution test computes the OTHER precondition independently from the claims rather than inferring it from which message came back.",
-    "environment_precondition_asserted_not_announced": [
-      "Own PostgreSQL: container fta-discriminate-pg, volume fta-discriminate-pgdata, port 55451 probed free (after exact-name ^...$ teardown of any prior run of mine, so my own container could not be mistaken for a squatter), database ftadiscrim, seeded separately from the suite's DB.",
-      "pg_isready alone is a FALSE READY and was measured to be so: the postgres entrypoint runs a temporary server during initdb, pg_isready returned 0 against it, and the very next command failed with 'the database system is shutting down'. The harness now requires pg_isready AND a real query to both exit 0 on three CONSECUTIVE probes, plus the container still Running.",
-      "The database is then asserted present in pg_database, a trivial query is asserted to EXECUTE and return 42, and host-port reachability is asserted from a separate container.",
-      "The integration module is asserted to have RUN rather than skipped: without DATABASE_URL all 23 skip, and a skipped suite would read as a KILL for every mutation."
-    ],
-    "apparatus_separated_from_subject": "The runner, mutation harness, corpus probe and prediction ledger all live OUTSIDE the repository, in the session artifacts directory. The base-total measurement used a detached scratch worktree whose SHA was asserted after checkout, run sequentially and never concurrently with the mutation harness."
+  "hits_classified": [
+    "tests/test_repo_baseline.py: existence+parse of three files and a shape check on the durable/protected feature_list.json. Correct as written; untouched.",
+    "tests/unit/test_clock_inheritance.py: reads Python source via AST only; current_contract.json in prose (the #106 remedy). No read.",
+    "tests/unit/test_assertion_capture_grounding.py: reads provider YAML + capture fixtures; one docstring provenance citation to an evaluations/ file. No coupling.",
+    "tests/integration/test_ingest_sync_savepoint.py: one docstring citation to a vanished AMENDMENT 8 in current_contract.json. No runtime read."
+  ],
+  "finding": "ZERO further runtime couplings. The single coupling of this shape was already removed by #106.",
+  "changes": [
+    "Rewrote two dangling PROSE pointers that cited 'AMENDMENT 8 in agent-state/current_contract.json' (a section that no longer exists in the overwritten single-slot file): tests/integration/test_ingest_sync_savepoint.py and apps/api/app/ingest/config_sync.py now explain the declined check on their own. Updated test_clock_inheritance.py's cross-reference to match.",
+    "Added tests/unit/test_no_permanent_test_reads_a_per_slice_agent_state_file.py: an AST guard that fails any permanent test reading a per-slice agent-state/ artefact for its contents. The per-slice file set is derived from the tree at test time (not hand-maintained); feature_list.json is exempt as durable."
+  ],
+  "proof_obligations": {
+    "mutation_A": "Injecting (REPO_ROOT / 'agent-state/current_contract.json').read_text() into a permanent test makes test_no_permanent_test_reads_a_per_slice_agent_state_file FAIL (exit 1), named offender by file:line.",
+    "mutation_B": "open(...), json.loads(...read_text()), and progress.md reader forms each also FAIL the same named guard.",
+    "mutation_C": "A feature_list.json read (exempt) and a bare prose mention each still PASS -- the guard is an AST content-read check, not a name-ban.",
+    "mutation_D": "Breaking the derivation to an empty set trips the guard's anti-vacuous self-check, so it cannot pass vacuously.",
+    "baseline_executed": "Re-measured after rebase onto 69d989d4. New base: 2745 passed, 302 skipped, exit 0. Head: 2746 passed, 302 skipped, exit 0 -- delta +1 (the one new guard); skips unchanged, so no DB/stack-gated test added. Touched files collected 52. pytest exit 5 watched for, did not occur.",
+    "lint_format": "ruff check -> All checks passed! ; ruff format --check -> 246 files already formatted (at rebased tree)."
   },
-  "in_scope": [
-    "A persisted synthetic corpus carrying a version with TWO evidence rows at different fetched_at, and sources declaring DIFFERENT parseable windows.",
-    "Re-running M4 and M2 against it, requiring a NAMED test to fail for each, and checking WHICH guard killed each.",
-    "Extracting the boundary derivation out of the provider_boundary fixture so its preconditions are reachable with a corpus other than the one _publish produces. Behaviour-preserving, verified by 23/23 unchanged before anything was built on it.",
-    "Repairing the within-claim half-application the discriminating corpus exposed (test-only), and pinning both orientations.",
-    "An exhaustive order-invariance demonstration at a population larger than two."
+  "not_verified": [
+    "The 292 DB/stack-gated integration tests: not run locally (no DATABASE_URL, no stack). Covered by CI on the PR.",
+    "Node/Web CI gates: not run locally by design -- this machine's npm registry is an internal feed and npm ci/install could write internal resolved URLs into a public lockfile. This slice touches no JavaScript. Covered by CI."
   ],
-  "out_of_scope": [
-    "Any production change. The unparseable-schedule_ref finding is REPORTED, not fixed: making 'official_pages' resolve to a real cadence would change every source's staleness window across the product and is a different slice with its own evaluation.",
-    "Adding order_by to the model relationships. Still deliberately not done, for the reason PR #103 gave.",
-    "Marking any feature passing."
-  ],
-  "acceptance_criteria": [
-    "A corpus exists in which a published version carries two evidence rows with different fetched_at, and in which two sources declare different windows that genuinely PARSE -- asserted from the ORM rows, not through the helper under test.",
-    "M4 goes from SURVIVED to KILLED, with the killing test named, and the kill attributable to a cross-check against production currency rather than to a pre-existing guard.",
-    "M2 goes from SURVIVED to KILLED, with the killing test named, and the refusal attributable to the spread guard rather than to the derivation's other precondition.",
-    "Every mutation is defect-restoring, not an arity break, and every search text is asserted to match exactly once.",
-    "A negative control with absent search text is shown to ABORT, distinguishing 'never applied' from 'survived'.",
-    "Whole-suite delta is MEASURED against an independently-executed base run, not derived by subtraction.",
-    "What can and cannot be claimed about anchor invariance at the new corpus size is stated explicitly.",
-    "Whether any provider beyond cloudflare is now exercised is stated explicitly, including the limits of that statement.",
-    "Errors made during the slice are reported as prominently as the verdict."
-  ],
-  "verification_method": {
-    "database": "PostgreSQL 16-alpine, container fta-discriminate-pg, volume fta-discriminate-pgdata, host port 55451 (probed free). Both removed at end of slice with exact-name ^...$ filters, because Docker's default filter is a SUBSTRING match.",
-    "commands": [
-      "python -m pytest tests/integration/test_catalogue_currency.py                       (module baseline, 23 collected)",
-      "python -m pytest tests/integration/test_catalogue_currency.py tests/integration/test_provider_boundary_discrimination.py   (mutation selector, 33 collected)",
-      "python -m pytest tests                                                              (whole suite, HEAD and base)",
-      "python -m ruff check . && python -m ruff format --check ."
-    ]
-  },
-  "migration_and_data_implications": "None. No schema change and no migration. The synthetic rows are INSERTed inside a test transaction that the session fixture rolls back; nothing is ever committed, published or served.",
-  "security_privacy_portability_z0": {
-    "security": "No security boundary touched. The synthetic Source rows deliberately carry a synthetic:// endpoint rather than an http(s) URL, so they can never be mistaken for a fetchable official location and cannot introduce a URL host into the allowlist's scope.",
-    "privacy": "No personal data touched.",
-    "portability": "No dependency added or changed. Neither lockfile touched.",
-    "z0": "Material but indirect. The guards discriminated here stand between an EXPIRED free claim and the read surfaces that repeat it: provider_boundary is the clock at which three rollup surfaces decide whether a Z0_TRUE_FREE claim is still supported. A boundary derived from the wrong evidence row would place that decision at the wrong moment. No Z0 classification logic is changed; the synthetic offers are never published."
-  },
-  "regression_risks": [
-    "The extraction of _derive_provider_boundary is behaviour-preserving and was verified 23/23 unchanged BEFORE any new test was written.",
-    "The within-claim repair (_earliest_expiring_evidence) is provably INERT on the published corpus: with one evidence row per version, min-by-fetched and min-by-expiry select the same row. It changes behaviour only on multi-evidence versions, which only the synthetic corpora have.",
-    "The new module defines its own engine/session fixtures rather than importing the sibling's, so it cannot alter the sibling's fixture scoping.",
-    "Synthetic rows cannot leak into cloudflare assertions: the corpus fixtures are requested only by the new tests, and each test's transaction is rolled back."
-  ],
-  "required_evaluation_level": 1,
-  "required_evaluation_level_reason": "No production code, no schema, no migration, no Z0 classification logic, no security boundary, no publication decision. Every change is under tests/. The sharpest question for a reviewer is whether the new kills are genuine discriminations or restatements of the helpers' own arithmetic, and whether the within-claim repair weakened anything -- both are answerable from the diff plus the recorded mutation runs.",
   "hard_rules_acknowledged": [
     "Draft PR. Not merged.",
-    "No feature marked passing; agent-state/feature_list.json untouched (blob 154de1fef2ba).",
-    "agent-state/progress.md appended to only, proved by raw byte-prefix comparison plus a flipped-byte negative control.",
+    "No feature marked passing; agent-state/feature_list.json untouched.",
+    "agent-state/progress.md appended to only, proved by byte-prefix comparison against HEAD.",
     "agent-state/current_contract.json taken wholesale (single-slot).",
     "No npm install/i/update/audit fix.",
-    "apps/api/app/ingest/adapters/html.py not touched.",
-    "Own PostgreSQL on a probed-free port; container and volume removed and named in the report using exact-name ^...$ filters.",
-    "Rebased on main before pushing if main moved, because a conflicting PR is never dispatched to CI and an absent signal reads exactly like a green one."
+    "No guard weakened; the two edits to permanent tests are a prose fix and a pure addition.",
+    "Rebased on origin/main (69d989d4, PR #116) before pushing; re-measured, figures not carried forward from the old base."
   ],
-  "not_verified": [
-    "CI ITSELF: RETIRED. Observed on draft PR #116, run 33533775934: all six checks green (Python lint/format/tests 1m45s, Node format and lint, Web type-check/tests/build, Secret scan, Dependency audit, GitGuardian). mergeStateStatus is CLEAN and the PR is MERGEABLE, so the run was genuinely dispatched -- a conflicting PR is never dispatched at all, and an absent signal reads exactly like a green one.",
-    "NODE-SIDE GATES: RETIRED by CI. I did not run them locally because this machine's npm registry is an internal package feed and npm ci/install could write internal resolved URLs into a lockfile -- the exact disclosure scripts/check_urls.py exists to catch, in a public repository. CI then ran them: Node format and lint PASS, Web type-check/tests/build PASS. Verified, but not by me. This slice touches no JavaScript.",
-    "THE UNPARSEABLE schedule_ref IS A PRODUCTION OBSERVATION I DID NOT ACT ON. Every source in the only provider config declares a schedule_ref that parse_schedule_window cannot parse, so every staleness window in the product is the 7-day default rather than the cadence the config appears to declare. I did not change it: it is production behaviour, it would move every staleness verdict, and the brief requires stopping and reporting rather than making a production change in this slice.",
-    "REAL-PROVIDER COVERAGE BEYOND CLOUDFLARE IS STILL ONE. A second provider slug is now exercised, but synthetically, through the ORM. Nothing new passes through the config or ingest path, and no second provider config exists in the tree.",
-    "ANCHOR INVARIANCE FOR THE PUBLISHED CORPUS IS STILL PROVEN ONLY AT n=2. The exhaustive 24-ordering demonstration added here is over the DERIVATION at a synthetic n=4. It says nothing new about _free_offer's anchor over cloudflare, which still holds exactly two anchor-eligible offers and cannot be permuted past n=2 at all.",
-    "M5's SURVIVAL IN test_catalogue_currency.py IS NOT A STABLE RESULT. The order-dependence mutation (current_at = expiries[0]) failed no test in that module in my run, but whether it does depends on the very unspecified row order under study. It is not evidence that the module cannot detect order-dependence; it is evidence that detection there is a coin toss, which is the original defect restated."
-  ],
+  "required_evaluation_level": 1,
+  "required_evaluation_level_reason": "Test-and-prose-only change with no product behaviour touched: one new permanent test, two docstring/comment rewrites, one cross-reference update. Not a provider adapter, schema, security boundary, or classification path.",
   "evaluator_disposition": "not yet evaluated"
 }

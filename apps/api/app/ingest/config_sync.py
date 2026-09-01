@@ -710,9 +710,11 @@ def sync_provider(session: Session, config: ProviderConfig) -> SyncResult:
     ``apps/`` registered such a listener at the time of writing, verified by
     inspection, so this is a library seam rather than a live defect — a
     point-in-time observation, not a standing guarantee, and nothing in this
-    repository detects it becoming false. An automated check was attempted and
-    removed (see AMENDMENT 8 in ``agent-state/current_contract.json``); the claim
-    is deliberately an inspection result rather than an enforced invariant.
+    repository detects it becoming false. An automated check that would reject a
+    newly registered ``after_transaction_end`` listener anywhere under ``apps/`` was
+    considered and declined, because it would fail closed on an unrelated slice that
+    legitimately adds one; the claim is deliberately an inspection result rather than
+    an enforced invariant.
     ``tests/integration/test_ingest_sync_savepoint.py`` pins the boundary itself.
     See the comment at the ``savepoint.commit()`` call for why no guard is
     applied here.
