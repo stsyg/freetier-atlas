@@ -1,107 +1,95 @@
 {
   "feature_id": "F-GUARD-AUDIT",
-  "slice": "five-not-reached-guards-audit",
-  "title": "Read the assertions of the five guards PR #77 marked NOT REACHED, classify them by failure direction, and pin what is measurably unreached",
-  "branch": "stsyg-five-not-reached-guards-audit",
-  "base_commit": "6e14a4714897efc951605d06762ba3819d2df18c",
-  "objective": "PR #77 classified 17 repository-owned guards and deliberately marked five NOT REACHED: it read their names, locations and purpose but NOT their assertions. This slice reads the assertions, classifies each by failure direction (A = wrongly reject, B = wrongly accept), and establishes reachability by MUTATION rather than by coverage. Where a guard does not bite, the hole is REPORTED and NOT repaired. Where a guard does bite, tests are added only to pin behaviour that already exists.",
+  "slice": "assertion-conflict-branch-deadness",
+  "title": "Establish WHY the second conflicting_assertion branch in _apply_assertions is dead, and pin which guard actually answers the conflict",
+  "branch": "stsyg-assertion-conflict-branch-deadness",
+  "base_commit": "5aa7678ddb51d5583ecc4b3aa2317aa64af218e5",
+  "objective": "PR #110 reported the second conflicting_assertion refusal in HtmlDocAdapter._apply_assertions as STRUCTURALLY DEAD but its instrumentation was temporary and is gone, so nothing standing in the tree establishes why. This slice constructs the input that OUGHT to reach that branch, demonstrates what actually happens to it, identifies WHICH refusal answers it, and classifies the deadness against the three candidate explanations (impossible by construction / wrong call path / upstream defect silently collapsing a conflict).",
+  "verdict": {
+    "case": "Dead by DOMINATION from a co-located guard. NOT the upstream-mechanism story, and NOT an upstream defect.",
+    "case_3_excluded": "The constructed conflicting input is REFUSED, not swallowed: one candidate, verification_state='rejected', error='conflicting_assertion', detail=\"field='offer_type'\", and no extracted facts survive on the rejected candidate.",
+    "case_1_premise_corrected": "The brief's case 1 asks for an UPSTREAM mechanism guaranteeing one assertion per field. There is none. HtmlExtractionProfile.__post_init__ (apps/api/app/ingest/adapters/html.py lines 194-288) neither deduplicates assertions by field nor rejects two assertions on one field; it normalises text and scope and validates the field vocabulary and the verbatim rule only. A profile carrying two offer_type assertions with different values constructs successfully and reaches the loop.",
+    "actual_mechanism": "Branch A (line 984, 'assertion.field in facts and existing != assertion.value') DOMINATES branch B (lines 991-994). Line 1002 'facts[assertion.field] = assertion.value' executes unconditionally in the same loop iteration immediately after line 1001 'asserted_fields[assertion.field] = assertion.value', so the invariant 'for every f in asserted_fields, facts[f] is asserted_fields[f]' holds at the top of every iteration. B's predicate is therefore the same comparison on the same operands as A's, restricted to a subset of keys, and A is evaluated seven lines earlier.",
+    "consequence": "The INTENT the branch encodes -- two assertions disagreeing about one field must refuse the document -- is fully enforced, by branch A. This is a redundant refusal, not an unprotected intent. That distinction is the whole finding: a reader who sees the check and concludes the case is covered is correct, just about the wrong line."
+  },
   "what_this_slice_is_not": [
-    "It is not a repair. No guard's matching rule, admission criterion, accept set or reject set is changed. apps/api/app/ingest/adapters/html.py, apps/api/app/ingest/fetch.py, apps/api/app/ingest/trust.py, apps/api/app/publish/gate.py, apps/api/app/publish/publisher.py, apps/api/app/ingest/reconcile.py and scripts/refresh_secrets_baseline.py are all byte-identical to base, verified by git blob hash.",
+    "It is NOT a repair and NOT a deletion. apps/api/app/ingest/adapters/html.py is byte-identical to base, proved by git blob hash bcde62bf4051dd27b9062a7002dbae7e13a878b1 before and after every mutation.",
     "It does not mark any feature passing. agent-state/feature_list.json is untouched (blob 154de1fef2ba).",
-    "It does not touch .github/workflows/ci.yml, scripts/check_urls.py, tests/unit/test_url_allowlist.py, .secrets.baseline, or either lockfile.",
-    "No npm install / i / update / audit fix was run. No Node gate was executed at all (see not_verified)."
+    "It does not touch .github/workflows/ci.yml, scripts/check_urls.py, tests/unit/test_url_allowlist.py, .secrets.baseline, either lockfile, or tests/integration/test_catalogue_currency.py (a parallel slice owns that file).",
+    "No npm install / i / update / audit fix was run. This slice touches no JavaScript.",
+    "No database was needed or created: every experiment is pure in-process extraction against an in-memory fixture fetcher."
   ],
-  "the_five_guards_as_named_by_pr_77": {
-    "note": "PR #77's inventory row 16 names the runtime staleness gate as app/ingest/trust.py. That file contains NO staleness logic; it is the community/official trust separation boundary. The runtime staleness gate is assess_staleness in app/ingest/reconcile.py, consumed by publisher._build_conditions. Both were audited rather than choosing between them, because classifying from a name is the precise error this slice exists to attack.",
-    "1_baseline_refresher": "scripts/refresh_secrets_baseline.py",
-    "2_provider_assertion_evidence_floor": "apps/api/app/ingest/adapters/html.py",
-    "3_fetch_address_validation": "apps/api/app/ingest/fetch.py",
-    "4_runtime_staleness_gate": "app/ingest/reconcile.py assess_staleness + publisher._build_conditions (NOT trust.py); trust.py audited separately",
-    "5_publication_gate": "apps/api/app/publish/gate.py"
-  },
-  "method": {
-    "primary_instrument": "MUTATION, not name-grep and not coverage. A name-grep answers 'who calls this symbol', not 'what guards this behaviour'; executed-and-unasserted is worse than never-executed because coverage reports it green while deleting the guard fails no test.",
-    "every_mutation_restores_the_original_defect": "No mutation deletes an argument or breaks arity. Each one re-opens the specific hole its guard exists to close, and the killing test node ids are recorded so a kill by a DIFFERENT guard is never accepted as evidence for the one under test.",
-    "baseline_shown_to_have_executed": "Round 1: exit 0, 3006 collected, 3006 passed, recorded BEFORE any edit. Round 2 (after the new tests): exit 0, 3031 collected, 3031 passed. pytest exit 5 is treated as NOTHING COLLECTED and aborts the run; a run collecting 0 is never read as a pass.",
-    "anchor_preflight": "Every mutation's search text is asserted to match EXACTLY ONCE before it is applied; a missing anchor ABORTS, because an unapplied mutation reads exactly like a surviving one. 22 of 22 (round 1) and 9 of 9 (round 2) matched exactly once.",
-    "restoration_proved": "Every target file's git blob hash is compared before and after; all 31 mutations restored byte-exact, and git status is clean of production-file changes.",
-    "structure_over_phrase": "The conflicting_assertion branch question was settled by temporarily tagging the two detail strings and driving both input shapes, and by an ast walk over _apply_assertions -- not by counting tokens.",
-    "environment_precondition_asserted_not_announced": [
-      "Own PostgreSQL: container fta-guardaudit-pg, volume fta-guardaudit-pgdata, port 55440 probed free before use, bound to 127.0.0.1, seeded separately from any other stack.",
-      "Reachability asserted by executing 'select version()' from the venv python and reading a bare exit code, not by reading a docker status line.",
-      "The integration suite is asserted to have RUN rather than skipped: 294 integration tests passed; without DATABASE_URL every one of them skips, and a skipped suite would have read as a KILL for every staleness mutation."
-    ]
-  },
   "in_scope": [
-    "Read and quote the assertions of all five guards plus trust.py.",
-    "Classify each by failure direction and establish reachability by mutation.",
-    "ADD tests that pin CURRENT behaviour where a mutation proved a guard does not bite.",
-    "Report, and do not repair, any guard that does not bite."
+    "Construct the assertion-vs-assertion conflict input and record what actually happens to it.",
+    "Measure WHICH _rejected() call site refuses it, by call site rather than by error string (the two refusals emit the identical string, so the error alone cannot distinguish them).",
+    "Classify the deadness against the three candidate explanations and name the mechanism with its lines.",
+    "ADD tests that pin the CURRENT relationship between the two branches. No production behaviour change."
   ],
   "out_of_scope": [
-    "Changing what any guard matches, accepts or rejects. Three of the five sit in mandatory Level-2 categories (provider adapters and evidence extraction; publication decisions) and one is a security boundary.",
-    "Removing the structurally dead second conflicting_assertion branch in _apply_assertions. It is reported. Deleting a refusal from an evidence-extraction path is an owner decision.",
-    "Any Node-side gate, for the reason recorded in not_verified.",
+    "Removing the dead branch. The brief licenses deletion only on a proved upstream mechanism, and there is none; html.py is also a mandatory Level-2 category where a change to what an evidence-extraction path accepts or refuses is an owner decision. PR #110 declined for the same reason and its handoff recommended exactly this owner decision as a separate slice.",
+    "Changing what any guard matches, accepts or rejects.",
     "Marking any feature passing."
   ],
+  "method": {
+    "primary_instrument": "MUTATION plus a call-site probe. A name-grep answers 'who calls this symbol', not 'what guards this behaviour'. Because both refusals emit the identical error string 'conflicting_assertion', no behavioural assertion on the error can tell them apart -- the discriminator has to be the call site.",
+    "call_site_probe": "HtmlDocAdapter._rejected is wrapped and the CALLER's frame line number recorded (inspect.currentframe().f_back.f_lineno). Expected line spans are derived from the AST of the module under test, never from a hardcoded literal, so the probe follows the source if it moves. No sys.settrace, so nothing fights a coverage tracer.",
+    "instrument_negative_control": "Before trusting any 'branch A answered' result, the same probe was driven at a DIFFERENT refusal (assertion_not_found) and observed to report that site (line 966) rather than A's (line 985). Without this, a probe hardwired to A's line would have confirmed exactly what was hoped.",
+    "every_mutation_restores_the_original_defect": "Each mutation deletes a guard entirely -- the hole as it would exist if the guard had never been written -- rather than breaking arity or an argument. Each mutated tree was checked with 'ruff format --check' and 'ruff check' (exit 0 for all three) so that a formatting nit could never turn a top-line conclusion red for a reason unrelated to the product.",
+    "which_guard_killed_it": "Killing test node ids recorded per mutation, so a kill by a pre-existing guard is never accepted as evidence for the branch under test.",
+    "baseline_shown_to_have_executed": "Targeted baseline: 134 collected, 134 passed, exit 0, over tests/unit/test_adapter_html_conflict.py + test_adapter_html_assertions.py + test_adapter_html_matrix.py, recorded before any edit. pytest exit 5 is treated as NOTHING COLLECTED.",
+    "environment_precondition_asserted_not_announced": "Python 3.13.15 and pytest 9.0.3 read from the interpreter; 'import app.ingest' executed and observed to succeed before any experiment. No coverage plugin is configured in pytest addopts, checked in pyproject.toml.",
+    "predictions_recorded_first": "All eight predictions were written to a file before the first experiment ran. One MISSED and is reported."
+  },
   "acceptance_criteria": [
-    "Each of the five guards has its assertion QUOTED, a failure direction assigned from that assertion rather than from its name, and a REACHED / NOT REACHED verdict established by mutation with the killing test named.",
-    "Every guard reported as reached names at least one test that goes red when its defect is restored.",
-    "Every guard reported as NOT reached survived a defect-restoring mutation against the whole tree, with the baseline shown green and non-empty first.",
-    "Each added test file asserts BOTH directions: a refusing arm and a permitting arm differing in exactly one input, so it cannot pass against code that refuses everything.",
-    "Every added test is shown to BITE by re-running the mutation it was written for and observing it go from SURVIVED to KILLED, naming the killing test.",
-    "No production file changes. Byte-identity proved by git blob hash.",
+    "The constructed assertion-vs-assertion input is exhibited, together with what actually happens to it, at the pristine base commit.",
+    "The refusing call site is identified by measurement, not inference, and the probe is shown able to report a different site.",
+    "Branch B is shown to be FUNCTIONAL rather than merely unexecuted, by removing branch A and observing B answer the same input.",
+    "The counterfactual is exhibited: with both guards removed, the conflicting document is ACCEPTED carrying the last assertion's value, which is what the pair prevents.",
+    "The mechanism is named with its lines, and the brief's case-1 premise is either confirmed or corrected against the source.",
+    "No production file changes; byte-identity proved by git blob hash.",
+    "Added tests fail when the relationship they pin is broken -- shown by re-running the branch-A mutation with the new tests present.",
     "Errors made during the slice are reported as prominently as the verdict."
   ],
   "verification_method": {
-    "database": "Own PostgreSQL 16, container fta-guardaudit-pg, volume fta-guardaudit-pgdata, host port 55440 (probed free; the repo default 5432 and the previously used 55432 were both already allocated). Removed with exact-name ^...$ filters at end of slice, because Docker's default filter is a SUBSTRING match.",
+    "database": "None required. No container was created, so none needed removal.",
     "commands": [
-      "python -m venv .venv && .venv/Scripts/python -m pip install -e \".[dev]\"   (scripts/bootstrap-dev.ps1 NOT used: it runs npm install, which is forbidden here)",
-      ".venv/Scripts/python -m pytest tests/unit -q -p no:randomly",
-      ".venv/Scripts/python -m alembic upgrade head   (against the audit database only)",
-      ".venv/Scripts/python -m pytest tests/integration -q -p no:randomly",
-      ".venv/Scripts/python -m pytest tests -q -p no:randomly   (whole-tree selector used for every mutation)",
-      ".venv/Scripts/python -m ruff check . && .venv/Scripts/python -m ruff format --check ."
+      "python -m pytest tests/unit/test_adapter_html_conflict.py tests/unit/test_adapter_html_assertions.py tests/unit/test_adapter_html_matrix.py -q",
+      "python -m pytest tests/unit -q",
+      "python -m pytest tests -q",
+      "python -m ruff check . && python -m ruff format --check ."
     ]
   },
-  "migration_and_data_implications": "None. No schema change, no migration, no production write. The audit database is created, migrated and destroyed inside the slice.",
+  "migration_and_data_implications": "None. No schema change, no migration, no production write.",
   "security_privacy_portability_z0": {
-    "security": "apps/api/app/ingest/fetch.py is a security boundary and was NOT modified. Its guards were exercised by mutation only, with every mutation restored byte-exact. No security check was weakened, suppressed or relaxed; no allowlist entry was added. Where a mutation survived, the finding is reported rather than repaired.",
+    "security": "No security boundary touched. No guard weakened, suppressed or relaxed; the guard under study is unchanged.",
     "privacy": "No personal data touched.",
     "portability": "No dependency added or changed. Neither lockfile touched.",
-    "z0": "Material. Two of the guards audited stand directly between an unsupported free claim and publication: the provider assertion floor (an unpinned claim must never become a fact) and the publication gate's fresh hard condition (a stale claim must never auto-publish). Both were proved to bite. The one publication-side hole found -- a source with NO snapshot at all being reportable as fresh -- is the unknown-treated-as-verified shape, and is now pinned by test at its current fail-closed value."
+    "z0": "Material to the extent that _apply_assertions stands between a contradicted field and publication. The counterfactual measured here shows precisely what the pair of guards prevents: with both removed, a document whose two pinned assertions disagree is ACCEPTED carrying offer_type='trial' from the last assertion, which on this product is an accepted-but-contradicted field and a route to an unsupported free claim. Branch A prevents it today; this slice changes nothing about that."
   },
   "regression_risks": [
     "The added tests are pure additions; no existing test was modified or weakened.",
-    "tests/unit/test_secrets_refresher.py drives scripts/refresh_secrets_baseline.py's main() against a TEMPORARY root and stubs run_scan, so detect-secrets is never invoked and the committed .secrets.baseline is never read or written. The redirection is asserted inside the fixture, not assumed.",
-    "The new test files contain no 40-hex literal; every digest is computed at run time, so they introduce no new detect-secrets finding and cannot make the committed baseline stale."
+    "The added tests monkeypatch HtmlDocAdapter._rejected through pytest's monkeypatch fixture, which restores it after each test, so no global state leaks between tests.",
+    "The added tests anchor branch identity to the PREDICATE each refusal sits under (facts vs asserted_fields), read from the AST, rather than to line numbers or to source order, so an innocuous reordering does not produce a false alarm and a removal of branch A does not silently satisfy them."
   ],
   "required_evaluation_level": 2,
-  "required_evaluation_level_reason": "The audit reads and exercises guards in three mandatory Level-2 categories (provider adapters and evidence extraction; publication decisions; security boundaries). No behaviour is changed, but the CLAIMS made about those guards' reachability are exactly the kind of claim that must be independently checked, and two of the added test files sit against Level-2 code.",
+  "required_evaluation_level_reason": "The code under study is a provider adapter and evidence-extraction path, a mandatory Level-2 category. No behaviour is changed, but the CLAIM that a refusal in that path is unreachable is exactly the kind of claim an independent evaluator must re-derive, and the recommendation that follows from it (whether to delete the branch) is an owner decision.",
   "hard_rules_acknowledged": [
     "Draft PR. Not merged.",
     "No feature marked passing; agent-state/feature_list.json untouched.",
     "agent-state/progress.md appended to only, proved by raw byte-prefix comparison plus a flipped-byte negative control.",
-    "agent-state/current_contract.json taken wholesale (single-slot, no carry-forward since PR #106).",
+    "agent-state/current_contract.json taken wholesale (single-slot).",
     "No npm install/i/update/audit fix.",
-    "No security check weakened.",
-    "Own PostgreSQL on a probed-free port; container and volume removed and named in the report using exact-name ^...$ filters.",
+    "No guard weakened.",
+    "tests/integration/test_catalogue_currency.py not touched.",
     "Rebased on main before pushing if main moved, because a conflicting PR is never dispatched to CI and an absent signal reads exactly like a green one."
   ],
   "not_verified": [
-    "NODE-SIDE GATES: RETIRED by CI. I did not run them locally because this machine npm registry is an internal package feed and npm ci/install could write internal resolved URLs into a lockfile -- the exact disclosure scripts/check_urls.py exists to catch, in a public repository. CI run 33461023775 then ran them: Node format and lint PASS, Web type-check tests and build PASS. Verified, but not by me.",
-    "CI ITSELF: RETIRED. Observed on the draft PR, run 33461023775, all six checks green (Python lint/format/tests 2m9s, Node format and lint, Web type-check/tests/build, Secret scan, Dependency audit, GitGuardian). The PR is MERGEABLE, so the run was genuinely dispatched -- a conflicting PR is never dispatched at all and an absent signal reads exactly like a green one.",
-    "CI ITSELF: I did not observe a CI run. The verdicts here are from local execution against my own PostgreSQL.",
-    "REACHABILITY IN PRODUCTION of the publisher's freshest-is-None branch: I proved the branch is live through the seam an existing unit test already uses, and pinned it. I did NOT establish whether the real pipeline can produce a candidate for a source with zero snapshots. If it cannot, the branch is a fail-closed default for an unreachable state, which is still correct and still worth pinning.",
-    "THE PERMIT DIRECTION OF THE REFRESHER AGAINST REAL detect-secrets: the added tests stub run_scan. They prove the wrapper's REACTION to a scan result, not that detect-secrets produces the results modelled. The four historical corruption shapes those models are drawn from are the ones already recorded in tests/unit/test_secrets_baseline.py.",
-    "THE IPv4-MAPPED UNMASK in address_block_reason: NOT classifiable by mutation on this interpreter. My mutation was EQUIVALENT, not defect-restoring -- CPython's ipaddress already delegates mapped addresses internally, so removing the explicit unmask changes neither the verdict nor the reason string for ::ffff:127.0.0.1, ::ffff:10.0.0.1, ::ffff:8.8.8.8 or ::ffff:1.1.1.1 (all four probed). Its survival is therefore evidence about my instrument, not about the tests."
+    "THE INTEGRATION LAYER DID NOT RUN LOCALLY: 292 skipped, no DATABASE_URL. No database was stood up, because this slice adds three in-process unit tests to one file and changes no production code, so nothing in it can reach the DB layer. CI runs the same suite against a postgres:16-alpine service container, so that layer is dispatched there and is NOT measured by me.",
+    "NODE-SIDE GATES: not run at all, deliberately. This machine's npm registry is an internal package feed and npm ci/install could write internal resolved URLs into a lockfile in a public repository. This slice touches no JavaScript.",
+    "CI ITSELF: not observed at the time of writing. Every verdict recorded here is local.",
+    "WHAT SHOULD HAPPEN IF BRANCH A IS EVER WEAKENED: not answered. It was measured that branch B would then become the live guard -- a branch that has never executed. Whether that is acceptable cover is a design question this slice did not decide.",
+    "THE DOMINATION ARGUMENT IS OVER THE CURRENT FUNCTION BODY. It was not proved for values with pathological __eq__ in general. What was established is narrower and is the claim actually supported: both predicates compare the SAME stored object against the SAME operand with the SAME operator, because lines 1001 and 1002 assign one value to both dicts in the same iteration, so no asymmetry between the two predicates is possible.",
+    "WHETHER A REAL PROVIDER PAGE COULD PRODUCE THIS CONFLICT: measured only over committed configuration. 35 HTML profiles are registered, 31 declare at least one assertion, and ZERO declare the same field twice, so no committed profile can produce an assertion-vs-assertion conflict today. That is a statement about the profiles in this repository, not about what a future author might write."
   ],
-  "evaluator_disposition": "not yet evaluated",
-  "ci_observed": {
-    "run_id": "33461023775",
-    "checks_green": 6,
-    "checks_red": 0,
-    "mergeable": "MERGEABLE",
-    "draft": true
-  }
+  "evaluator_disposition": "not yet evaluated"
 }
