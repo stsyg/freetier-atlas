@@ -1,104 +1,107 @@
 {
   "feature_id": "F-GUARD-AUDIT",
-  "slice": "assertion-conflict-branch-deadness",
-  "title": "Establish WHY the second conflicting_assertion branch in _apply_assertions is dead, and pin which guard actually answers the conflict",
-  "branch": "stsyg-assertion-conflict-branch-deadness",
-  "base_commit": "5aa7678ddb51d5583ecc4b3aa2317aa64af218e5",
-  "objective": "PR #110 reported the second conflicting_assertion refusal in HtmlDocAdapter._apply_assertions as STRUCTURALLY DEAD but its instrumentation was temporary and is gone, so nothing standing in the tree establishes why. This slice constructs the input that OUGHT to reach that branch, demonstrates what actually happens to it, identifies WHICH refusal answers it, and classifies the deadness against the three candidate explanations (impossible by construction / wrong call path / upstream defect silently collapsing a conflict).",
-  "verdict": {
-    "case": "Dead by DOMINATION from a co-located guard. NOT the upstream-mechanism story, and NOT an upstream defect.",
-    "case_3_excluded": "The constructed conflicting input is REFUSED, not swallowed: one candidate, verification_state='rejected', error='conflicting_assertion', detail=\"field='offer_type'\", and no extracted facts survive on the rejected candidate.",
-    "case_1_premise_corrected": "The brief's case 1 asks for an UPSTREAM mechanism guaranteeing one assertion per field. There is none. HtmlExtractionProfile.__post_init__ (apps/api/app/ingest/adapters/html.py lines 194-288) neither deduplicates assertions by field nor rejects two assertions on one field; it normalises text and scope and validates the field vocabulary and the verbatim rule only. A profile carrying two offer_type assertions with different values constructs successfully and reaches the loop.",
-    "actual_mechanism": "Branch A (line 984, 'assertion.field in facts and existing != assertion.value') DOMINATES branch B (lines 991-994). Line 1002 'facts[assertion.field] = assertion.value' executes unconditionally in the same loop iteration immediately after line 1001 'asserted_fields[assertion.field] = assertion.value', so the invariant 'for every f in asserted_fields, facts[f] is asserted_fields[f]' holds at the top of every iteration. B's predicate is therefore the same comparison on the same operands as A's, restricted to a subset of keys, and A is evaluated seven lines earlier.",
-    "consequence": "The INTENT the branch encodes -- two assertions disagreeing about one field must refuse the document -- is fully enforced, by branch A. This is a redundant refusal, not an unprotected intent. That distinction is the whole finding: a reader who sees the check and concludes the case is covered is correct, just about the wrong line."
-  },
+  "slice": "discriminate-provider-boundary",
+  "title": "Build a corpus that can tell the provider_boundary formulations apart, then re-run the two mutations that survived because it could not",
+  "branch": "stsyg-discriminate-provider-boundary",
+  "base_commit": "9f66d9bc92f55a8bc6bb56aeef04ec3e7fde243d",
+  "base_commit_note": "Originally developed on 5aa7678ddb51d5583ecc4b3aa2317aa64af218e5 and REBASED onto 9f66d9bc after PR #113 landed, because a conflicting PR is never dispatched to CI and an absent signal reads exactly like a green one. Every measurement in this contract was taken at 5aa7678; the whole suite was re-run after the rebase and the figures are reported for both.",
+  "objective": "PR #103 shipped a provider_boundary fixture whose author ran mutations against it and reported two SURVIVORS, both for the same reason: today's corpus cannot discriminate them. M4 (select the OLDEST evidence row per version) has an EMPTY discriminating population because every published version carries exactly one evidence row. M2 (the spread < 1s precondition) is unfalsifiable because the corpus declares a single window. That is UNTESTED-BECAUSE-UNDISCRIMINATED, not untested-because-unchecked, which is why it shipped -- but it goes live UNGUARDED the moment a provider publishes a version with two evidence rows or two sources declare different windows, and the fixture would keep passing whichever way it was written. This slice constructs input that can tell the formulations apart, re-runs both mutations against it, and reports what that reveals.",
   "what_this_slice_is_not": [
-    "It is NOT a repair and NOT a deletion. apps/api/app/ingest/adapters/html.py is byte-identical to base, proved by git blob hash bcde62bf4051dd27b9062a7002dbae7e13a878b1 before and after every mutation.",
+    "It is not a production change. Nothing under apps/, migrations/ or scripts/ is modified; every change is under tests/.",
+    "It does not touch apps/api/app/ingest/adapters/html.py (blob bcde62bf4051), which a parallel slice is investigating.",
     "It does not mark any feature passing. agent-state/feature_list.json is untouched (blob 154de1fef2ba).",
-    "It does not touch .github/workflows/ci.yml, scripts/check_urls.py, tests/unit/test_url_allowlist.py, .secrets.baseline, either lockfile, or tests/integration/test_catalogue_currency.py (a parallel slice owns that file).",
-    "No npm install / i / update / audit fix was run. This slice touches no JavaScript.",
-    "No database was needed or created: every experiment is pure in-process extraction against an in-memory fixture fetcher."
+    "It does not touch .github/workflows/ci.yml, scripts/check_urls.py, tests/unit/test_url_allowlist.py, .secrets.baseline, or either lockfile. Each verified by git blob hash against base.",
+    "No npm install / i / update / audit fix was run. This slice touches no JavaScript."
   ],
+  "why_synthetic_data_is_the_correct_instrument_here": "The question is the REACHABILITY of a code path, not present-day incidence, so constructing the input is the right instrument. This is the opposite of a currency or coverage measurement, where seeding a corpus would only measure the suite's own ingest clock. The synthetic rows live inside a rolled-back transaction, are prefixed synthetic-boundary-probe, describe no real provider and make no claim that anything is free.",
+  "what_the_published_corpus_actually_contains": {
+    "measured_at": "5aa7678, against config/examples/providers/cloudflare.example.yaml, the only provider config in the tree",
+    "offers_reachable_from_provider_cloudflare": 2,
+    "published_and_Z0_TRUE_FREE_and_evidence_backed": 2,
+    "evidence_rows_per_published_version": "1 each -- M4's discriminating population is EMPTY",
+    "distinct_declared_schedules_across_those_sources": 1,
+    "deeper_finding": "That one schedule is 'official_pages'. Source.schedule holds the config's schedule_ref verbatim (config_sync.py: schedule -> config.schedule_ref), and neither 'official_pages' nor 'rss' nor 'mcp_documentation' is parseable by parse_schedule_window, so EVERY window in the corpus is the 7-day fallback. The emptiness is doubly deep: there is neither a version with two evidence rows NOR a source with a parseable schedule.",
+    "expiry_spread_across_the_two_claims": "0.311665 s in my run -- ingest wall-clock jitter, a per-run variate, not a constant"
+  },
+  "method": {
+    "primary_instrument": "MUTATION against a corpus built to have a non-empty discriminating population, with each kill attributed to a NAMED test and compared name-by-name against a recorded baseline.",
+    "kills_checked_against_production_not_against_a_restatement": "The M4 arm requires the derived expiry to be the exact moment queries.fetch_evidence_currency flips the version, which is decided by worst() in application code. The M2 arm requires the derivation to ACCEPT a corpus only when that corpus's one-second arm is measurably unambiguous in the database. Neither restates the helper's own arithmetic, so neither is the tautology that an assert asserts.",
+    "baseline_shown_to_have_executed": "Module baseline at 5aa7678: exit 0, collected 23, passed 23. Whole-suite base: collected 3034, passed 3031, skipped 3, failed 0. pytest exit 5 is treated as NOTHING COLLECTED and aborts; a negative control (-k on a name that does not exist) was run first and DID abort with collected 0.",
+    "anchor_preflight": "Every mutation's search text is asserted to occur EXACTLY ONCE before it is applied; 0 or >1 ABORTS. A dedicated CONTROL mutation with deliberately-absent search text was run and aborted with occurrences 0 -- load-bearing here, because this slice investigates mutations that SURVIVED and an unapplied mutation reads exactly like a surviving one.",
+    "restoration_proved": "Exact-byte snapshot taken before each write and restored after; restoration verified by content equality, by the original text being present exactly once, and by the mutated text being absent. Never git checkout --, which would have destroyed the uncommitted work.",
+    "structure_over_phrase": "Test outcomes are parsed from pytest's JUnit XML, not scraped from stdout. The attribution test computes the OTHER precondition independently from the claims rather than inferring it from which message came back.",
+    "environment_precondition_asserted_not_announced": [
+      "Own PostgreSQL: container fta-discriminate-pg, volume fta-discriminate-pgdata, port 55451 probed free (after exact-name ^...$ teardown of any prior run of mine, so my own container could not be mistaken for a squatter), database ftadiscrim, seeded separately from the suite's DB.",
+      "pg_isready alone is a FALSE READY and was measured to be so: the postgres entrypoint runs a temporary server during initdb, pg_isready returned 0 against it, and the very next command failed with 'the database system is shutting down'. The harness now requires pg_isready AND a real query to both exit 0 on three CONSECUTIVE probes, plus the container still Running.",
+      "The database is then asserted present in pg_database, a trivial query is asserted to EXECUTE and return 42, and host-port reachability is asserted from a separate container.",
+      "The integration module is asserted to have RUN rather than skipped: without DATABASE_URL all 23 skip, and a skipped suite would read as a KILL for every mutation."
+    ],
+    "apparatus_separated_from_subject": "The runner, mutation harness, corpus probe and prediction ledger all live OUTSIDE the repository, in the session artifacts directory. The base-total measurement used a detached scratch worktree whose SHA was asserted after checkout, run sequentially and never concurrently with the mutation harness."
+  },
   "in_scope": [
-    "Construct the assertion-vs-assertion conflict input and record what actually happens to it.",
-    "Measure WHICH _rejected() call site refuses it, by call site rather than by error string (the two refusals emit the identical string, so the error alone cannot distinguish them).",
-    "Classify the deadness against the three candidate explanations and name the mechanism with its lines.",
-    "ADD tests that pin the CURRENT relationship between the two branches. No production behaviour change."
+    "A persisted synthetic corpus carrying a version with TWO evidence rows at different fetched_at, and sources declaring DIFFERENT parseable windows.",
+    "Re-running M4 and M2 against it, requiring a NAMED test to fail for each, and checking WHICH guard killed each.",
+    "Extracting the boundary derivation out of the provider_boundary fixture so its preconditions are reachable with a corpus other than the one _publish produces. Behaviour-preserving, verified by 23/23 unchanged before anything was built on it.",
+    "Repairing the within-claim half-application the discriminating corpus exposed (test-only), and pinning both orientations.",
+    "An exhaustive order-invariance demonstration at a population larger than two."
   ],
   "out_of_scope": [
-    "Removing the dead branch. The brief licenses deletion only on a proved upstream mechanism, and there is none; html.py is also a mandatory Level-2 category where a change to what an evidence-extraction path accepts or refuses is an owner decision. PR #110 declined for the same reason and its handoff recommended exactly this owner decision as a separate slice.",
-    "Changing what any guard matches, accepts or rejects.",
+    "Any production change. The unparseable-schedule_ref finding is REPORTED, not fixed: making 'official_pages' resolve to a real cadence would change every source's staleness window across the product and is a different slice with its own evaluation.",
+    "Adding order_by to the model relationships. Still deliberately not done, for the reason PR #103 gave.",
     "Marking any feature passing."
   ],
-  "method": {
-    "primary_instrument": "MUTATION plus a call-site probe. A name-grep answers 'who calls this symbol', not 'what guards this behaviour'. Because both refusals emit the identical error string 'conflicting_assertion', no behavioural assertion on the error can tell them apart -- the discriminator has to be the call site.",
-    "call_site_probe": "HtmlDocAdapter._rejected is wrapped and the CALLER's frame line number recorded (inspect.currentframe().f_back.f_lineno). Expected line spans are derived from the AST of the module under test, never from a hardcoded literal, so the probe follows the source if it moves. No sys.settrace, so nothing fights a coverage tracer.",
-    "instrument_negative_control": "Before trusting any 'branch A answered' result, the same probe was driven at a DIFFERENT refusal (assertion_not_found) and observed to report that site (line 966) rather than A's (line 985). Without this, a probe hardwired to A's line would have confirmed exactly what was hoped.",
-    "every_mutation_restores_the_original_defect": "Each mutation deletes a guard entirely -- the hole as it would exist if the guard had never been written -- rather than breaking arity or an argument. Each mutated tree was checked with 'ruff format --check' and 'ruff check' (exit 0 for all three) so that a formatting nit could never turn a top-line conclusion red for a reason unrelated to the product.",
-    "which_guard_killed_it": "Killing test node ids recorded per mutation, so a kill by a pre-existing guard is never accepted as evidence for the branch under test.",
-    "baseline_shown_to_have_executed": "Targeted baseline: 134 collected, 134 passed, exit 0, over tests/unit/test_adapter_html_conflict.py + test_adapter_html_assertions.py + test_adapter_html_matrix.py, recorded before any edit. pytest exit 5 is treated as NOTHING COLLECTED.",
-    "environment_precondition_asserted_not_announced": "Python 3.13.15 and pytest 9.0.3 read from the interpreter; 'import app.ingest' executed and observed to succeed before any experiment. No coverage plugin is configured in pytest addopts, checked in pyproject.toml.",
-    "predictions_recorded_first": "All eight predictions were written to a file before the first experiment ran. One MISSED and is reported."
-  },
   "acceptance_criteria": [
-    "The constructed assertion-vs-assertion input is exhibited, together with what actually happens to it, at the pristine base commit.",
-    "The refusing call site is identified by measurement, not inference, and the probe is shown able to report a different site.",
-    "Branch B is shown to be FUNCTIONAL rather than merely unexecuted, by removing branch A and observing B answer the same input.",
-    "The counterfactual is exhibited: with both guards removed, the conflicting document is ACCEPTED carrying the last assertion's value, which is what the pair prevents.",
-    "The mechanism is named with its lines, and the brief's case-1 premise is either confirmed or corrected against the source.",
-    "No production file changes; byte-identity proved by git blob hash.",
-    "Added tests fail when the relationship they pin is broken -- shown by re-running the branch-A mutation with the new tests present.",
+    "A corpus exists in which a published version carries two evidence rows with different fetched_at, and in which two sources declare different windows that genuinely PARSE -- asserted from the ORM rows, not through the helper under test.",
+    "M4 goes from SURVIVED to KILLED, with the killing test named, and the kill attributable to a cross-check against production currency rather than to a pre-existing guard.",
+    "M2 goes from SURVIVED to KILLED, with the killing test named, and the refusal attributable to the spread guard rather than to the derivation's other precondition.",
+    "Every mutation is defect-restoring, not an arity break, and every search text is asserted to match exactly once.",
+    "A negative control with absent search text is shown to ABORT, distinguishing 'never applied' from 'survived'.",
+    "Whole-suite delta is MEASURED against an independently-executed base run, not derived by subtraction.",
+    "What can and cannot be claimed about anchor invariance at the new corpus size is stated explicitly.",
+    "Whether any provider beyond cloudflare is now exercised is stated explicitly, including the limits of that statement.",
     "Errors made during the slice are reported as prominently as the verdict."
   ],
   "verification_method": {
-    "database": "None required. No container was created, so none needed removal.",
+    "database": "PostgreSQL 16-alpine, container fta-discriminate-pg, volume fta-discriminate-pgdata, host port 55451 (probed free). Both removed at end of slice with exact-name ^...$ filters, because Docker's default filter is a SUBSTRING match.",
     "commands": [
-      "python -m pytest tests/unit/test_adapter_html_conflict.py tests/unit/test_adapter_html_assertions.py tests/unit/test_adapter_html_matrix.py -q",
-      "python -m pytest tests/unit -q",
-      "python -m pytest tests -q",
+      "python -m pytest tests/integration/test_catalogue_currency.py                       (module baseline, 23 collected)",
+      "python -m pytest tests/integration/test_catalogue_currency.py tests/integration/test_provider_boundary_discrimination.py   (mutation selector, 33 collected)",
+      "python -m pytest tests                                                              (whole suite, HEAD and base)",
       "python -m ruff check . && python -m ruff format --check ."
     ]
   },
-  "migration_and_data_implications": "None. No schema change, no migration, no production write.",
+  "migration_and_data_implications": "None. No schema change and no migration. The synthetic rows are INSERTed inside a test transaction that the session fixture rolls back; nothing is ever committed, published or served.",
   "security_privacy_portability_z0": {
-    "security": "No security boundary touched. No guard weakened, suppressed or relaxed; the guard under study is unchanged.",
+    "security": "No security boundary touched. The synthetic Source rows deliberately carry a synthetic:// endpoint rather than an http(s) URL, so they can never be mistaken for a fetchable official location and cannot introduce a URL host into the allowlist's scope.",
     "privacy": "No personal data touched.",
     "portability": "No dependency added or changed. Neither lockfile touched.",
-    "z0": "Material to the extent that _apply_assertions stands between a contradicted field and publication. The counterfactual measured here shows precisely what the pair of guards prevents: with both removed, a document whose two pinned assertions disagree is ACCEPTED carrying offer_type='trial' from the last assertion, which on this product is an accepted-but-contradicted field and a route to an unsupported free claim. Branch A prevents it today; this slice changes nothing about that."
+    "z0": "Material but indirect. The guards discriminated here stand between an EXPIRED free claim and the read surfaces that repeat it: provider_boundary is the clock at which three rollup surfaces decide whether a Z0_TRUE_FREE claim is still supported. A boundary derived from the wrong evidence row would place that decision at the wrong moment. No Z0 classification logic is changed; the synthetic offers are never published."
   },
   "regression_risks": [
-    "The added tests are pure additions; no existing test was modified or weakened.",
-    "The added tests monkeypatch HtmlDocAdapter._rejected through pytest's monkeypatch fixture, which restores it after each test, so no global state leaks between tests.",
-    "The added tests anchor branch identity to the PREDICATE each refusal sits under (facts vs asserted_fields), read from the AST, rather than to line numbers or to source order, so an innocuous reordering does not produce a false alarm and a removal of branch A does not silently satisfy them."
+    "The extraction of _derive_provider_boundary is behaviour-preserving and was verified 23/23 unchanged BEFORE any new test was written.",
+    "The within-claim repair (_earliest_expiring_evidence) is provably INERT on the published corpus: with one evidence row per version, min-by-fetched and min-by-expiry select the same row. It changes behaviour only on multi-evidence versions, which only the synthetic corpora have.",
+    "The new module defines its own engine/session fixtures rather than importing the sibling's, so it cannot alter the sibling's fixture scoping.",
+    "Synthetic rows cannot leak into cloudflare assertions: the corpus fixtures are requested only by the new tests, and each test's transaction is rolled back."
   ],
-  "required_evaluation_level": 2,
-  "required_evaluation_level_reason": "The code under study is a provider adapter and evidence-extraction path, a mandatory Level-2 category. No behaviour is changed, but the CLAIM that a refusal in that path is unreachable is exactly the kind of claim an independent evaluator must re-derive, and the recommendation that follows from it (whether to delete the branch) is an owner decision.",
+  "required_evaluation_level": 1,
+  "required_evaluation_level_reason": "No production code, no schema, no migration, no Z0 classification logic, no security boundary, no publication decision. Every change is under tests/. The sharpest question for a reviewer is whether the new kills are genuine discriminations or restatements of the helpers' own arithmetic, and whether the within-claim repair weakened anything -- both are answerable from the diff plus the recorded mutation runs.",
   "hard_rules_acknowledged": [
     "Draft PR. Not merged.",
-    "No feature marked passing; agent-state/feature_list.json untouched.",
+    "No feature marked passing; agent-state/feature_list.json untouched (blob 154de1fef2ba).",
     "agent-state/progress.md appended to only, proved by raw byte-prefix comparison plus a flipped-byte negative control.",
     "agent-state/current_contract.json taken wholesale (single-slot).",
     "No npm install/i/update/audit fix.",
-    "No guard weakened.",
-    "tests/integration/test_catalogue_currency.py not touched.",
+    "apps/api/app/ingest/adapters/html.py not touched.",
+    "Own PostgreSQL on a probed-free port; container and volume removed and named in the report using exact-name ^...$ filters.",
     "Rebased on main before pushing if main moved, because a conflicting PR is never dispatched to CI and an absent signal reads exactly like a green one."
   ],
   "not_verified": [
-    "THE INTEGRATION LAYER: RETIRED by CI. It did not run locally (292 skipped, no DATABASE_URL) and no database was stood up, because this slice adds three in-process unit tests to one file and changes no production code. CI run 33529505116 then ran the whole suite against the postgres:16-alpine service container: 3034 passed, 3 skipped, exit 0. Verified, but not by me.",
-    "NODE-SIDE GATES: RETIRED by CI. Not run locally, deliberately -- this machine's npm registry is an internal package feed and npm ci/install could write internal resolved URLs into a lockfile in a public repository. CI run 33529505116: Node format and lint PASS (11s), Web type-check/tests/build PASS (34s). This slice touches no JavaScript.",
-    "CI ITSELF: RETIRED. Observed on draft PR #113, run 33529505116, all six checks green. The PR is MERGEABLE, so the run was genuinely dispatched -- a conflicting PR is never dispatched at all and an absent signal reads exactly like a green one.",
-    "WHAT SHOULD HAPPEN IF BRANCH A IS EVER WEAKENED: not answered. It was measured that branch B would then become the live guard -- a branch that has never executed. Whether that is acceptable cover is a design question this slice did not decide.",
-    "THE DOMINATION ARGUMENT IS OVER THE CURRENT FUNCTION BODY. It was not proved for values with pathological __eq__ in general. What was established is narrower and is the claim actually supported: both predicates compare the SAME stored object against the SAME operand with the SAME operator, because lines 1001 and 1002 assign one value to both dicts in the same iteration, so no asymmetry between the two predicates is possible.",
-    "WHETHER A REAL PROVIDER PAGE COULD PRODUCE THIS CONFLICT: measured only over committed configuration. 35 HTML profiles are registered, 31 declare at least one assertion, and ZERO declare the same field twice, so no committed profile can produce an assertion-vs-assertion conflict today. That is a statement about the profiles in this repository, not about what a future author might write."
+    "CI ITSELF: not observed at the time of writing this contract. Every verdict here is from local execution against my own PostgreSQL.",
+    "NODE-SIDE GATES: not run locally. This machine's npm registry is an internal package feed and npm ci/install could write internal resolved URLs into a lockfile -- the exact disclosure scripts/check_urls.py exists to catch, in a public repository. This slice touches no JavaScript.",
+    "THE UNPARSEABLE schedule_ref IS A PRODUCTION OBSERVATION I DID NOT ACT ON. Every source in the only provider config declares a schedule_ref that parse_schedule_window cannot parse, so every staleness window in the product is the 7-day default rather than the cadence the config appears to declare. I did not change it: it is production behaviour, it would move every staleness verdict, and the brief requires stopping and reporting rather than making a production change in this slice.",
+    "REAL-PROVIDER COVERAGE BEYOND CLOUDFLARE IS STILL ONE. A second provider slug is now exercised, but synthetically, through the ORM. Nothing new passes through the config or ingest path, and no second provider config exists in the tree.",
+    "ANCHOR INVARIANCE FOR THE PUBLISHED CORPUS IS STILL PROVEN ONLY AT n=2. The exhaustive 24-ordering demonstration added here is over the DERIVATION at a synthetic n=4. It says nothing new about _free_offer's anchor over cloudflare, which still holds exactly two anchor-eligible offers and cannot be permuted past n=2 at all.",
+    "M5's SURVIVAL IN test_catalogue_currency.py IS NOT A STABLE RESULT. The order-dependence mutation (current_at = expiries[0]) failed no test in that module in my run, but whether it does depends on the very unspecified row order under study. It is not evidence that the module cannot detect order-dependence; it is evidence that detection there is a coin toss, which is the original defect restated."
   ],
-  "ci_observed": {
-    "run_id": "33529505116",
-    "pull_request": 113,
-    "pytest": "3034 passed, 3 skipped, exit 0, against postgres:16-alpine",
-    "checks_green": 6,
-    "checks_red": 0,
-    "mergeable": "MERGEABLE",
-    "draft": true
-  },
   "evaluator_disposition": "not yet evaluated"
 }

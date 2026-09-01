@@ -62,6 +62,19 @@ relationships would change query behaviour repo-wide and is deliberately NOT don
 here; pinning the anchor would merely make the tests reproducible while leaving
 them reading a multi-offer rollup at a single-offer boundary.
 
+The same hazard lives one level down
+------------------------------------
+"Earliest-expiring, not oldest-fetched" was originally applied ACROSS a
+provider's claims but left as ``min(fetched_at)`` WITHIN each claim. Those agree
+only while a version's evidence rows all share one window -- which is the case
+here, and only here, because every ``schedule_ref`` in the one provider config
+(``official_pages``, ``rss``, ``mcp_documentation``) is unparseable and falls
+back to the same 7-day default. Given a version whose newer evidence row carries
+a SHORTER window, the two disagree, and the per-claim expiry runs past the moment
+``worst()`` actually flips the version. :func:`_earliest_expiring_evidence` now
+applies the same rule at both levels; the disagreement is demonstrated in
+``tests/integration/test_provider_boundary_discrimination.py``.
+
 Both directions, everywhere
 ---------------------------
 Every surface is asserted to STOP repeating an unsupported free claim AND to
@@ -73,7 +86,7 @@ offer is a defect of exactly the same severity as a wrongly-published one.
 from __future__ import annotations
 
 import os
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 from datetime import datetime, timedelta
 from importlib import import_module
 from pathlib import Path
@@ -87,7 +100,7 @@ from app.db import get_session
 from app.ingest.reconcile import parse_schedule_window
 from app.ingest.runner import build_fixture_fetcher, run_provider_scans
 from app.main import app
-from app.models.domain import Evidence, Offer, Snapshot, Source
+from app.models.domain import Evidence, Offer, OfferVersion, Snapshot, Source
 from app.read_api import queries
 from fastapi.testclient import TestClient
 from sqlalchemy import select
@@ -169,6 +182,36 @@ def _free_offer(session: Session) -> Offer:
     raise AssertionError("no published Z0_TRUE_FREE offer with evidence was produced")
 
 
+def _earliest_expiring_evidence(
+    version: OfferVersion,
+) -> tuple[datetime, timedelta] | None:
+    """The evidence row that expires FIRST, with its own window. ``None`` if unchecked.
+
+    A version is only as current as its STALEST support: ``fetch_evidence_currency``
+    reduces a version's evidence with ``worst()``, so the moment the version turns
+    stale is the moment its earliest-EXPIRING row does. The row that expires first
+    is not necessarily the row fetched first -- a newer row under a shorter window
+    expires sooner -- so this selects ``min(fetched_at + window)`` rather than
+    ``min(fetched_at)``.
+
+    That distinction is unobservable in the corpus ``_publish`` produces, where
+    every version carries exactly ONE evidence row and every source declares an
+    unparseable ``schedule_ref`` that falls back to the same 7-day window. It is
+    exercised, in both orientations, by
+    ``tests/integration/test_provider_boundary_discrimination.py``.
+    """
+
+    ages = [
+        (e.snapshot.fetched_at, e.source.schedule)
+        for e in version.evidence
+        if e.snapshot is not None and e.snapshot.fetched_at is not None
+    ]
+    if not ages:
+        return None
+    fetched, schedule = min(ages, key=lambda pair: pair[0] + parse_schedule_window(pair[1]))
+    return fetched, parse_schedule_window(schedule)
+
+
 @pytest.fixture
 def boundary(session: Session) -> dict:
     """The exact expiry boundary for the chosen offer, derived from real rows.
@@ -184,14 +227,9 @@ def boundary(session: Session) -> dict:
     version = queries.latest_version(offer)
     assert version is not None
 
-    ages = [
-        (e.snapshot.fetched_at, e.source.schedule)
-        for e in version.evidence
-        if e.snapshot is not None and e.snapshot.fetched_at is not None
-    ]
-    assert ages, "the offer must rest on evidence with a real fetch time"
-    oldest, schedule = min(ages, key=lambda pair: pair[0])
-    window = parse_schedule_window(schedule)
+    selected = _earliest_expiring_evidence(version)
+    assert selected is not None, "the offer must rest on evidence with a real fetch time"
+    oldest, window = selected
 
     return {
         "offer_id": offer.id,
@@ -209,12 +247,16 @@ def boundary(session: Session) -> dict:
 def _published_claim_expiries(
     session: Session, provider_slug: str
 ) -> list[tuple[int, datetime, timedelta]]:
-    """``(version_id, oldest fetched_at, window)`` for every published claim.
+    """``(version_id, fetched_at, window)`` of every published claim's first expiry.
 
     One row per published offer's CURRENT version -- precisely the set that
     ``serialize_provider_summary`` and the category-matrix cells roll up over via
     ``CurrencyContext.for_versions``. Claims with no checkable fetch time are
     omitted, because they contribute ``UNCHECKED`` rather than an expiry.
+
+    The pair returned for a version is its earliest-EXPIRING evidence row (see
+    :func:`_earliest_expiring_evidence`), so ``fetched_at + window`` is exactly
+    the moment ``fetch_evidence_currency`` flips that version.
     """
 
     provider = queries.fetch_provider(session, provider_slug)
@@ -228,28 +270,25 @@ def _published_claim_expiries(
             version = queries.latest_version(offer)
             if version is None:
                 continue
-            ages = [
-                (e.snapshot.fetched_at, e.source.schedule)
-                for e in version.evidence
-                if e.snapshot is not None and e.snapshot.fetched_at is not None
-            ]
-            if not ages:
+            selected = _earliest_expiring_evidence(version)
+            if selected is None:
                 continue
-            oldest, schedule = min(ages, key=lambda pair: pair[0])
-            claims.append((version.id, oldest, parse_schedule_window(schedule)))
+            claims.append((version.id, selected[0], selected[1]))
     return claims
 
 
-@pytest.fixture
-def provider_boundary(session: Session) -> dict:
-    """The boundary of the PROVIDER, not of one arbitrarily-chosen offer.
+def _derive_provider_boundary(
+    claims: Sequence[tuple[int, datetime, timedelta]], provider_slug: str
+) -> dict:
+    """Derive the provider-wide boundary from already-collected claims.
 
-    ``boundary`` above is the right clock for a surface that reports ONE offer.
-    It is the wrong clock for a surface that rolls several up, because the moment
-    it yields belongs to whichever offer ``_free_offer`` happened to be handed
-    first by an unordered relationship. This fixture consults no anchor at all:
-    every figure below is derived from the provider's own published claims, so
-    the moment is identical whichever offer the database returns first.
+    Split out of :func:`provider_boundary` so the two preconditions below are
+    REACHABLE with a corpus other than the one ``_publish`` produces. They were
+    not, and that was the whole of their weakness: with a single provider whose
+    claims all share one window and are stamped a fraction of a second apart, no
+    input existed that could tell a corpus the fixture should refuse from one it
+    should accept. ``tests/integration/test_provider_boundary_discrimination.py``
+    now supplies that input; this function is what it calls.
 
     ``current_at`` is the EARLIEST expiry across those claims -- ``min(fetched_at
     + window)``, not ``min(fetched_at) + window``, so it stays correct if two
@@ -257,16 +296,7 @@ def provider_boundary(session: Session) -> dict:
     ``age <= window`` and the comparison is strict, so NOTHING is stale and the
     rollup is unambiguously current. One second later the earliest-expiring claim
     is past its window, so the rollup is unambiguously stale.
-
-    The one-second differential of mechanism G is preserved, not retreated from:
-    these tests need the boundary itself, which is why they take a different
-    boundary rather than an earlier clock.
     """
-
-    _publish(session)
-    slug = "cloudflare"
-    claims = _published_claim_expiries(session, slug)
-    assert claims, "the provider must publish at least one evidence-backed claim"
 
     expiries = [fetched + window for _, fetched, window in claims]
     current_at = min(expiries)
@@ -297,7 +327,7 @@ def provider_boundary(session: Session) -> dict:
     )
 
     return {
-        "provider_slug": slug,
+        "provider_slug": provider_slug,
         "claim_count": len(claims),
         "expiry_spread": spread,
         # The provider-wide fetch moment: every claim is unambiguously current.
@@ -307,6 +337,34 @@ def provider_boundary(session: Session) -> dict:
         # age  > window for it, and for every other claim -> all stale.
         "stale_at": current_at + timedelta(seconds=1),
     }
+
+
+@pytest.fixture
+def provider_boundary(session: Session) -> dict:
+    """The boundary of the PROVIDER, not of one arbitrarily-chosen offer.
+
+    ``boundary`` above is the right clock for a surface that reports ONE offer.
+    It is the wrong clock for a surface that rolls several up, because the moment
+    it yields belongs to whichever offer ``_free_offer`` happened to be handed
+    first by an unordered relationship. This fixture consults no anchor at all:
+    every figure below is derived from the provider's own published claims, so
+    the moment is identical whichever offer the database returns first.
+
+    The one-second differential of mechanism G is preserved, not retreated from:
+    these tests need the boundary itself, which is why they take a different
+    boundary rather than an earlier clock.
+
+    The arithmetic and both preconditions live in
+    :func:`_derive_provider_boundary`, which
+    ``tests/integration/test_provider_boundary_discrimination.py`` exercises with
+    corpora this one cannot produce.
+    """
+
+    _publish(session)
+    slug = "cloudflare"
+    claims = _published_claim_expiries(session, slug)
+    assert claims, "the provider must publish at least one evidence-backed claim"
+    return _derive_provider_boundary(claims, slug)
 
 
 @pytest.fixture

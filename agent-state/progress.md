@@ -5286,3 +5286,181 @@ CI ran on draft PR #113 and I observed it, so two disclaimers above are now stal
 My reason for not running the Node gates locally stands unchanged — this machine's npm registry is an internal package feed and `npm ci`/`install` could write internal resolved URLs into a lockfile in a **public** repository — but those gates are no longer unmeasured.
 
 The remaining `not_verified` items are unchanged and still stand: I did not decide what should happen if branch A is ever weakened; the domination argument is over the current function body and is the narrower same-object/same-operator claim rather than a general one about `__eq__`; and the zero-duplicate profile count is a statement about this repository's committed configuration, not about what a future author might write.
+
+### 2026-09-01 — Give two unobservable formulations a corpus that can tell them apart (F-GUARD-AUDIT, slice `discriminate-provider-boundary`)
+
+- **Base:** `9f66d9bc92f55a8bc6bb56aeef04ec3e7fde243d` (main). Developed on `5aa7678` and **rebased** onto `9f66d9b` after PR #113 landed, because a conflicting PR is never dispatched to CI and an absent signal reads exactly like a green one. Every mutation and suite figure below was re-measured after the rebase. Branch `stsyg-discriminate-provider-boundary`. **Draft PR, not merged. No feature marked passing.**
+- **Objective:** PR #103 ran mutations against its new `provider_boundary` fixture and reported **two survivors**, both for the same reason — *today's corpus cannot discriminate them*. **M4** (select the OLDEST evidence row per version) had an **EMPTY discriminating population**; **M2** (the `spread < 1s` precondition) was unfalsifiable. Build input that can tell the formulations apart, re-run both, and report what that reveals.
+
+#### Why this was not a blocker, and why it still had to be closed
+
+This is **UNTESTED-BECAUSE-UNDISCRIMINATED**, not untested-because-unchecked. The formulation chosen is the more correct of the two available; there was simply no data that could tell it from the less correct one, and the author said so plainly. That is materially different from a guard nobody exercised.
+
+But it goes live **UNGUARDED** the moment any provider publishes a version with two evidence rows, or two sources declare different windows — and the fixture would keep passing whichever way it was written, so the regression would be **silent**.
+
+#### What the published corpus actually contains — measured myself, not taken on trust
+
+| Population | Count |
+| --- | --- |
+| Offers reachable from provider `cloudflare` after one publish | **2** |
+| …published, `Z0_TRUE_FREE`, evidence-backed (anchor-eligible) | **2** |
+| Evidence rows per published version | **1 each** |
+| DISTINCT declared schedules across the sources backing those claims | **1** |
+| Expiry spread across the two claims | **0.311665 s** (my run) |
+
+**The emptiness is deeper than #103 recorded.** That one schedule is `official_pages`. `Source.schedule` holds the config's `schedule_ref` verbatim (`config_sync.py`: `"schedule": config.schedule_ref`), and none of `official_pages` / `rss` / `mcp_documentation` is parseable by `parse_schedule_window` — so **every window in the corpus is the 7-day fallback**. There is neither a version with two evidence rows NOR a source with a parseable schedule. `min(fetched_at + window)` and `min(fetched_at) + window` are identical *by construction* on that data.
+
+The 0.31 s spread is **ingest wall-clock jitter, a per-run variate, not a constant** — #103 measured 123 ms and quoted a brief that said 102.5 ms. The load-bearing property is `0 < spread < 1 s`.
+
+#### The corpus, and why it discriminates
+
+`tests/support/boundary_corpus.py` persists synthetic providers (prefix `synthetic-boundary-probe`, `synthetic://` endpoints, never published or served, inside a rolled-back transaction). Three corpora:
+
+| Corpus | Structure | What it discriminates |
+| --- | --- | --- |
+| **aligned** | claim `two_rows`: evidence at `+0h` under **daily**, and at `+2h` under **weekly**; claim `one_row`: evidence at `+1h` under weekly | M4 (two evidence rows, different `fetched_at`, two parsed windows) and M2 (expiry spread **6 d 1 h**, with the derivation's *other* precondition deliberately SATISFIED so a refusal is attributable) |
+| **inverted** | one claim: `+0h` under **weekly**, `+1h` under **daily** — the oldest-FETCHED row carries the LONGER window | Whether "earliest-expiring, not oldest-fetched" holds *within* a claim |
+| **permutable** | four claims, expiries 300 ms apart, two distinct parsed windows, both preconditions satisfied | Order invariance, exhaustively, at n=4 |
+
+**Synthetic data is the correct instrument here** because the question is the REACHABILITY of a branch, not present-day incidence. That is the opposite of a currency measurement, where seeding a corpus would only measure this suite's own ingest clock.
+
+#### M4 and M2, re-run — both KILLED, each by a NAMED test
+
+Baseline for these runs: **31 collected, 30 passed, 1 failed** (the inverted-orientation test, see below). A kill is a test that failed which did **not** fail in that baseline.
+
+| # | Mutation (defect-restoring, no arity break) | #103 result | Result here | Killing test |
+| --- | --- | --- | --- | --- |
+| **M4a** | `_published_claim_expiries` takes the **NEWEST** evidence row (literal #103 form) | **SURVIVED** | **KILLED** | `test_each_claims_expiry_is_the_moment_production_currency_actually_flips` |
+| **M2** | delete the `spread < 1 second` precondition | **SURVIVED** | **KILLED** | `test_the_derivation_accepts_a_corpus_only_when_its_one_second_arm_resolves` **and** `test_the_wide_corpus_is_refused_by_the_spread_guard_and_not_the_other_one` |
+
+**In every mutation run, ZERO tests in `test_catalogue_currency.py` failed.** The published corpus still cannot detect either defect — which is the cleanest available evidence that the kills come from the new corpus and not from a pre-existing guard.
+
+**Neither kill is the tautology that an assert asserts.**
+
+- The M4 arm requires the derived expiry to be the exact moment `queries.fetch_evidence_currency` flips the version — a cross-check against `worst()` in **application code**, not a restatement of `min(...)`. Under M4a it failed with *"version 227 is already stale at the expiry the helper derived … production flips earlier than this."*
+- The M2 arm states the guard's **purpose** — *every corpus the derivation ACCEPTS has an unambiguous one-second arm* — and checks acceptance against a measurement of ambiguity taken **from the database**. Under M2 it failed with *"the derivation ACCEPTED a corpus whose one-second arm is ambiguous."* A companion test independently demonstrates the hazard is real on that corpus: at `min(expiry) + 1s`, one claim is stale and another is measurably still current.
+
+**Attribution was checked, not assumed.** The derivation carries two preconditions, and a kill by the *other* one would not be evidence for the spread guard. The aligned corpus is built so the alignment precondition **holds**, and `test_the_wide_corpus_is_refused_by_the_spread_guard_and_not_the_other_one` recomputes that precondition independently from the claims before asserting which guard refused.
+
+#### What the discriminating corpus revealed — a real finding, not a manufactured one
+
+The **inverted** corpus **FAILED on unmutated code at first run.** `_published_claim_expiries` selected `min` by `fetched_at` and paired *that row's* window; with a newer row under a shorter window, the derived expiry ran **~6 days past** the moment `worst()` actually flips the version.
+
+**"Earliest-expiring, not oldest-fetched" had been applied ACROSS a provider's claims but left as `min(fetched_at)` WITHIN each claim.** #103's own comment — *"`min(fetched_at + window)` … so it stays correct if two sources ever declare different schedules"* — was **half-true**: correct at the provider level, not at the version level, where the identical hazard lives. It was invisible for exactly the reason M4 was: one evidence row per version, one window.
+
+Repaired **test-only**, in `_earliest_expiring_evidence`, now used by both the per-offer `boundary` fixture and `_published_claim_expiries`. The repair is **provably inert on the published corpus** — with one evidence row per version, min-by-fetched and min-by-expiry select the same row — and 23/23 confirm it.
+
+#### Mutations against the repaired code
+
+| # | Mutation | Result | Killing test | Failures |
+| --- | --- | --- | --- | --- |
+| **M4b** | take the **LATEST-expiring** evidence row | **KILLED** | `test_each_claims_expiry_is_the_moment_production_currency_actually_flips` | 4 |
+| **M4c** | revert to `min(fetched_at)` **within** a claim — the exact half-application found above | **KILLED** | `test_the_within_version_rule_survives_an_inverted_window_ordering` | **1** |
+| **M2** | delete the `spread < 1 second` precondition | **KILLED** | the two named above | 2 |
+| **M5** | `current_at = expiries[0]` — make the boundary **order-dependent** | **KILLED** | `test_the_boundary_is_identical_under_every_ordering_of_four_claims` | **1** |
+| **CONTROL** | search text deliberately **absent** from the file | **ABORTED**, `occurrences: 0` | — | — |
+
+#### Anchor invariance — what I can and cannot claim
+
+#103 proved invariance by running first-match against last-match anchors, and was careful to say that at its population of **2** this is the **complete permutation space**, and a **sample** for anything larger.
+
+`test_the_boundary_is_identical_under_every_ordering_of_four_claims` enumerates all **4! = 24** orderings of a four-claim corpus and asserts the derived boundary is byte-identical across every one. Non-vacuousness is asserted alongside it: the four claims expire at **four distinct instants**, so the 24 identical answers are not identical merely because every candidate answer was the same, and `test_the_permutation_corpus_is_one_the_derivation_actually_accepts` confirms the derivation **accepts** that corpus — otherwise the comparison would be 24 identical exceptions.
+
+- **CAN claim:** the derivation is order-invariant **exhaustively at n = 4**, over a corpus with two distinct windows and four distinct expiries. That is strictly stronger than n = 2.
+- **CANNOT claim:** anything new about `_free_offer`'s anchor over the **published** corpus. Cloudflare still holds exactly **2** anchor-eligible offers and cannot be permuted past n = 2 at all. Nor is the n=4 result a proof for n ≥ 5.
+
+#### Is a provider beyond cloudflare now exercised?
+
+**Yes, but narrowly, and the limit matters more than the fact.** `test_a_provider_other_than_cloudflare_is_now_exercised` asserts the helpers return claims for a non-cloudflare slug and that those version ids are disjoint from cloudflare's — so the boundary helpers are not accidentally coupled to that slug.
+
+**This adds no real-provider coverage.** The corpus is synthetic and never passes through the config or ingest path, and there is still only **one** provider config in the tree. Anything about how a *second real provider's* sources, schedules or evidence behave remains unmeasured.
+
+#### Tests and exact results
+
+Every run asserted `collected N > 0` before any verdict was accepted; pytest exit **5** is treated as NOTHING COLLECTED and aborts. Outcomes parsed from **JUnit XML**, not scraped from stdout.
+
+| Run | collected | passed | skipped | failed | runtime |
+| --- | --- | --- | --- | --- | --- |
+| Negative control (`-k` on a non-existent name) | **0** | — | — | — | 6.2 s → **ABORTED, exit 5** |
+| Module baseline at `5aa7678` | 23 | 23 | 0 | 0 | 20.7 s |
+| Module after the extraction only (behaviour-preserving check) | 23 | 23 | 0 | 0 | 17.1 s |
+| Both modules, final | 33 | 33 | 0 | 0 | 28.7 s |
+| **BASE `5aa7678`, whole suite**, scratch worktree | **3034** | **3031** | 3 | **0** | 192.8 s |
+| **HEAD, whole suite** (at `5aa7678`) | **3044** | **3041** | 3 | **0** | 230.0 s |
+| **BASE `9f66d9b`, whole suite** (after rebase), scratch worktree | **3037** | **3034** | 3 | **0** | 180.8 s |
+| **HEAD, whole suite** (after rebase onto `9f66d9b`) | **3047** | **3044** | 3 | **0** | 169.2 s |
+
+**Delta = +10, exactly the ten tests added — at BOTH bases. Zero regressions, MEASURED not subtracted.** Each base total came from a detached scratch worktree whose SHA was **asserted after checkout**, not read from a commit message, specifically because a figure derived by subtracting two others is internally consistent and therefore hard to spot when wrong. The suite was re-measured after the rebase rather than carrying the pre-rebase figure forward, because main gained three tests in between and a stale base would have made the delta read `+13`.
+
+#### Every new test shown load-bearing — or said plainly to be otherwise
+
+A test that has never been shown capable of failing is not a guard. Each of the ten is killed by at least one **semantic, defect-restoring** mutation; none is an arity or syntax break. Four of them are FLOORS whose subject is the CORPUS, not the helper — a helper mutation cannot show those bite, so the corpus itself was mutated.
+
+| New test | Killed by |
+| --- | --- |
+| `test_the_synthetic_corpus_carries_the_structure_the_published_one_lacks` | **C1** |
+| `test_each_claims_expiry_is_the_moment_production_currency_actually_flips` | **M4a, M4b, M6** |
+| `test_the_two_evidence_rows_would_yield_different_expiries` | **C1** |
+| `test_a_wide_expiry_spread_really_does_leave_the_one_second_arm_ambiguous` | **M4a, M4b, M6** |
+| `test_the_derivation_accepts_a_corpus_only_when_its_one_second_arm_resolves` | **M2, M4a, M4b** |
+| `test_the_wide_corpus_is_refused_by_the_spread_guard_and_not_the_other_one` | **M2, M6** |
+| `test_the_within_version_rule_survives_an_inverted_window_ordering` | **M4b, M4c, M6** |
+| `test_the_boundary_is_identical_under_every_ordering_of_four_claims` | **M5, M6, C2** |
+| `test_the_permutation_corpus_is_one_the_derivation_actually_accepts` | **M6, C2** |
+| `test_a_provider_other_than_cloudflare_is_now_exercised` | **M6** |
+
+**No test survives every mutation**, so none ships as an unexercised guard.
+
+Two further mutations, added for that purpose:
+
+| # | Mutation | Target | Result |
+| --- | --- | --- | --- |
+| **M6** | `_published_claim_expiries` ignores its `provider_slug` and hard-codes `cloudflare` | the helper | **KILLED** — 7 tests |
+| **C1** | the corpus loses the second evidence row from `two_rows` | `tests/support/boundary_corpus.py` | **KILLED** — 2 floor tests |
+| **C2** | the permutation corpus is widened until the derivation REFUSES it | `tests/support/boundary_corpus.py` | **KILLED** — 2 tests |
+
+**C2 matters more than it looks.** Without it, `test_the_boundary_is_identical_under_every_ordering_of_four_claims` could have been comparing **24 identical exceptions** and reading that as invariance.
+
+**In all seven applied mutations, not one of the 23 tests in `test_catalogue_currency.py` failed.** The published corpus cannot detect any of these seven defects.
+
+`ruff check .` and `ruff format --check .` both clean repo-wide (245 files), **re-run after the mutation runs** with the working tree confirmed at zero dirty files — a mutation that leaves the tree unformatted turns CI red for a reason unrelated to the product.
+
+Integration ran against a dedicated `postgres:16-alpine`, container **`fta-discriminate-pg`**, volume **`fta-discriminate-pgdata`**, port **55451** (probed free), database `ftadiscrim` — seeded separately from the suite's own, and both removed at end of slice with exact-name `^...$` filters.
+
+#### Errors I made, and how each was caught
+
+1. **My database harness reported READY against a server that was shutting down.** `pg_isready` returned 0 — against the **temporary server the postgres entrypoint runs during initdb** — and the very next command failed with *"the database system is shutting down."* Caught because the `pg_database` probe had a **checked exit code**; had I stopped at `pg_isready` I would have announced readiness and every integration test would have failed on a dead socket, which the mutation harness would have read as a **KILL for every mutation**. A false KILL confirms whatever you hoped. Hardened to require `pg_isready` **and** a real query to both exit 0 on **three consecutive** probes, with the container asserted still `Running`.
+2. **My port-free precondition aborted on my own container.** The teardown ran *after* the port probe, so a prior run of mine looked like a squatter. Reordered: exact-name teardown first, then judge the port. Trivial, but it is the same class as the above — a precondition that cannot distinguish self from other.
+3. **My corpus floor test read its windows THROUGH the helper under test.** It therefore *moved with* the mutation it was supposed to be a fixed floor for: under M4a it failed with *"the corpus declares only one distinct window"*, which is a statement about the mutated helper, not about the corpus. Caught by reading the M4a failure list and asking why a floor test was in it. Rewritten to read `(fetched_at, schedule)` straight off the ORM rows. **A floor must not depend on the thing it floors** — and this one failed in the comfortable direction, looking like extra kill evidence.
+4. **I predicted M4 would kill only my new test and no pre-existing one (P2.2, MED).** Correct, but the run showed **four** failures, not one — three were collateral from tests that enumerate the corpus through the same mutated helper. Caught because I ran the mutation over **both whole modules** rather than the single test I expected to fire. Scoping a mutation run to the test you wrote for it is how you miss what else moved.
+5. **My first `_derive_provider_boundary` extraction was written before I had proved it inert.** I caught this in sequencing rather than in consequence: I stopped and ran the module (23/23, unchanged) *before* writing anything that rested on it. Had I built the new tests first, a behaviour change in the extraction would have been indistinguishable from a corpus effect.
+
+#### NOT VERIFIED — stated as prominently as the verdict
+
+1. **The unparseable `schedule_ref` is a PRODUCTION observation I did not act on.** Every source in the only provider config declares a `schedule_ref` that `parse_schedule_window` cannot parse, so **every staleness window in the product is the 7-day default** rather than the cadence the config appears to declare. Whether that is intended (a `schedule_ref` is a *reference* to a schedule definition that may simply not be resolved yet) or a defect, I did not establish. Changing it would move every staleness verdict in the product, so it is reported, not fixed.
+2. **Real-provider coverage beyond cloudflare is still ONE.** A second slug is exercised, synthetically, through the ORM only.
+3. **Anchor invariance for the published corpus is still proven only at n = 2.** The exhaustive 24-ordering result is over the *derivation*, at a *synthetic* n = 4. It is not a proof for n ≥ 5, and says nothing about `_free_offer`.
+4. **M5's survival in `test_catalogue_currency.py` is NOT a stable result.** The order-dependence mutation failed no test in that module in my run, but whether it ever does depends on the very unspecified row order under study. It is not evidence that the module cannot detect order-dependence; it is evidence that detection there is a coin toss — the original defect restated.
+5. **The M2 kill rests on a corpus I constructed.** It proves the guard *fires when its condition is met and that the condition is genuinely reachable*. It does not and cannot show that a real corpus will ever meet it.
+6. **CI was not observed at the time of writing.** Every verdict here is local, against my own PostgreSQL.
+7. **Node-side gates were not run locally**, because this machine's npm registry is an internal package feed and `npm ci/install` could write internal resolved URLs into a lockfile — the exact disclosure `scripts/check_urls.py` exists to catch, in a public repository. This slice touches no JavaScript.
+8. **No feature was marked passing.** `agent-state/feature_list.json` is byte-identical (blob `154de1fef2ba`), as are `.github/workflows/ci.yml`, `scripts/check_urls.py`, `tests/unit/test_url_allowlist.py`, `.secrets.baseline`, both lockfiles, and `apps/api/app/ingest/adapters/html.py` (blob `bcde62bf4051`) — each verified by comparing `git hash-object` against the base blob.
+
+#### Files changed
+
+- `tests/support/boundary_corpus.py` — **new.** Persisted synthetic corpora; the three specs above, each documented where it is defined with the arithmetic that makes it discriminate.
+- `tests/integration/test_provider_boundary_discrimination.py` — **new.** Ten tests: the corpus floor, the M4 cross-check against production currency and its impossible-value floor, the M2 hazard demonstration, the M2 purpose test, the M2 attribution test, the inverted-orientation test, the exhaustive 24-ordering invariance test and its non-vacuousness companion, and the provider-scope test.
+- `tests/integration/test_catalogue_currency.py` — extracted `_derive_provider_boundary` (behaviour-preserving) so the preconditions are reachable; added `_earliest_expiring_evidence` and routed both `boundary` and `_published_claim_expiries` through it; module docstring records the within-claim hazard and the unparseable-`schedule_ref` finding. **Test count unchanged at 23.**
+- `agent-state/current_contract.json` — this slice's contract, taken wholesale (the `classification` coupling PR #103 flagged was removed by #106; the guard now reads source).
+- `agent-state/progress.md` — this entry, appended.
+
+**No production file was modified.**
+
+#### Recommended next action
+
+Fresh-context evaluation at **Level 1** (no production code, no schema, no Z0 logic, no security boundary). **The reviewer's sharpest question should be whether the two kills are genuine discriminations or restatements of the helpers' own arithmetic** — the evidence offered is that the M4 arm is pinned to `fetch_evidence_currency`'s own flip moment and the M2 arm to a database measurement of ambiguity, and that the CONTROL mutation proves the harness distinguishes "never applied" from "survived".
+
+Two items for the orchestrator, reported and not fixed here:
+
+- **`schedule_ref` never parses into a window** (finding 1 above). Every source in the tree falls back to the 7-day default. This is production behaviour and deserves its own slice: either `schedule_ref` should resolve through a schedule definition, or `Source.schedule` should not be fed a reference it cannot parse.
+- **The published corpus still has one evidence row per version and one window.** The synthetic corpora close the *reachability* question but not the *incidence* one. A real provider fixture with a multi-evidence version would be worth its own slice, and would let these guards be exercised against ingest output rather than constructed rows.
