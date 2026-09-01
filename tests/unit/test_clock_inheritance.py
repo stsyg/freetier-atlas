@@ -463,10 +463,15 @@ def test_every_clock_bearing_function_in_an_audited_module_is_accounted_for() ->
     permanent guard was reading a single-slot scratchpad. Two consecutive
     builders had to notice the trap while planning and carry the block forward
     verbatim; the third would eventually not, and the failure would surface as a
-    unit-test error with no code change to explain it. The same hazard has
-    ALREADY landed elsewhere: ``apps/api/app/ingest/config_sync.py`` still cites
-    "AMENDMENT 8 in ``agent-state/current_contract.json``", a section that no
-    longer exists in that file.
+    unit-test error with no code change to explain it. That same hazard had
+    ALREADY landed elsewhere as a dangling PROSE pointer:
+    ``apps/api/app/ingest/config_sync.py`` and
+    ``tests/integration/test_ingest_sync_savepoint.py`` both cited "AMENDMENT 8 in
+    ``agent-state/current_contract.json``", a section that no longer existed in
+    that single-slot file; both citations were since rewritten to stand on their
+    own. ``tests/unit/test_no_permanent_test_reads_a_per_slice_agent_state_file.py``
+    now fails a permanent test that reads any per-slice ``agent-state/`` artefact
+    for its contents, so the coupling cannot silently regrow.
 
     The remedy is not to manage the coupling but to remove it, and the honest
     replacement is not a second hand-written list next to the first -- two lists

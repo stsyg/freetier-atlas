@@ -53,9 +53,11 @@ asserted at its documented outcome. The boundary is reachable only if something
 registers an ``after_transaction_end`` listener; no module under ``apps/`` did so
 at the time of writing, verified by inspection. That is a point-in-time
 observation, not an enforced invariant -- nothing in this repository detects it
-becoming false. An automated check was attempted and removed; see AMENDMENT 8 in
-``agent-state/current_contract.json`` for why repair was declined in favour of
-this honest, bounded claim.
+becoming false. An automated check that would import every module under ``apps/``
+and reject a newly registered ``after_transaction_end`` listener was considered and
+deliberately declined: it would fail closed on an unrelated slice that legitimately
+adds such a listener, turning a point-in-time note into a standing tripwire nobody
+asked for. The claim is left as an honest, bounded inspection result instead.
 """
 
 from __future__ import annotations

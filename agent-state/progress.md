@@ -5475,3 +5475,55 @@ Draft PR **#116**, run **33533775934**: **all six checks green** — Python lint
 **The remaining `not_verified` items are NOT retired** and none of them is retired by a green CI run — in particular the unparseable `schedule_ref` finding (a production observation deliberately left unfixed), real-provider coverage still being one, anchor invariance for the published corpus still standing only at n = 2, and the fact that the M2 kill rests on a corpus I constructed rather than on one that has ever occurred.
 
 Teardown confirmed: container `fta-discriminate-pg` and volume `fta-discriminate-pgdata` both removed, verified with exact-name `^...$` filters (Docker's default filter is a **substring** match, so an unanchored name could have matched — or destroyed — something else), and port **55451** confirmed to have no remaining listener.
+
+## F-GUARD-AUDIT — census of PERMANENT tests reading per-slice `agent-state/` artefacts (2026-09-01)
+
+**Action item, restated:** PR #106 removed ONE coupling — a permanent test (`test_clock_inheritance.py`) read `agent-state/current_contract.json` for its CONTENTS, a single-slot file overwritten every slice. That census was scoped to that one file. This slice censuses the SAME defect shape against every other `agent-state/` artefact and fixes only genuine couplings.
+
+**Population measured (`git ls-files`; files mentioning / tests reading CONTENTS):**
+
+| Artefact | Files mentioning | Tests reading CONTENTS |
+|---|---|---|
+| `current_contract.json` | 21 | **0** (was 1, fixed by #106) |
+| `evaluation.json` | 14 | 0 |
+| `feature_list.json` | 19 | 0 (durable, protected — shape check is correct) |
+| `progress.md` | 19 | 0 |
+| `agent-state/evaluations/` | 2 | 0 |
+| `agent-state/` (any string) | 27 | 0 |
+
+Only FOUR permanent test files reference any `agent-state/` artefact. Every hit classified:
+
+- `tests/test_repo_baseline.py` — existence+parse of three files (L64-68) and a shape check on the durable/protected `feature_list.json` (L71-76). **Correct as written; left untouched.** `evaluation.json` here is existence/parse only, not a content read.
+- `tests/unit/test_clock_inheritance.py` — reads only Python source via AST; `current_contract.json` appears in prose only (the #106 remedy). **Correctly remedied; no read.**
+- `tests/unit/test_assertion_capture_grounding.py` — reads provider YAML + capture fixtures; one docstring citation to an `evaluations/` file for provenance. **No coupling.**
+- `tests/integration/test_ingest_sync_savepoint.py` — one docstring citation (L57) to "AMENDMENT 8 in `current_contract.json`". **No runtime read.**
+
+**Outcome: ZERO further runtime couplings.** The single coupling of this shape was already removed by #106. A name-grep alone would not have proven this — the per-slice names appear in docstrings for provenance far more often than they are read — so each hit was read at the AST level and directory walks / iterdir / rglob across `tests/` were checked for indirect access (a path built from a variable, a fixture returning a path, a walk over `agent-state/`); none targeted `agent-state/`.
+
+**Two dangling PROSE pointers fixed** (not runtime couplings, but the exact hazard shape #106 named at its own line 468 — a permanent artefact pointing at vanished single-slot state):
+- `tests/integration/test_ingest_sync_savepoint.py:57` and `apps/api/app/ingest/config_sync.py:714` both cited "AMENDMENT 8 in `agent-state/current_contract.json`" — a section that no longer exists in that overwritten file. Both rewritten to explain the declined check on their own, with no per-slice reference. `test_clock_inheritance.py`'s cross-reference to the config_sync pointer was updated to match.
+
+**Durable regrowth guard added:** `tests/unit/test_no_permanent_test_reads_a_per_slice_agent_state_file.py`. AST-walks every `tests/**/*.py` and fails any permanent test that READS a per-slice `agent-state/` artefact for its contents (`.read_text`/`.read_bytes`/`.open`/`.read`, `open(...)`, or `json.load*(...)` on a path naming such an artefact). The per-slice file set is DERIVED from the tree at test time (top-level `agent-state/*.json` minus the exempt durable `feature_list.json`, plus `progress.md` and everything under `evaluations/`), not hand-maintained, so a NEW per-slice artefact is covered without editing the test. Two hand-lists in one file drift together; this has one, derived.
+
+**Proof obligations discharged:**
+- *Mutation A* — injecting `(REPO_ROOT / "agent-state/current_contract.json").read_text()` (the exact #106 shape) into a permanent test makes `test_no_permanent_test_reads_a_per_slice_agent_state_file` FAIL (exit 1), naming the offender by file:line. Restored.
+- *Mutations B* — the `open(...)`, `json.loads(...read_text())`, and `progress.md` reader forms each also FAIL the same named guard.
+- *Mutations C (precision / negative controls)* — a `feature_list.json` read (exempt) and a bare prose mention each still PASS, proving the guard is an AST content-read check, not a blunt name-ban.
+- *Mutation D* — breaking the derivation to an empty set trips the guard's own anti-vacuous self-check (`assert "agent-state/current_contract.json" in per_slice`), so it cannot pass vacuously.
+- *Baseline EXECUTED:* touched files collected 52 tests, ran 45 passed / 7 skipped (7 need Postgres). Full suite: **2746 passed, 292 skipped, exit 0** locally (292 skips are DB/stack-gated integration, covered by CI). `ruff check` → "All checks passed!"; `ruff format --check` → 244 files already formatted. `pytest` exit 5 (nothing collected) was watched for and did not occur.
+
+**Could not determine locally:** the 292 DB/stack-gated integration tests and the Node/Web CI gates — deliberately not run here (no `DATABASE_URL`; the npm registry on this machine is an internal feed and `npm ci`/`install` could write internal resolved URLs into a public lockfile). CI covers both on the PR.
+
+Draft PR opened, not merged. `agent-state/feature_list.json` untouched; `progress.md` appended-only; `current_contract.json` taken wholesale for this slice.
+
+
+### Addendum, same day — rebased onto 69d989d4 (PR #116) and re-measured
+
+The orchestrator moved `main` to `69d989d4` (PR #116, the provider-boundary corpus) after this branch was cut from `9f66d9bc`. Diffing against the stale base made #116's files read as reverted and `progress.md` as -176 lines — an artefact of the base, not of this slice. Rebased onto `69d989d4`; the only conflicts were the two single-slot / append artefacts both slices touched. Resolved by keeping `current_contract.json` as mine and keeping BOTH `progress.md` appends in chronological order (#116's entry, then this one). Diff against `origin/main` is now clean: six files, `progress.md` a net +40, no #116 reverts, no protected path touched.
+
+Figures re-measured at the rebased tree, NOT carried forward:
+
+- **New base `69d989d4`:** 2745 passed, 302 skipped, exit 0.
+- **Head:** 2746 passed, 302 skipped, exit 0 — delta **+1** (the one new guard). Skips unchanged at 302, so no DB/stack-gated test was added.
+- **Mutation A at the new base still kills the named guard:** injecting `(REPO_ROOT / "agent-state/current_contract.json").read_text()` into a permanent test makes `test_no_permanent_test_reads_a_per_slice_agent_state_file` FAIL (exit 1), offender named by file:line.
+- `ruff check .` → All checks passed! ; `ruff format --check .` → 246 files already formatted (the base grew 244→246 with #116).
