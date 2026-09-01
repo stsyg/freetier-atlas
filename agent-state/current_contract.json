@@ -84,12 +84,21 @@
     "Rebased on main before pushing if main moved, because a conflicting PR is never dispatched to CI and an absent signal reads exactly like a green one."
   ],
   "not_verified": [
-    "THE INTEGRATION LAYER DID NOT RUN LOCALLY: 292 skipped, no DATABASE_URL. No database was stood up, because this slice adds three in-process unit tests to one file and changes no production code, so nothing in it can reach the DB layer. CI runs the same suite against a postgres:16-alpine service container, so that layer is dispatched there and is NOT measured by me.",
-    "NODE-SIDE GATES: not run at all, deliberately. This machine's npm registry is an internal package feed and npm ci/install could write internal resolved URLs into a lockfile in a public repository. This slice touches no JavaScript.",
-    "CI ITSELF: not observed at the time of writing. Every verdict recorded here is local.",
+    "THE INTEGRATION LAYER: RETIRED by CI. It did not run locally (292 skipped, no DATABASE_URL) and no database was stood up, because this slice adds three in-process unit tests to one file and changes no production code. CI run 33529505116 then ran the whole suite against the postgres:16-alpine service container: 3034 passed, 3 skipped, exit 0. Verified, but not by me.",
+    "NODE-SIDE GATES: RETIRED by CI. Not run locally, deliberately -- this machine's npm registry is an internal package feed and npm ci/install could write internal resolved URLs into a lockfile in a public repository. CI run 33529505116: Node format and lint PASS (11s), Web type-check/tests/build PASS (34s). This slice touches no JavaScript.",
+    "CI ITSELF: RETIRED. Observed on draft PR #113, run 33529505116, all six checks green. The PR is MERGEABLE, so the run was genuinely dispatched -- a conflicting PR is never dispatched at all and an absent signal reads exactly like a green one.",
     "WHAT SHOULD HAPPEN IF BRANCH A IS EVER WEAKENED: not answered. It was measured that branch B would then become the live guard -- a branch that has never executed. Whether that is acceptable cover is a design question this slice did not decide.",
     "THE DOMINATION ARGUMENT IS OVER THE CURRENT FUNCTION BODY. It was not proved for values with pathological __eq__ in general. What was established is narrower and is the claim actually supported: both predicates compare the SAME stored object against the SAME operand with the SAME operator, because lines 1001 and 1002 assign one value to both dicts in the same iteration, so no asymmetry between the two predicates is possible.",
     "WHETHER A REAL PROVIDER PAGE COULD PRODUCE THIS CONFLICT: measured only over committed configuration. 35 HTML profiles are registered, 31 declare at least one assertion, and ZERO declare the same field twice, so no committed profile can produce an assertion-vs-assertion conflict today. That is a statement about the profiles in this repository, not about what a future author might write."
   ],
+  "ci_observed": {
+    "run_id": "33529505116",
+    "pull_request": 113,
+    "pytest": "3034 passed, 3 skipped, exit 0, against postgres:16-alpine",
+    "checks_green": 6,
+    "checks_red": 0,
+    "mergeable": "MERGEABLE",
+    "draft": true
+  },
   "evaluator_disposition": "not yet evaluated"
 }

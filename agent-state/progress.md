@@ -5275,3 +5275,14 @@ The gap this closes: measured here, **removing branch A left `test_two_assertion
 * **Keep it** — it costs nothing at runtime and is live cover if branch A is ever narrowed. If kept, it should carry a comment saying it is currently dominated by A, so the next reader does not mistake it for the guard that fires.
 
 Either way the added tests hold: they attribute the refusal to the `facts` branch and skip the "not B" assertion when B is absent.
+
+### Addendum, same day — two "not verified" items retired by CI
+
+CI ran on draft PR #113 and I observed it, so two disclaimers above are now stale and are corrected here rather than left to read as permanent:
+
+- **The integration layer: now VERIFIED, by CI rather than by me.** Run `33529505116`, job `Python lint, format, tests`: **3034 passed, 3 skipped, exit 0** in 54s against the `postgres:16-alpine` service container. The only remaining skips are the two `test_stack_health` tests needing a live API and the one unbound-source capture. Locally I measured 2745 passed / 292 skipped with no `DATABASE_URL`; the difference is the DB-gated layer, which therefore **ran**. The arithmetic corroborates the count independently: main's suite was recorded at **3031** in the previous slice, and this slice adds exactly **3** tests.
+- **CI itself: now OBSERVED.** All six checks green — Python lint/format/tests (1m35s), Node format and lint (11s), Web type-check/tests/build (34s), Secret scan (35s), Dependency audit (39s), GitGuardian (1s). The PR is `MERGEABLE`, so the run was genuinely dispatched — a conflicting PR is never dispatched at all, and an absent signal reads exactly like a green one.
+
+My reason for not running the Node gates locally stands unchanged — this machine's npm registry is an internal package feed and `npm ci`/`install` could write internal resolved URLs into a lockfile in a **public** repository — but those gates are no longer unmeasured.
+
+The remaining `not_verified` items are unchanged and still stand: I did not decide what should happen if branch A is ever weakened; the domination argument is over the current function body and is the narrower same-object/same-operator claim rather than a general one about `__eq__`; and the zero-duplicate profile count is a statement about this repository's committed configuration, not about what a future author might write.
