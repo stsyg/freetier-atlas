@@ -75,7 +75,6 @@ catalogue:
   raw_snapshot_retention_days: 90
 admin:
   authentication: github
-  allowed_users: [stsyg]
 features:
   public_adviser: true
   rss: true

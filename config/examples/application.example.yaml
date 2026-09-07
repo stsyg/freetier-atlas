@@ -11,9 +11,10 @@ catalogue:
   raw_snapshot_retention_days: 90
 
 admin:
+  # The admin allowlist is NOT declared here. It lives only in the
+  # ADMIN_ALLOWLIST environment variable (Settings.admin_allowlist), so there is
+  # exactly one place that grants or revokes admin access.
   authentication: github
-  allowed_users:
-    - stsyg
 
 features:
   public_adviser: true
