@@ -1,46 +1,31 @@
 {
-  "feature_id": "F-CI-GATE",
-  "slice": "eslint-web-warning-gate",
-  "title": "Make apps/web's ESLint gate able to fail on a warning-level rule via --max-warnings 0",
-  "branch": "stsyg-eslint-web-warning-gate",
-  "base_commit": "69d989d4eb25a44d8f8a3c12a5a3791d82f887a9",
-  "objective": "CI step 'ESLint (apps/web)' runs 'npm run lint', which was 'eslint .' with no --max-warnings. ESLint exits 0 when only warnings exist, so react-refresh/only-export-components (warn) and every future warn-level rule could not fail the build. This slice adds --max-warnings 0 to the lint script so the gate is load-bearing, fixing any warnings that surface (none did).",
+  "feature_id": "F-CONFIG-DEADFAMILY",
+  "slice": "remove-dead-admin-allowlist-add-consulted-guard",
+  "title": "Remove the duplicated admin allowlist from the application config family and guard the dead-config hazard",
+  "branch": "stsyg-remove-dead-admin-allowlist-config",
+  "base_commit": "cba6dea",
+  "objective": "AdminSection.allowed_users (apps/api/app/config/models.py) is validated by cli validate but never consulted: the enforced allowlist is settings.admin_allowlist, read in apps/api/app/admin/config.py and enforced in apps/api/app/admin/router.py. An operator editing or revoking via admin.allowed_users sees no effect and no error. This slice removes that one duplicated field and adds a durable AST guard that fails when a registered config family model is validated but never read by app code, with an explicit justified allowance for genuinely validation-only families.",
   "in_scope": [
-    "apps/web/package.json lint script: 'eslint .' -> 'eslint . --max-warnings 0'.",
-    "Measuring before/after warning counts by rule.",
-    "Proving the gate is now load-bearing with a deliberate warn-level violation and exit-code contrast."
+    "Remove allowed_users from AdminSection in apps/api/app/config/models.py.",
+    "Remove allowed_users from config/examples/application.example.yaml.",
+    "Update the inline application YAML fixture in tests/unit/test_config_system.py to drop allowed_users.",
+    "Add tests/unit/test_config_models_are_consulted.py deriving family roots from FAMILY_MODELS via AST, detecting real reads via ast.Name loads outside apps/api/app/config/ and tests/, explicit allowance for ApplicationConfig and SchedulesConfig, anti-vacuous and precision unit tests."
   ],
   "out_of_scope": [
-    "Editing .github/workflows/ci.yml (protected).",
-    "Weakening any rule (no warn->off, no eslint-disable, no ignores, no non-zero allowance).",
-    "Any lockfile change or npm install/i/update/audit fix.",
-    "Marking any feature passing."
+    "Wiring up the feature flags (FeaturesSection / CatalogueSection).",
+    "Touching settings.admin_allowlist, admin/config.py, or admin/router.py enforcement.",
+    "Removing AdminSection.authentication (single-valued Literal, benign declarative metadata, no hazard).",
+    "Editing ci.yml, feature_list.json, package-lock.json, scripts/check_urls.py, tests/unit/test_url_allowlist.py, .secrets.baseline.",
+    "Any npm install/update/audit fix."
   ],
   "acceptance_criteria": [
-    "Clean tree: npm run lint exits 0 with the new script.",
-    "With a deliberate react-refresh/only-export-components violation: OLD script exits 0 (the defect), NEW script exits non-zero and names the rule.",
-    "Both package-lock.json files byte-identical to origin/main baselines (98f786c2bb0d, 737f99159e58).",
-    "apps/web typecheck, test, build, format:check all pass locally."
-  ],
-  "measurements": {
-    "warnings_before_by_rule": "0 (clean tree)",
-    "warnings_after_by_rule": "0 (clean tree)",
-    "gate_load_bearing_proof": {
-      "probe": "src/__probe_refresh.tsx exporting a non-component function alongside a component (removed after test)",
-      "old_script_exit_with_violation": 0,
-      "new_script_exit_with_violation": 1,
-      "new_script_exit_clean": 0,
-      "rule_named": "react-refresh/only-export-components"
-    },
-    "other_gates": { "typecheck": 0, "test": "0 (141 passed)", "build": 0, "format:check": 0 }
-  },
-  "hard_rules_acknowledged": [
-    "PR opened, not merged.",
-    "ci.yml untouched.",
-    "Installed with npm ci only; never npm install/i/update/audit fix.",
-    "Both lockfiles byte-identical to baseline, verified via git hash-object.",
-    "No rule weakened.",
-    "agent-state/progress.md appended to only; current_contract.json replaced (single-slot)."
+    "AdminSection no longer declares allowed_users; example YAML no longer contains it.",
+    "The application config example still validates.",
+    "New guard passes on the fixed tree; it FAILS naming the offender when a never-read family model is added.",
+    "Guard does not fire for a genuinely consulted model and treats a docstring-only mention as NOT consulted.",
+    "Guard asserts its derivation is non-empty and contains the four known family roots.",
+    "Full pytest suite passes; ruff check . and ruff format --check . pass.",
+    "Admin allowlist tests still pass; settings.admin_allowlist remains the enforced path."
   ],
   "required_evaluation_level": 1,
   "evaluator_disposition": "not yet evaluated"

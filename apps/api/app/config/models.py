@@ -96,8 +96,16 @@ class CatalogueSection(_Base):
 
 
 class AdminSection(_Base):
+    # NOTE: this section deliberately does NOT declare an ``allowed_users``
+    # allowlist. The admin allowlist is a *security control* and it has exactly
+    # one authoritative home: the ``ADMIN_ALLOWLIST`` environment variable
+    # (``Settings.admin_allowlist``), parsed in ``app.admin.config`` and
+    # enforced in ``app.admin.router``. A second, config-file copy here would be
+    # validated and then ignored, so an operator editing it -- worst of all,
+    # *revoking* someone's access -- would see no effect and no error. ``authentication``
+    # remains as benign declarative metadata: it is a single-valued literal that
+    # neither duplicates nor can override any enforced control.
     authentication: Literal["github"]
-    allowed_users: list[str] = Field(min_length=1)
 
 
 class FeaturesSection(_Base):

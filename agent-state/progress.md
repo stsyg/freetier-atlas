@@ -5555,3 +5555,24 @@ Figures re-measured at the rebased tree (NOT carried forward):
 - `apps/web/package-lock.json` = `98f786c2bb0d…`, root = `737f99159e58…` — both byte-identical to `origin/main` (git diff of both lockfiles vs origin/main = 0 lines).
 
 **CI: 5/6 green; Dependency audit FAILED, and it is a PRE-EXISTING main-wide condition, not caused by this slice.** `npm audit --audit-level=high` in apps/web reports one high-severity `browserslist <=4.28.6` advisory (GHSA-c83g-rgw3-j3cx, GHSA-73wf-gq98-2v4g), reproducible locally with the SAME exit 1. `browserslist` is pinned in `origin/main`'s own lockfile and this branch's lockfiles have ZERO diff vs `origin/main`, so main itself fails this audit right now — a freshly-published advisory, not a regression from the one-line lint change. The only offered remedy is `npm audit fix`, which is FORBIDDEN on this machine (it rewrites lockfile `resolved` URLs to the internal feed, leaking internal infra into a public repo). Reported, not fixed — bumping browserslist is a separate slice with its own lockfile change and evaluation.
+
+---
+
+## 2026-09-07 — Remove dead admin allowlist from the `application` config family + add a "consulted-not-just-validated" guard (branch `stsyg-remove-dead-admin-allowlist-config`, off `origin/main` cba6dea)
+
+**Defect.** `AdminSection.allowed_users` (apps/api/app/config/models.py) was validated by `cli validate` but never read by any app code. The enforced admin allowlist is `Settings.admin_allowlist` (env `ADMIN_ALLOWLIST`), parsed in `app/admin/config.py:60` and enforced in `app/admin/router.py` via `is_allowlisted`. The config-file field was a silent duplicate: an operator editing it — worst, *revoking* access — got no effect and no error.
+
+**Change (narrow).**
+- Removed `allowed_users` from `AdminSection` and from `config/examples/application.example.yaml`. Kept `authentication: Literal["github"]` deliberately — a single-valued literal that duplicates/overrides nothing an operator could misconfigure; benign declarative metadata consistent with the rest of the validation-only application family. Did NOT touch the enforced control (`settings.admin_allowlist`, `admin/config.py`, `admin/router.py`).
+- Updated the inline application YAML fixture in `tests/unit/test_config_system.py` to drop `allowed_users`.
+- Added `tests/unit/test_config_models_are_consulted.py`: a durable AST guard. Family roots are derived from the `FAMILY_MODELS` dict literal in models.py (single source, anti-drift). "Consulted" = an `ast.Name` *load* of the class in a consumer module under `apps/api/app` (excluding the `config` package), `apps/worker`, or `scripts` — docstrings (str constants), comments (absent from AST) and imports (`alias` nodes) are NOT loads, so they do not count. `ALLOWED_VALIDATION_ONLY` explicitly exempts `ApplicationConfig` and `SchedulesConfig` with stated reasons (validated by `cli validate`, not yet wired into runtime).
+
+**Proof.**
+- Load-bearing: temporarily registered a never-read `_DeadProbeConfig` in `FAMILY_MODELS` → `test_every_family_model_is_consulted_or_explicitly_allowed` FAILED naming `_DeadProbeConfig` (1 selected / 8 deselected — executed, not exit-5). A docstring-only mention of it in a real consumer module still FAILED; a real `isinstance` read made it PASS. All mutations reverted.
+- Precision (helper-level unit tests, all green): docstring+comment mention → not detected; bare import + `__all__` re-export → not detected; real `isinstance` and real annotation → detected; and the genuinely consulted families `ProviderConfig` (ingest) and `LlmProvidersConfig` (adviser) are detected as consulted.
+- Anti-vacuous: guard asserts the derivation is non-empty and contains the four known roots, and that consumer files were found.
+- Admin control unweakened: `tests/unit/test_admin_endpoints.py` + `tests/security/test_security_corpus_admin.py` allowlist tests still pass; `settings.admin_allowlist` remains the enforced path.
+
+**Validation.** Full suite `2755 passed, 302 skipped` (skips are Postgres/stack integration gated on `DATABASE_URL`/`ATLAS_STACK_BASE_URL` — environmental). `ruff check .` clean; `ruff format --check .` clean (247 files). `python -m app.config.cli validate config/examples/application.example.yaml` → exit 0 (ApplicationConfig valid).
+
+**Could not determine / left alone.** Feature-flag wiring (`FeaturesSection`, `CatalogueSection`) intentionally out of scope. `SchedulesConfig` is likewise validation-only today; exempted (not wired) rather than changed.
