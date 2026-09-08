@@ -152,8 +152,6 @@ def test_parse_unambiguous_compact_ordinary_units(raw: str, unit: str) -> None:
         "10K10",
         "10K+",
         "1,5K",
-        "10MB",
-        "10KB",
         "10MiB",
         "10KiB",
         "10GiB",
@@ -310,8 +308,8 @@ def test_sampled_combining_marks_cannot_hide_a_sign(combining_mark: str) -> None
         ("10Kbps", Decimal("10"), "Kbps"),
         ("10kB", Decimal("10"), "kB"),
         ("10MBps", Decimal("10"), "MBps"),
-        ("10MB", None, None),
-        ("10KB", None, None),
+        ("10MB", Decimal("10"), "MB"),
+        ("10KB", Decimal("10"), "KB"),
         ("10KiB", None, None),
         ("10MiB", None, None),
         ("10GiB", None, None),
@@ -333,6 +331,71 @@ def test_compact_unit_token_boundary(
     q = parse_quantity(raw)
     assert q.amount == amount
     assert q.unit == unit
+
+
+@pytest.mark.parametrize(
+    ("raw", "amount", "unit"),
+    [
+        ("500MB", Decimal("500"), "MB"),
+        ("512KB", Decimal("512"), "KB"),
+        ("1MB", Decimal("1"), "MB"),
+        ("1KB", Decimal("1"), "KB"),
+        ("1.5MB", Decimal("1.5"), "MB"),
+    ],
+)
+def test_no_space_compact_decimal_data_unit_parses_the_literal_amount(
+    raw: str,
+    amount: Decimal,
+    unit: str,
+) -> None:
+    """A no-space ``KB``/``MB`` denotes one decimal quantity under either reading.
+
+    The magnitude reading (``500M`` then ``B``) and the unit reading
+    (``500`` then ``MB``) are the SAME decimal value, so the parser keeps the
+    literal digits as ``amount`` and the literal token as ``unit`` rather than
+    fabricating a magnitude-scaled number.
+    """
+
+    q = parse_quantity(raw)
+    assert q.amount == amount
+    assert q.unit == unit
+    assert q.reset_period is None
+
+
+def test_compact_decimal_data_unit_still_recovers_reset_period_from_metric() -> None:
+    q = parse_quantity("500MB", metric="storage_per_month")
+    assert q.amount == Decimal("500")
+    assert q.unit == "MB"
+    assert q.reset_period == "month"
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        "10MM",
+        "10KK",
+        "10Kfoo",
+        "10Mfoo",
+        "10Brequests",
+        "10Krequests",
+        "10MiB",
+        "10KiB",
+        "10 M",
+        "10 K",
+    ],
+)
+def test_widening_to_kb_mb_does_not_leak_to_other_consumed_magnitudes(raw: str) -> None:
+    """Over-widening control: only the value-equivalent ``KB``/``MB`` forms flip.
+
+    Every other consumed-magnitude token stays genuinely ambiguous (a differing
+    magnitude reading, a non-byte remainder, a binary unit, or a separated
+    letter) and must keep failing closed.
+    """
+
+    q = parse_quantity(raw)
+    assert q.amount is None
+    assert q.unit is None
+    assert q.reset_period is None
 
 
 @pytest.mark.parametrize(

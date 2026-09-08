@@ -156,11 +156,15 @@ GITHUB_PACKAGES_BILLING = register_html_profile(
         header_signature=("Plan", "Storage", "Data transfer (per month)"),
         mode="matrix",
         matrix_metric_header="Plan",
-        # The live Storage column publishes "500MB" with no separating space, which
-        # the publication re-validator deliberately refuses to parse (an ambiguous
-        # "M" magnitude directly followed by "B"). Pivoting the data-transfer column
-        # keeps every published number re-validatable; the Storage column is
-        # retained verbatim in the capture and disclosed there as un-pivoted.
+        # The live Storage column publishes "500MB" with no separating space.
+        # This profile pivots the data-transfer column (its values, e.g. "1GB",
+        # have always re-validated); the Storage column is retained verbatim in
+        # the capture and disclosed there as un-pivoted. The re-validator now
+        # parses a no-space decimal data unit such as "500MB" (500 MB is the same
+        # decimal quantity under either reading), so the original parser-gap
+        # reason for pivoting no longer holds; whether to publish the Storage
+        # column instead is a separate faithful-capture decision and is not made
+        # here.
         matrix_tier_header="Data transfer (per month)",
         matrix_rows=_rows(
             ("GitHub Free", "data_transfer_per_month_github_free"),

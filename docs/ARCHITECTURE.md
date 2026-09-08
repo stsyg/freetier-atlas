@@ -96,10 +96,14 @@ Unsupported compact forms (for example lowercase, separated, binary-looking,
 unknown, repeated, signed, scientific, or multi-number text) fail the
 deterministic gate instead of publishing their leading digits. Multi-letter
 ordinary units remain supported in compact form (`ms`, `GB`, `Mbps`, `Kbps`,
-`kB`); two-letter all-uppercase `KB`/`MB`, IEC-looking `KiB`/`MiB`/`GiB`, and
-all-`KMB` repetitions are withheld as ambiguous. When the numeric matcher has
+`kB`); the no-space decimal data units `KB`/`MB` also parse and keep their
+literal amount and unit, because `500MB` and `500M`-then-`B` denote the same
+decimal quantity (kilo/mega are decimal prefixes). IEC-looking `KiB`/`MiB`/`GiB`
+(a genuine mebi-vs-mega value ambiguity) and other all-`KMB` repetitions such as
+`MM`/`KK` remain withheld as ambiguous. When the numeric matcher has
 already consumed `K`, `M`, or `B`, an alphabetic continuation is accepted only
-for the explicit rate-unit tokens `Kbps`, `Mbps`, and `MBps`; arbitrary forms
+for the explicit rate-unit tokens `Kbps`, `Mbps`, and `MBps` and the decimal
+data units `KB`/`MB`; arbitrary forms
 such as `Kfoo`, `Mfoo`, and `Brequests` are withheld. Sign forms are rejected
 both when adjacent and when hidden in the trailing prefix token by any non-word
 code point, including punctuation, symbols, separators, formats, combining

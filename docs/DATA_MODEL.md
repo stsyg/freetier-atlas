@@ -146,10 +146,14 @@ Amounts are exact decimals re-derived before publication. The generic parser
 supports only directly-adjacent uppercase decimal count suffixes `K`, `M`, and
 `B`; an unsupported compact numeric form or text containing multiple numeric
 tokens makes publication nondeterministic rather than persisting a selected or
-truncated number. Compact multi-letter ordinary units remain supported, except
-ambiguous `KB`/`MB`, IEC-looking binary units, and repeated magnitude letters.
+truncated number. Compact multi-letter ordinary units remain supported, and the no-space decimal
+data units `KB`/`MB` parse to their literal amount and unit (`500MB` == 500 `MB`,
+the same decimal quantity as `500M` bytes). IEC-looking binary units
+(`KiB`/`MiB`/`GiB`, a genuine mebi-vs-mega value ambiguity) and repeated
+magnitude letters (`MM`/`KK`) stay withheld.
 If parsing has consumed an uppercase count magnitude, only the explicit compact
-rate units `Kbps`, `Mbps`, and `MBps` may reinterpret it as part of a unit;
+rate units `Kbps`, `Mbps`, and `MBps`, and the decimal data units `KB`/`MB`,
+may reinterpret it as part of a unit;
 arbitrary alphabetic continuations fail publication determinism.
 Before the number, every trailing non-alphanumeric code point is token material
 that the parser scans through for semantic signs; an alphanumeric qualifier word
