@@ -78,6 +78,17 @@ _GROUPED_NUMBER = re.compile(r"\d{1,3}(?:,\d{3})+(?:\.\d+)?")
 _ALPHA_TOKEN = re.compile(r"[^\W\d_]+")
 _BINARY_UNIT = re.compile(r"^[A-Za-z]iB$")
 _MAGNITUDE_CONTINUATION_UNITS = frozenset({"Kbps", "Mbps", "MBps"})
+# Compact decimal data-size units whose leading letter is a magnitude the
+# numeric token already consumed, yet where both readings denote the SAME
+# decimal quantity so the value is unambiguous: kilo (K=1e3) and mega (M=1e6)
+# are genuine decimal SI prefixes, so ``500MB`` == 500*1e6 ``B`` and ``512KB``
+# == 512*1e3 ``B``. Keeping the literal ``amount``/``unit`` never invents a
+# magnitude-scaled number. This is deliberately restricted to the byte unit and
+# to K/M: ``B`` as a magnitude means *billion* (1e9), which is not a decimal
+# unit prefix, so a ``B``-leading token (``10Brequests``) stays genuinely
+# ambiguous; and remainders that are not the byte unit (``10MM``, ``10Kfoo``)
+# are not value-equivalent and stay failing closed.
+_UNAMBIGUOUS_MAGNITUDE_UNITS = frozenset({"KB", "MB"})
 _MAGNITUDE_MULTIPLIERS: Mapping[str, Decimal] = {
     "K": Decimal("1000"),
     "M": Decimal("1000000"),
@@ -92,7 +103,7 @@ def _is_supported_compact_unit(token: str, *, consumed_magnitude: bool) -> bool:
     """Whether an adjacent alphabetic token is unambiguously an ordinary unit."""
 
     if consumed_magnitude:
-        return token in _MAGNITUDE_CONTINUATION_UNITS
+        return token in _MAGNITUDE_CONTINUATION_UNITS or token in _UNAMBIGUOUS_MAGNITUDE_UNITS
     if len(token) < 2:
         return False
     if _BINARY_UNIT.fullmatch(token):

@@ -1,32 +1,30 @@
 {
-  "feature_id": "F-CONFIG-DEADFAMILY",
-  "slice": "remove-dead-admin-allowlist-add-consulted-guard",
-  "title": "Remove the duplicated admin allowlist from the application config family and guard the dead-config hazard",
-  "branch": "stsyg-remove-dead-admin-allowlist-config",
-  "base_commit": "cba6dea",
-  "objective": "AdminSection.allowed_users (apps/api/app/config/models.py) is validated by cli validate but never consulted: the enforced allowlist is settings.admin_allowlist, read in apps/api/app/admin/config.py and enforced in apps/api/app/admin/router.py. An operator editing or revoking via admin.allowed_users sees no effect and no error. This slice removes that one duplicated field and adds a durable AST guard that fails when a registered config family model is validated but never read by app code, with an explicit justified allowance for genuinely validation-only families.",
+  "feature_id": "F005",
+  "slice": "parse-quantity-compact-decimal-data-units",
+  "title": "Stop parse_quantity withholding unambiguous no-space compact decimal data units (500MB, 512KB)",
+  "branch": "stsyg-parse-quantity-compact-unit",
+  "base_commit": "97ebed11",
+  "objective": "parse_quantity (apps/api/app/publish/revalidate.py) withholds no-space compact quantities whose unit begins with a magnitude letter. Rule 1: the numeric token greedily consumes a trailing K/M/B, so 500MB becomes magnitude 500M + B and the reassembled MB is rejected. But for KB/MB the two readings (amount=500, unit=MB) and (amount=500000000, unit=B) are the SAME decimal quantity (kilo=1e3, mega=1e6 are decimal prefixes), so withholding is unjustified. This slice makes the value-equivalent decimal data units KB and MB parse while keeping every genuinely ambiguous form failing closed.",
   "in_scope": [
-    "Remove allowed_users from AdminSection in apps/api/app/config/models.py.",
-    "Remove allowed_users from config/examples/application.example.yaml.",
-    "Update the inline application YAML fixture in tests/unit/test_config_system.py to drop allowed_users.",
-    "Add tests/unit/test_config_models_are_consulted.py deriving family roots from FAMILY_MODELS via AST, detecting real reads via ast.Name loads outside apps/api/app/config/ and tests/, explicit allowance for ApplicationConfig and SchedulesConfig, anti-vacuous and precision unit tests."
+    "Add _UNAMBIGUOUS_MAGNITUDE_UNITS = frozenset({KB,MB}) and accept it in _is_supported_compact_unit consumed-magnitude branch.",
+    "Update tests/unit/test_publish_revalidate.py: move 10MB/10KB out of fails-closed lists; add positive pins (500MB,512KB,1MB,1KB,1.5MB) and an over-widening control.",
+    "Refresh docs/ARCHITECTURE.md and docs/DATA_MODEL.md parser-boundary prose and the stale github_packages_billing pivot comment."
   ],
   "out_of_scope": [
-    "Wiring up the feature flags (FeaturesSection / CatalogueSection).",
-    "Touching settings.admin_allowlist, admin/config.py, or admin/router.py enforcement.",
-    "Removing AdminSection.authentication (single-valued Literal, benign declarative metadata, no hazard).",
+    "Rule 2 (binary units KiB/MiB/GiB) - deliberate and out of scope; reported as a separate recommendation.",
+    "Changing the github_packages_billing pivot behaviour or publishing the Storage column.",
+    "Re-capturing or editing any fixtures.",
     "Editing ci.yml, feature_list.json, package-lock.json, scripts/check_urls.py, tests/unit/test_url_allowlist.py, .secrets.baseline.",
     "Any npm install/update/audit fix."
   ],
   "acceptance_criteria": [
-    "AdminSection no longer declares allowed_users; example YAML no longer contains it.",
-    "The application config example still validates.",
-    "New guard passes on the fixed tree; it FAILS naming the offender when a never-read family model is added.",
-    "Guard does not fire for a genuinely consulted model and treats a docstring-only mention as NOT consulted.",
-    "Guard asserts its derivation is non-empty and contains the four known family roots.",
+    "parse_quantity(500MB) == (500, MB); 512KB == (512, KB); 1.5MB == (1.5, MB).",
+    "10 K, 2GiB, 750MiB, 10MiB, 10KiB, 10MM, 10KK, 10Kfoo, 10Mfoo, 10Brequests, 10Krequests, signs, multi-number, invalid-suffix forms all still fail closed.",
+    "Kbps/Mbps/MBps still parse as magnitude continuations.",
+    "Mutation emptying the new set kills the new positive tests; mutation over-widening to any K/M-leading token kills the over-widening control test.",
     "Full pytest suite passes; ruff check . and ruff format --check . pass.",
-    "Admin allowlist tests still pass; settings.admin_allowlist remains the enforced path."
+    "No currently-published offer verdict moves (GitHub Packages Storage 500MB is pivoted away and not published)."
   ],
-  "required_evaluation_level": 1,
+  "required_evaluation_level": 2,
   "evaluator_disposition": "not yet evaluated"
 }
