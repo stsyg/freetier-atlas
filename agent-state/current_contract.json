@@ -1,29 +1,27 @@
 {
-  "feature_id": "F005",
-  "slice": "parse-quantity-compact-decimal-data-units",
-  "title": "Stop parse_quantity withholding unambiguous no-space compact decimal data units (500MB, 512KB)",
-  "branch": "stsyg-parse-quantity-compact-unit",
-  "base_commit": "97ebed11",
-  "objective": "parse_quantity (apps/api/app/publish/revalidate.py) withholds no-space compact quantities whose unit begins with a magnitude letter. Rule 1: the numeric token greedily consumes a trailing K/M/B, so 500MB becomes magnitude 500M + B and the reassembled MB is rejected. But for KB/MB the two readings (amount=500, unit=MB) and (amount=500000000, unit=B) are the SAME decimal quantity (kilo=1e3, mega=1e6 are decimal prefixes), so withholding is unjustified. This slice makes the value-equivalent decimal data units KB and MB parse while keeping every genuinely ambiguous form failing closed.",
+  "feature_id": "F-guard-secrets-baseline",
+  "slice": "decouple-secrets-baseline-test-from-hardcoded-fixture",
+  "title": "Decouple tests/unit/test_secrets_baseline.py from one hardcoded GitHub fixture path via at-test-time discovery",
+  "branch": "stsyg-decouple-secrets-baseline-guard",
+  "base_commit": "796fcda0",
+  "objective": "test_secrets_baseline.py hardcoded MULTI_ENTRY_FILE = a GitHub-provider fixture; ~8 tests depended on that exact path having several entries. The tests need A multi-entry file, not THAT file. Replace the constant with deterministic at-test-time discovery from the committed baseline, failing loudly by name when no file meets the minimum. No security behaviour of the guard changes.",
   "in_scope": [
-    "Add _UNAMBIGUOUS_MAGNITUDE_UNITS = frozenset({KB,MB}) and accept it in _is_supported_compact_unit consumed-magnitude branch.",
-    "Update tests/unit/test_publish_revalidate.py: move 10MB/10KB out of fails-closed lists; add positive pins (500MB,512KB,1MB,1KB,1.5MB) and an over-widening control.",
-    "Refresh docs/ARCHITECTURE.md and docs/DATA_MODEL.md parser-boundary prose and the stale github_packages_billing pivot comment."
+    "Add MINIMUM_ENTRIES=2 and discover_multi_entry_file(results): most-entried key, ties broken lexicographically (sorted keys + strictly-greater winner), raising AssertionError by name when none meets the minimum.",
+    "Add a multi_entry_file fixture; migrate the ~8 coupled tests to it.",
+    "Add proof tests: discovery selects the richest file deterministically (order-independent), survives the formerly-hardcoded fixture disappearing, and fails loudly on no-multi-entry / empty baselines."
   ],
   "out_of_scope": [
-    "Rule 2 (binary units KiB/MiB/GiB) - deliberate and out of scope; reported as a separate recommendation.",
-    "Changing the github_packages_billing pivot behaviour or publishing the Storage column.",
-    "Re-capturing or editing any fixtures.",
-    "Editing ci.yml, feature_list.json, package-lock.json, scripts/check_urls.py, tests/unit/test_url_allowlist.py, .secrets.baseline.",
-    "Any npm install/update/audit fix."
+    "Editing .secrets.baseline (protected), .github/workflows/ci.yml, agent-state/feature_list.json, package-lock.json files, scripts/check_urls.py, tests/unit/test_url_allowlist.py.",
+    "Any semantic change to scripts/check_secrets_baseline.py.",
+    "Any npm install/update/audit fix; docker/npm ci are environmentally broken and untouched."
   ],
   "acceptance_criteria": [
-    "parse_quantity(500MB) == (500, MB); 512KB == (512, KB); 1.5MB == (1.5, MB).",
-    "10 K, 2GiB, 750MiB, 10MiB, 10KiB, 10MM, 10KK, 10Kfoo, 10Mfoo, 10Brequests, 10Krequests, signs, multi-number, invalid-suffix forms all still fail closed.",
-    "Kbps/Mbps/MBps still parse as magnitude continuations.",
-    "Mutation emptying the new set kills the new positive tests; mutation over-widening to any K/M-leading token kills the over-widening control test.",
-    "Full pytest suite passes; ruff check . and ruff format --check . pass.",
-    "No currently-published offer verdict moves (GitHub Packages Storage 500MB is pivoted away and not published)."
+    "discover_multi_entry_file returns the unique richest baseline file (Oracle capture, 26 entries) and is order-independent.",
+    "With the GitHub fixture removed in-memory, discovery selects a different file >= MINIMUM_ENTRIES and the DISAPPEARED/DECREASED checks still fire.",
+    "With no file >= MINIMUM_ENTRIES, the named discovery test fails with a message stating the minimum and the richest candidate seen.",
+    "Every pre-existing guard behaviour (mode A wipe/removal/decrease, mode B backslash + directional-invisibility, deletion-is-a-change, legitimate refresh passes, growth passes, generated_at churn never fails, wiring routes) still holds.",
+    "Mutation reinstating each tampering kills the corresponding named test.",
+    "Full pytest suite passes; ruff check . and ruff format --check . pass; collected count for the file rises 141 -> 146 with no test removed."
   ],
   "required_evaluation_level": 2,
   "evaluator_disposition": "not yet evaluated"
