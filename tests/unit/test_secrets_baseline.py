@@ -59,8 +59,48 @@ assert _SPEC and _SPEC.loader
 validator = importlib.util.module_from_spec(_SPEC)
 _SPEC.loader.exec_module(validator)
 
-# A file with many entries, so a count reduction is expressible without emptying it.
-MULTI_ENTRY_FILE = "tests/fixtures/ingest/github/html/github-pages-limits/capture.json"
+# The count-based tampering tests need a file carrying at least this many entries,
+# so that a single-entry removal expresses a DECREASE rather than emptying the list
+# (which entry_problems would flag for a different, unrelated reason). Two is the
+# real floor: reduce from 2 to 1 and the list is still non-empty and still shrank.
+MINIMUM_ENTRIES = 2
+
+
+def discover_multi_entry_file(results: dict[str, list[dict[str, Any]]]) -> str:
+    """Pick the committed baseline key carrying the most entries, deterministically.
+
+    The tests that once hardcoded a GitHub fixture do not need *that* file; they
+    need *a* file with several entries. So find one from the baseline itself at
+    test time, decoupling this security guard from an unrelated provider slice: if
+    a future slice re-captures or removes any single fixture, discovery simply
+    selects the next-richest file instead of eight tests breaking in the wrong area.
+
+    Determinism, so the suite is never order-dependent: iterate keys in sorted
+    order and keep a strictly-greater winner, so among files tied for the most
+    entries the lexicographically-first key is chosen regardless of dict order.
+
+    Loud failure, because a discovery that silently found nothing would be strictly
+    worse than the hardcoded path - the guard would then pass while testing nothing.
+    Raise by name, stating the minimum the tests require, when no file meets it.
+    """
+    best_key: str | None = None
+    best_count = -1
+    for key in sorted(results):
+        count = len(results[key])
+        if count > best_count:
+            best_key = key
+            best_count = count
+    if best_key is None or best_count < MINIMUM_ENTRIES:
+        plural = "y" if best_count == 1 else "ies"
+        raise AssertionError(
+            "no file in the baseline carries the "
+            f"{MINIMUM_ENTRIES} entries the count-based tampering tests require "
+            f"(richest was {best_key!r} with {best_count} entr{plural}). "
+            "These tests need a multi-entry file to express a count reduction without "
+            "emptying a list; the baseline must contain one, or this minimum must be "
+            "lowered deliberately."
+        )
+    return best_key
 
 
 @pytest.fixture(scope="module")
@@ -71,6 +111,12 @@ def committed() -> dict[str, Any]:
 @pytest.fixture
 def results(committed: dict[str, Any]) -> dict[str, list[dict[str, Any]]]:
     return copy.deepcopy(committed["results"])
+
+
+@pytest.fixture
+def multi_entry_file(results: dict[str, list[dict[str, Any]]]) -> str:
+    """The discovered stand-in for the formerly-hardcoded multi-entry fixture."""
+    return discover_multi_entry_file(results)
 
 
 def structural_problems(results: dict[str, list[dict[str, Any]]]) -> list[str]:
@@ -121,6 +167,85 @@ def test_committed_baseline_survives_the_directional_check_against_itself(result
 
 
 # --------------------------------------------------------------------------
+# Discovery. The count-based tests below need A multi-entry file, not one
+# particular provider's fixture. These prove discovery does that job: it
+# selects a suitable file deterministically, keeps working when the file that
+# used to be hardcoded is gone, and fails LOUDLY - never silently empty -
+# when the baseline carries nothing rich enough to test with.
+# --------------------------------------------------------------------------
+
+
+def test_discovery_selects_a_file_meeting_the_minimum(results, multi_entry_file) -> None:
+    assert multi_entry_file in results
+    assert len(results[multi_entry_file]) >= MINIMUM_ENTRIES
+
+
+def test_discovery_selects_the_richest_file_deterministically(results) -> None:
+    """The winner is the most-entried file, ties broken by lexicographic key.
+
+    Determinism is asserted against a shuffled copy: dict order must not change
+    the choice, or the whole suite would become order-dependent through it.
+    """
+    chosen = discover_multi_entry_file(results)
+    top = max(len(v) for v in results.values())
+    assert len(results[chosen]) == top
+    winners = sorted(k for k, v in results.items() if len(v) == top)
+    assert chosen == winners[0]
+
+    reversed_order = dict(reversed(list(results.items())))
+    assert discover_multi_entry_file(reversed_order) == chosen
+
+
+def test_discovery_survives_the_formerly_hardcoded_fixture_disappearing(results) -> None:
+    """The point of the slice, measured rather than asserted.
+
+    Simulate the future event that motivated this: the GitHub fixture that used
+    to be hardcoded is re-captured away entirely. Discovery must then select a
+    DIFFERENT file that still meets the minimum, and the count-based tampering
+    checks must still fire against it.
+    """
+    formerly_hardcoded = "tests/fixtures/ingest/github/html/github-pages-limits/capture.json"
+    assert formerly_hardcoded in results, "guard premise: the fixture is present today"
+
+    without_it = {k: v for k, v in results.items() if k != formerly_hardcoded}
+    chosen = discover_multi_entry_file(without_it)
+    assert chosen != formerly_hardcoded
+    assert len(without_it[chosen]) >= MINIMUM_ENTRIES
+
+    # The tampering the count-based tests rely on still fires against the
+    # discovered stand-in: a full removal and a single-entry reduction both fail.
+    reference = copy.deepcopy(without_it)
+    removed = {k: v for k, v in without_it.items() if k != chosen}
+    assert any("DISAPPEARED" in p for p in validator.direction_problems(removed, reference))
+    reduced = copy.deepcopy(without_it)
+    reduced[chosen] = reduced[chosen][:-1]
+    assert any("DECREASED" in p for p in validator.direction_problems(reduced, reference))
+
+
+def test_discovery_fails_loudly_when_no_file_meets_the_minimum() -> None:
+    """A discovery that could silently return nothing is the failure to prevent.
+
+    Construct a baseline in which every file carries a single entry, so none
+    meets the minimum, and prove discovery RAISES by name rather than handing
+    back a file the count tests would then quietly fail to exercise.
+    """
+    single_entry_only = {
+        "a/one.json": [{"filename": "a/one.json", "hashed_secret": "a" * 40}],
+        "b/two.json": [{"filename": "b/two.json", "hashed_secret": "b" * 40}],
+    }
+    with pytest.raises(AssertionError) as excinfo:
+        discover_multi_entry_file(single_entry_only)
+    message = str(excinfo.value)
+    assert str(MINIMUM_ENTRIES) in message
+    assert "a/one.json" in message, "the loud failure must name the richest candidate it saw"
+
+
+def test_discovery_fails_loudly_on_an_empty_baseline() -> None:
+    with pytest.raises(AssertionError):
+        discover_multi_entry_file({})
+
+
+# --------------------------------------------------------------------------
 # Mode B - the backslash rewrite.
 # --------------------------------------------------------------------------
 
@@ -162,24 +287,24 @@ def test_mode_a_total_wipe_fails(results) -> None:
     assert all("DISAPPEARED" in problem for problem in problems)
 
 
-def test_mode_a_single_file_removed_fails(results) -> None:
+def test_mode_a_single_file_removed_fails(results, multi_entry_file) -> None:
     candidate = copy.deepcopy(results)
-    del candidate[MULTI_ENTRY_FILE]
+    del candidate[multi_entry_file]
     problems = validator.direction_problems(candidate, results)
     assert len(problems) == 1
     assert "DISAPPEARED" in problems[0]
 
 
-def test_mode_a_reduced_entry_count_fails(results) -> None:
+def test_mode_a_reduced_entry_count_fails(results, multi_entry_file) -> None:
     candidate = copy.deepcopy(results)
-    before = len(candidate[MULTI_ENTRY_FILE])
-    candidate[MULTI_ENTRY_FILE] = candidate[MULTI_ENTRY_FILE][:-1]
+    before = len(candidate[multi_entry_file])
+    candidate[multi_entry_file] = candidate[multi_entry_file][:-1]
     problems = validator.direction_problems(candidate, results)
     assert len(problems) == 1
     assert f"DECREASED from {before} to {before - 1}" in problems[0]
 
 
-def test_deletion_is_a_change_and_must_still_fail(results) -> None:
+def test_deletion_is_a_change_and_must_still_fail(results, multi_entry_file) -> None:
     """The regression test for the guard that passed on a wipe.
 
     Every surviving entry here is byte-identical to the reference; the only
@@ -187,7 +312,7 @@ def test_deletion_is_a_change_and_must_still_fail(results) -> None:
     CHANGED is satisfied by this. A guard asserting DIRECTION is not.
     """
     candidate = copy.deepcopy(results)
-    removed = candidate.pop(MULTI_ENTRY_FILE)
+    removed = candidate.pop(multi_entry_file)
     assert candidate != results, "a deletion is indeed a change"
     assert all(candidate[k] == results[k] for k in candidate), "nothing else was touched"
     assert removed, "the removed file really did carry entries"
@@ -199,7 +324,7 @@ def test_deletion_is_a_change_and_must_still_fail(results) -> None:
 # --------------------------------------------------------------------------
 
 
-def test_legitimate_in_place_refresh_passes(results) -> None:
+def test_legitimate_in_place_refresh_passes(results, multi_entry_file) -> None:
     """A real refresh moves a line number and re-hashes a digest. Nothing is lost.
 
     Measured end to end: a full Windows refresh through
@@ -207,20 +332,20 @@ def test_legitimate_in_place_refresh_passes(results) -> None:
     committed one ONLY in ``generated_at``, with ``results`` byte-identical.
     """
     candidate = copy.deepcopy(results)
-    entry = candidate[MULTI_ENTRY_FILE][0]
+    entry = candidate[multi_entry_file][0]
     entry["line_number"] = entry.get("line_number", 1) + 7
     entry["hashed_secret"] = "0" * 39 + "a"
     assert structural_problems(candidate) == []
     assert validator.direction_problems(candidate, results) == []
 
 
-def test_growth_passes(results) -> None:
+def test_growth_passes(results, multi_entry_file) -> None:
     """New findings and new files are normal. The check is non-decreasing."""
     candidate = copy.deepcopy(results)
-    extra = dict(candidate[MULTI_ENTRY_FILE][0])
+    extra = dict(candidate[multi_entry_file][0])
     extra["line_number"] = 9999
     extra["hashed_secret"] = "c" * 40
-    candidate[MULTI_ENTRY_FILE].append(extra)
+    candidate[multi_entry_file].append(extra)
     candidate["README.md"] = [
         {
             "filename": "README.md",
@@ -260,9 +385,9 @@ def test_generated_at_churn_never_fails(committed: dict[str, Any]) -> None:
         "0" * 41,
     ],
 )
-def test_malformed_hashed_secret_fails(results, bad_digest: str) -> None:
+def test_malformed_hashed_secret_fails(results, multi_entry_file, bad_digest: str) -> None:
     candidate = copy.deepcopy(results)
-    candidate[MULTI_ENTRY_FILE][0]["hashed_secret"] = bad_digest
+    candidate[multi_entry_file][0]["hashed_secret"] = bad_digest
     assert validator.entry_problems(candidate) != []
 
 
@@ -275,9 +400,9 @@ def test_malformed_hashed_secret_fails(results, bad_digest: str) -> None:
         "../outside/file.json",
     ],
 )
-def test_non_relative_posix_keys_fail(results, bad_key: str) -> None:
+def test_non_relative_posix_keys_fail(results, multi_entry_file, bad_key: str) -> None:
     candidate = copy.deepcopy(results)
-    candidate[bad_key] = candidate.pop(MULTI_ENTRY_FILE)
+    candidate[bad_key] = candidate.pop(multi_entry_file)
     assert validator.posix_key_problems(candidate) != []
 
 
@@ -300,9 +425,9 @@ def test_stale_entry_for_a_deleted_file_fails(results) -> None:
     assert validator.existence_problems(candidate, REPO_ROOT) != []
 
 
-def test_empty_entry_list_fails(results) -> None:
+def test_empty_entry_list_fails(results, multi_entry_file) -> None:
     candidate = copy.deepcopy(results)
-    candidate[MULTI_ENTRY_FILE] = []
+    candidate[multi_entry_file] = []
     assert validator.entry_problems(candidate) != []
 
 
