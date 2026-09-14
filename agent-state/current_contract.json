@@ -1,28 +1,13 @@
 {
-  "feature_id": "F-guard-secrets-baseline",
-  "slice": "decouple-secrets-baseline-test-from-hardcoded-fixture",
-  "title": "Decouple tests/unit/test_secrets_baseline.py from one hardcoded GitHub fixture path via at-test-time discovery",
-  "branch": "stsyg-decouple-secrets-baseline-guard",
-  "base_commit": "796fcda0",
-  "objective": "test_secrets_baseline.py hardcoded MULTI_ENTRY_FILE = a GitHub-provider fixture; ~8 tests depended on that exact path having several entries. The tests need A multi-entry file, not THAT file. Replace the constant with deterministic at-test-time discovery from the committed baseline, failing loudly by name when no file meets the minimum. No security behaviour of the guard changes.",
-  "in_scope": [
-    "Add MINIMUM_ENTRIES=2 and discover_multi_entry_file(results): most-entried key, ties broken lexicographically (sorted keys + strictly-greater winner), raising AssertionError by name when none meets the minimum.",
-    "Add a multi_entry_file fixture; migrate the ~8 coupled tests to it.",
-    "Add proof tests: discovery selects the richest file deterministically (order-independent), survives the formerly-hardcoded fixture disappearing, and fails loudly on no-multi-entry / empty baselines."
-  ],
-  "out_of_scope": [
-    "Editing .secrets.baseline (protected), .github/workflows/ci.yml, agent-state/feature_list.json, package-lock.json files, scripts/check_urls.py, tests/unit/test_url_allowlist.py.",
-    "Any semantic change to scripts/check_secrets_baseline.py.",
-    "Any npm install/update/audit fix; docker/npm ci are environmentally broken and untouched."
-  ],
-  "acceptance_criteria": [
-    "discover_multi_entry_file returns the unique richest baseline file (Oracle capture, 26 entries) and is order-independent.",
-    "With the GitHub fixture removed in-memory, discovery selects a different file >= MINIMUM_ENTRIES and the DISAPPEARED/DECREASED checks still fire.",
-    "With no file >= MINIMUM_ENTRIES, the named discovery test fails with a message stating the minimum and the richest candidate seen.",
-    "Every pre-existing guard behaviour (mode A wipe/removal/decrease, mode B backslash + directional-invisibility, deletion-is-a-change, legitimate refresh passes, growth passes, generated_at churn never fails, wiring routes) still holds.",
-    "Mutation reinstating each tampering kills the corresponding named test.",
-    "Full pytest suite passes; ruff check . and ruff format --check . pass; collected count for the file rises 141 -> 146 with no test removed."
-  ],
-  "required_evaluation_level": 2,
-  "evaluator_disposition": "not yet evaluated"
+  "feature": "vercel-sidecar-sha256-original-disclosure",
+  "increment": "Close the disclosure gap on 8 Vercel capture sidecars + add a durable guard",
+  "acceptance": [
+    "All 8 Vercel capture.json with a non-null sha256_original carry a sha256_original_note",
+    "Note wording is evidence-grounded (per-build nonce, evidenced in-repo) and matches the cross-provider convention (contains 'not reproducible across fetches')",
+    "Each note uses that file's own fetched_at date",
+    "Durable guard: any sidecar with non-null sha256_original must carry a sha256_original_note; derived from glob; non-vacuous count + at-least-one-real-digest asserted",
+    "Null-digest sidecars (cloudflare) do NOT require a note",
+    "No capture bytes changed (source.html/expected.json); only sidecar JSON + test file",
+    "Full suite + ruff green; offline invariant untouched"
+  ]
 }
