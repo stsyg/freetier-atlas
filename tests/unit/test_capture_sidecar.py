@@ -359,3 +359,134 @@ def test_a_null_original_digest_needs_no_disclosure() -> None:
             "sha256_original_note; the guard must not require -- nor should the "
             "corpus volunteer -- a disclosure about a digest that does not exist."
         )
+
+
+# --- Dedup guard: a list-valued disclosure must not repeat the same entry ------
+#
+# Some sidecars carry list-of-object disclosure fields -- e.g.
+# ``duplicate_live_blocks_not_retained`` and ``duplicate_live_blocks_retained``
+# -- where each entry documents ONE distinct duplicated-block situation on the
+# live page. A provenance disclosure is read literally, so the same entry
+# appearing twice reads as TWO distinct problems where there is one: it
+# overstates a disclosure, which in a file whose entire job is honest provenance
+# is precisely the wrong direction to be wrong in.
+#
+# The field set is derived from the tree, not hand-listed: any top-level field
+# whose value is a non-empty list of JSON objects is treated as a disclosure
+# list and must carry no byte-identical duplicate. Hard-coding the two known
+# field names would leave the next disclosure field someone adds unguarded,
+# which is the whole point.
+
+
+def _list_of_object_disclosure_fields(record: dict) -> dict[str, list]:
+    """Every top-level field whose value is a non-empty list of JSON objects.
+
+    This is the dynamic definition of a "list-valued disclosure field": we do
+    not name the fields, we recognise their SHAPE, so a disclosure field added
+    later is covered the moment it lands.
+    """
+
+    fields: dict[str, list] = {}
+    for name, value in record.items():
+        if isinstance(value, list) and value and all(isinstance(item, dict) for item in value):
+            fields[name] = value
+    return fields
+
+
+def _duplicate_entries(entries: list) -> list:
+    """Entries that repeat an earlier one under key-sorted serialisation.
+
+    Two entries are "the same" iff their canonical (sorted-key) JSON is
+    byte-identical. This is a DUPLICATE check, not a "no two entries" ban: two
+    entries that differ in any field are both kept.
+    """
+
+    seen: set[str] = set()
+    duplicates: list = []
+    for entry in entries:
+        canonical = json.dumps(entry, sort_keys=True)
+        if canonical in seen:
+            duplicates.append(entry)
+        else:
+            seen.add(canonical)
+    return duplicates
+
+
+def _assert_dedup_corpus_is_non_vacuous(sidecars: list[Path]) -> None:
+    """Shared non-vacuity check, so a probe can exercise it over an empty set.
+
+    Fails when the sidecar glob matched (almost) nothing OR when the corpus
+    holds no list-valued disclosure field at all -- either of which would make
+    the dedup guard pass over an empty population forever.
+    """
+
+    assert len(sidecars) >= _MIN_EXPECTED_SIDECARS, (
+        f"only {len(sidecars)} capture.json sidecar(s) found under {FIXTURE_ROOT} "
+        f"(expected >= {_MIN_EXPECTED_SIDECARS}; the committed corpus is 63). The "
+        "glob is matching almost nothing, which would make the dedup guard vacuous."
+    )
+    fields_found = 0
+    for sidecar in sidecars:
+        record = json.loads(sidecar.read_text(encoding="utf-8"))
+        fields_found += len(_list_of_object_disclosure_fields(record))
+    assert fields_found >= 1, (
+        "no list-valued disclosure field found anywhere in the corpus, so the "
+        "dedup guard would assert nothing. Expected several (e.g. "
+        "duplicate_live_blocks_not_retained, duplicate_live_blocks_retained)."
+    )
+
+
+def test_the_dedup_guard_scans_list_valued_disclosure_fields() -> None:
+    """Non-vacuity: the dedup guard must reason about real disclosure lists."""
+
+    _assert_dedup_corpus_is_non_vacuous(ALL_CAPTURE_SIDECARS)
+
+
+@pytest.mark.parametrize(
+    "sidecar",
+    ALL_CAPTURE_SIDECARS,
+    ids=lambda p: p.relative_to(FIXTURE_ROOT).as_posix(),
+)
+def test_no_disclosure_list_contains_duplicate_entries(sidecar: Path) -> None:
+    """The load-bearing guard: no disclosure list may repeat an entry.
+
+    Re-insert a byte-identical entry into any list-valued disclosure field and
+    this fails, naming the file and the field.
+    """
+
+    record = json.loads(sidecar.read_text(encoding="utf-8"))
+    for field, entries in _list_of_object_disclosure_fields(record).items():
+        duplicates = _duplicate_entries(entries)
+        assert not duplicates, (
+            f"{_relative(sidecar)}: disclosure field '{field}' repeats "
+            f"{len(duplicates)} entry/entries verbatim. A provenance disclosure "
+            "is read literally, so a duplicated entry overstates it (two problems "
+            "where there is one). Remove the duplicate, or -- if the entries were "
+            "meant to be distinct -- give each a distinguishing field."
+        )
+
+
+def test_the_dedup_guard_distinguishes_duplicates_from_distinct_entries() -> None:
+    """Precision: it flags repeats, but two genuinely different entries PASS.
+
+    Without this, the guard could be a "no list may hold two entries" ban rather
+    than a duplicate check. Key order must not matter (canonicalisation), and a
+    single differing field must be enough to keep both entries.
+    """
+
+    identical = [
+        {"text": "x", "live_occurrences": 2, "retained_in_capture": 1},
+        {"live_occurrences": 2, "retained_in_capture": 1, "text": "x"},
+    ]
+    assert _duplicate_entries(identical), (
+        "two byte-identical entries (differing only in key order) must be reported as a duplicate."
+    )
+
+    distinct = [
+        {"text": "x", "live_occurrences": 2, "retained_in_capture": 1},
+        {"text": "y", "live_occurrences": 2, "retained_in_capture": 1},
+    ]
+    assert not _duplicate_entries(distinct), (
+        "two entries that differ in any field are distinct disclosures and must "
+        "both be kept; the guard is a duplicate check, not a two-entry ban."
+    )
