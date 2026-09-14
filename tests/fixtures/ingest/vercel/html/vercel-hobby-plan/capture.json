@@ -4,6 +4,7 @@
   "http_status": 200,
   "robots_allowed": true,
   "sha256_original": "75e3a96395dbe0ca9e2d07a83b760de5dba5ff8226108cdad71e2cc9d534846e",
+  "sha256_original_note": "sha256_original is the digest of the exact live bytes this capture was derived from on 2026-08-13. It is NOT reproducible across fetches: vercel.com is server-rendered with a per-build nonce, so a later fetch of an unchanged page yields a different digest. STRUCTURE, not digest, is the invariant.",
   "sha256_stored": "72b7494eb7fc2f14a7292441b91cd8997b2a120871e355c73e69f32b617ea8c4",
   "tos_note": "Official Vercel documentation retained as a minimal factual excerpt for deterministic offline testing.",
   "trim_method": "Removed scripts, navigation, styling, unrelated prose, and the separate 23-row Hobby-vs-Pro comparison table. Removed zero rows and zero cells from inside the extracted Resource | Hobby Included Usage table. Retained all 13 target data rows and every target cell.",

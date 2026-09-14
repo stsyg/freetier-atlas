@@ -4,6 +4,7 @@
   "http_status": 200,
   "robots_allowed": true,
   "sha256_original": "eaccbbf4c9eea161b39a0f47af8a6888f4ab567a06845e7c0a9a86dda9bd9185",
+  "sha256_original_note": "sha256_original is the digest of the exact live bytes this capture was derived from on 2026-08-13. It is NOT reproducible across fetches: vercel.com is server-rendered with a per-build nonce, so a later fetch of an unchanged page yields a different digest. STRUCTURE, not digest, is the invariant.",
   "sha256_stored": "7634f3442d41aaa94e060f2525f0e1367a65271c45756b6d894cb9516b382648",
   "tos_note": "Official Vercel documentation retained as a minimal factual excerpt for deterministic offline testing.",
   "trim_method": "Removed scripts, navigation, styling, images, lists, and prose not used by extraction. Removed zero rows and zero cells from inside the extracted Pro Trial Limits table. Retained all 10 target data rows and every target cell.",

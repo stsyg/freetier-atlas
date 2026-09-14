@@ -68,6 +68,26 @@ def _relative(path: Path) -> str:
 
 REAL_PROVIDER_DIRS = _fixture_dirs(real_providers=True)
 
+#: Every committed provenance sidecar, derived from the tree rather than a
+#: hand-written list so a new capture is covered the moment it lands. Only real
+#: providers carry a ``capture.json`` (the synthetic corpus is exempt), so this
+#: glob is the whole population the disclosure guard must reason about.
+ALL_CAPTURE_SIDECARS = sorted(FIXTURE_ROOT.glob("**/capture.json"))
+
+#: A floor on the corpus size. It exists purely so a glob that silently matches
+#: nothing (a moved fixture root, a renamed file) cannot make the disclosure
+#: guard below pass vacuously forever. The committed corpus is 63 at the time of
+#: writing; 40 leaves generous headroom for churn while still catching a
+#: collapse to near-zero.
+_MIN_EXPECTED_SIDECARS = 40
+
+
+def _has_real_digest(record: dict) -> bool:
+    """True when the sidecar claims a real ``sha256_original`` (not null/empty)."""
+
+    value = record.get("sha256_original")
+    return isinstance(value, str) and bool(value.strip())
+
 
 def test_the_real_provider_corpus_is_discovered() -> None:
     """Guard: the parametrised checks below must not silently cover nothing."""
@@ -248,4 +268,94 @@ def test_the_prettier_exemption_is_scoped_to_captures_and_stays_scoped() -> None
         assert _prettier_ignores(relative), (
             f"{relative} must stay Prettier-ignored so it remains invalid; the "
             "'example' re-inclusion has resurrected it."
+        )
+
+
+# --- Disclosure guard: a real original digest must say what it does NOT attest --
+#
+# ``sha256_original`` looks like a re-checkable link to the live page, but it is
+# not one and never can be: the providers serve per-build markup, so a later
+# fetch of an unchanged page yields a different digest. Leaving that unstated is
+# an unsupported claim about our own evidence -- the exact defect class this
+# product exists to prevent, pointed inward. Every sidecar that carries a real
+# digest must therefore also carry a ``sha256_original_note`` disclosing the
+# limit. A null digest attests nothing and needs no note.
+
+
+def test_the_disclosure_guard_scans_a_plausible_non_empty_corpus() -> None:
+    """Non-vacuity: the guard must reason about the real committed corpus.
+
+    A glob that silently matches nothing -- a moved fixture root, a renamed
+    file -- would make every per-sidecar assertion below pass over an empty
+    set. Pin a floor on the population AND require that at least one sidecar
+    actually carries a real digest, so the disclosure guard can never be
+    satisfied by asserting nothing.
+    """
+
+    assert len(ALL_CAPTURE_SIDECARS) >= _MIN_EXPECTED_SIDECARS, (
+        f"only {len(ALL_CAPTURE_SIDECARS)} capture.json sidecar(s) found under "
+        f"{FIXTURE_ROOT} (expected >= {_MIN_EXPECTED_SIDECARS}; the committed "
+        "corpus is 63). The glob is matching almost nothing, which would make "
+        "the disclosure guard vacuous."
+    )
+    records = [json.loads(p.read_text(encoding="utf-8")) for p in ALL_CAPTURE_SIDECARS]
+    assert any(_has_real_digest(r) for r in records), (
+        "no sidecar carries a real sha256_original, so the disclosure guard "
+        "would assert nothing. Expected several real digests in the corpus."
+    )
+
+
+@pytest.mark.parametrize(
+    "sidecar",
+    ALL_CAPTURE_SIDECARS,
+    ids=lambda p: p.relative_to(FIXTURE_ROOT).as_posix(),
+)
+def test_a_real_original_digest_is_always_disclosed(sidecar: Path) -> None:
+    """The load-bearing guard: a real digest must carry a non-empty note.
+
+    Strip ``sha256_original_note`` from any sidecar that has a real
+    ``sha256_original`` and this fails, naming the offending file.
+    """
+
+    record = json.loads(sidecar.read_text(encoding="utf-8"))
+    if not _has_real_digest(record):
+        pytest.skip("sha256_original is null/empty: nothing to disclose")
+
+    note = record.get("sha256_original_note")
+    assert isinstance(note, str) and note.strip(), (
+        f"{_relative(sidecar)} carries a real sha256_original but no "
+        "sha256_original_note. A bare digest reads as a re-checkable link to the "
+        "live page; it is not one. Add a note stating what the digest does and "
+        "does not attest (see the other providers' sidecars for the wording)."
+    )
+
+
+def test_a_null_original_digest_needs_no_disclosure() -> None:
+    """Precision control: a null digest attests nothing, so it needs no note.
+
+    Cloudflare's captures carry ``sha256_original: null``. The guard must accept
+    them exactly as committed -- without a note -- or it would demand a
+    disclosure about a digest that does not exist. Assert such a sidecar is
+    present (so this control is not vacuous) and that it genuinely omits the
+    note.
+    """
+
+    null_digest_sidecars = [
+        p
+        for p in ALL_CAPTURE_SIDECARS
+        if not _has_real_digest(json.loads(p.read_text(encoding="utf-8")))
+    ]
+    assert null_digest_sidecars, (
+        "expected at least one null-digest sidecar (Cloudflare); this precision "
+        "control would otherwise be vacuous."
+    )
+    for sidecar in null_digest_sidecars:
+        record = json.loads(sidecar.read_text(encoding="utf-8"))
+        assert not record.get("sha256_original"), (
+            f"{_relative(sidecar)} was expected to have a null/empty sha256_original."
+        )
+        assert "sha256_original_note" not in record, (
+            f"{_relative(sidecar)} has no real digest yet carries a "
+            "sha256_original_note; the guard must not require -- nor should the "
+            "corpus volunteer -- a disclosure about a digest that does not exist."
         )
