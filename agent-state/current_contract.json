@@ -1,13 +1,29 @@
 {
-  "feature": "vercel-sidecar-sha256-original-disclosure",
-  "increment": "Close the disclosure gap on 8 Vercel capture sidecars + add a durable guard",
+  "feature": "provenance-disclosure-dedup-guard",
+  "increment": "Remove the duplicated entry from two 'duplicate_live_blocks_not_retained' disclosure lists and add a durable guard forbidding duplicate entries in any list-valued disclosure field of any capture sidecar",
+  "branch": "stsyg-dedupe-disclosure-guard",
+  "base": "origin/main @ add2f2c9",
+  "opened_at": "2026-09-14",
+  "files_affected": [
+    "tests/fixtures/ingest/github/html/github-codespaces-billing/capture.json",
+    "tests/fixtures/ingest/github/html/github-packages-billing/capture.json",
+    "tests/unit/test_capture_sidecar.py"
+  ],
+  "history_finding": "Both files were added whole in commit 7b169df (their only commit) with both identical entries already present. The two entries are byte-identical after key-sorted serialisation (same text, live_occurrences:2, retained_in_capture:1, note) with no distinguishing field. The canonical shape elsewhere (oracle 'duplicate_live_blocks_retained') is ONE entry per distinct duplicated-block situation whose note fully describes it. Verdict: meant to be one entry; the duplicate is a copy-paste artifact -> delete the duplicate.",
+  "constraints": [
+    "Do NOT change any text/live_occurrences/retained_in_capture/note value; only remove the duplicate entry.",
+    "Guard derives the file set and field set dynamically from the tree; no hardcoded field name or filename.",
+    "Guard asserts non-vacuity (plausible sidecar count AND >=1 list-of-object disclosure field).",
+    "Precision: a list whose two entries genuinely differ must PASS.",
+    "Zero capture bytes (source.*) may change.",
+    "Expect a .secrets.baseline line-number shift; refresh via scripts/refresh_secrets_baseline.py and prove line-number-only."
+  ],
   "acceptance": [
-    "All 8 Vercel capture.json with a non-null sha256_original carry a sha256_original_note",
-    "Note wording is evidence-grounded (per-build nonce, evidenced in-repo) and matches the cross-provider convention (contains 'not reproducible across fetches')",
-    "Each note uses that file's own fetched_at date",
-    "Durable guard: any sidecar with non-null sha256_original must carry a sha256_original_note; derived from glob; non-vacuous count + at-least-one-real-digest asserted",
-    "Null-digest sidecars (cloudflare) do NOT require a note",
-    "No capture bytes changed (source.html/expected.json); only sidecar JSON + test file",
-    "Full suite + ruff green; offline invariant untouched"
+    "Named guard FAILS when a duplicate is re-inserted, naming the file and field; then restore.",
+    "Non-vacuity count fires when the glob matches nothing.",
+    "Two genuinely-different entries PASS (duplicate check, not a two-entry ban).",
+    "Full suite + ruff check + ruff format --check green with collected counts reported.",
+    "git diff --name-only carries no source.* file.",
+    "If the secret-scan baseline was refreshed: unchanged file/entry counts, no hashed_secret changed, test_secrets_baseline.py green."
   ]
 }

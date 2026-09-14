@@ -20,12 +20,6 @@
       "live_occurrences": 2,
       "retained_in_capture": 1,
       "note": "This sentence appears more than once on the live page (the offer's own section and a later budget/spending section). The excerpt retains the occurrence from the offer's own section. This is a MATERIAL disclosure: against the unmodified live page the engine would reject this profile with 'ambiguous_assertion', because whole-block equality requires exactly one match."
-    },
-    {
-      "text": "If your account does not have a valid payment method on file, usage is blocked once you use up your quota.",
-      "live_occurrences": 2,
-      "retained_in_capture": 1,
-      "note": "This sentence appears more than once on the live page (the offer's own section and a later budget/spending section). The excerpt retains the occurrence from the offer's own section. This is a MATERIAL disclosure: against the unmodified live page the engine would reject this profile with 'ambiguous_assertion', because whole-block equality requires exactly one match."
     }
   ],
   "url": "https://docs.github.com/en/billing/concepts/product-billing/github-codespaces",
