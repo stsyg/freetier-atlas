@@ -5686,3 +5686,24 @@ Owner-authorised PRODUCTION behaviour change. Base `origin/main @ be281a8`. Shal
 - **NAMED_SCHEDULE_WINDOWS status [M]:** stays test-reachable only after this change (production now flows compact windows). KEPT: `parse_schedule_window` still supports the named grammar and `boundary_corpus.py` sets named windows directly. `SchedulesConfig` was in `test_config_models_are_consulted.ALLOWED_VALIDATION_ONLY` ("not yet consumed"); this change makes it LIVE, so the stale exemption was removed (the guard flagged it — `test_allowance_is_honest_...`).
 - **Validation [M]:** full suite `2921 passed, 329 skipped` (3250 collected; skips = Postgres/stack integration gated on `DATABASE_URL`/`ATLAS_STACK_BASE_URL`). New `tests/unit/test_schedule_ref_resolution.py` (43 tests: cron derivation, resolver happy-path, fail-closed, precision, forbidden-guard, impact table, whole-ScheduleSet direction guard). Targeted node-id runs all collected/ran (no exit-5). `ruff check .` clean; `ruff format --check .` clean.
 - **Scope [M]:** no boundary path touched (`.github/workflows/ci.yml`, `agent-state/feature_list.json`, both `package-lock.json`, `scripts/check_urls.py`, `tests/unit/test_url_allowlist.py`, `tests/unit/test_no_live_fetcher_in_tests.py` all untouched). No fixture re-capture ⇒ no secrets-baseline line shift. No network, no npm/docker. PR opened; MUST NOT be merged here — owner merges after verification.
+
+## 2026-09-15T13:39-06:00 - Land ADR 0007 (public hosting: static snapshot only) - DOCS ONLY
+
+**Branch:** `stsyg-adr-0007-static-hosting` off `origin/main @ 210e6530`. Owner-recorded decision (already MADE, not chosen here); PR opened, MUST NOT be merged here.
+
+**What landed:** New `docs/adr/0007-public-hosting-static-snapshot.md` — Status: Accepted 2026-09-15. Records **Option A (static snapshot only)** for the public deployment: build-time JSON export of the 10 read-only catalogue GETs, client-side search/filter/sort/compare, the deterministic adviser run in-browser, and a build-time RSS feed. Admin and the LLM-assisted adviser stay **local-only via Compose, not published**. MVP line 19 (GitHub-authenticated admin) satisfied LOCALLY. The public surface loses public admin and MVP line 13 (NL->structured requirements, needs an LLM route). Option C (single narrow assisted-advice function) explicitly NOT foreclosed. ADR 0007 **extends ADR 0003** and supersedes it **only** on what the public deployment serves; 0003's Cloudflare-Pages-primary + GitHub-Pages-mirror host choice stands. Added a one-line back-reference note to `docs/adr/0003-static-hosting.md` (its `Status:` line left byte-exact).
+
+**Principal risk recorded prominently (not softened):** a snapshot freezes evidence currency at build time; the export becomes a TENTH catalogue surface, so the PR #95/#99 defect class (nine surfaces repeating an expired free claim) applies to it directly. Export MUST carry explicit `as_of` and MUST be structurally incapable of presenting expired/unknown-currency claims as current. Interacts with the `schedule_ref` staleness-window work, which merged as PR #128 (main `71c351a`, 2026-09-15); the export must respect its PER-SOURCE windows (not a global figure); exact encoding is an open question for a later slice.
+
+**Facts re-verified against 210e6530 (per owner brief); ONE owner fact found WRONG:**
+- CORRECTION: `export const API_BASE ...` is at **line 17**, not line 16. The owner brief's re-verified "line 16" is wrong; the "older draft" value (17) was correct. ADR states line 17.
+- Confirmed: `docs/adr/` holds 0001-0006, so 0007 is the correct next number.
+- Confirmed: 27 route decorators total — read_api 10 GET, admin 10 (6 GET + 4 POST), adviser 4 POST, main.py 3 GET.
+- Confirmed (in substance): 0 static-export CODE paths (`static_export|prerender|snapshot_json|build_static`); the single repo match is prose in this progress.md, not an implementation.
+- Confirmed: `docs/HOSTING_Z0.md` exists; `docs/adr/0003` status line reads exactly `Status: Provisionally accepted pending onboarding test`.
+- Confirmed: MVP_ACCEPTANCE.md line 13 = NL->structured requirements, line 19 = GitHub-authenticated admin, line 49 = no cloud provider mandatory for local operation.
+- Confirmed: PR #128 also appends to progress.md; it MERGED as `71c351a` mid-write, so this branch was rebased with `git rebase --onto origin/main 210e6530` (replays only this commit) and the progress.md conflict resolved keeping BOTH entries chronologically (#128 then ADR 0007).
+
+**Scope/boundaries:** docs + progress.md only. No code/tests/config. No boundary file touched (ci.yml, feature_list.json, package-lock.json x2, .secrets.baseline, check_urls.py, test_url_allowlist.py, test_no_live_fetcher_in_tests.py). No new URLs added.
+
+**Validation:** see PR body for ruff + pytest collected counts.
