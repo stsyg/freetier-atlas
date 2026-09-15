@@ -19,11 +19,12 @@ import ast
 import hashlib
 import json
 from fnmatch import fnmatch
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 import pytest
 
 FIXTURE_ROOT = Path(__file__).resolve().parents[1] / "fixtures" / "ingest"
+TESTS_ROOT = Path(__file__).resolve().parents[1]
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 #: The ``example`` corpus is synthetic -- hand-written to exercise adapter shapes
@@ -157,27 +158,125 @@ def test_synthetic_fixtures_are_exempt_and_stay_that_way() -> None:
         )
 
 
-def test_no_freshness_assertion_exists_in_this_module() -> None:
-    """Pin the Q2-A decision itself, so it cannot be quietly reintroduced.
+#: Wall-clock reads. Asserting a *committed* fixture's age against any of these
+#: is the Q2-A time bomb the guard below forbids -- tree-wide, not just here.
+_CLOCK_READ_ATTRS = frozenset({"now", "today", "utcnow", "time", "monotonic"})
 
-    CI must never assert that a fixture is *recent*. This is an AST check, not a
-    substring check, so prose explaining the rule does not trip it -- only an
-    actual clock read does.
+#: A floor on the number of test modules discovered, so a glob that silently
+#: matches nothing (a moved tree root, a rename) cannot make the guard pass
+#: vacuously forever. The tree holds 127 at the time of writing; 60 leaves
+#: generous headroom for churn while still catching a collapse to near-zero.
+_MIN_EXPECTED_TEST_MODULES = 60
+
+
+def _test_modules() -> list[Path]:
+    """Every test module in the tree, derived from the filesystem rather than a
+    hand-written list, so a freshness bomb in a *new* file is still in scope."""
+
+    return [p for p in sorted(TESTS_ROOT.rglob("*.py")) if "__pycache__" not in p.parts]
+
+
+def _ast_of(path: Path) -> ast.AST:
+    return ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+
+
+def _names_a_committed_sidecar(tree: ast.AST) -> bool:
+    """True when a module uses ``capture.json`` as a path literal -- i.e. it
+    loads the committed sidecar whose age must never be asserted.
+
+    Only string *constants* whose filename is exactly ``capture.json`` count
+    (``directory / "capture.json"``, ``glob("**/capture.json")``). A docstring
+    that merely mentions the word has some other ``Path(...).name`` and is
+    ignored -- this is why the guard is AST-based, not a substring scan.
     """
 
-    tree = ast.parse(Path(__file__).read_text(encoding="utf-8"))
-    clock_reads = [
-        node
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Constant) and isinstance(node.value, str):
+            if PurePosixPath(node.value.replace("\\", "/")).name == "capture.json":
+                return True
+    return False
+
+
+def _clock_read_lines(tree: ast.AST) -> list[int]:
+    """Line numbers where a module reads the wall clock (``datetime.now()``,
+    ``time.time()`` ...). Attribute calls only, matching the established
+    LiveFetcher guard: naming ``now`` in prose is not a clock read."""
+
+    return sorted(
+        node.lineno
         for node in ast.walk(tree)
         if isinstance(node, ast.Call)
         and isinstance(node.func, ast.Attribute)
-        and node.func.attr in {"now", "today", "utcnow", "time", "monotonic"}
-    ]
-    assert not clock_reads, (
-        "This module must not read the clock (line "
-        f"{clock_reads[0].lineno if clock_reads else '?'}). Fixture freshness is a "
-        "runtime concern enforced by assess_staleness, not a CI assertion "
-        "(decision Q2-A)."
+        and node.func.attr in _CLOCK_READ_ATTRS
+    )
+
+
+def _module_rel(path: Path) -> str:
+    return path.relative_to(REPO_ROOT).as_posix()
+
+
+TEST_MODULES = _test_modules()
+
+#: The subset that actually loads a committed sidecar. A "fixture is recent"
+#: assertion can only be written where the sidecar is read, so these are exactly
+#: the modules the guard must forbid the clock in. Derived from the tree.
+SIDECAR_READING_MODULES = [p for p in TEST_MODULES if _names_a_committed_sidecar(_ast_of(p))]
+
+
+def test_no_committed_sidecar_age_is_asserted_against_the_wall_clock() -> None:
+    """Pin the Q2-A decision **tree-wide**: no test that loads a committed
+    ``capture.json`` may read the wall clock.
+
+    This is the widened successor to the old this-module-only guard. Reading a
+    sidecar and comparing its ``fetched_at`` to ``datetime.now()`` is the
+    "fixture must be recent" time bomb -- it reddens CI on a calendar boundary
+    rather than on a real defect, and makes an offline suite depend on the
+    clock. Previously that could only be caught if planted in *this* file; a
+    freshness bomb in any other test that reads a sidecar now fails here too.
+
+    The scope is drawn precisely so legitimate *runtime* freshness tests keep
+    passing: ``assess_staleness``, ``test_evidence_currency`` and
+    ``test_adviser_stale_evidence`` assert decay against an INJECTED clock and
+    never load a committed ``capture.json``, so they are out of scope. The check
+    is AST-based, so prose that merely mentions "freshness" does not trip it --
+    only a real clock call inside a sidecar-reading module counts.
+
+    Limitation, stated rather than papered over: this catches a wall-clock read
+    (``now``/``today``/``utcnow``/``time``/``monotonic``). Comparing a fixture's
+    age to a hard-coded threshold date is a different, non-wall-clock check and
+    is deliberately not covered here.
+    """
+
+    offenders = {
+        _module_rel(path): lines
+        for path in SIDECAR_READING_MODULES
+        if (lines := _clock_read_lines(_ast_of(path)))
+    }
+    assert not offenders, (
+        "These test modules load a committed capture.json AND read the wall "
+        f"clock: {offenders}. A committed fixture's age must never be asserted "
+        "against the clock (decision Q2-A); freshness is a runtime concern "
+        "enforced by assess_staleness. Remove the clock read."
+    )
+
+
+def test_the_freshness_guard_is_not_vacuous() -> None:
+    """The tree-wide guard above must actually be scanning something.
+
+    Two ways it could silently rot into a no-op, both pinned here: the module
+    glob could match (almost) nothing after a tree move, or no file could load a
+    sidecar at all -- either would make the clock check pass forever.
+    """
+
+    assert len(TEST_MODULES) >= _MIN_EXPECTED_TEST_MODULES, (
+        f"Only {len(TEST_MODULES)} test modules discovered under {TESTS_ROOT}; "
+        "the freshness guard is scanning almost nothing. Has the tree root moved?"
+    )
+    # This very module loads capture.json, so it must be in scope by construction.
+    assert Path(__file__).resolve() in SIDECAR_READING_MODULES
+    assert len(SIDECAR_READING_MODULES) >= 5, (
+        f"Only {len(SIDECAR_READING_MODULES)} sidecar-reading modules found; the "
+        "guard would be watching almost nothing."
     )
 
 
