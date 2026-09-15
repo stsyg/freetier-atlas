@@ -67,11 +67,11 @@ The same hazard lives one level down
 "Earliest-expiring, not oldest-fetched" was originally applied ACROSS a
 provider's claims but left as ``min(fetched_at)`` WITHIN each claim. Those agree
 only while a version's evidence rows all share one window -- which is the case
-here, and only here, because every ``schedule_ref`` in the one provider config
-(``official_pages``, ``rss``, ``mcp_documentation``) is unparseable and falls
-back to the same 7-day default. Given a version whose newer evidence row carries
-a SHORTER window, the two disagree, and the per-claim expiry runs past the moment
-``worst()`` actually flips the version. :func:`_earliest_expiring_evidence` now
+here, and only here, because every version in this corpus carries exactly one
+evidence row (so there is only one window per version to agree with). Given a
+version whose newer evidence row carries a SHORTER window, the two disagree, and
+the per-claim expiry runs past the moment ``worst()`` actually flips the version.
+:func:`_earliest_expiring_evidence` now
 applies the same rule at both levels; the disagreement is demonstrated in
 ``tests/integration/test_provider_boundary_discrimination.py``.
 
@@ -195,8 +195,8 @@ def _earliest_expiring_evidence(
     ``min(fetched_at)``.
 
     That distinction is unobservable in the corpus ``_publish`` produces, where
-    every version carries exactly ONE evidence row and every source declares an
-    unparseable ``schedule_ref`` that falls back to the same 7-day window. It is
+    every version carries exactly ONE evidence row, so ``min`` has a single row to
+    return whatever window that row's source resolves to. It is
     exercised, in both orientations, by
     ``tests/integration/test_provider_boundary_discrimination.py``.
     """

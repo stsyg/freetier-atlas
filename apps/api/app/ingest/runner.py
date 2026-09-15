@@ -48,8 +48,8 @@ from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 
 from app.config.loader import load_and_validate
-from app.config.models import ProviderConfig
-from app.ingest.config_sync import SyncResult, sync_provider
+from app.config.models import ProviderConfig, SchedulesConfig, ScheduleSet
+from app.ingest.config_sync import ScheduleResolutionError, SyncResult, sync_provider
 from app.ingest.fetch import Fetcher, FetchPolicy, FixtureFetcher, OfflineFetcher
 from app.ingest.reconcile import reconcile_scan
 from app.ingest.scan import run_scan
@@ -252,6 +252,7 @@ def run_provider_scans(
     reconcile: bool = True,
     sync: bool = True,
     publish: bool = False,
+    schedules: ScheduleSet | None = None,
 ) -> RunnerResult:
     """Sync ``config`` then scan (and optionally reconcile / publish) each source.
 
@@ -259,6 +260,11 @@ def run_provider_scans(
     build/scan fault is isolated as a per-source error. The caller owns the
     surrounding transaction (this flushes / uses nested transactions but never
     commits).
+
+    ``schedules`` is forwarded to :func:`app.ingest.config_sync.sync_provider` so
+    each source's declared ``schedule_ref`` is resolved to a staleness window; a
+    ``None`` value lets the sync load the canonical :class:`ScheduleSet` (which
+    fails closed on an unresolvable reference).
 
     When ``publish`` is true a second phase runs the deterministic publication
     gate (:func:`app.publish.publisher.publish_scan`) over every scanned source.
@@ -270,7 +276,7 @@ def run_provider_scans(
     behaviour is preserved).
     """
 
-    sync_result = sync_provider(session, config) if sync else None
+    sync_result = sync_provider(session, config, schedules=schedules) if sync else None
 
     provider = session.execute(
         select(Provider).where(Provider.slug == config.provider.id)
@@ -414,11 +420,35 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--schedules",
+        metavar="FILE",
+        default=None,
+        help=(
+            "Schedules YAML config (schedule family) whose cron cadences resolve "
+            "each source's schedule_ref into a staleness window. Defaults to "
+            "config/examples/schedules.example.yaml. An unresolvable reference is "
+            "rejected (fail closed), never silently defaulted to the 7-day window."
+        ),
+    )
+    parser.add_argument(
         "--dry-run",
         action="store_true",
         help="Roll back instead of committing (inspect results without persisting).",
     )
     return parser
+
+
+def _load_schedule_set(path: str | None) -> ScheduleSet | None:
+    """Load a schedules config for CLI use; ``None`` lets the sync default-load."""
+
+    if path is None:
+        return None
+    model = load_and_validate(path)
+    if not isinstance(model, SchedulesConfig):
+        raise ScheduleResolutionError(
+            f"{path} is not a schedules config (got {type(model).__name__})."
+        )
+    return model.schedules
 
 
 def _fetcher_for(config: ProviderConfig, fixtures_dir: str | None) -> Fetcher:
@@ -481,6 +511,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     exit_code = 0
     try:
         with Session(engine) as session:
+            schedules = _load_schedule_set(args.schedules)
             for config_path in args.configs:
                 model = load_and_validate(config_path)
                 if not isinstance(model, ProviderConfig):
@@ -498,6 +529,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                     fetcher,
                     reconcile=not args.no_reconcile,
                     publish=args.publish,
+                    schedules=schedules,
                 )
                 print(_format_result(result))
                 if result.failed:

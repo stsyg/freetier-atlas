@@ -1,34 +1,27 @@
 {
-  "feature": "discriminate-evidence-conflict-review-items",
-  "increment": "Reader-only fix: stop a publication-gate ReviewItem from being mistaken for a source-contradiction ReviewItem in the reconcile dedupe. _pending_conflict_exists gains an opt-in source_contradiction_only flag that narrows the match with reason.like('evidence_conflict%'); the reconcile contradiction dedupe passes True, the two publisher call sites keep the broad any-pending-review-for-this-identity semantics they intend.",
-  "branch": "stsyg-discriminate-evidence-conflict-review-it",
-  "base": "origin/main @ be281a8e",
-  "opened_at": "2026-09-15",
-  "files_affected": [
-    "apps/api/app/ingest/reconcile.py",
-    "tests/integration/test_ingest_reconcile.py"
-  ],
-  "defect": "Two producers write a ReviewItem carrying evidence_conflict['identity_key']: reconcile (reason 'evidence_conflict: ...', a source contradiction) and publisher (_raise_review, reason 'publication_gate: ...', a publication-gate hold). The reconcile dedupe reader _pending_conflict_exists filtered ONLY on admin_disposition=='pending' AND evidence_conflict['identity_key']==identity_key, with NO reason filter. Both producers populate identity_key, so a pending publisher item satisfied a query meaning 'a source contradiction is already pending for this identity'. Direction-of-harm CONFIRMED: the caller at _raise_contradiction_reviews does `if _pending_conflict_exists(...): continue`, so a false True SKIPS recording a genuine cross-source contradiction -> the contradiction is never recorded and an offer that should be held may stay published. Fixing it records MORE contradictions and holds MORE offers for review (safe direction, product-visible).",
-  "stale-ledger-refuted": "The ledger claimed the reader depends on identity.provider/identity.service. It does NOT. That describes a DIFFERENT, already-correct sibling reader app.read_api.queries.fetch_conflicted_services, which discriminates via reason.like('evidence_conflict%'). The measured reader keys only on identity_key.",
-  "discriminator": "reason.like('evidence_conflict%'), mirroring fetch_conflicted_services. Chosen over a new producer 'kind'/'type' column because the schema has NO such column (reason is the only discriminator without a migration), and a reader-only reason filter is correct on already-persisted rows immediately with no backfill and no producer-payload change.",
-  "publisher-178-owner-decision": "app/publish/publisher.py:_build_conditions 'no_contradiction' (~line 178) also calls _pending_conflict_exists and is DELIBERATELY left broad (default source_contradiction_only=False). Narrowing it would let more candidates satisfy no_contradiction and push toward MORE auto-publishing (the dangerous direction). Flagged as a separate named owner-decision item, not silently changed.",
-  "impact-measurement": "Measured on the live populated container (freetier-atlas-postgres-1, local ingest corpus: 7 providers, 36 sources -- NOT production). 27 pending review items, ALL of the publisher publication_gate shape and ALL carrying identity_key; 0 evidence_conflict (reconcile) items; therefore 0 ACTIVE collisions right now (a collision needs a genuine cross-source contradiction to coincide with a pending gate item on the same identity). No currently-published offer changes review state on this corpus. The finding is structural, not count-driven: those 27 identities each carry a live suppressor, so the next genuine contradiction on any of them would have been silently deduped away pre-fix.",
-  "proof": [
-    "Load-bearing (reader): reverting the caller to source_contradiction_only=False makes test_reconcile_records_contradiction_despite_pending_publisher_item FAIL (review_items==0 vs 1) while precision + contract still pass. Restored.",
-    "Load-bearing (producer contract): rewording the publisher's real reason literal onto 'evidence_conflict...' makes the NAMED test_producer_reason_prefixes_are_the_dedupe_contract FAIL. Restored byte-exact (publisher.py has zero diff vs origin).",
-    "Collision centrepiece: test_reconcile_records_contradiction_despite_pending_publisher_item -- pending publisher item + genuine contradiction on the SAME identity -> contradiction now recorded.",
-    "Precision: test_reconcile_dedupes_duplicate_source_contradiction -- a duplicate SOURCE contradiction is still deduped (one pending contradiction per identity).",
-    "Two-sided contract: test_producer_reason_prefixes_are_the_dedupe_contract asserts each producer's ACTUAL emitted reason (captured from a real ReviewItem, not a literal) -- reconcile MUST start 'evidence_conflict', publisher MUST NOT (and starts 'publication_gate')."
-  ],
-  "constraints": [
-    "Reader-only: no migration, no producer payload change, no backfill.",
-    "Edits confined to _pending_conflict_exists and its reconcile call site (away from the concurrent parse_schedule_window / staleness slice).",
-    "publisher.py left byte-for-byte unchanged; publisher call sites keep broad semantics.",
-    "No fixture re-capture, no network, no npm; boundary files untouched. PR opened; MUST NOT be merged here."
-  ],
+  "feature_id": "F-schedule-ref-resolution",
+  "title": "Resolve schedule_ref to its declared cadence (remove silent 7-day fallback)",
+  "branch": "stsyg-resolve-schedule-ref-cadence",
+  "base": "origin/main@be281a8",
+  "owner_authorised": true,
+  "increment": "Resolve source.schedule_ref against the loaded ScheduleSet, derive a staleness window from the cron (window = 2x nominal cadence), store the derived compact window in Source.schedule, and fail closed (reject at the resolution seam, naming the ref) on any unresolvable/underivable reference. Explicitly do NOT widen parse_schedule_window to accept the ref name strings.",
   "acceptance": [
-    "Reconcile integration suite green on live Postgres (16 passed).",
-    "Reader and producer-contract load-bearing proofs each fail the predicted named test, then restore green.",
-    "Full suite + ruff check + ruff format --check reported with collected counts; pre-existing environmental failures (populated-corpus test_publish_pipeline compact-magnitude + read_api) reproduce identically on a clean origin/main tree."
-  ]
+    "cron_to_cadence derives 1h/1d/6h/7d from the real cron expressions; returns None (fail-closed) on inputs it cannot expand.",
+    "resolve_schedule_window raises an actionable error naming the offending ref when the ref is absent from the ScheduleSet or the cron cannot yield a window; it never returns a 7-day default.",
+    "sync stores the derived compact window (e.g. '2d','2h') in Source.schedule so reconcile.py and publisher.py resolve real windows without change.",
+    "parse_schedule_window still handles hourly/daily/compact unchanged (precision preserved).",
+    "Deterministic before/after impact table over the real committed configs: source -> ref -> 7d vs new window -> flip age-band; all changes are fresh->stale (tighter).",
+    "Full pytest suite green with reported collected counts; ruff check and ruff format --check clean."
+  ],
+  "forbidden_files_untouched": [
+    ".github/workflows/ci.yml",
+    "agent-state/feature_list.json",
+    "apps/web/package-lock.json",
+    "package-lock.json",
+    "scripts/check_urls.py",
+    "tests/unit/test_url_allowlist.py",
+    "tests/unit/test_no_live_fetcher_in_tests.py"
+  ],
+  "derivation_decision": "window = 2 x nominal cadence (min consecutive cron fire gap). Rationale: tolerate exactly one missed/jittered scan cycle; 1x is too tight and would wrongly withhold correct free offers, a defect of equal severity to wrongly publishing (unknown-is-better-than-guessed cuts both ways).",
+  "measurement_limit": "Exact per-offer verdict flips require a live PostgreSQL DB; integration suite is DATABASE_URL-gated and skips in this Python-only env. Deterministic window/age-band table is provided instead."
 }

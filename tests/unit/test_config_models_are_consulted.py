@@ -71,11 +71,6 @@ ALLOWED_VALIDATION_ONLY: dict[str, str] = {
         "'allowed_users' allowlist: admin access is enforced solely via "
         "Settings.admin_allowlist."
     ),
-    "SchedulesConfig": (
-        "Declarative crawl/reconciliation cadence manifest. Validated by "
-        "'cli validate' but not yet consumed by the scheduler; wiring it is a "
-        "separate decision."
-    ),
 }
 
 
