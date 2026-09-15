@@ -77,10 +77,24 @@ def _alembic_heads(engine: Engine) -> set[str]:
         return set(conn.execute(text("SELECT version_num FROM alembic_version")).scalars())
 
 
-def _applied_revisions() -> set[str]:
-    """Every revision from the base up to the current script head."""
+def _applied_revisions(engine: Engine) -> set[str]:
+    """Every revision actually applied to the *database*: the head(s) recorded
+    in ``alembic_version`` plus all of their ancestors in the migration graph.
+
+    This reads the database, not the migration files on disk. A revision whose
+    script exists in ``migrations/`` but was never applied is therefore absent
+    from the set -- which is the whole point: ``walk_revisions()`` would return
+    it regardless, making any ``>= {SEED_REVISION}`` check vacuously true.
+
+    The seed need not BE the current head (later slices stack on top of it), so
+    a bare ``alembic_version`` read is not enough -- it holds only the head. We
+    walk the graph from the live head down to base to recover the full applied
+    set, which contains the seed iff the seed is an ancestor of (or equal to)
+    what the database is actually at.
+    """
     script = ScriptDirectory.from_config(_alembic_config())
-    return {rev.revision for rev in script.walk_revisions()}
+    heads = _alembic_heads(engine)
+    return {rev.revision for rev in script.iterate_revisions(heads, "base")}
 
 
 # --- (a) upgrade seeds exactly the canonical fourteen -----------------------
@@ -89,8 +103,9 @@ def _applied_revisions() -> set[str]:
 @skip_without_db
 def test_upgrade_head_seeds_exactly_the_canonical_categories(engine: Engine) -> None:
     # The seed revision need not BE the head (later slices stack on top of it);
-    # what matters is that it has been applied and its effect is intact.
-    assert _applied_revisions() >= {SEED_REVISION}
+    # what matters is that it has been APPLIED and its effect is intact. This
+    # reads alembic_version, so it fails if the seed was never applied.
+    assert _applied_revisions(engine) >= {SEED_REVISION}
     assert len(_alembic_heads(engine)) == 1, "the migration graph must have a single head"
 
     expected = set(canonical_slugs())

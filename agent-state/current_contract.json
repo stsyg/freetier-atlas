@@ -1,29 +1,23 @@
 {
-  "feature": "provenance-disclosure-dedup-guard",
-  "increment": "Remove the duplicated entry from two 'duplicate_live_blocks_not_retained' disclosure lists and add a durable guard forbidding duplicate entries in any list-valued disclosure field of any capture sidecar",
-  "branch": "stsyg-dedupe-disclosure-guard",
-  "base": "origin/main @ add2f2c9",
-  "opened_at": "2026-09-14",
+  "feature": "fix-vacuous-migration-assertion-and-widen-freshness-guard",
+  "increment": "Two independent test-quality fixes: (1) re-point _applied_revisions() in test_category_seed_migration.py at the database (alembic_version head + ancestors) so the '>= {SEED_REVISION}' assertion is real, not vacuous; (2) widen the module-only capture.json freshness guard in test_capture_sidecar.py to a tree-wide AST guard.",
+  "branch": "stsyg-fix-vacuous-assertion-widen-guard",
+  "base": "origin/main @ 648bd89e",
+  "opened_at": "2026-09-15",
   "files_affected": [
-    "tests/fixtures/ingest/github/html/github-codespaces-billing/capture.json",
-    "tests/fixtures/ingest/github/html/github-packages-billing/capture.json",
+    "tests/integration/test_category_seed_migration.py",
     "tests/unit/test_capture_sidecar.py"
   ],
-  "history_finding": "Both files were added whole in commit 7b169df (their only commit) with both identical entries already present. The two entries are byte-identical after key-sorted serialisation (same text, live_occurrences:2, retained_in_capture:1, note) with no distinguishing field. The canonical shape elsewhere (oracle 'duplicate_live_blocks_retained') is ONE entry per distinct duplicated-block situation whose note fully describes it. Verdict: meant to be one entry; the duplicate is a copy-paste artifact -> delete the duplicate.",
+  "part1": "OLD _applied_revisions() read migration scripts on disk via walk_revisions(), so 'assert _applied_revisions() >= {SEED_REVISION}' was vacuously true (the file is in the repo, therefore the revision is in the set, regardless of any DB). Re-pointed it at the database: heads from alembic_version + ancestors via ScriptDirectory.iterate_revisions(heads,'base'). Chose re-point over rename because it makes the assertion real. A bare alembic_version read is insufficient here because 0011 stacks on top of 0010, so the seed is not the head; walking head->base recovers the full applied set. Kept the @skip_without_db gating (helper now takes engine).",
+  "part2": "OLD test_no_freshness_assertion_exists_in_this_module parsed only Path(__file__), catching a clock read in test_capture_sidecar.py alone. Replaced with a tree-wide, AST-based guard: derive all test modules from TESTS_ROOT.rglob('*.py'); a module is in scope iff it uses a string constant whose Path.name == 'capture.json' (loads a committed sidecar); a scoped module must contain no wall-clock read (ast.Call attribute in {now,today,utcnow,time,monotonic}). Precise line: 'capture.json' literal, NOT the pervasive 'fetched_at' column, so legit runtime-freshness tests (assess_staleness, test_evidence_currency, test_adviser_stale_evidence) stay out of scope. Non-vacuity: >=60 test modules AND this module in the sidecar-reader set AND >=5 sidecar readers.",
   "constraints": [
-    "Do NOT change any text/live_occurrences/retained_in_capture/note value; only remove the duplicate entry.",
-    "Guard derives the file set and field set dynamically from the tree; no hardcoded field name or filename.",
-    "Guard asserts non-vacuity (plausible sidecar count AND >=1 list-of-object disclosure field).",
-    "Precision: a list whose two entries genuinely differ must PASS.",
-    "Zero capture bytes (source.*) may change.",
-    "Expect a .secrets.baseline line-number shift; refresh via scripts/refresh_secrets_baseline.py and prove line-number-only."
+    "Do not weaken surrounding coverage; the exactly-14-canonical-slugs assertion is untouched.",
+    "Guard is AST-based, tree-derived, non-substring; prose 'freshness' must not trip it.",
+    "No fixture re-capture, no network, no npm; boundary files untouched."
   ],
   "acceptance": [
-    "Named guard FAILS when a duplicate is re-inserted, naming the file and field; then restore.",
-    "Non-vacuity count fires when the glob matches nothing.",
-    "Two genuinely-different entries PASS (duplicate check, not a two-entry ban).",
-    "Full suite + ruff check + ruff format --check green with collected counts reported.",
-    "git diff --name-only carries no source.* file.",
-    "If the secret-scan baseline was refreshed: unchanged file/entry counts, no hashed_secret changed, test_secrets_baseline.py green."
+    "Part 1: old assertion True against a DB at 0009 (seed never applied); new assertion False there, True at 0011.",
+    "Part 2: planted freshness bomb in a file OTHER than test_capture_sidecar.py -> new guard FAILS naming file+line; old guard misses it; runtime-freshness tests still pass; count assertion fires when glob matches nothing.",
+    "Full suite + ruff check + ruff format --check green with collected counts reported."
   ]
 }
