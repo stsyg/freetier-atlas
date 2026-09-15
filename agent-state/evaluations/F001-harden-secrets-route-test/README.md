@@ -16,7 +16,7 @@ frame it.
 ## What they were run against
 
 - **Commit they were run against:** `30591feb5c7f0895856e68462746e19f57481c51`
-- **Matching evaluation record:** [`F001-harden-secrets-route-test-30591feb.json`](F001-harden-secrets-route-test-30591feb.json) (disposition: passed)
+- **Matching evaluation record:** [`F001-harden-secrets-route-test-30591feb.json`](../F001-harden-secrets-route-test-30591feb.json) (disposition: passed)
 
 Do not assume these scripts describe any later state of the repository.
 
