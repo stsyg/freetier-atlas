@@ -162,6 +162,77 @@ def test_resolve_source_windows_defaults_to_canonical_schedule_set() -> None:
 
 
 # --------------------------------------------------------------------------- #
+# Direction guard over the WHOLE reachable ScheduleSet, not just today's refs  #
+# --------------------------------------------------------------------------- #
+
+
+def test_every_schedule_set_entry_is_pinned_and_loosening_entries_are_named() -> None:
+    """Pin the derived window of EVERY declared schedule entry, and name the ones
+    that are more permissive than today's default.
+
+    The impact test above measures only the three ``schedule_ref`` values the
+    committed providers happen to use, all of which tighten. That is a property
+    of today's corpus, NOT of the reachable config space: the ``ScheduleSet`` has
+    entries no source references yet, and a source could reference any of them in
+    a one-line edit. This test enumerates the whole set so that adding an entry,
+    changing a cron, or referencing a currently-unreferenced entry is a conscious,
+    reviewed change rather than a silent one.
+
+    The load-bearing case is ``full_reconciliation`` (``0 5 * * 0``, a genuinely
+    weekly source): 2x its 7-day cadence is ``14d``, which is *looser* than
+    :data:`DEFAULT_STALENESS_WINDOW`. ``14d`` is the CORRECT window under the 2x
+    rule -- clamping it to 7d would wrongly withhold a real weekly source, the
+    withholding defect the derivation deliberately avoids -- but it is the one
+    direction (fresh stays longer) that can publish an unsupported free claim, so
+    it must be visible and pinned, not capped.
+    """
+
+    schedules = _default_schedule_set()
+    names = sorted(type(schedules).model_fields)
+
+    resolved: dict[str, str] = {}
+    rejected: list[str] = []
+    for name in names:
+        try:
+            resolved[name] = resolve_schedule_window(name, schedules)
+        except ScheduleResolutionError:
+            rejected.append(name)
+
+    # The whole set is accounted for: every entry either derives a window or is
+    # rejected (fail-closed). Nothing is silently skipped.
+    assert len(resolved) + len(rejected) == len(names)
+    assert resolved == {
+        "official_pages": "2d",  # daily
+        "mcp_documentation": "2d",  # daily
+        "rss": "2h",  # hourly
+        "structured_apis": "12h",  # 6-hourly
+        "full_reconciliation": "2w",  # weekly -> 14d, LOOSER than the 7d default
+    }
+    # conflict_recheck is an interval (delay_minutes), not a cron, so it fails
+    # closed rather than guessing a window.
+    assert rejected == ["conflict_recheck"]
+
+    # DIRECTION GUARD: name every derived window strictly MORE PERMISSIVE than the
+    # 7-day default. Today that is exactly one entry. If this set changes -- a new
+    # entry, a loosened cron, a cadence crossing the 3.5-day (2x -> 7d) line --
+    # this assertion fails and forces a deliberate review, because this is the
+    # only direction that can keep an unsupported free claim published.
+    looser_than_default = sorted(
+        name
+        for name, window in resolved.items()
+        if parse_schedule_window(window) > DEFAULT_STALENESS_WINDOW
+    )
+    assert looser_than_default == ["full_reconciliation"], (
+        "The set of schedule entries whose derived window is MORE PERMISSIVE than "
+        f"the {DEFAULT_STALENESS_WINDOW} default is now {looser_than_default}. That "
+        "is the one direction that can publish an unsupported free claim (evidence "
+        "reads fresh for longer). If this change is intended, update this assertion "
+        "deliberately -- do NOT clamp the window, which would wrongly withhold a "
+        "real source scanned at that cadence."
+    )
+
+
+# --------------------------------------------------------------------------- #
 # Fail-closed: an unresolvable ref is rejected, never defaulted                #
 # --------------------------------------------------------------------------- #
 
