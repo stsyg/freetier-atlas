@@ -43,7 +43,12 @@ from alembic import command
 from alembic.config import Config
 from app.config.models import PublishingSection
 from app.ingest.fetch import FetchPolicy, FixtureFetcher
-from app.ingest.reconcile import classify_materiality, reconcile_scan
+from app.ingest.reconcile import (
+    _canon,
+    _identity_of,
+    classify_materiality,
+    reconcile_scan,
+)
 from app.ingest.scan import run_scan
 from app.models.domain import (
     Candidate,
@@ -54,7 +59,9 @@ from app.models.domain import (
     ReviewItem,
     Source,
 )
-from app.publish.publisher import publish_scan
+from app.publish import gate as gate_mod
+from app.publish.gate import GateDecision
+from app.publish.publisher import _raise_review, publish_scan
 from sqlalchemy import create_engine, func, select, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, aliased
@@ -306,6 +313,177 @@ def test_contradictory_official_sources_raise_pending_review_item(session: Sessi
     assert reviews_after == reviews_before + 1
 
     _assert_no_publication(session, offers_before=offers_before, versions_before=versions_before)
+
+
+@skip_without_db
+def test_reconcile_records_contradiction_despite_pending_publisher_item(session: Session) -> None:
+    """A pending *publication-gate* review item must not masquerade as a pending
+    source contradiction.
+
+    This is the live collision the reason filter exists to break. The publisher
+    (:func:`app.publish.publisher._raise_review`) writes a review item under the
+    *same* ``identity_key`` a reconcile contradiction would use, but with a
+    ``publication_gate`` reason -- a semantically different signal. Before the
+    filter, that gate item satisfied ``_pending_conflict_exists`` and the
+    reconciler silently deduped a genuine cross-source contradiction away,
+    recording nothing. It must now be recorded.
+    """
+
+    source_a = _make_source(session, endpoint=ENDPOINT_A)
+    source_b = _make_source(session, endpoint=ENDPOINT_B)
+    offers_before = session.execute(select(func.count()).select_from(Offer)).scalar_one()
+    versions_before = session.execute(select(func.count()).select_from(OfferVersion)).scalar_one()
+
+    # The identity the two official sources will disagree on: the Widgets
+    # always-free offer from provider "example" (see ``_document``). Canonicalised
+    # exactly as the producer does so the publisher item is a real collision.
+    identity_key = _canon(
+        _identity_of("example", {"service": "Widgets", "offer_type": "always_free"})
+    )
+
+    scan_a = run_scan(source_a, _fetcher(ENDPOINT_A, _document(requires_card=False)), session)
+    reconcile_scan(scan_a, source_a, session)
+
+    # A pending PUBLISHER review item lands for that identity (uncertain evidence
+    # held by the gate), sharing only the identity_key -- different reason, no
+    # ``conflicts`` payload. It must NOT count as a pending source contradiction.
+    session.add(
+        ReviewItem(
+            scan_run_id=scan_a.id,
+            offer_id=None,
+            reason="publication_gate: uncertain evidence held for review, not published",
+            evidence_conflict={
+                "identity_key": identity_key,
+                "gate_decision": "review",
+                "confidence": 0.5,
+                "automatic_threshold": 0.90,
+            },
+            candidate_facts={"service": "Widgets", "offer_type": "always_free"},
+            recommended_action="manual_review",
+            admin_disposition="pending",
+        )
+    )
+    session.flush()
+
+    # ...now Source B genuinely contradicts Source A on a material fact.
+    scan_b = run_scan(source_b, _fetcher(ENDPOINT_B, _document(requires_card=True)), session)
+    result = reconcile_scan(scan_b, source_b, session)
+
+    # The contradiction IS recorded despite the pending publisher item on the same
+    # identity_key. Pre-fix this was 0 -- the defect suppressed it outright.
+    assert result.review_items == 1
+    contradiction_items = list(
+        session.execute(
+            select(ReviewItem).where(
+                ReviewItem.scan_run_id == scan_b.id,
+                ReviewItem.reason.like("evidence_conflict%"),
+            )
+        ).scalars()
+    )
+    assert len(contradiction_items) == 1
+    recorded = contradiction_items[0]
+    assert recorded.evidence_conflict["identity_key"] == identity_key
+    conflict_fields = {c["field"] for c in recorded.evidence_conflict["conflicts"]}
+    assert "requires_card" in conflict_fields
+
+    _assert_no_publication(session, offers_before=offers_before, versions_before=versions_before)
+
+
+@skip_without_db
+def test_reconcile_dedupes_duplicate_source_contradiction(session: Session) -> None:
+    """Precision guard: a genuine *duplicate* source contradiction is still
+    deduped. Narrowing the dedupe to ``evidence_conflict`` reasons must not
+    regress same-producer idempotency -- one pending contradiction per identity.
+    """
+
+    source_a = _make_source(session, endpoint=ENDPOINT_A)
+    source_b = _make_source(session, endpoint=ENDPOINT_B)
+
+    scan_a = run_scan(source_a, _fetcher(ENDPOINT_A, _document(requires_card=False)), session)
+    reconcile_scan(scan_a, source_a, session)
+    scan_b = run_scan(source_b, _fetcher(ENDPOINT_B, _document(requires_card=True)), session)
+    first = reconcile_scan(scan_b, source_b, session)
+    assert first.review_items == 1
+
+    # Source B re-scanned: the same disagreement is observed again. The pending
+    # contradiction already exists, so no second review item is raised.
+    scan_b2 = run_scan(source_b, _fetcher(ENDPOINT_B, _document(requires_card=True)), session)
+    second = reconcile_scan(scan_b2, source_b, session)
+    assert second.review_items == 0
+
+    pending_contradictions = session.execute(
+        select(func.count())
+        .select_from(ReviewItem)
+        .where(
+            ReviewItem.admin_disposition == "pending",
+            ReviewItem.reason.like("evidence_conflict%"),
+        )
+    ).scalar_one()
+    assert pending_contradictions == 1
+
+
+@skip_without_db
+def test_producer_reason_prefixes_are_the_dedupe_contract(session: Session) -> None:
+    """Two-sided contract for the reason-prefix discriminator.
+
+    ``_pending_conflict_exists(source_contradiction_only=True)`` narrows the
+    reconcile dedupe with ``reason.like("evidence_conflict%")``. That makes each
+    producer's reason *prefix* load-bearing, and the two drift directions are
+    asymmetric:
+
+    * reword RECONCILE off the prefix -> its own contradictions stop deduping ->
+      duplicate review items. Noisy and visible, but safe in direction.
+    * reword the PUBLISHER *onto* the prefix -> a publication-gate item is again
+      mistaken for a source contradiction and silently suppresses one. That is
+      the original defect, returning invisibly.
+
+    Both sides are asserted against the reason each producer *actually emits*,
+    captured from a real :class:`ReviewItem` -- never a literal re-declared here
+    -- so a drift in either producer fails this test.
+    """
+
+    # RECONCILE side: drive a real cross-source contradiction and read back the
+    # reason it emitted. The dedupe filters on this prefix, so it MUST match.
+    source_a = _make_source(session, endpoint=ENDPOINT_A)
+    source_b = _make_source(session, endpoint=ENDPOINT_B)
+    scan_a = run_scan(source_a, _fetcher(ENDPOINT_A, _document(requires_card=False)), session)
+    reconcile_scan(scan_a, source_a, session)
+    scan_b = run_scan(source_b, _fetcher(ENDPOINT_B, _document(requires_card=True)), session)
+    reconcile_scan(scan_b, source_b, session)
+    reconcile_reason = session.execute(
+        select(ReviewItem.reason).where(ReviewItem.scan_run_id == scan_b.id)
+    ).scalar_one()
+    assert reconcile_reason.startswith("evidence_conflict"), (
+        "reconcile contradiction reason drifted off the prefix the dedupe filters "
+        f"on; its own items would stop deduping: {reconcile_reason!r}"
+    )
+
+    # PUBLISHER side: exercise the real gate review-raising path for a *distinct*
+    # identity and read back the reason it emitted. It MUST NOT share the prefix,
+    # or the dedupe would treat a publication gate as a source contradiction.
+    decision = GateDecision(
+        decision=gate_mod.REVIEW,
+        confidence=0.5,
+        automatic_threshold=0.90,
+        uncertain_threshold=0.70,
+        failed_conditions=("schema_complete",),
+    )
+    outcome = _raise_review(
+        session,
+        scan_run_id=scan_a.id,
+        candidate=Candidate(provider="example"),
+        facts={"service": "Gizmos", "offer_type": "always_free"},
+        decision=decision,
+    )
+    assert outcome.review_item_created
+    publisher_reason = session.execute(
+        select(ReviewItem.reason).where(ReviewItem.candidate_facts["service"].astext == "Gizmos")
+    ).scalar_one()
+    assert not publisher_reason.startswith("evidence_conflict"), (
+        "publication-gate reason drifted ONTO the source-contradiction prefix; a "
+        f"gate item would silently suppress a real contradiction again: {publisher_reason!r}"
+    )
+    assert publisher_reason.startswith("publication_gate")
 
 
 @skip_without_db

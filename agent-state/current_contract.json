@@ -1,23 +1,34 @@
 {
-  "feature": "fix-vacuous-migration-assertion-and-widen-freshness-guard",
-  "increment": "Two independent test-quality fixes: (1) re-point _applied_revisions() in test_category_seed_migration.py at the database (alembic_version head + ancestors) so the '>= {SEED_REVISION}' assertion is real, not vacuous; (2) widen the module-only capture.json freshness guard in test_capture_sidecar.py to a tree-wide AST guard.",
-  "branch": "stsyg-fix-vacuous-assertion-widen-guard",
-  "base": "origin/main @ 648bd89e",
+  "feature": "discriminate-evidence-conflict-review-items",
+  "increment": "Reader-only fix: stop a publication-gate ReviewItem from being mistaken for a source-contradiction ReviewItem in the reconcile dedupe. _pending_conflict_exists gains an opt-in source_contradiction_only flag that narrows the match with reason.like('evidence_conflict%'); the reconcile contradiction dedupe passes True, the two publisher call sites keep the broad any-pending-review-for-this-identity semantics they intend.",
+  "branch": "stsyg-discriminate-evidence-conflict-review-it",
+  "base": "origin/main @ be281a8e",
   "opened_at": "2026-09-15",
   "files_affected": [
-    "tests/integration/test_category_seed_migration.py",
-    "tests/unit/test_capture_sidecar.py"
+    "apps/api/app/ingest/reconcile.py",
+    "tests/integration/test_ingest_reconcile.py"
   ],
-  "part1": "OLD _applied_revisions() read migration scripts on disk via walk_revisions(), so 'assert _applied_revisions() >= {SEED_REVISION}' was vacuously true (the file is in the repo, therefore the revision is in the set, regardless of any DB). Re-pointed it at the database: heads from alembic_version + ancestors via ScriptDirectory.iterate_revisions(heads,'base'). Chose re-point over rename because it makes the assertion real. A bare alembic_version read is insufficient here because 0011 stacks on top of 0010, so the seed is not the head; walking head->base recovers the full applied set. Kept the @skip_without_db gating (helper now takes engine).",
-  "part2": "OLD test_no_freshness_assertion_exists_in_this_module parsed only Path(__file__), catching a clock read in test_capture_sidecar.py alone. Replaced with a tree-wide, AST-based guard: derive all test modules from TESTS_ROOT.rglob('*.py'); a module is in scope iff it uses a string constant whose Path.name == 'capture.json' (loads a committed sidecar); a scoped module must contain no wall-clock read (ast.Call attribute in {now,today,utcnow,time,monotonic}). Precise line: 'capture.json' literal, NOT the pervasive 'fetched_at' column, so legit runtime-freshness tests (assess_staleness, test_evidence_currency, test_adviser_stale_evidence) stay out of scope. Non-vacuity: >=60 test modules AND this module in the sidecar-reader set AND >=5 sidecar readers.",
+  "defect": "Two producers write a ReviewItem carrying evidence_conflict['identity_key']: reconcile (reason 'evidence_conflict: ...', a source contradiction) and publisher (_raise_review, reason 'publication_gate: ...', a publication-gate hold). The reconcile dedupe reader _pending_conflict_exists filtered ONLY on admin_disposition=='pending' AND evidence_conflict['identity_key']==identity_key, with NO reason filter. Both producers populate identity_key, so a pending publisher item satisfied a query meaning 'a source contradiction is already pending for this identity'. Direction-of-harm CONFIRMED: the caller at _raise_contradiction_reviews does `if _pending_conflict_exists(...): continue`, so a false True SKIPS recording a genuine cross-source contradiction -> the contradiction is never recorded and an offer that should be held may stay published. Fixing it records MORE contradictions and holds MORE offers for review (safe direction, product-visible).",
+  "stale-ledger-refuted": "The ledger claimed the reader depends on identity.provider/identity.service. It does NOT. That describes a DIFFERENT, already-correct sibling reader app.read_api.queries.fetch_conflicted_services, which discriminates via reason.like('evidence_conflict%'). The measured reader keys only on identity_key.",
+  "discriminator": "reason.like('evidence_conflict%'), mirroring fetch_conflicted_services. Chosen over a new producer 'kind'/'type' column because the schema has NO such column (reason is the only discriminator without a migration), and a reader-only reason filter is correct on already-persisted rows immediately with no backfill and no producer-payload change.",
+  "publisher-178-owner-decision": "app/publish/publisher.py:_build_conditions 'no_contradiction' (~line 178) also calls _pending_conflict_exists and is DELIBERATELY left broad (default source_contradiction_only=False). Narrowing it would let more candidates satisfy no_contradiction and push toward MORE auto-publishing (the dangerous direction). Flagged as a separate named owner-decision item, not silently changed.",
+  "impact-measurement": "Measured on the live populated container (freetier-atlas-postgres-1, local ingest corpus: 7 providers, 36 sources -- NOT production). 27 pending review items, ALL of the publisher publication_gate shape and ALL carrying identity_key; 0 evidence_conflict (reconcile) items; therefore 0 ACTIVE collisions right now (a collision needs a genuine cross-source contradiction to coincide with a pending gate item on the same identity). No currently-published offer changes review state on this corpus. The finding is structural, not count-driven: those 27 identities each carry a live suppressor, so the next genuine contradiction on any of them would have been silently deduped away pre-fix.",
+  "proof": [
+    "Load-bearing (reader): reverting the caller to source_contradiction_only=False makes test_reconcile_records_contradiction_despite_pending_publisher_item FAIL (review_items==0 vs 1) while precision + contract still pass. Restored.",
+    "Load-bearing (producer contract): rewording the publisher's real reason literal onto 'evidence_conflict...' makes the NAMED test_producer_reason_prefixes_are_the_dedupe_contract FAIL. Restored byte-exact (publisher.py has zero diff vs origin).",
+    "Collision centrepiece: test_reconcile_records_contradiction_despite_pending_publisher_item -- pending publisher item + genuine contradiction on the SAME identity -> contradiction now recorded.",
+    "Precision: test_reconcile_dedupes_duplicate_source_contradiction -- a duplicate SOURCE contradiction is still deduped (one pending contradiction per identity).",
+    "Two-sided contract: test_producer_reason_prefixes_are_the_dedupe_contract asserts each producer's ACTUAL emitted reason (captured from a real ReviewItem, not a literal) -- reconcile MUST start 'evidence_conflict', publisher MUST NOT (and starts 'publication_gate')."
+  ],
   "constraints": [
-    "Do not weaken surrounding coverage; the exactly-14-canonical-slugs assertion is untouched.",
-    "Guard is AST-based, tree-derived, non-substring; prose 'freshness' must not trip it.",
-    "No fixture re-capture, no network, no npm; boundary files untouched."
+    "Reader-only: no migration, no producer payload change, no backfill.",
+    "Edits confined to _pending_conflict_exists and its reconcile call site (away from the concurrent parse_schedule_window / staleness slice).",
+    "publisher.py left byte-for-byte unchanged; publisher call sites keep broad semantics.",
+    "No fixture re-capture, no network, no npm; boundary files untouched. PR opened; MUST NOT be merged here."
   ],
   "acceptance": [
-    "Part 1: old assertion True against a DB at 0009 (seed never applied); new assertion False there, True at 0011.",
-    "Part 2: planted freshness bomb in a file OTHER than test_capture_sidecar.py -> new guard FAILS naming file+line; old guard misses it; runtime-freshness tests still pass; count assertion fires when glob matches nothing.",
-    "Full suite + ruff check + ruff format --check green with collected counts reported."
+    "Reconcile integration suite green on live Postgres (16 passed).",
+    "Reader and producer-contract load-bearing proofs each fail the predicted named test, then restore green.",
+    "Full suite + ruff check + ruff format --check reported with collected counts; pre-existing environmental failures (populated-corpus test_publish_pipeline compact-magnitude + read_api) reproduce identically on a clean origin/main tree."
   ]
 }

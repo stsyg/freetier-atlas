@@ -487,16 +487,36 @@ def _withdrawal_exists_for_identity(
     return session.execute(stmt).scalars().first() is not None
 
 
-def _pending_conflict_exists(session: Session, *, identity_key: str) -> bool:
-    stmt = (
-        select(ReviewItem.id)
-        .where(
-            ReviewItem.admin_disposition == "pending",
-            ReviewItem.evidence_conflict["identity_key"].astext == identity_key,
-        )
-        .limit(1)
+def _pending_conflict_exists(
+    session: Session, *, identity_key: str, source_contradiction_only: bool = False
+) -> bool:
+    """Whether a pending ``review_item`` already covers ``identity_key``.
+
+    ``source_contradiction_only`` narrows the match to review items *this module*
+    raises -- pending official-source contradictions, whose ``reason`` starts
+    ``evidence_conflict`` -- excluding items that merely share an
+    ``identity_key`` for an unrelated reason. The publication gate
+    (:mod:`app.publish.publisher`) writes a review item under the *same*
+    ``identity_key`` with a ``publication_gate`` reason; without this filter that
+    gate item satisfies a query meaning "a source contradiction is already
+    pending", so a genuine contradiction is silently deduped away and never
+    recorded. The reconcile dedupe passes ``True``; the publisher keeps the broad
+    "any pending review for this identity" semantics it intends.
+
+    The discriminator mirrors the sibling reader
+    :func:`app.read_api.queries.fetch_conflicted_services`, which already gates on
+    ``reason.like("evidence_conflict%")`` for exactly this signal. Filtering on
+    the reason keeps this reader-only: no producer payload changes and no
+    backfill, so it is correct on already-persisted rows immediately.
+    """
+
+    stmt = select(ReviewItem.id).where(
+        ReviewItem.admin_disposition == "pending",
+        ReviewItem.evidence_conflict["identity_key"].astext == identity_key,
     )
-    return session.execute(stmt).scalars().first() is not None
+    if source_contradiction_only:
+        stmt = stmt.where(ReviewItem.reason.like("evidence_conflict%"))
+    return session.execute(stmt.limit(1)).scalars().first() is not None
 
 
 def reconcile_scan(
@@ -700,7 +720,9 @@ def _raise_contradiction_reviews(
     created = 0
     for contradiction in find_contradictions(views):
         identity_key = _canon(contradiction.identity)
-        if _pending_conflict_exists(session, identity_key=identity_key):
+        if _pending_conflict_exists(
+            session, identity_key=identity_key, source_contradiction_only=True
+        ):
             continue
         conflicts_payload = [
             {"field": fc.field, "values": list(fc.values), "sources": list(fc.sources)}
