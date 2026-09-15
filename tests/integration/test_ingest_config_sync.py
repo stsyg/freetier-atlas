@@ -121,7 +121,7 @@ def test_sync_creates_provider_and_sources_with_bridged_fields(session: Session)
     assert workers.adapter_type == "html"  # type -> adapter_type
     assert workers.endpoint == "https://developers.cloudflare.com/workers/platform/limits/"
     assert workers.parser_profile == "cloudflare_workers_limits"  # extraction_profile
-    assert workers.schedule == "official_pages"  # schedule_ref -> schedule
+    assert workers.schedule == "2d"  # schedule_ref resolved to derived window
     assert workers.trust_level == "official"
     assert workers.official is True
     assert workers.enabled is True

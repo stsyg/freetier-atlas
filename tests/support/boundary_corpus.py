@@ -17,9 +17,10 @@ the suite has, because in it:
 
 * every published version carries exactly **one** evidence row, so "oldest" has
   an empty discriminating population; and
-* every source declares an **unparseable** ``schedule_ref`` (``official_pages``,
-  ``rss``, ``mcp_documentation``), so ``parse_schedule_window`` returns the same
-  7-day fallback for all of them and there is only ever ONE window in play.
+* every source's declared ``schedule_ref`` (``official_pages``, ``rss``,
+  ``mcp_documentation``) RESOLVES to a derived window, but the two published
+  free claims rest on ``official_pages`` sources that resolve to the same
+  window, so there is only ever ONE window in play.
 
 Constructing the input is therefore the correct instrument. This is NOT the same
 as seeding a corpus to take a *measurement* from -- a currency or coverage figure

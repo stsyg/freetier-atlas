@@ -16,7 +16,8 @@ YAML (config.models)    database (models.domain.Source)
 ``source.type``         ``adapter_type``
 ``source.url``          ``endpoint``
 ``source.extraction_profile``  ``parser_profile``
-``source.schedule_ref`` ``schedule``
+``source.schedule_ref`` ``schedule`` (RESOLVED to a staleness window, not the
+                        reference name -- see :func:`resolve_schedule_window`)
 ``source.trust_level``  ``trust_level`` (+ derived ``official`` flag)
 ======================  ==============================
 
@@ -48,12 +49,21 @@ from __future__ import annotations
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from functools import lru_cache
+from pathlib import Path
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.config.models import MIN_EVIDENCE_BACKED_COVERAGE, ProviderConfig
+from app.config.loader import load_and_validate
+from app.config.models import (
+    MIN_EVIDENCE_BACKED_COVERAGE,
+    ProviderConfig,
+    SchedulesConfig,
+    ScheduleSet,
+)
 from app.config.models import Source as SourceConfig
+from app.ingest.reconcile import cron_to_cadence, derive_staleness_window, window_to_compact
 from app.ingest.trust import OFFICIAL_TRUST_LEVEL
 from app.models.domain import (
     Category,
@@ -69,6 +79,109 @@ from app.models.vocab import EVIDENCE_BACKED_COVERAGE_STATES
 #: gains an explicit provider type this bridge records a neutral default; it is
 #: never an offer fact, so "unknown is better than guessed" does not apply.
 DEFAULT_PROVIDER_TYPE = "cloud"
+
+
+#: The canonical schedules configuration, resolved relative to the repository
+#: root (``apps/api/app/ingest/config_sync.py`` -> ``parents[4]`` == repo root).
+#: The production entrypoint (:mod:`app.ingest.runner`) passes an explicit
+#: ``ScheduleSet``; this default exists so library/test callers that sync a
+#: provider config still resolve ``schedule_ref`` references rather than storing
+#: an unresolved name.
+_DEFAULT_SCHEDULES_PATH = (
+    Path(__file__).resolve().parents[4] / "config" / "examples" / "schedules.example.yaml"
+)
+
+
+class ScheduleResolutionError(ValueError):
+    """A ``source.schedule_ref`` could not be resolved to a staleness window.
+
+    Raised at sync time so an unresolvable reference is **rejected**, not
+    silently degraded to the most-permissive default window. The message names
+    the offending ref (and, where relevant, the references that *are*
+    available), because a silent 7-day fallback -- 7x to 168x more permissive
+    than the declared cadence -- is exactly the defect this resolution path
+    removes.
+    """
+
+
+@lru_cache(maxsize=1)
+def _default_schedule_set() -> ScheduleSet:
+    """Load and cache the canonical :class:`ScheduleSet`.
+
+    Fails closed: a missing or invalid schedules file raises rather than letting
+    a caller proceed with unresolved references.
+    """
+
+    if not _DEFAULT_SCHEDULES_PATH.exists():
+        raise ScheduleResolutionError(
+            "cannot resolve schedule_ref references: the canonical schedules "
+            f"config is missing at {_DEFAULT_SCHEDULES_PATH}. Pass an explicit "
+            "ScheduleSet to sync_provider()/run_provider_scans()."
+        )
+    model = load_and_validate(_DEFAULT_SCHEDULES_PATH)
+    if not isinstance(model, SchedulesConfig):
+        raise ScheduleResolutionError(
+            f"{_DEFAULT_SCHEDULES_PATH} did not validate as a schedules config"
+        )
+    return model.schedules
+
+
+def resolve_schedule_window(schedule_ref: str, schedules: ScheduleSet) -> str:
+    """Resolve one ``schedule_ref`` to a compact staleness-window string.
+
+    Looks ``schedule_ref`` up on ``schedules``, derives the source's nominal
+    cadence from that entry's cron, and returns the derived window
+    (``derive_staleness_window``) as a compact ``<n><unit>`` string that
+    :func:`app.ingest.reconcile.parse_schedule_window` round-trips.
+
+    Fails closed: raises :class:`ScheduleResolutionError`, naming the offending
+    ref, when the reference is not a cron schedule on ``schedules`` or its cron
+    cannot yield a cadence. It never returns the 7-day default -- that silent
+    degradation is the defect being removed.
+    """
+
+    entry = getattr(schedules, schedule_ref, None)
+    cron = getattr(entry, "cron", None)
+    if not isinstance(cron, str):
+        available = sorted(
+            name
+            for name in type(schedules).model_fields
+            if isinstance(getattr(getattr(schedules, name, None), "cron", None), str)
+        )
+        raise ScheduleResolutionError(
+            f"source schedule_ref {schedule_ref!r} does not name a cron schedule; "
+            f"available cron schedules: {', '.join(available) or '(none)'}"
+        )
+    cadence = cron_to_cadence(cron)
+    if cadence is None:
+        raise ScheduleResolutionError(
+            f"schedule_ref {schedule_ref!r} maps to cron {cron!r}, which yields no "
+            "derivable cadence; refusing to fall back to the default window"
+        )
+    return window_to_compact(derive_staleness_window(cadence))
+
+
+def resolve_source_windows(
+    config: ProviderConfig, schedules: ScheduleSet | None = None
+) -> dict[str, str]:
+    """Resolve every source's ``schedule_ref`` in ``config`` to its window.
+
+    Returns ``{source.id: compact_window}``. When ``schedules`` is ``None`` the
+    canonical :class:`ScheduleSet` is loaded (and cached) via
+    :func:`_default_schedule_set`, which itself fails closed. Raises
+    :class:`ScheduleResolutionError` for the first unresolvable reference, so a
+    provider carrying one bad ref is rejected as a whole rather than partly
+    synced with a silent default.
+    """
+
+    resolved = schedules if schedules is not None else _default_schedule_set()
+    windows: dict[str, str] = {}
+    for source in config.sources:
+        try:
+            windows[source.id] = resolve_schedule_window(source.schedule_ref, resolved)
+        except ScheduleResolutionError as exc:
+            raise ScheduleResolutionError(f"source {source.id!r}: {exc}") from exc
+    return windows
 
 
 @dataclass(frozen=True)
@@ -344,8 +457,17 @@ def _assert_persisted_coverage_floor(
     )
 
 
-def _desired_source_fields(config: SourceConfig, provider_id: int) -> dict[str, object]:
-    """Bridge one YAML source into the ORM column values it maps to."""
+def _desired_source_fields(
+    config: SourceConfig, provider_id: int, *, schedule_window: str
+) -> dict[str, object]:
+    """Bridge one YAML source into the ORM column values it maps to.
+
+    ``schedule_window`` is the resolved compact staleness window for the
+    source's ``schedule_ref`` (see :func:`resolve_schedule_window`). It is stored
+    in ``Source.schedule`` -- the *resolved* window, not the reference name -- so
+    the staleness path derives the declared cadence instead of silently falling
+    back to the default window.
+    """
 
     return {
         "provider_id": provider_id,
@@ -353,7 +475,7 @@ def _desired_source_fields(config: SourceConfig, provider_id: int) -> dict[str, 
         "trust_level": config.trust_level,
         "official": config.trust_level == OFFICIAL_TRUST_LEVEL,
         "endpoint": config.url,
-        "schedule": config.schedule_ref,
+        "schedule": schedule_window,
         "parser_profile": config.extraction_profile,
         "enabled": True,
     }
@@ -388,8 +510,10 @@ def _sync_provider_row(session: Session, config: ProviderConfig) -> tuple[Provid
     return existing, ("updated" if changed else "unchanged")
 
 
-def _sync_source_row(session: Session, config: SourceConfig, provider_id: int) -> SourceSyncOutcome:
-    desired = _desired_source_fields(config, provider_id)
+def _sync_source_row(
+    session: Session, config: SourceConfig, provider_id: int, *, schedule_window: str
+) -> SourceSyncOutcome:
+    desired = _desired_source_fields(config, provider_id, schedule_window=schedule_window)
     existing = session.execute(select(Source).where(Source.slug == config.id)).scalar_one_or_none()
 
     if existing is None:
@@ -681,7 +805,12 @@ def sync_coverage(session: Session, config: ProviderConfig) -> CoverageSyncResul
     return result
 
 
-def sync_provider(session: Session, config: ProviderConfig) -> SyncResult:
+def sync_provider(
+    session: Session,
+    config: ProviderConfig,
+    *,
+    schedules: ScheduleSet | None = None,
+) -> SyncResult:
     """Upsert ``config`` into ``provider`` + ``source`` rows; return a summary.
 
     Idempotent on ``Provider.slug`` and ``Source.slug``: re-running against the
@@ -752,6 +881,7 @@ def sync_provider(session: Session, config: ProviderConfig) -> SyncResult:
 
     savepoint = session.begin_nested()
     try:
+        source_windows = resolve_source_windows(config, schedules)
         provider, provider_action = _sync_provider_row(session, config)
         result = SyncResult(
             provider_slug=config.provider.id,
@@ -759,7 +889,14 @@ def sync_provider(session: Session, config: ProviderConfig) -> SyncResult:
             provider_action=provider_action,
         )
         for source_config in config.sources:
-            result.sources.append(_sync_source_row(session, source_config, provider.id))
+            result.sources.append(
+                _sync_source_row(
+                    session,
+                    source_config,
+                    provider.id,
+                    schedule_window=source_windows[source_config.id],
+                )
+            )
         result.categorisation = categorise_services(session, config)
         result.coverage = sync_coverage(session, config)
         # Releasing the SAVEPOINT is the last thing that can fail here, and a

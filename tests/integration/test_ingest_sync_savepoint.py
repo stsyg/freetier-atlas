@@ -366,11 +366,13 @@ def test_a_failure_outside_the_coverage_block_also_persists_nothing(
     real_sync_source_row = config_sync._sync_source_row
     calls = {"n": 0}
 
-    def failing_sync_source_row(session: Session, source_config: Any, provider_id: int) -> Any:
+    def failing_sync_source_row(
+        session: Session, source_config: Any, provider_id: int, **kwargs: Any
+    ) -> Any:
         calls["n"] += 1
         if calls["n"] == 2:
             raise _SentinelSourceWriteError("sentinel failure on the source write")
-        return real_sync_source_row(session, source_config, provider_id)
+        return real_sync_source_row(session, source_config, provider_id, **kwargs)
 
     monkeypatch.setattr(config_sync, "_sync_source_row", failing_sync_source_row)
 

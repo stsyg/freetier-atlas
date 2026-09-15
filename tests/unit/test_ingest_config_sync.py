@@ -32,21 +32,26 @@ def _source(**overrides: object) -> SourceConfig:
 
 
 def test_bridge_official_html_source_maps_every_field() -> None:
-    fields = _desired_source_fields(_source(), provider_id=7)
+    fields = _desired_source_fields(_source(), provider_id=7, schedule_window="2d")
     assert fields == {
         "provider_id": 7,
         "adapter_type": "html",  # type -> adapter_type
         "trust_level": "official",
         "official": True,  # derived from trust_level
         "endpoint": "https://developers.cloudflare.com/workers/platform/limits/",  # url -> endpoint
-        "schedule": "official_pages",  # schedule_ref -> schedule
+        # schedule_ref is RESOLVED to a staleness window before it reaches the
+        # bridge; the column stores the derived window ("2d"), never the raw
+        # reference name. Resolution itself is covered by the resolver tests.
+        "schedule": "2d",
         "parser_profile": "cloudflare_workers_limits",  # extraction_profile -> parser_profile
         "enabled": True,
     }
 
 
 def test_bridge_community_source_is_not_official() -> None:
-    fields = _desired_source_fields(_source(trust_level="community"), provider_id=1)
+    fields = _desired_source_fields(
+        _source(trust_level="community"), provider_id=1, schedule_window="2d"
+    )
     assert fields["trust_level"] == "community"
     assert fields["official"] is False
 
@@ -64,6 +69,7 @@ def test_bridge_optional_fields_pass_through_as_none() -> None:
             capabilities=["documentation_search"],
         ),
         provider_id=1,
+        schedule_window="2d",
     )
     assert fields["adapter_type"] == "mcp"
     assert fields["endpoint"] is None

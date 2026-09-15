@@ -49,6 +49,7 @@ from collections import defaultdict
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
+from functools import lru_cache
 from typing import Any
 
 from sqlalchemy import func, or_, select
@@ -99,8 +100,193 @@ _COMPACT_UNITS: dict[str, timedelta] = {
 }
 
 #: Fallback freshness window when a source declares no (or an unparseable)
-#: schedule.
+#: schedule. This is a *last-resort* default for a ``Source.schedule`` value the
+#: staleness path cannot parse. It is deliberately **not** how a
+#: ``schedule_ref`` is resolved: an unresolvable reference is rejected at config
+#: sync (:func:`app.ingest.config_sync.resolve_schedule_window`), never silently
+#: degraded to this most-permissive window -- that silent degradation was the
+#: defect this module's resolution path exists to remove.
 DEFAULT_STALENESS_WINDOW: timedelta = timedelta(days=7)
+
+
+# --- Cron cadence -> staleness window --------------------------------------
+
+#: How many nominal cadences of slack a source gets before its evidence is
+#: considered stale. A source scanned on a cron cadence should not flip to
+#: ``stale`` the instant a single scheduled scan is late or fails -- scans are
+#: jittered (``CronSchedule.jitter_seconds``) and occasionally miss -- so the
+#: window tolerates exactly **one** missed cycle. This is the smallest tolerance
+#: that distinguishes "a scan was skipped once" from "the source has genuinely
+#: stopped updating"; ``1x`` (the cadence exactly) is too tight and would
+#: wrongly withhold correct free offers, a defect of the same severity as
+#: wrongly publishing one ("unknown is better than guessed" cuts both ways).
+STALENESS_CADENCE_MULTIPLIER: int = 2
+
+#: A single whitespace-separated field of a 5-field cron expression, restricted
+#: to the grammar ``config.models.CronSchedule`` already validates
+#: (``[\d*/,\-]+``): ``*``, ``a``, ``a-b``, ``*/n``, ``a-b/n`` and comma lists
+#: of those. Anything else yields ``None`` from :func:`cron_to_cadence` so the
+#: caller fails closed rather than guessing.
+_CRON_RANGES: tuple[tuple[int, int], ...] = (
+    (0, 59),  # minute
+    (0, 23),  # hour
+    (1, 31),  # day-of-month
+    (1, 12),  # month
+    (0, 6),  # day-of-week (0 == Sunday; 7 is normalised to 0)
+)
+
+#: A fixed, wall-clock-free epoch to enumerate fire times from. Chosen as a
+#: Monday so weekday reasoning is reproducible run to run; nothing here reads the
+#: real clock.
+_CRON_EPOCH: datetime = datetime(2001, 1, 1, 0, 0, tzinfo=UTC)
+
+#: Enumeration horizon. Long enough to observe at least two fires of a weekly or
+#: monthly cron (and thus derive their cadence); a cron sparser than this yields
+#: fewer than two fires and :func:`cron_to_cadence` returns ``None``.
+_CRON_HORIZON: timedelta = timedelta(days=70)
+
+
+def _expand_cron_field(field: str, low: int, high: int) -> set[int] | None:
+    """Expand one cron field into the set of integer values it matches.
+
+    Returns ``None`` for anything outside the supported grammar or out of range,
+    so the caller fails closed instead of guessing a cadence.
+    """
+
+    values: set[int] = set()
+    for part in field.split(","):
+        part = part.strip()
+        if not part:
+            return None
+        step = 1
+        if "/" in part:
+            base, _, step_text = part.partition("/")
+            if not step_text.isdigit():
+                return None
+            step = int(step_text)
+            if step <= 0:
+                return None
+        else:
+            base = part
+        if base == "*":
+            start, end = low, high
+        elif "-" in base:
+            start_text, _, end_text = base.partition("-")
+            if not (start_text.isdigit() and end_text.isdigit()):
+                return None
+            start, end = int(start_text), int(end_text)
+        elif base.isdigit():
+            start = end = int(base)
+        else:
+            return None
+        if start > end or start < low or end > high:
+            return None
+        values.update(range(start, end + 1, step))
+    return values or None
+
+
+@lru_cache(maxsize=128)
+def cron_to_cadence(cron: str) -> timedelta | None:
+    """Derive the nominal cadence of a 5-field cron expression.
+
+    The cadence is the **minimum gap between consecutive scheduled fire times**,
+    computed by enumerating fires over a fixed, wall-clock-free horizon from
+    :data:`_CRON_EPOCH`. For a regular schedule this is exactly the declared
+    period (``* * * * *`` -> 1 minute, ``17 * * * *`` -> 1 hour,
+    ``23 */6 * * *`` -> 6 hours, ``15 4 * * *`` -> 1 day, ``0 5 * * 0`` ->
+    7 days). For an irregular one (e.g. twice-daily at fixed hours) it is the
+    tightest gap, which is the conservative cadence to hold evidence to.
+
+    Returns ``None`` -- a fail-closed signal -- when the expression is not five
+    fields, uses grammar outside :func:`_expand_cron_field`, or fires fewer than
+    twice in the horizon (too sparse to derive). The caller must reject rather
+    than default.
+    """
+
+    fields = cron.split()
+    if len(fields) != 5:
+        return None
+    minute, hour, dom, month, dow = (
+        _expand_cron_field(fields[i], *_CRON_RANGES[i]) for i in range(5)
+    )
+    # Day-of-week 7 is a common alias for Sunday (0); the schema permits the
+    # digit, so normalise it before matching.
+    raw_dow = _expand_cron_field(fields[4], 0, 7)
+    if raw_dow is not None:
+        dow = {0 if d == 7 else d for d in raw_dow}
+    if not all((minute, hour, dom, month, dow)):
+        return None
+    assert minute and hour and dom and month and dow  # narrow for type-checkers
+
+    # Standard cron day semantics: when BOTH day-of-month and day-of-week are
+    # restricted (neither is ``*``), a day matches if EITHER matches; otherwise
+    # both must match. ``*`` expands to the full range, so detect restriction by
+    # comparing against the full set.
+    dom_restricted = dom != set(range(1, 32))
+    dow_restricted = dow != set(range(0, 7))
+    dom_or_dow = dom_restricted and dow_restricted
+
+    fires: int = 0
+    end = _CRON_EPOCH + _CRON_HORIZON
+    # Iterate minute by minute: the horizon is bounded and this runs once per
+    # source at config sync, never on a hot path.
+    current = _CRON_EPOCH
+    minute_step = timedelta(minutes=1)
+    previous: datetime | None = None
+    min_gap: timedelta | None = None
+    while current < end:
+        if current.month in month and current.hour in hour and current.minute in minute:
+            day_match = (
+                (current.day in dom or current.isoweekday() % 7 in dow)
+                if dom_or_dow
+                else (current.day in dom and current.isoweekday() % 7 in dow)
+            )
+            if day_match:
+                if previous is not None:
+                    gap = current - previous
+                    if min_gap is None or gap < min_gap:
+                        min_gap = gap
+                previous = current
+                fires += 1
+        current += minute_step
+    if fires < 2 or min_gap is None:
+        return None
+    return min_gap
+
+
+def window_to_compact(window: timedelta) -> str:
+    """Serialise a window to the coarsest exact ``<n><unit>`` compact form.
+
+    The result round-trips through :func:`parse_schedule_window` (so a derived
+    window can be stored in ``Source.schedule`` and re-read with no loss). Units
+    descend ``w`` / ``d`` / ``h`` / ``m`` / ``s``; the first that divides the
+    window exactly is used, so ``timedelta(days=2)`` -> ``"2d"`` and
+    ``timedelta(hours=2)`` -> ``"2h"``.
+    """
+
+    total_seconds = int(window.total_seconds())
+    if total_seconds <= 0:
+        raise ValueError(f"window must be positive, got {window!r}")
+    for unit, unit_seconds in (
+        ("w", 7 * 86400),
+        ("d", 86400),
+        ("h", 3600),
+        ("m", 60),
+        ("s", 1),
+    ):
+        if total_seconds % unit_seconds == 0:
+            return f"{total_seconds // unit_seconds}{unit}"
+    return f"{total_seconds}s"  # unreachable: seconds always divides
+
+
+def derive_staleness_window(cadence: timedelta) -> timedelta:
+    """The staleness window for a source scanned at ``cadence``.
+
+    ``window = STALENESS_CADENCE_MULTIPLIER * cadence`` -- see that constant for
+    why one missed cycle of slack is the defended choice.
+    """
+
+    return STALENESS_CADENCE_MULTIPLIER * cadence
 
 
 # --- Canonicalisation helper -----------------------------------------------
@@ -759,6 +945,7 @@ __all__ = (
     "MATERIAL_FACT_FIELDS",
     "NON_MATERIAL_FACT_FIELDS",
     "DEFAULT_STALENESS_WINDOW",
+    "STALENESS_CADENCE_MULTIPLIER",
     "ChangeAssessment",
     "StalenessAssessment",
     "ReconcileCandidate",
@@ -769,6 +956,9 @@ __all__ = (
     "classify_materiality",
     "classify_change_type",
     "assess_change",
+    "cron_to_cadence",
+    "derive_staleness_window",
+    "window_to_compact",
     "parse_schedule_window",
     "assess_staleness",
     "counts_as_fresh_verification",

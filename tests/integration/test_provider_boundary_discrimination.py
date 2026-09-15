@@ -31,15 +31,16 @@ Population                                                   Count
 Offers reachable from provider ``cloudflare`` after publish   2
 ...published, ``Z0_TRUE_FREE`` and evidence-backed            2
 Evidence rows per published version                           **1 each**
-DISTINCT declared schedules across their sources              **1**
-...and that one schedule is ``official_pages``, which
-``parse_schedule_window`` cannot parse, so every window in
-the corpus is the 7-day FALLBACK                              1 window
+DISTINCT declared schedules across their sources                **1**
+...and that one schedule is ``official_pages``, which now
+RESOLVES to a derived window (2x its daily cadence), so every
+window in the corpus is that single derived window            1 window
 Expiry spread across the two claims                           ~0.3 s
 ===========================================================  ==============
 
 So the emptiness is doubly deep: there is neither a version with two evidence
-rows NOR a source with a parseable schedule. ``min(fetched_at + window)`` and
+rows NOR a version resting on two sources with different windows.
+``min(fetched_at + window)`` and
 ``min(fetched_at) + window`` are identical *by construction* on that data.
 
 What this module adds
@@ -249,9 +250,10 @@ def test_the_synthetic_corpus_carries_the_structure_the_published_one_lacks(
         "indistinguishable from selecting the newest"
     )
 
-    # And the sources must declare DIFFERENT windows that actually PARSE. In the
-    # published corpus every schedule_ref is unparseable and every window is the
-    # same 7-day fallback, which is the deeper reason these branches were unreachable.
+    # And the sources must declare DIFFERENT windows that actually PARSE. This
+    # synthetic corpus sets each source's window directly (bypassing schedule_ref
+    # resolution) precisely to reach the branch the production corpus cannot,
+    # where every version still carries a single evidence row.
     windows = {parse_schedule_window(schedule) for _, schedule in rows}
     assert windows == {timedelta(days=1), timedelta(days=7)}, (
         f"expected genuinely parsed daily and weekly windows, got {windows}; with "
