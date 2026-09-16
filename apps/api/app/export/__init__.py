@@ -26,13 +26,21 @@ from .catalogue import (
     render_export,
     write_export,
 )
+from .feed import (
+    FEED_MAX_ITEMS,
+    build_change_feed,
+    render_feed,
+)
 
 __all__ = [
+    "FEED_MAX_ITEMS",
     "GENERATOR",
     "ROUTE_PREFIX",
     "SNAPSHOT_VERSION",
     "build_catalogue_export",
+    "build_change_feed",
     "canonical_json",
     "render_export",
+    "render_feed",
     "write_export",
 ]
