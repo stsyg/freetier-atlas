@@ -17,6 +17,7 @@ from pathlib import Path
 from app.db import get_sessionmaker
 
 from .catalogue import build_catalogue_export, write_export
+from .feed import build_change_feed
 
 
 def _parse_as_of(text: str) -> datetime:
@@ -50,14 +51,18 @@ def main(argv: list[str] | None = None) -> int:
     session = get_sessionmaker()()
     try:
         artefacts = build_catalogue_export(session, as_of=as_of)
+        feed_xml = build_change_feed(session, as_of=as_of)
     finally:
         # Read-only: never commit. Roll back so no session state can leak out.
         session.rollback()
         session.close()
 
     written = write_export(artefacts, Path(args.out))
+    feed_path = Path(args.out) / "feed.xml"
+    feed_path.parent.mkdir(parents=True, exist_ok=True)
+    feed_path.write_text(feed_xml, encoding="utf-8", newline="\n")
     stamp = as_of.astimezone(UTC).isoformat()
-    print(f"Wrote {len(written)} artefacts to {args.out} (as_of={stamp})")
+    print(f"Wrote {len(written)} artefacts + feed.xml to {args.out} (as_of={stamp})")
     return 0
 
 
