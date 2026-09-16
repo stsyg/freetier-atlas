@@ -139,12 +139,42 @@ words, not the structured verdict. Titles use neutral verbs ("Offer added",
 their own. The affirmative phrase `Verified free` appears in an item **iff** the
 offer is `Z0_TRUE_FREE` **and** its evidence is current at `as_of`.
 
+### Withdrawal is its own direction (and never says "free")
+
+A withdrawal is the asymmetric, dangerous change: a missed *addition* is a missed
+announcement, but a missed or mis-worded *withdrawal* leaves subscribers believing
+a free offer still exists, inside cached items nobody can retract. A `withdrawn`
+item is therefore dispatched separately (`feed._item_summary`): it asserts absence
+("This offer has been withdrawn and is no longer listed in the catalogue.") and
+**never** carries a free claim — even though the still-published offer's
+`OfferDetail` may read as free and current at `as_of`. Announcing "still free"
+about an offer we removed would be the worst output this feed could emit, so it is
+structurally impossible, not merely avoided. An end-to-end integration test
+synthesises a *published* withdrawal on a currently-free offer and asserts the item
+reaches the feed with the withdrawal category and no free phrase, against a
+positive control that the same offer's `added` item does assert free.
+
+### Materiality is not a filter (deliberately)
+
+Every published change event reaches the feed regardless of its
+`materiality ∈ {material, non_material, unknown}`. We include everything on
+purpose. Excluding `non_material` would make the feed quieter, but its safety
+would then rest entirely on an upstream classifier: a genuinely material change
+mislabelled `non_material` would vanish from the feed silently and
+unretractably — the exact failure the feed exists to prevent. A noisier feed is
+the conservative choice; a silently missing withdrawal is not acceptable. (The
+current corpus is 100% `material`, so a materiality filter would never surface in
+testing and would first surface in production — another reason to decide it here,
+explicitly, rather than leave it to a default.)
+
 ## Invariants (acceptance criteria)
 
 1. **No expired or unknown-currency free claim** may appear in any item. The
    affirmative free phrase is gated on `evidence_currency.current`; a boundary
    test builds the same offer one second either side of its real expiry and
-   asserts the phrase flips in the XML.
+   asserts the phrase flips in the XML. A **withdrawal** item never asserts free
+   at all (see above), proven end-to-end against a published withdrawal of a
+   currently-free offer.
 2. **Unknown stays unknown.** An offer whose evidence cannot be checked serialises
    as not-current; the item makes no free claim. An absent field never renders as
    a free claim.

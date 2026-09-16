@@ -128,6 +128,16 @@ def _guids(xml: str) -> set[str]:
     return {g.text for g in ET.fromstring(xml).findall("./channel/item/guid")}
 
 
+def _item_by_guid(xml: str, guid: str) -> ET.Element:
+    """The single ``<item>`` element carrying ``guid`` (asserts exactly one)."""
+
+    for item in ET.fromstring(xml).findall("./channel/item"):
+        node = item.find("guid")
+        if node is not None and node.text == guid:
+            return item
+    raise AssertionError(f"no feed item carried guid {guid!r}")
+
+
 def _description_for_guid(xml: str, guid: str) -> str:
     """The ``<description>`` text of the single item carrying ``guid``.
 
@@ -136,12 +146,8 @@ def _description_for_guid(xml: str, guid: str) -> str:
     still current -- the assertion must be about THIS offer's item.
     """
 
-    for item in ET.fromstring(xml).findall("./channel/item"):
-        node = item.find("guid")
-        if node is not None and node.text == guid:
-            desc = item.find("description")
-            return desc.text if desc is not None and desc.text is not None else ""
-    raise AssertionError(f"no feed item carried guid {guid!r}")
+    desc = _item_by_guid(xml, guid).find("description")
+    return desc.text if desc is not None and desc.text is not None else ""
 
 
 def _items_for_offer(session: Session, offer_id: int) -> list[str]:
@@ -288,6 +294,58 @@ def test_unpublished_offer_contributes_no_items(session: Session) -> None:
 
     guids = _guids(build_change_feed(session, as_of=AS_OF))
     assert f"urn:freetier-atlas:change:{orphan.id}" not in guids
+
+
+# --------------------------------------------------------------------------- #
+# Withdrawal reaches the feed end-to-end, and never as a free claim           #
+# --------------------------------------------------------------------------- #
+
+
+@skip_without_db
+def test_published_withdrawal_reaches_the_feed_without_a_free_claim(session: Session) -> None:
+    _publish(session)
+    offer = _free_offer(session)
+    version = queries.latest_version(offer)
+    assert version is not None
+
+    # Positive control: at AS_OF this still-published, still-free offer's existing
+    # `added` event DOES assert free in the feed -- so the withdrawal's silence
+    # about "free" below is the change_type gate, not an empty feed.
+    added_guid = _items_for_offer(session, offer.id)[0]
+    assert VERIFIED_FREE_PHRASE in _description_for_guid(
+        build_change_feed(session, as_of=AS_OF), added_guid
+    )
+
+    # Synthesise a PUBLISHED withdrawal on that same still-published, still-free
+    # offer. The corpus has none -- every real withdrawal today is a draft
+    # candidate diff -- so this is fabricated the way the draft test fabricates its
+    # event. The offer's OfferDetail still reads free+current, so a feed that
+    # rendered current detail blindly would announce "still free" on a withdrawal.
+    withdrawal = ChangeEvent(
+        offer_id=offer.id,
+        previous_version_id=version.id,
+        change_type="withdrawn",
+        materiality="material",
+        publication_status="published",
+    )
+    session.add(withdrawal)
+    session.flush()
+    session.expire_all()
+
+    xml = build_change_feed(session, as_of=AS_OF)
+    guid = f"urn:freetier-atlas:change:{withdrawal.id}"
+
+    # 1. It reaches the feed end-to-end from the database (condition 1).
+    assert guid in _guids(xml)
+    item = _item_by_guid(xml, guid)
+    # 2. Rendered as a withdrawal: category and neutral verb, no free wording.
+    assert item.find("category").text == "withdrawn"
+    assert item.find("title").text.startswith("Offer withdrawn")
+    desc = item.find("description").text or ""
+    assert "withdrawn and is no longer listed" in desc
+    # 3. The whole point: a withdrawal of a currently-free offer asserts NO free
+    #    claim, even though its OfferDetail is free+current at AS_OF.
+    assert VERIFIED_FREE_PHRASE not in (item.find("title").text or "") + " " + desc
 
 
 # --------------------------------------------------------------------------- #

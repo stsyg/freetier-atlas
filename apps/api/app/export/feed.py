@@ -57,6 +57,13 @@ an aggregator re-syndicates the rendered words, not the structured verdict. A
 mutation test flips the backing evidence past its window and asserts the affirmative
 free phrase disappears from the same item.
 
+A **withdrawal** is handled as its own direction (:func:`_item_summary`): a
+withdrawn offer no longer exists, so its item asserts absence and **never** carries
+a free claim, even though the still-published offer's ``OfferDetail`` may read as
+free at ``as_of``. Announcing "still free" about an offer we have withdrawn, into a
+cached and un-retractable item, is the worst output this feed could produce, so it
+is structurally impossible rather than merely avoided.
+
 Stdlib only
 ===========
 The XML is generated with :mod:`xml.etree.ElementTree` and validated by parsing
@@ -93,6 +100,18 @@ _FREE_CLASS = "Z0_TRUE_FREE"
 #: Z0 AND its evidence is current; the mutation test pins that it vanishes the
 #: moment currency is lost.
 VERIFIED_FREE_PHRASE = "Verified free"
+
+#: Change types whose offer *currently exists* in the catalogue, so a present-
+#: tense free claim is meaningful when evidence supports it. ``withdrawn`` is
+#: deliberately absent: a withdrawn offer no longer exists, so asserting it is
+#: "currently free" would be the single worst thing this feed could emit into a
+#: reader it cannot retract. A withdrawal item therefore never renders a free
+#: claim, regardless of the (still-present) offer's serialized detail.
+_PRESENT_TENSE_CHANGES = frozenset({"added", "modified", "restored"})
+
+#: A withdrawal item's body. It asserts absence, never a free-tier status, so no
+#: aggregator can re-syndicate a "still free" claim about an offer we removed.
+_WITHDRAWN_SUMMARY = "This offer has been withdrawn and is no longer listed in the catalogue."
 
 _CHANNEL_TITLE = "FreeTier Atlas — catalogue changes"
 _CHANNEL_DESCRIPTION = (
@@ -157,6 +176,22 @@ def _free_summary(detail: OfferDetail) -> str:
     return f"Zero-cost class {detail.zero_cost_class} (confidence: {detail.confidence_label})."
 
 
+def _item_summary(item: FeedItem) -> str:
+    """The body sentence for an item, dispatched on the *direction* of the change.
+
+    A withdrawal is the asymmetric, dangerous direction: it means the offer no
+    longer exists, so its body asserts absence and can never carry a free claim --
+    even though the (still-published) offer's :class:`OfferDetail` may still read
+    as free at ``as_of``. Present-tense changes (added / modified / restored)
+    describe an offer that *does* exist, so they defer to the currency-gated
+    :func:`_free_summary`.
+    """
+
+    if item.change_type not in _PRESENT_TENSE_CHANGES:
+        return _WITHDRAWN_SUMMARY
+    return _free_summary(item.detail)
+
+
 def _item_title(item: FeedItem) -> str:
     verb = _CHANGE_VERB.get(item.change_type, "Offer changed")
     detail = item.detail
@@ -164,7 +199,7 @@ def _item_title(item: FeedItem) -> str:
 
 
 def _item_description(item: FeedItem) -> str:
-    return f"{_free_summary(item.detail)} Change: {item.change_type}."
+    return f"{_item_summary(item)} Change: {item.change_type}."
 
 
 def _append_item(channel: ET.Element, item: FeedItem) -> None:
@@ -212,6 +247,16 @@ def _collect_items(session: Session, *, currency: queries.CurrencyContext) -> li
     only ``publication_status='published'`` change events
     (:func:`queries.fetch_offer_change_events` enforces the latter), so an offer a
     human deliberately withheld -- or a draft change event -- can never appear.
+
+    Materiality is deliberately **not** a filter. Every published change event
+    reaches the feed regardless of ``materiality`` in
+    ``{material, non_material, unknown}``. The feed's cardinal failure is a
+    withdrawal (or other material change) that silently never reaches a subscriber
+    inside an item nobody can retract; excluding ``non_material`` would make that
+    safety rest on an upstream classifier, so a material change mislabelled
+    ``non_material`` would vanish unretractably. Including everything is the
+    conservative choice -- a noisier feed, never a silently missing change. See
+    docs/CHANGE_FEED.md.
     """
 
     items: list[FeedItem] = []

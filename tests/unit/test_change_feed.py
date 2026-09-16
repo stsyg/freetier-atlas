@@ -233,6 +233,39 @@ def test_uncheckable_free_offer_makes_no_free_claim() -> None:
 
 
 # --------------------------------------------------------------------------- #
+# The withdrawal direction: an absence notice must never assert "free"        #
+# --------------------------------------------------------------------------- #
+
+
+def _text_of(item: ET.Element) -> str:
+    return (item.find("title").text or "") + " " + (item.find("description").text or "")
+
+
+def test_withdrawal_never_asserts_free_even_when_the_offer_still_reads_free() -> None:
+    # The asymmetric, dangerous direction. The offer is still published and its
+    # evidence is CURRENT at as_of, so as an `added` item it does assert free
+    # (positive control below). As a `withdrawn` item -- the SAME offer, the SAME
+    # currency, differing ONLY in change_type -- it must instead assert absence and
+    # carry no free phrase. Announcing "still free" about an offer we withdrew,
+    # into a cached and un-retractable item, is the worst output this feed emits.
+    offer = _published_free_offer(evidence_age_days=0)
+    currency = _fresh_currency(offer.versions[0].id)
+
+    added = _item(offer, currency, change_id=1, change_type="added", occurred_at=_AS_OF)
+    withdrawn = _item(offer, currency, change_id=2, change_type="withdrawn", occurred_at=_AS_OF)
+    root = ET.fromstring(render_feed([added, withdrawn], as_of=_AS_OF))
+    items = {i.find("guid").text: i for i in root.findall("./channel/item")}
+
+    # Positive control: the difference is ONLY the change_type, so a stuck gate
+    # that never emits the phrase would fail here.
+    assert feed.VERIFIED_FREE_PHRASE in _text_of(items["urn:freetier-atlas:change:1"])
+
+    withdrawn_text = _text_of(items["urn:freetier-atlas:change:2"])
+    assert feed.VERIFIED_FREE_PHRASE not in withdrawn_text
+    assert "withdrawn and is no longer listed" in withdrawn_text
+
+
+# --------------------------------------------------------------------------- #
 # Structural RSS 2.0 validity (parsed back with the stdlib)                    #
 # --------------------------------------------------------------------------- #
 
