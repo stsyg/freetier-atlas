@@ -1,27 +1,42 @@
 {
-  "feature_id": "F-schedule-ref-resolution",
-  "title": "Resolve schedule_ref to its declared cadence (remove silent 7-day fallback)",
-  "branch": "stsyg-resolve-schedule-ref-cadence",
-  "base": "origin/main@be281a8",
+  "feature_id": "F009-S2-slice1",
+  "title": "Build-time catalogue static export (deterministic snapshot of the 10 read-only /catalogue GETs)",
+  "branch": "stsyg-f009-s2-catalogue-export",
+  "base": "origin/main@9724f1de72fbbdbf718fafabf759e3498ee9b8a0",
   "owner_authorised": true,
-  "increment": "Resolve source.schedule_ref against the loaded ScheduleSet, derive a staleness window from the cron (window = 2x nominal cadence), store the derived compact window in Source.schedule, and fail closed (reject at the resolution seam, naming the ref) on any unresolvable/underivable reference. Explicitly do NOT widen parse_schedule_window to accept the ref name strings.",
+  "adr": "docs/adr/0007-public-hosting-static-snapshot.md (Accepted, Option A: static snapshot only)",
+  "increment": "Render the ten /catalogue GET routes into versioned static JSON artefacts a static host can serve, plus a manifest. Parameterised routes are enumerated over the same query helpers the live handlers use; /search and /compare are exported as the full published-offer corpus in the live item shape (client-side query runs in slice 2). Currency is REUSED, not reimplemented: one unscoped queries.currency_context(now=as_of) shared by every artefact, byte-equivalent to each handler's scoped context. Ship a CLI (python -m app.export) and thin ps1/sh wrappers. Do NOT touch apps/web.",
   "acceptance": [
-    "cron_to_cadence derives 1h/1d/6h/7d from the real cron expressions; returns None (fail-closed) on inputs it cannot expand.",
-    "resolve_schedule_window raises an actionable error naming the offending ref when the ref is absent from the ScheduleSet or the cron cannot yield a window; it never returns a 7-day default.",
-    "sync stores the derived compact window (e.g. '2d','2h') in Source.schedule so reconcile.py and publisher.py resolve real windows without change.",
-    "parse_schedule_window still handles hourly/daily/compact unchanged (precision preserved).",
-    "Deterministic before/after impact table over the real committed configs: source -> ref -> 7d vs new window -> flip age-band; all changes are fresh->stale (tighter).",
-    "Full pytest suite green with reported collected counts; ruff check and ruff format --check clean."
+    "Every artefact and the manifest carry an explicit injected as_of; the wall clock is read only at the CLI boundary.",
+    "Exported data encodes staleness: a stale/unknown claim serialises with collapsed confidence_label, freshness null (or measured 0.0 for checked-but-expired), and evidence_currency.current=false, so a renderer cannot present it as fresh.",
+    "Unknown stays unknown: uncheckable evidence is checked=false, current=false, freshness=null; an absent field is absent, not free.",
+    "Per-source staleness windows in the manifest are derived via reconcile.parse_schedule_window (2x cadence, e.g. 2d/2h), never one global figure.",
+    "Deterministic: same DB state + same as_of yields byte-identical output, demonstrated by building twice and diffing (not asserted).",
+    "Route parity: for the 8 concrete routes the artefact data equals the live handler .model_dump(mode='json') at the same pinned clock; /search and /compare corpora contain every live item verbatim.",
+    "New tests proven load-bearing by mutating their SUBJECT; positive controls present for count/absence claims; ruff check and ruff format --check clean; collected test counts stated."
+  ],
+  "enumeration_decision": "Providers over queries.fetch_providers (ordered by slug); offers over every queries.is_published offer sorted by id. Each instance fetched via the same query helper the live handler uses. Manifest lists slugs/ids + counts as a positive control (a broken enumerator returns empty, which counts expose).",
+  "search_compare_decision": "Both are queries, not resources; a static host cannot execute an arbitrary keyword search or id-tuple compare. Export the FULL published-offer corpus in the exact live item shape (search: union of all unfiltered pages; compare: every offer's server-normalised compare cell). kind='corpus' + a note. Each corpus item still carries its own evidence_currency frozen at as_of. Slice 2 runs the query client-side.",
+  "currency_reuse_decision": "REUSED, not reimplemented. The export calls queries.currency_context + app.read_api.service serializers, so the same confidence_label collapse, freshness->null withholding, and evidence_currency block are baked in. One unscoped whole-catalogue context is byte-equivalent to each handler's scoped context because a version's verdict depends on its own evidence alone (fetch_evidence_currency contract). Pinned by the route-parity test.",
+  "artifacts": [
+    "apps/api/app/export/__init__.py",
+    "apps/api/app/export/catalogue.py",
+    "apps/api/app/export/__main__.py",
+    "tests/unit/test_catalogue_export.py",
+    "tests/integration/test_catalogue_export.py",
+    "scripts/export-catalogue.ps1",
+    "scripts/export-catalogue.sh",
+    "docs/CATALOGUE_EXPORT.md"
   ],
   "forbidden_files_untouched": [
     ".github/workflows/ci.yml",
     "agent-state/feature_list.json",
     "apps/web/package-lock.json",
     "package-lock.json",
+    ".secrets.baseline",
     "scripts/check_urls.py",
     "tests/unit/test_url_allowlist.py",
     "tests/unit/test_no_live_fetcher_in_tests.py"
   ],
-  "derivation_decision": "window = 2 x nominal cadence (min consecutive cron fire gap). Rationale: tolerate exactly one missed/jittered scan cycle; 1x is too tight and would wrongly withhold correct free offers, a defect of equal severity to wrongly publishing (unknown-is-better-than-guessed cuts both ways).",
-  "measurement_limit": "Exact per-offer verdict flips require a live PostgreSQL DB; integration suite is DATABASE_URL-gated and skips in this Python-only env. Deterministic window/age-band table is provided instead."
+  "measurement_limit": "Integration tests are DATABASE_URL-gated. They were EXECUTED against the local populated Postgres (not merely shipped for CI): 7 collected, 7 passed (no exit-5 empty collection). The shared populated corpus is why ~50 unrelated integration tests fail environmentally on this tree; those are pre-existing and not caused here."
 }
