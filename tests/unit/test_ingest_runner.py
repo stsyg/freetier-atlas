@@ -16,6 +16,11 @@ from pathlib import Path
 import pytest
 from app.config.loader import load_and_validate
 from app.config.models import ProviderConfig
+from app.ingest.config_sync import (
+    CoverageDeclarationOutcome,
+    CoverageSyncResult,
+    SyncResult,
+)
 from app.ingest.fetch import FixtureFetcher, NotFoundError, OfflineFetcher
 from app.ingest.runner import (
     RunnerResult,
@@ -94,6 +99,86 @@ def test_zero_source_result_is_an_explicit_success() -> None:
     assert "zero configured sources; sync and coverage completed" in output
     assert "totals: scanned=0 failed=0 published=0 reviewed=0" in output
     assert "[error]" not in output
+
+
+def _result_with_coverage(coverage: CoverageSyncResult) -> RunnerResult:
+    return RunnerResult(
+        provider_slug=coverage.provider_slug,
+        configured_sources=1,
+        sync=SyncResult(provider_slug=coverage.provider_slug, coverage=coverage),
+    )
+
+
+def test_a_suppressed_prune_is_named_in_the_output() -> None:
+    # A suppressed prune means withdrawals were DECLINED for this provider on
+    # this run -- an offer that should have vanished stays listed. It must be
+    # impossible to miss in the CLI output.
+    coverage = CoverageSyncResult(
+        provider_slug="cloudflare",
+        outcomes=[
+            CoverageDeclarationOutcome(
+                category_slug="serverless-functions", action="unknown_category"
+            )
+        ],
+        prune_suppressed=True,
+    )
+
+    output = _format_result(_result_with_coverage(coverage))
+
+    assert "COVERAGE PRUNE SUPPRESSED" in output
+    assert "withdrawals were DECLINED" in output
+    assert "serverless-functions" in output
+
+
+def test_a_clean_run_does_not_mention_a_suppressed_prune() -> None:
+    # Positive control: without this, the assertion above proves nothing.
+    coverage = CoverageSyncResult(
+        provider_slug="cloudflare",
+        outcomes=[CoverageDeclarationOutcome(category_slug="object-storage", action="unchanged")],
+        prune_suppressed=False,
+    )
+
+    output = _format_result(_result_with_coverage(coverage))
+
+    assert "SUPPRESSED" not in output
+    assert "DECLINED" not in output
+
+
+def test_a_clean_coverage_run_stays_quiet() -> None:
+    # Exact output: a clean run adds no coverage lines, so future noise regresses
+    # this test. Zero-valued outcomes must not drown the interesting case.
+    coverage = CoverageSyncResult(
+        provider_slug="cloudflare",
+        outcomes=[CoverageDeclarationOutcome(category_slug="object-storage", action="unchanged")],
+        prune_suppressed=False,
+    )
+
+    output = _format_result(_result_with_coverage(coverage))
+
+    assert output == (
+        "provider 'cloudflare':\n"
+        "  sync: provider=unchanged sources created=0 updated=0 unchanged=0\n"
+        "  totals: scanned=0 failed=0 published=0 reviewed=0"
+    )
+
+
+def test_unresolved_source_references_are_surfaced() -> None:
+    coverage = CoverageSyncResult(
+        provider_slug="cloudflare",
+        outcomes=[
+            CoverageDeclarationOutcome(category_slug="edge-cache", action="unknown_source"),
+            CoverageDeclarationOutcome(category_slug="object-storage", action="unchanged"),
+        ],
+    )
+
+    output = _format_result(_result_with_coverage(coverage))
+
+    assert "1 unresolved source reference" in output
+    assert "edge-cache" in output
+    # A resolved-source category is not misreported as unresolved.
+    assert "object-storage" not in output
+    # No unresolved categories here, so no suppressed-prune noise.
+    assert "SUPPRESSED" not in output
 
 
 def test_main_without_database_url_errors(monkeypatch, capsys) -> None:
