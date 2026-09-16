@@ -5758,3 +5758,25 @@ Added a prominent section to `docs/CATALOGUE_EXPORT.md` ("The risk this slice do
 
 ### Not done here
 No merge (owner merges after Level-2). No `apps/web` change. Boundaries untouched.
+
+---
+
+## 2026-09-16 — F008-obsF: surface ingest coverage outcomes in the CLI (reporting-only)
+
+Closed a safety-visibility gap in `apps/api/app/ingest/runner.py::_format_result`: it printed the sync + per-source scan lines but surfaced **no** coverage outcome. Re-derived on current main that `prune_suppressed` / `unresolved_categories` / `unknown_source` appeared **zero** times in runner.py, so a suppressed prune (withdrawals DECLINED for a provider that run — an offer that should have been withdrawn stays listed) was invisible to a CLI operator, indistinguishable from a clean run.
+
+### Change (reporting only — `config_sync.py` behaviour untouched)
+Added `_format_coverage(CoverageSyncResult) -> list[str]`, wired in after the sync line via `result.sync.coverage`. Two constraints honoured:
+- **Suppressed prune is impossible to miss:** a prominent `!! COVERAGE PRUNE SUPPRESSED for provider '<slug>': withdrawals were DECLINED this run` block naming the unresolved categories + the self-heal note.
+- **Clean run stays quiet:** zero-valued outcomes emit no lines. Only `prune_suppressed` and a non-zero `unknown_sources` count produce output.
+
+No new suppression logic; the decision (`config_sync.py` sets `prune_suppressed` iff `unresolved_categories` non-empty) is unchanged.
+
+### Tests + load-bearing proof [M]
+`tests/unit/test_ingest_runner.py` +4 tests (file 29 -> 33; whole unit suite **2782 passed, 28 skipped**, exit 0, DB-free): named suppression test, clean-run positive control, exact quiet-clean-run output (guards against future noise), and an unresolved-source-reference test. Proven load-bearing by mutating the SUBJECT `prune_suppressed=True` -> `False` -> `test_a_suppressed_prune_is_named_in_the_output` FAILED on the missing marker; restored byte-exact, 33 green.
+
+### Validation [M]
+`ruff check` + `ruff format --check` clean on both changed files (line-length 100). Unit-testable without a DB — no integration run needed for this slice.
+
+### Scope/boundaries [M]
+Only `runner.py` + its unit test touched (plus this handoff). No boundary file touched (ci.yml, feature_list.json, both package-lock.json, .secrets.baseline, check_urls.py, test_url_allowlist.py, test_no_live_fetcher_in_tests.py, apps/web). No network, no fixture re-capture, no DATABASE_URL literal. Pushed; PR opened against main. NOT merged (owner merges after verification).

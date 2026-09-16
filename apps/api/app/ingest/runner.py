@@ -49,7 +49,12 @@ from sqlalchemy.orm import Session
 
 from app.config.loader import load_and_validate
 from app.config.models import ProviderConfig, SchedulesConfig, ScheduleSet
-from app.ingest.config_sync import ScheduleResolutionError, SyncResult, sync_provider
+from app.ingest.config_sync import (
+    CoverageSyncResult,
+    ScheduleResolutionError,
+    SyncResult,
+    sync_provider,
+)
 from app.ingest.fetch import Fetcher, FetchPolicy, FixtureFetcher, OfflineFetcher
 from app.ingest.reconcile import reconcile_scan
 from app.ingest.scan import run_scan
@@ -457,6 +462,38 @@ def _fetcher_for(config: ProviderConfig, fixtures_dir: str | None) -> Fetcher:
     return OfflineFetcher(fetch_policy_for(config))
 
 
+def _format_coverage(coverage: CoverageSyncResult) -> list[str]:
+    """Report only the coverage outcomes an operator needs to see.
+
+    A clean run stays silent: zero-valued outcomes add no lines, so the one
+    outcome that matters is not drowned out. That outcome is a **suppressed
+    prune** -- it means withdrawals were DECLINED for this provider on this run,
+    so an offer that should have been withdrawn stays listed until the drift
+    self-heals. It is not one number among several, and its prominence here
+    matches its meaning.
+    """
+    lines: list[str] = []
+    if coverage.prune_suppressed:
+        categories = ", ".join(coverage.unresolved_categories)
+        lines.append(
+            f"  !! COVERAGE PRUNE SUPPRESSED for provider "
+            f"'{coverage.provider_slug}': withdrawals were DECLINED this run"
+        )
+        lines.append(f"     unresolved categories: {categories}")
+        lines.append(
+            "     offers that should have been withdrawn remain listed; "
+            "self-heals on the next run once the drift is repaired"
+        )
+    unknown_sources = coverage.unknown_sources
+    if unknown_sources:
+        categories = ", ".join(coverage.unresolved_sources)
+        lines.append(
+            f"  coverage: {unknown_sources} unresolved source "
+            f"reference(s) preserved for categories: {categories}"
+        )
+    return lines
+
+
 def _format_result(result: RunnerResult) -> str:
     lines = [f"provider '{result.provider_slug}':"]
     if result.sync is not None:
@@ -465,6 +502,8 @@ def _format_result(result: RunnerResult) -> str:
             f"sources created={result.sync.created} updated={result.sync.updated} "
             f"unchanged={result.sync.unchanged}"
         )
+        if result.sync.coverage is not None:
+            lines.extend(_format_coverage(result.sync.coverage))
     if result.configured_sources == 0:
         lines.append("  scans: zero configured sources; sync and coverage completed")
     for outcome in result.sources:
