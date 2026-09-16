@@ -6,9 +6,9 @@
 # install, prefers the pinned .venv interpreter, and passes every argument
 # through to the CLI. Requires DATABASE_URL to point at the catalogue database.
 #
-# Usage:
-#   DATABASE_URL=postgresql+psycopg://atlas:atlas@localhost:5432/atlas \
-#     scripts/export-catalogue.sh --out dist/catalogue [--as-of 2026-06-01T12:00:00+00:00]
+# Usage (DATABASE_URL comes from your shell environment; see .env.example for
+# the local-dev default):
+#   scripts/export-catalogue.sh --out dist/catalogue [--as-of 2026-06-01T12:00:00+00:00]
 #
 # The snapshot is a pure function of (database state, --as-of): the same state
 # and --as-of yield byte-identical output, so a published snapshot can be

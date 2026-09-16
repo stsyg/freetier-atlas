@@ -12,7 +12,7 @@
     and --as-of yield byte-identical output, so a published snapshot can be
     diffed and re-verified.
 .EXAMPLE
-    $env:DATABASE_URL = "postgresql+psycopg://atlas:atlas@localhost:5432/atlas"
+    # DATABASE_URL comes from your shell environment; see .env.example for the local-dev default.
     scripts/export-catalogue.ps1 --out dist/catalogue --as-of 2026-06-01T12:00:00+00:00
 .NOTES
     Exit code 0 on success; 2 when DATABASE_URL is unset.

@@ -171,16 +171,17 @@ The wall clock is read at exactly one place — the CLI boundary — and only to
 default `--as-of`. Pin `--as-of` to reproduce a published snapshot byte-for-byte.
 
 ```bash
-# via the wrapper (resolves repo root, prefers .venv, sets PYTHONPATH)
-DATABASE_URL=postgresql+psycopg://atlas:atlas@localhost:5432/atlas \
-  scripts/export-catalogue.sh --out dist/catalogue --as-of 2026-06-01T12:00:00+00:00
+# via the wrapper (resolves repo root, prefers .venv, sets PYTHONPATH).
+# DATABASE_URL comes from your shell environment; see .env.example for the
+# local-dev default.
+scripts/export-catalogue.sh --out dist/catalogue --as-of 2026-06-01T12:00:00+00:00
 
 # or directly (from apps/api on PYTHONPATH)
 python -m app.export --out dist/catalogue --as-of 2026-06-01T12:00:00+00:00
 ```
 
 ```powershell
-$env:DATABASE_URL = "postgresql+psycopg://atlas:atlas@localhost:5432/atlas"
+# DATABASE_URL comes from your shell environment; see .env.example for the local-dev default.
 scripts/export-catalogue.ps1 --out dist/catalogue --as-of 2026-06-01T12:00:00+00:00
 ```
 
