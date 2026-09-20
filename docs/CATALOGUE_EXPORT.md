@@ -34,17 +34,42 @@ Slice 1 does not close this risk, and that deferral is deliberate: **slice 1 onl
 *builds* the artefact — nothing publishes it yet.** The gate belongs to the
 publication path, which does not exist in this slice.
 
-The manifest is built to make that gate cheap and unambiguous. It deliberately
-carries both `as_of` **and** the per-source `staleness_windows`, which is exactly
-what a gate needs to compute *"this snapshot is older than the tightest window
-inside it"* without re-deriving anything from the corpus.
+The gate needs nothing the artefact does not already carry. Every serialised
+`evidence_currency` block frozen into the export records, per claim, its
+`oldest_fetched_at` and its own `window_days` (that claim's stalest source's
+window). So the gate re-applies the *same* `age > window` rule the live currency
+path uses — with `age = now - oldest_fetched_at` at read time instead of
+`age = as_of - oldest_fetched_at` at build time — and needs no corpus, no
+database, and no network. It lives in `apps/api/app/export/snapshot_age.py`
+(`evaluate_export`), a pure function of `(rendered artefact map, injected now)`.
 
-The gate MUST be **per-source, or keyed to the tightest window in the manifest —
-never a single global figure.** After PR #128 the windows genuinely differ per
-source (`2d` for daily sources, `2h` for the hourly `rss` source), so a snapshot
-can be within a loose daily window while already past the tight hourly one; a
-single global age check would publish exactly the stale hourly claim this project
-exists to prevent. A snapshot older than its tightest window MUST NOT be served.
+**The rule is per-claim, not global.** A claim degrades only when *its own*
+backing source has exceeded *its own* window; because each claim carries its own
+window, per-source discrimination is automatic — a stale hourly-backed claim
+degrades while a fresh daily-backed claim in the same snapshot does not. A single
+global figure is wrong in **both** directions: a global **tightest**-window rule
+(the `2h` hourly `rss` source) would withhold nearly every claim two hours after
+the build — a wrongly-withheld free offer, a defect of equal severity to a
+wrongly-published one and in the same direction a reader cannot see — and a
+global loosest-window rule would keep serving an already-stale tight claim.
+
+There is exactly one honest **whole-snapshot** fact, and it is the *loosest*
+window, not the tightest: once `now - as_of` exceeds
+`max(manifest.staleness_windows)`, every checked claim is necessarily degraded
+(each claim's window ≤ the loosest source window, and its total age exceeds
+`now - as_of` which exceeds that window). The gate reports this as
+`loosest_window_exceeded` — a coarse "everything is provably stale" signal for a
+publisher's freshness policy, **not** a per-claim correctness threshold, and it
+never wrongly withholds because below it per-claim gating still passes fresh
+claims. The gate emits **nothing** into the artefact: a `now`-dependent verdict
+baked at build time would itself go stale, which is the very bug being closed.
+
+The gate returns a structured verdict; it does not rewrite the serializer's
+words. A degraded (or unknown) claim carries a reason consistent with the change
+feed's `_free_summary` — *"Free-tier status unverified: backing evidence is stale
+or its currency is unknown"* — which a publication step (F009-S6) or a
+client-side renderer (slice 2) surfaces. Neither consumer exists yet, so the gate
+couples to neither.
 
 This requirement is tracked as ledger item **`static-export-snapshot-age-gating`**,
 which blocks any deployment of the export. It is repeated here because whoever
