@@ -5780,3 +5780,27 @@ No new suppression logic; the decision (`config_sync.py` sets `prune_suppressed`
 
 ### Scope/boundaries [M]
 Only `runner.py` + its unit test touched (plus this handoff). No boundary file touched (ci.yml, feature_list.json, both package-lock.json, .secrets.baseline, check_urls.py, test_url_allowlist.py, test_no_live_fetcher_in_tests.py, apps/web). No network, no fixture re-capture, no DATABASE_URL literal. Pushed; PR opened against main. NOT merged (owner merges after verification).
+---
+
+## 2026-09-20 — F009-S2: snapshot-age gating for the static catalogue export (deployment blocker)
+
+Closed the highest open product risk and the export's publication blocker (`static-export-snapshot-age-gating`): the export freezes evidence currency at build-time `as_of`, so a snapshot served weeks later still reads "current as of `as_of`" with no way for a reader to see it aged — the PR #95/#99 defect class displaced in time.
+
+### The realisation (pure-logic, no DB/host/network)
+Every serialised `evidence_currency` block already carries per claim `oldest_fetched_at` + its own `window_days`. The gate re-applies the SAME `age > window` rule the live currency path uses, with `age = now - oldest_fetched_at` (read time) instead of `as_of - oldest_fetched_at` (build time). Per-source discrimination is automatic because each claim carries its own window. No change to `catalogue.py`.
+
+### Correction of the earlier spec [M]
+The prior spec (ledger + F009-S2 brief + CATALOGUE_EXPORT.md) framed the gate as "older than the TIGHTEST window". That is wrong: the tightest window is `2h` (hourly `rss`), so a global tightest rule would withhold nearly every claim two hours post-build — wrongful withholding, equal-severity defect in the direction a reader cannot see. Implemented the corrected PER-CLAIM rule. The one honest whole-snapshot fact is the LOOSEST window: past `max(staleness_windows)`, every checked claim is provably degraded (`loosest_window_exceeded`), reported as a coarse signal, not a correctness threshold, and hardcoding no publish block (F009-S6 owns policy).
+
+### Change
+- NEW `apps/api/app/export/snapshot_age.py` (pure; injected tz-aware `now`; no wall clock; emits nothing into the artefact): `Verdict{CURRENT,DEGRADED,UNKNOWN}`, `ClaimVerdict`, `SnapshotAgeReport` (counts, `loosest_window`, `loosest_window_exceeded`, `any_current`, `degraded`), `evaluate_claim`, `evaluate_export` (recursive `evidence_currency` walk over the artefact map), `evaluate_export_dir` (read-only loader glue, no publish policy). Degraded/unknown reason consistent with feed `_free_summary` wording.
+- Corrected the "risk this slice does NOT close" section of `docs/CATALOGUE_EXPORT.md` (tightest -> per-claim + loosest-window fact; points at the new module).
+
+### Tests + load-bearing proof [M]
+`tests/unit/test_snapshot_age.py` (11 tests, DB-free, **11 passed**): subject-mutation degrade; positive control (within window stays current — guards wrongful withholding); per-source discrimination (`2h` degraded vs `2d` current at one shared `now`, asserted DIFFERENT); unknown-stays-unknown + positive control; loosest-window all-dead signal proven to be loosest not tightest (survivor inside loose window); purity (naive `now` raises, `now < as_of` raises, same-inputs-same-report, source-grep no `datetime.now`/`utcnow`); dir-loader parity. Blocks built through the REAL serializer path (`service._currency_out(assess_currency(...))`), not a double.
+
+### Validation [M]
+Differential baseline first: `tests/unit/test_catalogue_export.py` 10 passed on the unmodified concern before adding mine. `ruff check` clean on both new files (after removing an unused import + one E501). mypy not installed in this env (skipped). Unit-only, no DB — the ~50 populated-DB integration failures are environmental and out of this slice.
+
+### Scope/boundaries [M]
+Touched only: `apps/api/app/export/snapshot_age.py`, `tests/unit/test_snapshot_age.py`, `docs/CATALOGUE_EXPORT.md`, this handoff. No boundary file touched (ci.yml, feature_list.json, both package-lock.json, .secrets.baseline, check_urls.py, test_url_allowlist.py, test_no_live_fetcher_in_tests.py, apps/web). No network, no fixture re-capture, no `DATABASE_URL` literal. NOT merged (owner merges after Level-2 verification).
