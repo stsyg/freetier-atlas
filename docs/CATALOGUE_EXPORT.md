@@ -18,9 +18,11 @@ class applies to it by construction. Everything below is organised around making
 the exported data *structurally incapable* of presenting a stale or
 unknown-currency claim as current.
 
-## The risk this slice does NOT close: snapshot-age gating (deployment blocker)
+## Snapshot-age gating: the gate exists, but publication is still blocked (deployment blocker)
 
-> **This artefact MUST NOT be published without snapshot-age gating.**
+> **This artefact MUST NOT be published until a publisher consults the
+> snapshot-age gate.** The gate now exists; nothing on the publication path reads
+> it yet.
 
 The five invariants below make every claim in the export honest **at build
 time**. They do nothing about a snapshot built on Monday and still being served
@@ -30,9 +32,28 @@ same PR #95 / #99 defect class — an expired free claim shown as current — bu
 **displaced in time instead of across surfaces**, and it is the direction a
 reader cannot see, which is what makes it serious.
 
-Slice 1 does not close this risk, and that deferral is deliberate: **slice 1 only
-*builds* the artefact — nothing publishes it yet.** The gate belongs to the
-publication path, which does not exist in this slice.
+**The blocker has changed in nature, not disappeared.** It was *"no gate
+exists"*; a gate now exists (`apps/api/app/export/snapshot_age.py`, described
+below). It is now *"a gate exists but nothing enforces it"*: the publication step
+(F009-S6) that must call the gate and refuse a stale snapshot is unwritten, and
+the gate's `loosest_window_exceeded` is deliberately a **signal, not a hardcoded
+block** — F009-S6 owns publish policy. Publication therefore remains blocked
+until that wiring exists, which is why this stays a deployment blocker.
+
+> **Consumer hazard — read the gate, never the raw field.** Each artefact carries
+> `evidence_currency.current`, and it is **correct only at `as_of`**. It is frozen
+> at build time and says nothing about whether the claim is still current when the
+> snapshot is *read* — which is the entire risk this section exists for. A consumer
+> (F009-S6's publisher, slice 2's renderer) **must never read
+> `evidence_currency.current` directly**: `app.export.snapshot_age.evaluate_export`
+> is the **only sanctioned reader** of currency in a served snapshot, because it
+> alone re-judges every claim against an injected read-time `now`. The raw field
+> has the friendlier name and sits right next to the claim, so reaching for it is
+> the obvious mistake — and it silently reintroduces exactly the expired-claim
+> defect. The field is deliberately **not** renamed or removed: slice 1's
+> route-parity test pins the artefact bytes against the live handlers, and breaking
+> that anti-drift guarantee to solve a documentation problem is a bad trade. The
+> discipline is the fix, not a change to the artefact shape.
 
 The gate needs nothing the artefact does not already carry. Every serialised
 `evidence_currency` block frozen into the export records, per claim, its
@@ -226,7 +247,8 @@ diff -r /tmp/a /tmp/b   # empty: byte-identical
 Client-side search / filter / sort / compare UI and the in-browser deterministic
 adviser. This slice touches nothing in `apps/web`.
 
-Note that **publication itself is also out of scope**, and is *gated*: see
-[the snapshot-age gating blocker](#the-risk-this-slice-does-not-close-snapshot-age-gating-deployment-blocker)
-and ledger item `static-export-snapshot-age-gating`. This slice builds the
-artefact; it does not — and must not — ship it un-gated.
+Note that **publication itself is also out of scope**, and is *blocked*: see
+[the snapshot-age gating blocker](#snapshot-age-gating-the-gate-exists-but-publication-is-still-blocked-deployment-blocker)
+and ledger item `static-export-snapshot-age-gating`. The gate now exists, but no
+publisher consults it yet, so this slice builds the artefact and must not ship it
+until F009-S6 wires the gate into publication.

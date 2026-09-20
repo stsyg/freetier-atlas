@@ -55,6 +55,17 @@ module reads **no** wall clock: the same inputs always yield the same report, so
 publish step and a browser applying it get identical verdicts. It emits **nothing**
 into the artefact -- a ``now``-dependent verdict baked at build time would itself go
 stale, which is the very bug this gate closes.
+
+For consumers (F009-S6's publisher, slice 2's renderer)
+=======================================================
+Do **not** read ``evidence_currency.current`` (or ``freshness``) out of a served
+artefact directly. That field is correct **only at ``as_of``**: it is frozen at
+build time and says nothing about whether the claim is still current when the
+snapshot is *read*. :func:`evaluate_export` is the **only sanctioned reader** of
+currency in a served snapshot, because it alone re-judges every claim against an
+injected read-time ``now``. The raw field has the friendlier name and sits right
+next to the claim, so reaching for it is the obvious mistake -- and it silently
+reintroduces the expired-claim defect this gate exists to prevent.
 """
 
 from __future__ import annotations
