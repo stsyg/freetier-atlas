@@ -51,7 +51,7 @@ genuinely unknown is `null` rather than guessed.
 | `fetched_at` | ISO-8601 UTC timestamp of the capture, or `null` if unrecorded. |
 | `http_status` | HTTP status of the final response, or `null` if unrecorded. |
 | `sha256_original` | SHA-256 of the bytes as fetched, before trimming, or `null`. |
-| `sha256_stored` | SHA-256 of the bytes actually committed as `source.<ext>`. |
+| `sha256_stored` | SHA-256 of the bytes actually committed as `source.<ext>`. A **tamper-evidence seal on this file, not a fidelity control**: it is computed from the committed bytes and re-checked by recomputing the same hash, so it detects a later silent edit but establishes no link to the live page. See "What a passing ingest fixture test attests" in `docs/TEST_STRATEGY.md`. |
 | `trim_method` | How the committed excerpt was produced (`none` for a whole document). |
 | `robots_allowed` | The operator's robots.txt outcome: `true`, `false` or `null`. |
 | `tos_note` | Free-text note recording the terms-of-service check. |

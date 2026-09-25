@@ -113,7 +113,9 @@ on 2026-08-14: the GitHub Pages limits page and the Enterprise Cloud trial page
 contain zero `<table>` elements — their allowances are published as `<li>`/`<p>`
 prose. Both profiles are therefore **assertion-only** (`mode: "assertions"`):
 they declare no table selector, read no table, and take 100% of their published
-facts from pinned assertions. Each `capture.json` records the live re-verification.
+facts from pinned assertions. Each `capture.json` records the live re-verification
+— a one-time act at capture-generation time, re-checked by nothing in CI (see "What
+a passing ingest fixture test attests" in `docs/TEST_STRATEGY.md`).
 
 An earlier revision of those two captures instead carried a fabricated one-cell
 anchor table, constrained to map no column so it carried no claim. It was

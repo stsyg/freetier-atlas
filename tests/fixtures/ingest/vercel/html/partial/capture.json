@@ -6,6 +6,7 @@
   "sha256_original": "937ab4d0fc0c40815196578b7fbf7d06f72ff8cdcda2554f5df23909937245a4",
   "sha256_original_note": "sha256_original is the digest of the exact live bytes this capture was derived from on 2026-08-13. It is NOT reproducible across fetches: vercel.com is server-rendered with a per-build nonce, so a later fetch of an unchanged page yields a different digest. STRUCTURE, not digest, is the invariant.",
   "sha256_stored": "fa9d03ee379d55e7f191c8f65b0d427f9842bae2bfff3280f34cdc6d6845baec",
+  "sha256_stored_note": "sha256_stored attests the COMMITTED BYTES ONLY. It is a tamper-evidence seal on this file, not a link to the live page, and it must never be read as a fidelity control.",
   "tos_note": "Controlled partial-case mutation of the official Sandbox target table.",
   "trim_method": "Deliberately removed the Sandbox Active CPU row to prove required-row failure. This is a negative test fixture, not a claimed complete capture.",
   "target_table_rows_removed": ["Sandbox Active CPU"],
