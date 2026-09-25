@@ -460,6 +460,92 @@ def test_a_null_original_digest_needs_no_disclosure() -> None:
         )
 
 
+# --- Stored-digest disclosure: the tamper-evidence seal is not a fidelity link -
+#
+# ``sha256_stored`` is present on EVERY committed capture -- it is the digest of
+# the bytes on disk, re-checked by recomputing the same hash
+# (``test_sha256_stored_matches_the_committed_bytes`` above). That makes it a
+# tamper-evidence seal, and a *circular* one: it is computed from the very bytes
+# it later guards, so it establishes NO link to the live page and must never be
+# read as a fidelity control. A bare digest invites exactly that misreading, so
+# every capture derived from a live source must disclose what the seal does and
+# does not attest. See "What a passing ingest fixture test attests" in
+# ``docs/TEST_STRATEGY.md`` for the full account, including the loophole this
+# guard cannot close: a red seal can be "fixed" by recomputing the hash instead
+# of re-reconciling against live, and the committed bytes look identical either
+# way. The guard enforces that the disclosure is PRESENT; only author discipline
+# enforces that the reconciliation was actually re-run.
+#
+# The trigger is the corpus's own provenance marker, not a digest heuristic. A
+# capture the authors declared ``synthetic`` is a hand-built negative fixture
+# (see ``test_captures_declare_synthetic_provenance_where_it_applies`` in the AWS
+# and GCP adapter suites): it represents no live page, carries a
+# ``negative_fixture_note`` instead, and is exempt. Every OTHER capture -- every
+# ``synthetic``-absent sidecar, including live captures whose whole-document
+# ``sha256_original`` is null (Cloudflare) -- still seals real committed bytes and
+# must carry the disclosure. Keying on ``sha256_original`` would wrongly exempt
+# those null-original captures, whose stored seal is exactly as circular.
+
+
+def _is_synthetic(record: dict) -> bool:
+    """True for a declared synthetic negative fixture (exempt from the seal note)."""
+
+    return record.get("synthetic") is True
+
+
+def test_the_stored_disclosure_guard_partitions_a_real_corpus() -> None:
+    """Non-vacuity + precision for the stored-seal guard below.
+
+    The guard requires a note on every NON-synthetic capture and exempts every
+    declared-synthetic one. Prove both halves reason about a real population: at
+    least one non-synthetic capture exists (so the requirement is not vacuous) and
+    at least one declared-synthetic capture exists (so the exemption is not
+    vacuous -- the AWS/GCP adapter suites pin ``synthetic: True`` on their
+    negative fixtures).
+    """
+
+    records = [json.loads(p.read_text(encoding="utf-8")) for p in ALL_CAPTURE_SIDECARS]
+    assert any(not _is_synthetic(r) for r in records), (
+        "no non-synthetic capture found; the stored-seal disclosure guard would require nothing."
+    )
+    assert any(_is_synthetic(r) for r in records), (
+        "no declared-synthetic capture found; the stored-seal exemption would be vacuous."
+    )
+
+
+@pytest.mark.parametrize(
+    "sidecar",
+    ALL_CAPTURE_SIDECARS,
+    ids=lambda p: p.relative_to(FIXTURE_ROOT).as_posix(),
+)
+def test_a_stored_digest_is_always_disclosed(sidecar: Path) -> None:
+    """The load-bearing guard: a live-sourced capture must disclose its seal.
+
+    Strip ``sha256_stored_note`` from any non-synthetic sidecar and this fails,
+    naming the offending file. The note must say what the seal IS -- a
+    tamper-evidence seal on the committed bytes -- so the word ``tamper-evidence``
+    is required rather than merely a non-empty string.
+    """
+
+    record = json.loads(sidecar.read_text(encoding="utf-8"))
+    if _is_synthetic(record):
+        pytest.skip("declared synthetic negative fixture: no live seal to disclose")
+
+    note = record.get("sha256_stored_note")
+    assert isinstance(note, str) and note.strip(), (
+        f"{_relative(sidecar)} carries a real sha256_stored but no "
+        "sha256_stored_note. A bare stored digest reads as a re-checkable link to "
+        "the live page; it is a tamper-evidence seal on the committed bytes and "
+        "nothing more. Add a note saying so (see the other providers' sidecars "
+        "for the wording)."
+    )
+    assert "tamper-evidence" in note, (
+        f"{_relative(sidecar)} discloses sha256_stored but the note omits what the "
+        "seal IS. State that it is a tamper-evidence seal on the committed bytes, "
+        "not a link to the live page, never a fidelity control."
+    )
+
+
 # --- Dedup guard: a list-valued disclosure must not repeat the same entry ------
 #
 # Some sidecars carry list-of-object disclosure fields -- e.g.

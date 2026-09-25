@@ -5,6 +5,7 @@
   "robots_allowed": true,
   "sha256_original": "762b59c5d649c2f9e87f0e727a0c10b1e060edcc18bd7deee38ad143ff85800f",
   "sha256_stored": "64e1ffc8c98a55ca9207ed5b81ddd937648e291007e3dc6167db9ba1087d0c68",
+  "sha256_stored_note": "sha256_stored attests the COMMITTED BYTES ONLY. It is a tamper-evidence seal on this file, not a link to the live page, and it must never be read as a fidelity control.",
   "tos_note": "Official Vercel documentation retained as a minimal factual excerpt for deterministic offline testing.",
   "trim_method": "Removed scripts, navigation, styling, unrelated prose, and six unrelated tables (the live document holds 7 tables; 1 is retained). Removed zero rows and zero cells from inside the extracted Hobby/Pro/Enterprise pricing table. Retained all 8 target data rows and every target cell.",
   "sha256_original_note": "sha256_original is the digest of the exact live bytes this capture was derived from on 2026-08-14. It is NOT reproducible across fetches: vercel.com is server-rendered with a per-build nonce, so a later fetch of an unchanged page yields a different digest. STRUCTURE, not digest, is the invariant; a digest mismatch here is drift, not tampering.",

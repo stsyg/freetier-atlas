@@ -81,6 +81,65 @@ about freshness**: a "newer than N days" check in CI is a time bomb that reddens
 the build on a calendar boundary rather than on a defect. Freshness is a runtime
 concern, enforced by `assess_staleness` withholding publication.
 
+### What a passing ingest fixture test attests — and what it cannot
+
+Read this before you take a green ingest suite as evidence that the fixtures still
+match the provider. **They do not prove that, and nothing in CI can.** Every ingest
+fixture test resolves in one of two directions, and neither reaches a live page:
+
+- **profile-to-capture.** `asserted_block_sha256` hashes the *profile's* pinned
+  `assertion.text` and compares it to the list the capture recorded
+  (`test_adapter_*.py::test_asserted_blocks_match_the_pinned_capture_hashes`). It
+  proves the profile and the capture agree with each other.
+- **capture-to-capture.** `structure.headers` / `structure.rows` are produced by
+  parsing the *committed bytes* and comparing to the structure the same capture
+  recorded. It proves the committed excerpt still parses to the structure it claims.
+
+Both checks are real and worth having — they catch a profile that drifts from its
+evidence and an excerpt that stops parsing. Neither is a fidelity check against the
+provider. The live comparison happened **exactly once**, at capture-generation time,
+when the owner-run reconciling generator refused to write unless each pinned block
+resolved uniquely against the live parse (see `docs/PROVIDER_ADAPTERS.md`). That was
+an **act, not an artefact**: nothing in the repository can re-perform it, and the
+offline property is machine-enforced by `tests/unit/test_no_live_fetcher_in_tests.py`
+(an AST guard pinning that CI opens no socket). This is permanent by design, not a
+defect to fix by making CI fetch; the honest response is this disclosure.
+
+The two digests in each `capture.json` are frequently misread, so state plainly what
+they attest:
+
+- **`sha256_stored` is a tamper-evidence seal, not a fidelity control — and it is
+  circular.** It is `sha256(committed bytes)`, computed *after* those bytes were
+  written and re-checked by recomputing the same hash
+  (`test_capture_sidecar.py::test_sha256_stored_matches_the_committed_bytes`). It
+  detects a later silent edit of a committed excerpt. It establishes **no** link to
+  the live page. The loophole that matters: if this digest goes red, it can be
+  "fixed" either by re-running the live reconciliation *or* by simply recomputing the
+  stored hash — and **the committed artefact looks identical either way, so a reviewer
+  cannot tell from the diff which happened.** The genuine control is therefore
+  **author discipline** (re-run the live reconciliation *after* updating the hash, not
+  *instead of* it), not machinery. That every real capture carries a
+  `sha256_stored_note` saying as much is enforced corpus-wide by
+  `test_capture_sidecar.py::test_a_stored_digest_is_always_disclosed`; the guard
+  enforces that the disclosure is *present*, never that the underlying discipline was
+  *exercised*.
+- **`sha256_original` exists and is inert.** The provider pages serve per-build
+  markup, so a later fetch of an unchanged page yields a different digest and it can
+  never be re-checked; and it hashes the whole document, so any unrelated edit reds
+  it. Every real capture discloses this in a `sha256_original_note`, enforced by
+  `test_capture_sidecar.py::test_a_real_original_digest_is_always_disclosed`.
+
+The useful empirical detail: when Prettier reformatted captures mid-slice,
+`sha256_stored` **changed** while `structure.*` and `asserted_block_sha256` did
+**not**, because those digest normalised text rather than raw bytes. That is the
+shape a real fidelity signature would need — invariant under formatting, sensitive to
+content. Building one (a fetch-time structural signature) is the candidate remedy and
+is deliberately **out of scope**: its discriminator between a legitimate re-capture
+and a ratified drift must be **provenance (was there actually a fetch?), not
+content**, because the committed bytes are identical either way — which rules out any
+content-hash-based remedy as self-defeating and needs a capture-format decision this
+disclosure does not take.
+
 ## Integration
 
 Fetch-to-candidate, candidate-to-verified, version history, conflict review, YAML reload, RSS, Discord, OAuth.
