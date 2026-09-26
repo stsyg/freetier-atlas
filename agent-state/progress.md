@@ -5804,3 +5804,22 @@ Differential baseline first: `tests/unit/test_catalogue_export.py` 10 passed on 
 
 ### Scope/boundaries [M]
 Touched only: `apps/api/app/export/snapshot_age.py`, `tests/unit/test_snapshot_age.py`, `docs/CATALOGUE_EXPORT.md`, this handoff. No boundary file touched (ci.yml, feature_list.json, both package-lock.json, .secrets.baseline, check_urls.py, test_url_allowlist.py, test_no_live_fetcher_in_tests.py, apps/web). No network, no fixture re-capture, no `DATABASE_URL` literal. NOT merged (owner merges after Level-2 verification).
+
+## ingest-sidecar-prose-contradicts-artefact — trim_method prose corrected + flattening guard
+
+A capture sidecar's own prose contradicted the artefact it describes. Three GitHub table sidecars (github-actions-billing, github-codespaces-billing, github-packages-billing) claimed their target table was "spliced out of the live markup, attributes included ... verbatim" when the committed bytes are a flattened, normalised skeleton. **Do NOT merge — owner merges after verification.** Branched off origin/main @ bb94be9.
+
+### Measured first, corpus-wide [M] — the ledger's premise was WRONG
+The ledger's probe (href/<a//>=0) measured ANCHORS, not attributes. Attributes ARE present corpus-wide (scope, aria-labelledby, lang, id). The real, narrower defect: 3 GitHub captures uniquely claimed splice-verbatim "attributes included" while the SAME sentence also said "normalises to text content"; every other capture (incl. GitHub's own table-less siblings) calls the engine GENERATED/normalised. Structural proof: github-packages-billing (splice-prose) emits a byte-identical skeleton to azure/gcp generated tables. Per-provider prose-vs-artefact: only these 3 GitHub sidecars carried the false splice claim; no other provider had the mismatch or its inverse.
+
+### The fix — prose corrected, NOT the artefact
+Rewrote trim_method (single line 11, in-place) in all 3 sidecars to the corpus-standard GENERATED/normalised wording. No source.<ext> byte, no sha256_stored/sha256_original, no url touched — verified by diffing every +/- line for sha256|url|fetched_at|source (empty). Single-line replacement kept line counts identical (47/41/44), so .secrets.baseline entries (lines 6,8,26-33, both sides of line 11) did NOT shift — baseline untouched, NO refresh needed. check_secrets_baseline.py exit 0 both before and after (68 files, 289 entries, baseline not rewritten).
+
+### Guard — stronger one impossible (measured), weaker one added [M]
+The splice-verbatim guard the ledger asked for is NOT possible: a table spliced verbatim from live markup and one regenerated from the live page's normalised text collapse to the SAME committed bytes, so no property of source.<ext> distinguishes them. Correcting prose is the only fix. Added the checkable WEAKER half to tests/unit/test_capture_sidecar.py: a "flattened to plain text" claim must match a flattened artefact (no <a/href/<svg). Trigger population is real and multi-provider — 21 non-synthetic captures across AWS/GCP/GitHub/Oracle. Honest about reach: the consequent currently holds for EVERY committed capture regardless of prose, so it would NOT have caught the original attributes-included defect; its teeth are forward-looking + an instrument (positive) control proving the detector actually sees markup (closes the silent-zero hole that produced the defect). Mirrors PR #135: skips declared-synthetic via synthetic:true, non-vacuity control, instrument control.
+
+### Validation [M]
+python -m pytest tests/unit/test_capture_sidecar.py -q -> 423 passed, 94 skipped, exit 0 (+23 pass: 21 flatten-claim captures + instrument control + non-vacuity; +42 skip: 17 non-flatten + 25 synthetic). ruff check + ruff format --check clean on the test file. Load-bearing proof of the guard: positive control asserts detector returns {<a:1,href:1,<svg:1} on a known-anchored string. Local Postgres is a synthetic pre-#128 seed — not used as evidence; CI is authority.
+
+### Scope/boundaries [M]
+Touched only: the 3 GitHub capture.json (trim_method line), tests/unit/test_capture_sidecar.py, this handoff. No boundary file touched (ci.yml, feature_list.json, both package-lock.json, .secrets.baseline, check_urls.py, test_url_allowlist.py, test_no_live_fetcher_in_tests.py, apps/web). No network, no re-capture, no source/digest byte changed, no DATABASE_URL literal. Pushed. NOT merged (owner merges after verification).
