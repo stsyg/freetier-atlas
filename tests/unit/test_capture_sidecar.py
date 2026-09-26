@@ -18,6 +18,7 @@ from __future__ import annotations
 import ast
 import hashlib
 import json
+import re
 from fnmatch import fnmatch
 from pathlib import Path, PurePosixPath
 
@@ -674,4 +675,134 @@ def test_the_dedup_guard_distinguishes_duplicates_from_distinct_entries() -> Non
     assert not _duplicate_entries(distinct), (
         "two entries that differ in any field are distinct disclosures and must "
         "both be kept; the guard is a duplicate check, not a two-entry ban."
+    )
+
+
+# --- trim_method flattening claim must match the artefact ----------------------
+#
+# A capture's ``trim_method`` prose describes how the bytes on disk were derived
+# from the live page. When that prose contradicts the artefact it describes, the
+# lie sits INSIDE the evidence layer and every downstream reader inherits it --
+# which is exactly the defect this guard's ledger records: three GitHub sidecars
+# claimed their table was "spliced out of the live markup, attributes included
+# ... verbatim" when the committed bytes were a flattened, normalised skeleton
+# byte-identical to the generated tables of every other provider.
+#
+# The STRONGER guard the ledger asked for -- "prove the splice-verbatim claim
+# against the source" -- is NOT possible, and this was measured, not assumed: a
+# table spliced verbatim from live markup and a table regenerated from the live
+# page's normalised text collapse to the SAME committed bytes for this corpus, so
+# no measurable property of ``source.<ext>`` can tell them apart. Correcting the
+# prose is the fix; a guard cannot re-derive intent from identical bytes.
+#
+# What IS checkable is the WEAKER, still-load-bearing half the corrected prose
+# retains: every real capture states its inline markup "was flattened to plain
+# text". A flattened artefact contains no anchor tags, no ``href`` attributes and
+# no ``<svg>`` -- and 21 non-synthetic captures across four providers (AWS, GCP,
+# GitHub, Oracle) make this claim, so the trigger population is real. This guard
+# is honest about its reach: the consequent (no anchors/href/svg) currently holds
+# for EVERY committed capture regardless of prose, so it would not have caught the
+# original attributes-included defect. Its teeth are forward-looking -- a future
+# capture that pastes live anchors while still claiming flattening trips it -- and
+# the instrument control below proves the detector actually sees markup, closing
+# the silent-zero hole (a too-narrow pattern reporting a false zero) that produced
+# the defect in the first place.
+
+#: Regexes for live inline markup a "flattened to plain text" capture must not
+#: contain. ``<a\b`` matches an anchor open tag without also matching ``<article``
+#: or ``<aside`` (the char after ``a`` must be a non-word boundary).
+_MARKUP_SIGNAL_PATTERNS = {
+    "<a": r"<a\b",
+    "href": r"href\s*=",
+    "<svg": r"<svg\b",
+}
+
+
+def _markup_signals(text: str) -> dict[str, int]:
+    """Count live-inline-markup signals a flattened artefact must not exhibit."""
+
+    return {
+        name: len(re.findall(pattern, text, re.IGNORECASE))
+        for name, pattern in _MARKUP_SIGNAL_PATTERNS.items()
+    }
+
+
+def _claims_inline_flattening(record: dict) -> bool:
+    """True when a non-synthetic sidecar's trim_method claims inline flattening."""
+
+    if _is_synthetic(record):
+        return False
+    return "flatten" in (record.get("trim_method") or "").lower()
+
+
+FLATTEN_CLAIM_SIDECARS = [
+    p
+    for p in ALL_CAPTURE_SIDECARS
+    if _claims_inline_flattening(json.loads(p.read_text(encoding="utf-8")))
+]
+
+
+def test_the_markup_detector_actually_sees_markup() -> None:
+    """Instrument control: the detector must count real anchors, href and svg.
+
+    This is the silent-zero guard. The defect this module records was believed on
+    a probe that reported zero because its pattern was too narrow, not because the
+    markup was absent. If this control ever reports zero on a string that plainly
+    contains an anchor, an ``href`` and an ``<svg>``, the flattening guard below
+    is measuring nothing and every "0" it sees is worthless.
+    """
+
+    signals = _markup_signals('<p><a href="https://example.com">x</a><svg></svg></p>')
+    assert signals == {"<a": 1, "href": 1, "<svg": 1}, (
+        f"the markup detector failed to see markup it must count: {signals}. "
+        "A false zero here is the exact failure that produced this defect."
+    )
+
+
+def test_the_flattening_guard_reasons_about_a_real_population() -> None:
+    """Non-vacuity: the flattening claim must exist on a real, multi-provider set.
+
+    Delete every flatten-claiming capture (or reword them all) and this fails,
+    because the load-bearing guard below would then verify nothing. The committed
+    corpus carries the claim on 21 captures across AWS, GCP, GitHub and Oracle.
+    """
+
+    assert FLATTEN_CLAIM_SIDECARS, (
+        "no capture claims inline flattening in its trim_method, so the "
+        "flattening guard would assert nothing. Expected several across providers."
+    )
+    providers = {p.relative_to(FIXTURE_ROOT).parts[0] for p in FLATTEN_CLAIM_SIDECARS}
+    assert len(providers) >= 2, (
+        f"flatten-claiming captures span only {sorted(providers)}; expected the "
+        "claim across multiple providers (AWS, GCP, GitHub, Oracle). A collapse to "
+        "one provider suggests captures were reworded or lost."
+    )
+
+
+@pytest.mark.parametrize(
+    "sidecar",
+    ALL_CAPTURE_SIDECARS,
+    ids=lambda p: p.relative_to(FIXTURE_ROOT).as_posix(),
+)
+def test_a_flattening_claim_matches_the_flattened_artefact(sidecar: Path) -> None:
+    """The load-bearing guard: a "flattened to plain text" claim must be true.
+
+    Add a live ``<a href=...>`` or ``<svg>`` to any source whose sidecar claims
+    inline flattening and this fails, naming the file and the offending signals.
+    A capture that still carries live inline markup has NOT been flattened, and a
+    sidecar that says otherwise is a false claim inside the evidence layer.
+    """
+
+    record = json.loads(sidecar.read_text(encoding="utf-8"))
+    if not _claims_inline_flattening(record):
+        pytest.skip("trim_method makes no inline-flattening claim: nothing to check")
+
+    source = _source_file(sidecar.parent)
+    signals = _markup_signals(source.read_text(encoding="utf-8", errors="replace"))
+    offenders = {name: count for name, count in signals.items() if count}
+    assert not offenders, (
+        f"{_relative(sidecar)}: trim_method claims inline markup was flattened to "
+        f"plain text, but {_relative(source)} still exhibits {offenders}. Either the "
+        "artefact was not flattened or the prose overstates what happened; a "
+        "trim_method claim must describe what the bytes actually are."
     )
