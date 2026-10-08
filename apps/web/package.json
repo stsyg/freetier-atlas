@@ -45,6 +45,11 @@
   "overrides": {
     "vite": "$vite",
     "esbuild": "^0.25.0",
-    "js-yaml": "^5.2.2"
+    "js-yaml": "^5.4.2",
+    "brace-expansion": "^1.1.21",
+    "source-map-js": "^1.2.2",
+    "@typescript-eslint/typescript-estree": {
+      "brace-expansion": "^5.0.12"
+    }
   }
 }
